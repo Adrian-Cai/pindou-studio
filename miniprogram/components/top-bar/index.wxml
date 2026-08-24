@@ -1,0 +1,12 @@
+<view class="top-bar {{home ? 'top-bar--home' : ''}}" style="padding-top: {{statusBarHeight}}px;">
+  <view class="top-bar__inner">
+    <button wx:if="{{back}}" class="top-bar__back" bindtap="handleBack" aria-label="返回">‹</button>
+    <view wx:elif="{{!home}}" class="top-bar__side"></view>
+    <view class="top-bar__heading">
+      <text class="top-bar__title">{{title}}</text>
+      <text wx:if="{{subtitle}}" class="top-bar__subtitle">{{subtitle}}</text>
+    </view>
+    <button wx:if="{{actionText}}" class="top-bar__action" bindtap="handleAction">{{actionText}}</button>
+    <view wx:elif="{{!home}}" class="top-bar__side"></view>
+  </view>
+</view>

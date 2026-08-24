@@ -1,0 +1,23 @@
+<view class="page page--stack">
+  <top-bar title="下载中心" back />
+  <view class="content-page">
+    <view wx:if="{{hasDraft}}" class="download-card card">
+      <view class="download-card__head">
+        <view>
+          <view class="content-title">当前作品整套图纸</view>
+          <view class="content-desc">包含成品图、材料清单、编号施工图和色板参考</view>
+        </view>
+        <view class="download-card__quota">剩余 {{quota}} 次</view>
+      </view>
+      <view class="download-card__formats">
+        <text>高清 PNG</text><text>可打印 PDF</text><text>材料清单</text>
+      </view>
+      <button class="button-primary" bindtap="exportCurrent">保存整套图纸</button>
+    </view>
+    <view wx:else class="empty-panel">
+      <view class="empty-panel__icon">↓</view>
+      <view class="empty-panel__title">还没有可下载的图纸</view>
+      <view class="empty-panel__desc">作品生成完成后，可以在这里一次保存整套文件。</view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,33 @@
+@import "../../styles/content.wxss";
+
+.download-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.download-card__head > view:first-child {
+  max-width: 430rpx;
+}
+
+.download-card__quota {
+  padding: 10rpx 16rpx;
+  border-radius: 20rpx;
+  background: #fff0e9;
+  color: #e85e35;
+  font-size: 20rpx;
+}
+
+.download-card__formats {
+  display: flex;
+  gap: 12rpx;
+  margin: 32rpx 0;
+}
+
+.download-card__formats text {
+  padding: 12rpx 14rpx;
+  border-radius: 14rpx;
+  background: #f2efeb;
+  color: #6d6761;
+  font-size: 20rpx;
+}

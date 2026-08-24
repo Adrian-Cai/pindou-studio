@@ -1,0 +1,46 @@
+<view class="editor">
+  <top-bar title="编辑图案" back action-text="完成" bind:action="saveAndView" />
+
+  <view wx:if="{{draft}}" class="editor__meta">
+    <view>
+      <text class="editor__size">{{draft.settings.width}} × {{draft.settings.height}}</text>
+      <text class="editor__note"> · {{draft.settings.colorLimit}} 色 · {{draft.settings.brand}}</text>
+    </view>
+    <view class="zoom">
+      <button class="zoom__button" bindtap="zoomOut">−</button>
+      <text class="zoom__value">{{zoomPercent}}%</text>
+      <button class="zoom__button" bindtap="zoomIn">＋</button>
+    </view>
+  </view>
+
+  <scroll-view class="canvas-wrap" scroll-x scroll-y enhanced show-scrollbar="{{false}}">
+    <view class="canvas-stage">
+      <view class="pattern" style="transform: scale({{zoom}});">
+        <view
+          wx:for="{{draft.cells}}"
+          wx:key="index"
+          class="pattern__cell"
+          style="background: {{item.color}};"
+        >
+          <text wx:if="{{zoom >= 1.2}}">{{item.colorCode}}</text>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="editor__footer">
+    <view class="tools">
+      <view
+        wx:for="{{tools}}"
+        wx:key="id"
+        class="tool {{activeTool === item.id ? 'tool--active' : ''}}"
+        data-tool="{{item.id}}"
+        bindtap="selectTool"
+      >
+        <view class="tool__symbol">{{item.symbol}}</view>
+        <text>{{item.label}}</text>
+      </view>
+    </view>
+    <button class="button-primary editor__done" bindtap="saveAndView">查看作品结果</button>
+  </view>
+</view>

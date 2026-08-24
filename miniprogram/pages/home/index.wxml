@@ -1,0 +1,72 @@
+<view class="page">
+  <top-bar title="拼豆制作工具" home />
+
+  <view class="hero">
+    <view class="hero__title">把图片变成拼豆图</view>
+    <view class="hero__desc">上传图片，自动生成拼豆图案</view>
+  </view>
+
+  <view class="upload card {{sourceImagePath ? 'upload--selected' : ''}}" bindtap="chooseImage">
+    <image wx:if="{{sourceImagePath}}" class="upload__preview" src="{{sourceImagePath}}" mode="aspectFill" />
+    <view wx:else class="upload__empty">
+      <image class="upload__icon" src="/assets/icons/image-upload.svg" mode="aspectFit" />
+      <view class="upload__title">上传图片</view>
+      <view class="upload__hint">支持 JPG / PNG / WEBP</view>
+    </view>
+    <button
+      wx:if="{{sourceImagePath}}"
+      class="upload__remove"
+      catchtap="clearImage"
+      aria-label="移除图片"
+    >×</button>
+  </view>
+
+  <view class="samples">
+    <view class="section-label">示例图片</view>
+    <view class="samples__grid">
+      <view class="sample-card">
+        <image class="sample-card__sprite sample-card__sprite--1" src="/assets/reference/home-reference.png" />
+      </view>
+      <view class="sample-card">
+        <image class="sample-card__sprite sample-card__sprite--2" src="/assets/reference/home-reference.png" />
+      </view>
+      <view class="sample-card">
+        <image class="sample-card__sprite sample-card__sprite--3" src="/assets/reference/home-reference.png" />
+      </view>
+      <view class="sample-card">
+        <image class="sample-card__sprite sample-card__sprite--4" src="/assets/reference/home-reference.png" />
+      </view>
+    </view>
+  </view>
+  <view class="setting-options">
+    <view class="option-group">
+      <view class="section-label">尺寸选择</view>
+      <view class="option-row option-row--sizes">
+        <button
+          wx:for="{{sizeOptions}}"
+          wx:key="*this"
+          class="option-button {{settings.width === item ? 'option-button--active' : ''}}"
+          data-value="{{item}}"
+          bindtap="selectSize"
+        >{{item}}×{{item}}</button>
+      </view>
+    </view>
+
+    <view class="option-group option-group--colors">
+      <view class="section-label">颜色数量</view>
+      <view class="option-row">
+        <button
+          wx:for="{{colorOptions}}"
+          wx:key="*this"
+          class="option-button {{settings.colorLimit === item ? 'option-button--active' : ''}}"
+          data-value="{{item}}"
+          bindtap="selectColor"
+        >{{item}}色</button>
+      </view>
+    </view>
+  </view>
+  <view class="button-primary home__submit" role="button" bindtap="startCreating">
+    开始生成
+  </view>
+</view>
+

@@ -1,0 +1,32 @@
+<view class="page page--stack">
+  <top-bar title="使用帮助" back />
+  <view class="content-page">
+    <view class="help-hero card">
+      <view class="content-title">从图片到拼豆图纸</view>
+      <view class="content-desc">四步完成：选图、设置尺寸、调整图案、下载施工图。</view>
+      <view class="steps">
+        <view class="step" wx:for="{{['选图', '生成', '调整', '制作']}}" wx:key="*this">
+          <view class="step__number">{{index + 1}}</view>
+          <text>{{item}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="faq card">
+      <view class="content-title">常见问题</view>
+      <view
+        class="faq__item"
+        wx:for="{{questions}}"
+        wx:key="title"
+        data-index="{{index}}"
+        bindtap="toggleQuestion"
+      >
+        <view class="faq__question">
+          <text>{{item.title}}</text>
+          <text>{{openIndex === index ? '−' : '＋'}}</text>
+        </view>
+        <view wx:if="{{openIndex === index}}" class="faq__answer">{{item.answer}}</view>
+      </view>
+    </view>
+  </view>
+</view>

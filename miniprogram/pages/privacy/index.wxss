@@ -1,0 +1,36 @@
+@import "../../styles/content.wxss";
+
+.privacy__settings {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.setting {
+  display: flex;
+  min-height: 124rpx;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1rpx solid #eeeae5;
+}
+
+.setting:last-child {
+  border-bottom: 0;
+}
+
+.setting__title {
+  font-size: 27rpx;
+  font-weight: 550;
+}
+
+.setting__desc {
+  margin-top: 8rpx;
+  color: #918b84;
+  font-size: 21rpx;
+}
+
+.privacy__clear {
+  margin-top: 32rpx;
+  background: transparent;
+  color: #d55a44;
+  font-size: 25rpx;
+}

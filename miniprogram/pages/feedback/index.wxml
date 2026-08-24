@@ -1,0 +1,34 @@
+<view class="page page--stack">
+  <top-bar title="一键反馈" back />
+  <view class="content-page">
+    <view class="feedback card">
+      <view class="field">
+        <view class="field__label">问题类型</view>
+        <picker mode="selector" range="{{categories}}" value="{{categoryIndex}}" bindchange="changeCategory">
+          <view class="field__picker">{{categories[categoryIndex]}} <text>›</text></view>
+        </picker>
+      </view>
+      <view class="field">
+        <view class="field__label">告诉我们发生了什么</view>
+        <textarea
+          class="field__textarea"
+          maxlength="500"
+          placeholder="描述你的问题或建议，越具体越容易被解决"
+          value="{{content}}"
+          bindinput="changeContent"
+        />
+        <view class="field__count">{{content.length}} / 500</view>
+      </view>
+      <view class="field">
+        <view class="field__label">联系方式（选填）</view>
+        <input
+          class="field__input"
+          placeholder="微信号或邮箱"
+          value="{{contact}}"
+          bindinput="changeContact"
+        />
+      </view>
+    </view>
+    <button class="button-primary feedback__submit" bindtap="submit">提交反馈</button>
+  </view>
+</view>

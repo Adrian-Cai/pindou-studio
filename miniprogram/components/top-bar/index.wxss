@@ -1,0 +1,84 @@
+.top-bar {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.top-bar--home {
+  background: #ffffff;
+}
+
+.top-bar--home .top-bar__inner {
+  box-sizing: border-box;
+  height: 88rpx;
+  padding: 0 32rpx;
+}
+
+.top-bar--home .top-bar__heading {
+  align-items: flex-start;
+}
+
+.top-bar--home .top-bar__title {
+  color: #181b18;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 48rpx;
+}
+
+.top-bar__inner {
+  display: flex;
+  height: 112rpx;
+  align-items: center;
+}
+
+.top-bar__heading {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.top-bar__title {
+  color: #111111;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 48rpx;
+}
+
+.top-bar__subtitle {
+  margin-top: 8rpx;
+  color: #666666;
+  font-size: 22rpx;
+  line-height: 32rpx;
+}
+
+.top-bar__back,
+.top-bar__action,
+.top-bar__side {
+  box-sizing: border-box;
+  width: 112rpx;
+}
+
+.top-bar__back,
+.top-bar__action {
+  min-height: 80rpx;
+  padding: 0;
+  background: transparent;
+  color: #111111;
+  line-height: 80rpx;
+}
+
+.top-bar__back {
+  font-family: Arial, sans-serif;
+  font-size: 48rpx;
+  font-weight: 300;
+  text-align: left;
+}
+
+.top-bar__action {
+  color: #12b466;
+  font-size: 24rpx;
+  font-weight: 500;
+  text-align: right;
+}
+
+

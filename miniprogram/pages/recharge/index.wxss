@@ -1,0 +1,109 @@
+.recharge__hero {
+  padding: 42rpx 16rpx;
+  text-align: center;
+}
+
+.recharge__symbol {
+  display: flex;
+  width: 110rpx;
+  height: 110rpx;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  border-radius: 38rpx;
+  background: linear-gradient(145deg, #ff9d7f, #ff7043);
+  box-shadow: 0 18rpx 42rpx rgba(255, 112, 67, 0.22);
+  color: #fff;
+  font-size: 48rpx;
+}
+
+.recharge__title {
+  margin-top: 26rpx;
+  font-size: 38rpx;
+  font-weight: 700;
+}
+
+.recharge__desc {
+  margin-top: 12rpx;
+  color: #918b84;
+  font-size: 24rpx;
+  line-height: 1.65;
+}
+
+.package {
+  display: flex;
+  align-items: center;
+  margin-bottom: 18rpx;
+  padding: 28rpx;
+  border: 2rpx solid #e8e3dc;
+  border-radius: 26rpx;
+  background: #fff;
+}
+
+.package--active {
+  border-color: #ff7043;
+  background: #fffaf7;
+  box-shadow: 0 12rpx 28rpx rgba(255, 112, 67, 0.1);
+}
+
+.package__check {
+  display: flex;
+  width: 40rpx;
+  height: 40rpx;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid #d8d2cb;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 20rpx;
+}
+
+.package--active .package__check {
+  border-color: #ff7043;
+  background: #ff7043;
+}
+
+.package__main {
+  flex: 1;
+  margin-left: 20rpx;
+}
+
+.package__count {
+  font-size: 29rpx;
+  font-weight: 650;
+}
+
+.package__label {
+  margin-top: 7rpx;
+  color: #918b84;
+  font-size: 21rpx;
+}
+
+.package__price {
+  color: #302b27;
+  font-size: 38rpx;
+  font-weight: 700;
+}
+
+.package__price text {
+  margin-right: 4rpx;
+  font-size: 22rpx;
+}
+
+.recharge__notes {
+  margin-top: 28rpx;
+  color: #6d6761;
+  font-size: 23rpx;
+  line-height: 2.1;
+}
+
+.recharge__button {
+  margin-top: 28rpx;
+}
+
+.recharge__agreement {
+  margin-top: 20rpx;
+  color: #aaa39b;
+  font-size: 20rpx;
+  text-align: center;
+}

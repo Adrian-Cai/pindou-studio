@@ -1,0 +1,84 @@
+<view class="page page--stack result">
+  <top-bar title="作品结果" back />
+
+  <view class="tabs">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="id"
+      class="tabs__item {{activeTab === item.id ? 'tabs__item--active' : ''}}"
+      data-tab="{{item.id}}"
+      bindtap="changeTab"
+    >{{item.label}}</view>
+  </view>
+
+  <view wx:if="{{draft}}" class="result__body">
+    <view wx:if="{{activeTab === 'preview'}}" class="preview card">
+      <image class="preview__image" src="{{draft.sourceImagePath}}" mode="aspectFit" />
+      <view class="preview__caption">
+        <view>
+          <view class="preview__title">未命名作品</view>
+          <view class="preview__meta">{{draft.settings.width}} × {{draft.settings.height}} · {{draft.settings.colorLimit}} 色</view>
+        </view>
+        <button class="favorite {{isFavorite ? 'favorite--active' : ''}}" bindtap="toggleFavorite">
+          {{isFavorite ? '♥' : '♡'}}
+        </button>
+      </view>
+    </view>
+
+    <view wx:elif="{{activeTab === 'materials'}}" class="materials card">
+      <view class="panel-heading">
+        <view>
+          <view class="section-title">材料清单</view>
+          <view class="panel-heading__hint">按 {{draft.settings.brand}} 色号统计</view>
+        </view>
+        <view class="panel-heading__total">{{draft.settings.width * draft.settings.height}} 颗</view>
+      </view>
+      <view class="material-row" wx:for="{{materials}}" wx:key="colorCode">
+        <view class="swatch" style="background: {{item.color}};"></view>
+        <view class="material-row__code">{{item.colorCode}}</view>
+        <view class="material-row__bar"><view class="material-row__fill" style="width: {{item.count}}%; background: {{item.color}};"></view></view>
+        <view class="material-row__count">{{item.count}} 颗</view>
+      </view>
+    </view>
+
+    <view wx:elif="{{activeTab === 'chart'}}" class="chart card">
+      <view class="panel-heading">
+        <view>
+          <view class="section-title">编号施工图</view>
+          <view class="panel-heading__hint">放大查看每颗豆的色号</view>
+        </view>
+      </view>
+      <view class="chart__grid">
+        <view
+          wx:for="{{draft.cells}}"
+          wx:key="index"
+          class="chart__cell"
+          style="background: {{item.color}};"
+        >{{item.colorCode}}</view>
+      </view>
+    </view>
+
+    <view wx:else class="palette card">
+      <view class="section-title">色板参考</view>
+      <view class="panel-heading__hint">打印或制作时，可用它快速核对颜色</view>
+      <view class="palette__grid">
+        <view class="palette__item" wx:for="{{materials}}" wx:key="colorCode">
+          <view class="palette__color" style="background: {{item.color}};"></view>
+          <view class="palette__code">{{item.colorCode}}</view>
+          <view class="palette__count">{{item.count}} 颗</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="result__actions">
+      <button class="button-secondary result__share" open-type="share">分享</button>
+      <button class="button-primary result__download" bindtap="openDownloads">下载图纸</button>
+    </view>
+  </view>
+
+  <view wx:else class="result__empty card">
+    <view class="result__empty-icon">◇</view>
+    <view>当前没有可查看的作品</view>
+    <button class="button-primary result__empty-button" bindtap="goCreate">去制作</button>
+  </view>
+</view>

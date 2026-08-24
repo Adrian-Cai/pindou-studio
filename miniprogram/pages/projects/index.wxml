@@ -1,0 +1,34 @@
+<view class="page projects">
+  <top-bar title="我的作品" subtitle="{{works.length}} 个作品" />
+
+  <view wx:if="{{works.length}}" class="projects__list">
+    <view
+      class="work-card"
+      wx:for="{{works}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="openWork"
+    >
+      <image class="work-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
+      <view class="work-card__info">
+        <view class="work-card__title">{{item.title}}</view>
+        <view class="work-card__meta">{{item.beadCount}} 颗 · {{item.colorCount}} 色</view>
+        <view class="work-card__date">{{item.updatedText}}</view>
+      </view>
+      <view class="work-card__arrow">›</view>
+    </view>
+    <button class="button-primary projects__new" bindtap="createNew">制作新作品</button>
+  </view>
+
+  <view wx:else class="empty">
+    <view class="empty__art">
+      <view class="empty__bead empty__bead--one"></view>
+      <view class="empty__bead empty__bead--two"></view>
+      <view class="empty__bead empty__bead--three"></view>
+      <view class="empty__bead empty__bead--four"></view>
+    </view>
+    <view class="empty__title">还没有作品</view>
+    <view class="empty__desc">从一张喜欢的图片开始，做出你的第一份拼豆图纸。</view>
+    <button class="button-primary empty__button" bindtap="createNew">开始制作</button>
+  </view>
+</view>

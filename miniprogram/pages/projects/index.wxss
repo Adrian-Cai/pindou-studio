@@ -1,0 +1,103 @@
+.projects__list {
+  padding-top: 22rpx;
+}
+
+.work-card {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20rpx;
+  padding: 20rpx;
+  border: 1rpx solid #e8e3dc;
+  border-radius: 28rpx;
+  background: #fff;
+}
+
+.work-card__cover {
+  width: 180rpx;
+  height: 180rpx;
+  border-radius: 20rpx;
+  background: #eeeae5;
+}
+
+.work-card__info {
+  min-width: 0;
+  flex: 1;
+  padding: 0 24rpx;
+}
+
+.work-card__title {
+  overflow: hidden;
+  font-size: 29rpx;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-card__meta {
+  margin-top: 14rpx;
+  color: #706a64;
+  font-size: 23rpx;
+}
+
+.work-card__date {
+  margin-top: 10rpx;
+  color: #a19b94;
+  font-size: 21rpx;
+}
+
+.work-card__arrow {
+  color: #b2aba3;
+  font-size: 46rpx;
+}
+
+.projects__new {
+  margin-top: 30rpx;
+}
+
+.empty {
+  display: flex;
+  min-height: 850rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.empty__art {
+  position: relative;
+  width: 240rpx;
+  height: 210rpx;
+  margin-bottom: 30rpx;
+}
+
+.empty__bead {
+  position: absolute;
+  width: 92rpx;
+  height: 92rpx;
+  border: 14rpx solid rgba(255, 255, 255, 0.68);
+  border-radius: 50%;
+  box-shadow: 0 14rpx 30rpx rgba(61, 51, 43, 0.12);
+}
+
+.empty__bead--one { top: 0; left: 18rpx; background: #ff9d7f; }
+.empty__bead--two { top: 12rpx; right: 12rpx; background: #f4cc61; }
+.empty__bead--three { bottom: 0; left: 64rpx; background: #72b694; }
+.empty__bead--four { right: 34rpx; bottom: 8rpx; background: #7aaed3; }
+
+.empty__title {
+  font-size: 34rpx;
+  font-weight: 650;
+}
+
+.empty__desc {
+  width: 480rpx;
+  margin-top: 16rpx;
+  color: #918b84;
+  font-size: 25rpx;
+  line-height: 1.7;
+}
+
+.empty__button {
+  width: 360rpx;
+  margin-top: 36rpx;
+}

@@ -1,0 +1,55 @@
+@import "../../styles/content.wxss";
+
+.field {
+  margin-bottom: 32rpx;
+}
+
+.field:last-child {
+  margin-bottom: 0;
+}
+
+.field__label {
+  margin-bottom: 14rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.field__picker,
+.field__input,
+.field__textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1rpx solid #e8e3dc;
+  border-radius: 18rpx;
+  background: #faf8f5;
+  font-size: 25rpx;
+}
+
+.field__picker,
+.field__input {
+  height: 86rpx;
+  padding: 0 22rpx;
+  line-height: 86rpx;
+}
+
+.field__picker {
+  display: flex;
+  justify-content: space-between;
+}
+
+.field__textarea {
+  height: 260rpx;
+  padding: 22rpx;
+  line-height: 1.6;
+}
+
+.field__count {
+  margin-top: 8rpx;
+  color: #aaa39b;
+  font-size: 20rpx;
+  text-align: right;
+}
+
+.feedback__submit {
+  margin-top: 26rpx;
+}

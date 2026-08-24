@@ -1,0 +1,58 @@
+@import "../../styles/content.wxss";
+
+.steps {
+  display: flex;
+  margin-top: 32rpx;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  color: #77716a;
+  font-size: 21rpx;
+}
+
+.step__number {
+  display: flex;
+  width: 58rpx;
+  height: 58rpx;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10rpx;
+  border-radius: 50%;
+  background: #fff0e9;
+  color: #ff7043;
+  font-weight: 650;
+}
+
+.faq {
+  padding-top: 12rpx;
+  padding-bottom: 12rpx;
+}
+
+.faq > .content-title {
+  padding: 18rpx 0;
+}
+
+.faq__item {
+  padding: 28rpx 0;
+  border-top: 1rpx solid #eeeae5;
+}
+
+.faq__question {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 27rpx;
+  font-weight: 550;
+}
+
+.faq__answer {
+  padding-top: 18rpx;
+  color: #85817b;
+  font-size: 24rpx;
+  line-height: 1.75;
+}

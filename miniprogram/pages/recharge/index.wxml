@@ -1,0 +1,36 @@
+<view class="page page--stack recharge">
+  <top-bar title="获取下载次数" back />
+  <view class="recharge__hero">
+    <view class="recharge__symbol">↓</view>
+    <view class="recharge__title">把完整图纸保存下来</view>
+    <view class="recharge__desc">一次下载包含成品图、材料清单、施工图和色板参考。</view>
+  </view>
+
+  <view class="packages">
+    <view
+      class="package {{selected === index ? 'package--active' : ''}}"
+      wx:for="{{packages}}"
+      wx:key="id"
+      data-index="{{index}}"
+      bindtap="selectPackage"
+    >
+      <view class="package__check">{{selected === index ? '✓' : ''}}</view>
+      <view class="package__main">
+        <view class="package__count">{{item.count}} 次下载</view>
+        <view class="package__label">{{item.label}}</view>
+      </view>
+      <view class="package__price"><text>¥</text>{{item.price}}</view>
+    </view>
+  </view>
+
+  <view class="recharge__notes card">
+    <view>✓ 下载次数长期有效</view>
+    <view>✓ 同一作品可重复下载</view>
+    <view>✓ 文件保存在你的设备中</view>
+  </view>
+
+  <button class="button-primary recharge__button" bindtap="purchase">
+    确认获取 {{packages[selected].count}} 次
+  </button>
+  <view class="recharge__agreement">支付即表示同意《付费服务协议》</view>
+</view>

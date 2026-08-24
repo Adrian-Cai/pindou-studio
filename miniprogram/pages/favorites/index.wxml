@@ -1,0 +1,25 @@
+<view class="page page--stack">
+  <top-bar title="我的收藏" back />
+  <view class="content-page">
+    <view wx:if="{{works.length}}" class="favorite-grid">
+      <view
+        class="favorite-card"
+        wx:for="{{works}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="openCurrent"
+      >
+        <image class="favorite-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
+        <view class="favorite-card__info">
+          <text class="favorite-card__title">{{item.title}}</text>
+          <text class="favorite-card__heart">♥</text>
+        </view>
+      </view>
+    </view>
+    <view wx:else class="empty-panel">
+      <view class="empty-panel__icon">♡</view>
+      <view class="empty-panel__title">还没有收藏</view>
+      <view class="empty-panel__desc">在作品结果页点一下爱心，喜欢的图纸就会留在这里。</view>
+    </view>
+  </view>
+</view>

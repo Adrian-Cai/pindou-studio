@@ -1,0 +1,17 @@
+<view class="page page--stack">
+  <top-bar title="关于我们" back />
+  <view class="about">
+    <view class="about__logo">拼</view>
+    <view class="about__name">拼豆工作室</view>
+    <view class="about__version">Version 0.1.0</view>
+    <view class="about__story card">
+      <view class="content-title">让灵感更容易落地</view>
+      <view class="content-desc">我们希望把图片转换、配色统计和施工图整理这些繁琐步骤交给工具，让每个人都能更专注地享受拼豆制作。</view>
+    </view>
+    <view class="about__links card">
+      <view class="about__link"><text>用户协议</text><text>›</text></view>
+      <view class="about__link"><text>隐私政策</text><text>›</text></view>
+      <view class="about__link"><text>联系我们</text><text>›</text></view>
+    </view>
+  </view>
+</view>

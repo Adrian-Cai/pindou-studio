@@ -1,0 +1,20 @@
+<view class="page page--stack">
+  <top-bar title="隐私设置" back />
+  <view class="content-page privacy">
+    <view class="privacy__intro card">
+      <view class="content-title">你的作品属于你</view>
+      <view class="content-desc">上传的图片仅用于生成图纸。正式接入图片处理服务时，将在这里同步更新数据用途和保存期限。</view>
+    </view>
+    <view class="privacy__settings card">
+      <view class="setting">
+        <view><view class="setting__title">保存制作历史</view><view class="setting__desc">在当前设备保留最近作品</view></view>
+        <switch checked="{{saveHistory}}" color="#ff7043" bindchange="changeHistory" />
+      </view>
+      <view class="setting">
+        <view><view class="setting__title">匿名体验改进</view><view class="setting__desc">帮助我们了解功能是否好用</view></view>
+        <switch checked="{{analytics}}" color="#ff7043" bindchange="changeAnalytics" />
+      </view>
+    </view>
+    <button class="privacy__clear" bindtap="clearLocalData">清除本地数据</button>
+  </view>
+</view>
