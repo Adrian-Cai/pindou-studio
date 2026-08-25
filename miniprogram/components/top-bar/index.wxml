@@ -6,7 +6,9 @@
     class="top-bar__inner"
     style="padding-right: {{actionType === 'more' ? menuButtonReserve : 16}}px;"
   >
-    <button wx:if="{{back}}" class="top-bar__back" bindtap="handleBack" aria-label="返回">‹</button>
+    <button wx:if="{{back}}" class="top-bar__back" bindtap="handleBack" aria-label="返回">
+      <text class="top-bar__back-icon">‹</text>
+    </button>
     <view wx:elif="{{!home}}" class="top-bar__side"></view>
     <view class="top-bar__heading">
       <text class="top-bar__title">{{title}}</text>

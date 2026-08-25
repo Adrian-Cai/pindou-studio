@@ -81,10 +81,21 @@
 }
 
 .top-bar__back {
+  position: relative;
+  margin: 0;
+  overflow: visible;
   font-family: Arial, sans-serif;
+  text-align: left;
+}
+
+.top-bar__back-icon {
+  position: absolute;
+  top: 50%;
+  left: 0;
   font-size: 48rpx;
   font-weight: 300;
-  text-align: left;
+  line-height: 1;
+  transform: translateY(-50%);
 }
 
 .top-bar__action {
