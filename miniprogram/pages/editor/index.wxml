@@ -1,46 +1,60 @@
 <view class="editor">
-  <top-bar title="编辑图案" back action-text="完成" bind:action="saveAndView" />
+  <top-bar title="编辑拼豆图" back />
 
-  <view wx:if="{{draft}}" class="editor__meta">
-    <view>
-      <text class="editor__size">{{draft.settings.width}} × {{draft.settings.height}}</text>
-      <text class="editor__note"> · {{draft.settings.colorLimit}} 色 · {{draft.settings.brand}}</text>
-    </view>
-    <view class="zoom">
-      <button class="zoom__button" bindtap="zoomOut">−</button>
-      <text class="zoom__value">{{zoomPercent}}%</text>
-      <button class="zoom__button" bindtap="zoomIn">＋</button>
-    </view>
-  </view>
-
-  <scroll-view class="canvas-wrap" scroll-x scroll-y enhanced show-scrollbar="{{false}}">
-    <view class="canvas-stage">
-      <view class="pattern" style="transform: scale({{zoom}});">
-        <view
-          wx:for="{{draft.cells}}"
-          wx:key="index"
-          class="pattern__cell"
-          style="background: {{item.color}};"
-        >
-          <text wx:if="{{zoom >= 1.2}}">{{item.colorCode}}</text>
+  <view wx:if="{{draft}}" class="editor__body">
+    <view class="editor__content">
+      <view class="preview-card">
+        <view class="preview-transform">
+          <canvas id="patternCanvas" class="pattern-canvas" type="2d"></canvas>
         </view>
       </view>
-    </view>
-  </scroll-view>
 
-  <view class="editor__footer">
-    <view class="tools">
-      <view
-        wx:for="{{tools}}"
-        wx:key="id"
-        class="tool {{activeTool === item.id ? 'tool--active' : ''}}"
-        data-tool="{{item.id}}"
-        bindtap="selectTool"
-      >
-        <view class="tool__symbol">{{item.symbol}}</view>
-        <text>{{item.label}}</text>
+      <view class="zoom-control">
+        <button class="zoom-control__button" bindtap="zoomOut" aria-label="缩小">−</button>
+        <text class="zoom-control__value">{{zoomPercent}}%</text>
+        <button class="zoom-control__button" bindtap="zoomIn" aria-label="放大">＋</button>
+      </view>
+
+      <view class="info-card">
+        <view class="info-card__row">
+          <text>尺寸：{{draft.settings.width}}×{{draft.settings.height}}</text>
+          <text>颜色：{{draft.settings.colorLimit}}色</text>
+        </view>
+        <text class="info-card__count">共 {{beadCount}} 颗</text>
+      </view>
+
+      <view class="tools">
+        <view
+          wx:for="{{tools}}"
+          wx:key="id"
+          class="tool {{item.disabled ? 'tool--disabled' : ''}} {{activeTool === item.id ? 'tool--active' : ''}}"
+          data-tool="{{item.id}}"
+          data-disabled="{{item.disabled}}"
+          bindtap="selectTool"
+        >
+          <image class="tool__icon" src="{{item.icon}}" mode="aspectFit" />
+          <text class="tool__label">{{item.label}}</text>
+        </view>
+      </view>
+
+      <view class="palette">
+        <view wx:for="{{paletteColors}}" wx:key="*this" class="palette__slot">
+          <button
+            class="palette__color {{selectedColor === item ? 'palette__color--selected' : ''}}"
+            style="background-color: {{item}};"
+            data-color="{{item}}"
+            bindtap="selectPaletteColor"
+            aria-label="选择颜色 {{item}}"
+          >
+            <text wx:if="{{selectedColor === item}}" class="palette__check">✓</text>
+          </button>
+        </view>
+      </view>
+
+      <view class="editor-actions">
+        <button class="button-secondary editor-actions__button" bindtap="regenerate">重新生成</button>
+        <button class="button-primary editor-actions__button" bindtap="saveAndView">保存作品</button>
       </view>
     </view>
-    <button class="button-primary editor__done" bindtap="saveAndView">查看作品结果</button>
   </view>
 </view>

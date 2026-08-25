@@ -1,12 +1,23 @@
-<view class="top-bar {{home ? 'top-bar--home' : ''}}" style="padding-top: {{statusBarHeight}}px;">
-  <view class="top-bar__inner">
+<view
+  class="top-bar {{home ? 'top-bar--home' : ''}} {{actionType === 'more' ? 'top-bar--with-more' : ''}}"
+  style="padding-top: {{statusBarHeight}}px;"
+>
+  <view
+    class="top-bar__inner"
+    style="padding-right: {{actionType === 'more' ? menuButtonReserve : 16}}px;"
+  >
     <button wx:if="{{back}}" class="top-bar__back" bindtap="handleBack" aria-label="返回">‹</button>
     <view wx:elif="{{!home}}" class="top-bar__side"></view>
     <view class="top-bar__heading">
       <text class="top-bar__title">{{title}}</text>
       <text wx:if="{{subtitle}}" class="top-bar__subtitle">{{subtitle}}</text>
     </view>
-    <button wx:if="{{actionText}}" class="top-bar__action" bindtap="handleAction">{{actionText}}</button>
+    <button
+      wx:if="{{actionText}}"
+      class="top-bar__action {{actionType === 'more' ? 'top-bar__action--more' : ''}}"
+      bindtap="handleAction"
+      aria-label="{{actionType === 'more' ? '更多操作' : actionText}}"
+    >{{actionText}}</button>
     <view wx:elif="{{!home}}" class="top-bar__side"></view>
   </view>
 </view>

@@ -8,8 +8,8 @@
 
 .top-bar--home .top-bar__inner {
   box-sizing: border-box;
-  height: 88rpx;
-  padding: 0 32rpx;
+  height: 112rpx;
+  padding: 0 40rpx;
 }
 
 .top-bar--home .top-bar__heading {
@@ -17,16 +17,18 @@
 }
 
 .top-bar--home .top-bar__title {
-  color: #181b18;
-  font-size: 32rpx;
-  font-weight: 700;
-  line-height: 48rpx;
+  color: #15151a;
+  font-size: 36rpx;
+  font-weight: 600;
+  line-height: 52rpx;
 }
 
 .top-bar__inner {
   display: flex;
+  box-sizing: border-box;
   height: 112rpx;
   align-items: center;
+  padding: 0 32rpx;
 }
 
 .top-bar__heading {
@@ -75,10 +77,49 @@
 }
 
 .top-bar__action {
-  color: #12b466;
+  color: #6c4cf6;
   font-size: 24rpx;
   font-weight: 500;
   text-align: right;
 }
 
+.top-bar__action--more {
+  width: 64rpx;
+  min-height: 64rpx;
+  height: 64rpx;
+  margin-left: 48rpx;
+  border: 1rpx solid #eeeeee;
+  border-radius: 32rpx;
+  color: #111111;
+  font-size: 18rpx;
+  letter-spacing: 2rpx;
+  line-height: 62rpx;
+  text-align: center;
+}
 
+.top-bar__inner {
+  position: relative;
+}
+
+.top-bar__back,
+.top-bar__action,
+.top-bar__side {
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.top-bar__title {
+  white-space: nowrap;
+}
+
+.top-bar--with-more .top-bar__heading {
+  position: absolute;
+  left: 50%;
+  width: 240rpx;
+  transform: translateX(-50%);
+}
+
+.top-bar__action--more {
+  min-width: 64rpx;
+  margin-left: auto;
+}

@@ -1,39 +1,43 @@
 page {
-  --color-primary: #12b466;
-  --color-primary-pressed: #0f9f5b;
-  --color-primary-soft: #ecfaf3;
-  --color-primary-surface: #f4fcf8;
-  --color-text: #181b18;
-  --color-text-secondary: #666d69;
-  --color-text-tertiary: #8a908c;
-  --color-border: #e7eae8;
+  --color-primary: #6c4cf6;
+  --color-primary-pressed: #5938df;
+  --color-primary-soft: #f1eeff;
+  --color-primary-gradient-end: #744cf2;
+  --color-primary-surface: #f3efff;
+  --color-text: #15151a;
+  --color-text-secondary: #626573;
+  --color-text-tertiary: #9699a8;
+  --color-border: #e9eaf0;
+  --color-surface-muted: #f5f6f8;
+  --color-disabled: #d8dae2;
+  --color-bg: #f8f9fb;
   --color-surface: #ffffff;
-  background: #fff;
+  background: var(--color-surface);
 }
 
 .page {
   box-sizing: border-box;
   min-height: 100vh;
-  padding: 0 32rpx calc(156rpx + env(safe-area-inset-bottom));
+  padding: 0 40rpx calc(160rpx + env(safe-area-inset-bottom));
   color: var(--color-text);
 }
 
 .hero {
-  padding: 66rpx 0 42rpx;
+  padding: 48rpx 0 32rpx;
   text-align: center;
 }
 
 .hero__title {
   color: var(--color-text);
-  font-size: 42rpx;
+  font-size: 40rpx;
   font-weight: 700;
-  line-height: 60rpx;
+  line-height: 56rpx;
 }
 
 .hero__desc {
-  margin-top: 4rpx;
+  margin-top: 8rpx;
   color: var(--color-text-secondary);
-  font-size: 27rpx;
+  font-size: 28rpx;
   line-height: 40rpx;
 }
 
@@ -67,17 +71,17 @@ page {
 }
 
 .upload__title {
-  margin-top: 10rpx;
+  margin-top: 8rpx;
   color: var(--color-text);
-  font-size: 30rpx;
+  font-size: 32rpx;
   font-weight: 600;
-  line-height: 44rpx;
+  line-height: 48rpx;
 }
 
 .upload__hint {
-  margin-top: 2rpx;
+  margin-top: 0;
   color: var(--color-text-secondary);
-  font-size: 23rpx;
+  font-size: 24rpx;
   line-height: 36rpx;
 }
 
@@ -91,15 +95,15 @@ page {
   top: 16rpx;
   right: 16rpx;
   display: flex;
-  width: 60rpx;
-  height: 60rpx;
+  width: 80rpx;
+  height: 80rpx;
   align-items: center;
   justify-content: center;
   padding: 0;
   border-radius: 999rpx;
   background: rgba(24, 27, 24, 0.72);
   color: #fff;
-  font-size: 36rpx;
+  font-size: 32rpx;
   line-height: 1;
 }
 
@@ -109,24 +113,24 @@ page {
 
 .section-label {
   color: var(--color-text);
-  font-size: 27rpx;
+  font-size: 28rpx;
   font-weight: 500;
-  line-height: 40rpx;
+  line-height: 44rpx;
 }
 
 .samples__grid {
   display: flex;
-  gap: 20rpx;
+  gap: 24rpx;
   margin-top: 16rpx;
 }
 
 .sample-card {
   position: relative;
   overflow: hidden;
-  width: calc((100% - 60rpx) / 4);
+  width: calc((100% - 72rpx) / 4);
   height: 164rpx;
-  border-radius: 16rpx;
-  background: var(--color-primary-surface);
+  border-radius: 24rpx;
+  background: var(--color-surface-muted);
 }
 
 .sample-card__sprite {
@@ -171,43 +175,53 @@ page {
 
 .option-button {
   display: flex;
-  height: 64rpx;
+  height: 88rpx;
   min-width: 0;
   flex: 1;
   align-items: center;
   justify-content: center;
   padding: 0;
   border: 1rpx solid var(--color-border);
-  border-radius: 12rpx;
+  border-radius: 16rpx;
   background: var(--color-surface);
   color: var(--color-text);
-  font-size: 22rpx;
+  font-size: 28rpx;
   font-weight: 500;
-  line-height: 1;
+  line-height: 44rpx;
 }
 
 .option-button--active {
   border-color: var(--color-primary);
   background: var(--color-primary-soft);
-  color: #0f9f5b;
+  color: var(--color-primary);
+}
+
+.option-button:active {
+  background: var(--color-primary-soft);
 }
 
 .home__submit {
   box-sizing: border-box;
   width: auto;
-  height: 76rpx;
-  margin: 56rpx 0 0;
+  height: 88rpx;
+  margin: 32rpx 0 0;
   padding: 0;
-  border-radius: 12rpx;
-  background: var(--color-primary);
+  border-radius: 16rpx;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-gradient-end));
   color: #fff;
-  box-shadow: 0 8rpx 20rpx rgba(18, 180, 102, 0.16);
-  font-size: 29rpx;
-  font-weight: 600;
-  line-height: 1;
+  box-shadow: 0 12rpx 32rpx rgba(108, 76, 246, 0.18);
+  font-size: 30rpx;
+  font-weight: 500;
+  line-height: 44rpx;
 }
 
 .home__submit:active {
   background: var(--color-primary-pressed);
   transform: scale(0.98);
+}
+
+.home__submit[disabled] {
+  background: var(--color-disabled);
+  box-shadow: none;
+  color: #ffffff;
 }

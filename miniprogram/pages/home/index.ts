@@ -1,9 +1,5 @@
 import { DEFAULT_PATTERN_SETTINGS } from '../../config/product'
-import {
-  chooseSourceImage,
-  createDraft,
-  UnsupportedImageFormatError,
-} from '../../services/image-service'
+import { chooseSourceImage, createDraft } from '../../services/image-service'
 import { appStore } from '../../store/app-store'
 
 Page({
@@ -13,6 +9,7 @@ Page({
     sizeOptions: [32, 48, 64, 96, 128],
     colorOptions: [16, 32, 64, 96],
     choosing: false,
+    generating: false,
   },
 
   async chooseImage() {
@@ -23,9 +20,7 @@ Page({
       if (sourceImagePath) this.setData({ sourceImagePath })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      if (error instanceof UnsupportedImageFormatError) {
-        wx.showToast({ title: error.message, icon: 'none', duration: 2500 })
-      } else if (!message.includes('cancel')) {
+      if (!message.includes('cancel')) {
         wx.showToast({ title: '图片读取失败', icon: 'none' })
       }
     } finally {
@@ -49,10 +44,26 @@ Page({
     this.setData({ 'settings.colorLimit': Number(event.currentTarget.dataset.value) })
   },
 
-  startCreating() {
-    if (!this.data.sourceImagePath) return
-    const draft = createDraft(this.data.sourceImagePath, this.data.settings)
-    appStore.setCurrentDraft(draft)
-    wx.navigateTo({ url: '/pages/editor/index' })
+  async startCreating() {
+    if (this.data.generating) return
+    if (!this.data.sourceImagePath) {
+      wx.showToast({ title: '请先上传图片', icon: 'none' })
+      return
+    }
+
+    this.setData({ generating: true })
+    wx.showLoading({ title: '正在生成', mask: true })
+
+    try {
+      const draft = await createDraft(this.data.sourceImagePath, this.data.settings)
+      appStore.setCurrentDraft(draft)
+      wx.navigateTo({ url: '/pages/editor/index' })
+    } catch (error) {
+      console.error('生成拼豆图失败', error)
+      wx.showToast({ title: '生成失败，请重试', icon: 'none' })
+    } finally {
+      wx.hideLoading()
+      this.setData({ generating: false })
+    }
   },
 })
