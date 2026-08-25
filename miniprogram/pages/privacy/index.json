@@ -1,5 +1,5 @@
 {
   "usingComponents": {
-    "top-bar": "/components/top-bar/index"
+    "page-layout": "/components/page-layout/index"
   }
 }

@@ -1,3 +1,6 @@
 {
-  "component": true
+  "component": true,
+  "usingComponents": {
+    "main-tab-bar": "/components/main-tab-bar/index"
+  }
 }

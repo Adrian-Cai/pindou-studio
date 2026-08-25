@@ -184,6 +184,9 @@ Page({
       updatedAt: Date.now(),
       beadCount: this.data.beadCount,
       colorCount: draft.settings.colorLimit,
+      width: draft.settings.width,
+      height: draft.settings.height,
+      status: 'completed',
     })
     wx.navigateTo({ url: '/pages/result/index' })
   },

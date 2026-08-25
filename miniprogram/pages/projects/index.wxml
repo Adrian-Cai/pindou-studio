@@ -1,34 +1,61 @@
-<view class="page projects">
-  <top-bar title="我的作品" subtitle="{{works.length}} 个作品" />
-
-  <view wx:if="{{works.length}}" class="projects__list">
-    <view
-      class="work-card"
-      wx:for="{{works}}"
-      wx:key="id"
-      data-id="{{item.id}}"
-      bindtap="openWork"
-    >
-      <image class="work-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
-      <view class="work-card__info">
-        <view class="work-card__title">{{item.title}}</view>
-        <view class="work-card__meta">{{item.beadCount}} 颗 · {{item.colorCount}} 色</view>
-        <view class="work-card__date">{{item.updatedText}}</view>
+<page-layout title="我的作品" showMainNav selectedTab="1">
+  <view class="subpage projects-page">
+    <view class="project-summary ui-card">
+      <view class="project-summary__item">
+        <view class="project-summary__icon project-summary__icon--green">▧</view>
+        <view><view class="project-summary__label">全部作品</view><view class="project-summary__value project-summary__value--green">{{allWorks.length}}</view></view>
       </view>
-      <view class="work-card__arrow">›</view>
+      <view class="project-summary__line"></view>
+      <view class="project-summary__item">
+        <view class="project-summary__icon project-summary__icon--blue">◷</view>
+        <view><view class="project-summary__label">最近更新</view><view class="project-summary__value">{{recentCount}}</view></view>
+      </view>
+      <view class="project-summary__line"></view>
+      <view class="project-summary__item">
+        <view class="project-summary__icon project-summary__icon--yellow">▤</view>
+        <view><view class="project-summary__label">草稿</view><view class="project-summary__value">{{draftCount}}</view></view>
+      </view>
     </view>
-    <button class="button-primary projects__new" bindtap="createNew">制作新作品</button>
-  </view>
 
-  <view wx:else class="empty">
-    <view class="empty__art">
-      <view class="empty__bead empty__bead--one"></view>
-      <view class="empty__bead empty__bead--two"></view>
-      <view class="empty__bead empty__bead--three"></view>
-      <view class="empty__bead empty__bead--four"></view>
+    <view class="search-row">
+      <view class="search-box">
+        <view class="search-box__icon"></view>
+        <input class="search-box__input" placeholder-class="search-box__placeholder" placeholder="搜索作品名称" value="{{query}}" bindinput="changeSearch" />
+      </view>
+      <view class="filter-button" bindtap="showFilter"><text class="filter-button__symbol">▽</text><text>筛选</text></view>
     </view>
-    <view class="empty__title">还没有作品</view>
-    <view class="empty__desc">从一张喜欢的图片开始，做出你的第一份拼豆图纸。</view>
-    <button class="button-primary empty__button" bindtap="createNew">开始制作</button>
+
+    <view class="segmented">
+      <view
+        class="segmented__item {{activeTab === item.id ? 'segmented__item--active' : ''}}"
+        wx:for="{{tabs}}"
+        wx:key="id"
+        data-tab="{{item.id}}"
+        bindtap="changeTab"
+      >{{item.label}}</view>
+    </view>
+
+    <view wx:if="{{works.length}}" class="project-grid">
+      <view class="project-card ui-card" wx:for="{{works}}" wx:key="id" data-id="{{item.id}}" bindtap="openWork">
+        <image class="project-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
+        <view class="project-card__body">
+          <view class="project-card__top">
+            <text class="status-pill {{item.isDraft ? 'status-pill--draft' : ''}}">{{item.statusLabel}}</text>
+            <view class="project-card__more" data-id="{{item.id}}" catchtap="openWorkMenu">•••</view>
+          </view>
+          <view class="project-card__title">{{item.title}}</view>
+          <view class="project-card__meta">{{item.dimensions}}　{{item.colorCount}} 色</view>
+          <view class="project-card__date">{{item.updatedText}}</view>
+          <view wx:if="{{item.isDraft}}" class="project-card__continue">✎　继续编辑</view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:else class="empty-state">
+      <view class="empty-state__icon">▧</view>
+      <view class="empty-state__title">{{allWorks.length ? '没有匹配的作品' : '还没有作品'}}</view>
+      <view class="empty-state__desc">{{allWorks.length ? '换个关键词或筛选条件试试。' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸。'}}</view>
+      <button wx:if="{{!allWorks.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
+    </view>
   </view>
-</view>
+</page-layout>

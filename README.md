@@ -35,4 +35,13 @@
 - 作品结果：pages/result/index
 - 我的作品：pages/projects/index
 - 我的：pages/profile/index
-- 收藏、下载记录、帮助、关于、隐私、反馈、下载次数：已预留路由
+- 我的收藏：pages/favorites/index
+- 下载记录：pages/downloads/index
+- 使用帮助：pages/help/index
+- 意见反馈：pages/feedback/index
+- 隐私设置：pages/privacy/index
+- 关于我们：pages/about/index
+- 下载次数：pages/recharge/index
+- 支付成功展示：pages/payment-success/index
+
+支付、云同步、历史作品详情、文件导出和反馈提交仍需要对应服务配置；页面会明确提示待接入，不会伪造成功状态。

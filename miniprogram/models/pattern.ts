@@ -25,4 +25,28 @@ export interface WorkItem {
   updatedAt: number
   beadCount: number
   colorCount: number
+  width?: number
+  height?: number
+  status?: 'draft' | 'completed'
+}
+
+export type DownloadFileType = 'preview' | 'chart' | 'materials'
+
+export interface DownloadRecord {
+  id: string
+  workId: string
+  title: string
+  coverPath: string
+  downloadedAt: number
+  fileType: DownloadFileType
+  width?: number
+  height?: number
+  colorCount: number
+}
+
+export interface PrivacyPreferences {
+  localOnly: boolean
+  cloudSync: boolean
+  serviceNotices: boolean
+  personalizedRecommendations: boolean
 }

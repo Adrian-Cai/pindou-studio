@@ -1,36 +1,22 @@
-<view class="page page--stack recharge">
-  <top-bar title="获取下载次数" back />
-  <view class="recharge__hero">
-    <view class="recharge__symbol">↓</view>
-    <view class="recharge__title">把完整图纸保存下来</view>
-    <view class="recharge__desc">一次下载包含成品图、材料清单、施工图和色板参考。</view>
-  </view>
-
-  <view class="packages">
-    <view
-      class="package {{selected === index ? 'package--active' : ''}}"
-      wx:for="{{packages}}"
-      wx:key="id"
-      data-index="{{index}}"
-      bindtap="selectPackage"
-    >
-      <view class="package__check">{{selected === index ? '✓' : ''}}</view>
-      <view class="package__main">
-        <view class="package__count">{{item.count}} 次下载</view>
-        <view class="package__label">{{item.label}}</view>
-      </view>
-      <view class="package__price"><text>¥</text>{{item.price}}</view>
+<page-layout title="获取下载次数" back showMainNav selectedTab="2">
+  <view class="subpage recharge-page">
+    <view class="recharge-hero">
+      <image src="/assets/icons/bead-stack.svg" mode="aspectFit" />
+      <view class="recharge-hero__title">获取下载次数</view>
+      <view class="recharge-hero__quota">今日剩余 <text>{{quota}}</text> 次</view>
     </view>
-  </view>
 
-  <view class="recharge__notes card">
-    <view>✓ 下载次数长期有效</view>
-    <view>✓ 同一作品可重复下载</view>
-    <view>✓ 文件保存在你的设备中</view>
-  </view>
+    <view class="recharge-options">
+      <view class="recharge-option {{selected === index ? 'recharge-option--active' : ''}}" wx:for="{{packages}}" wx:key="id" data-index="{{index}}" bindtap="selectPackage">
+        <image src="/assets/icons/bead-stack.svg" mode="aspectFit" />
+        <view class="recharge-option__label">{{item.label}}</view>
+        <view class="recharge-option__price">¥ {{item.price}}</view>
+        <view class="recharge-option__check">{{selected === index ? '✓' : ''}}</view>
+      </view>
+    </view>
 
-  <button class="button-primary recharge__button" bindtap="purchase">
-    确认获取 {{packages[selected].count}} 次
-  </button>
-  <view class="recharge__agreement">支付即表示同意《付费服务协议》</view>
-</view>
+    <view class="payment-method ui-card"><text>支付方式</text><view><text>●</text> 微信支付　›</view></view>
+    <button class="button-primary recharge-button" style="width: 100%;" bindtap="purchase">立即支付</button>
+    <view class="recharge-notes"><view>支付即表示同意《付费服务协议》</view><view>支付能力接入前不会产生任何费用</view></view>
+  </view>
+</page-layout>

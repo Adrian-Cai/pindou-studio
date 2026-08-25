@@ -1,25 +1,51 @@
-<view class="page page--stack">
-  <top-bar title="我的收藏" back />
-  <view class="content-page">
-    <view wx:if="{{works.length}}" class="favorite-grid">
+<page-layout title="我的收藏" back showMainNav selectedTab="2">
+  <view class="subpage favorites-page">
+    <view class="favorite-tabs">
       <view
-        class="favorite-card"
-        wx:for="{{works}}"
+        class="favorite-tabs__item {{activeTab === item.id ? 'favorite-tabs__item--active' : ''}}"
+        wx:for="{{tabs}}"
         wx:key="id"
-        data-id="{{item.id}}"
-        bindtap="openCurrent"
-      >
-        <image class="favorite-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
-        <view class="favorite-card__info">
-          <text class="favorite-card__title">{{item.title}}</text>
-          <text class="favorite-card__heart">♥</text>
+        data-tab="{{item.id}}"
+        bindtap="changeTab"
+      >{{item.label}}</view>
+    </view>
+
+    <view class="search-row">
+      <view class="search-box">
+        <view class="search-box__icon"></view>
+        <input class="search-box__input" placeholder-class="search-box__placeholder" placeholder="搜索收藏作品" value="{{query}}" bindinput="changeSearch" />
+      </view>
+      <view class="filter-button" bindtap="showSort"><text class="filter-button__symbol">▽</text><text>排序</text></view>
+    </view>
+
+    <view class="favorite-summary ui-card">
+      <view class="favorite-summary__item"><view class="favorite-summary__badge">★</view><view><view>收藏总数</view><text>{{allWorks.length}}</text> 个</view></view>
+      <view class="favorite-summary__line"></view>
+      <view class="favorite-summary__item"><view class="favorite-summary__badge favorite-summary__badge--yellow">☆</view><view><view>最近新增</view><text>{{recentCount}}</text> 个</view></view>
+    </view>
+
+    <view wx:if="{{works.length}}" class="favorite-grid">
+      <view class="favorite-card ui-card" wx:for="{{works}}" wx:key="id">
+        <view class="favorite-card__main" data-id="{{item.id}}" bindtap="openWork">
+          <image class="favorite-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
+          <view class="favorite-card__info">
+            <view class="favorite-card__title">{{item.title}}</view>
+            <view class="favorite-card__meta">{{item.dimensions}}　{{item.colorCount}} 色</view>
+            <view class="favorite-card__date">收藏于 {{item.dateText}}</view>
+          </view>
+        </view>
+        <view class="favorite-card__actions">
+          <view class="favorite-card__heart" data-id="{{item.id}}" bindtap="removeFavorite">♥</view>
+          <view class="favorite-card__view" data-id="{{item.id}}" bindtap="openWork">查看作品</view>
+          <view class="favorite-card__more" data-id="{{item.id}}" bindtap="openMenu">•••</view>
         </view>
       </view>
     </view>
-    <view wx:else class="empty-panel">
-      <view class="empty-panel__icon">♡</view>
-      <view class="empty-panel__title">还没有收藏</view>
-      <view class="empty-panel__desc">在作品结果页点一下爱心，喜欢的图纸就会留在这里。</view>
+
+    <view wx:else class="empty-state">
+      <view class="empty-state__icon">♡</view>
+      <view class="empty-state__title">{{allWorks.length ? '没有匹配的收藏' : '还没有收藏'}}</view>
+      <view class="empty-state__desc">{{allWorks.length ? '换个关键词或分类试试。' : '在作品结果页点一下爱心，喜欢的图纸就会留在这里。'}}</view>
     </view>
   </view>
-</view>
+</page-layout>

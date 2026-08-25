@@ -1,0 +1,15 @@
+@import "../../styles/profile-pages.wxss";
+
+.payment-success { box-sizing: border-box; max-width: 680rpx; min-height: 960rpx; margin: 0 auto; padding: 80rpx var(--page-padding) 40rpx; text-align: center; }
+.success-mark { position: relative; display: flex; width: 184rpx; height: 184rpx; align-items: center; justify-content: center; margin: 0 auto; border: 18rpx solid #cdf6dc; border-radius: 50%; background: #aaf0c6; box-shadow: 0 18rpx 50rpx rgba(18, 180, 102, 0.2); }
+.success-mark view { display: flex; width: 142rpx; height: 142rpx; align-items: center; justify-content: center; border-radius: 50%; background: linear-gradient(145deg, #64d987, #16b85d); color: #fff; font-size: 88rpx; font-weight: 300; }
+.payment-success__title { margin-top: 54rpx; font-size: 36rpx; font-weight: 600; }
+.payment-detail { margin-top: 64rpx; padding: 0 32rpx; text-align: left; }
+.payment-detail > view { display: flex; height: 94rpx; align-items: center; justify-content: space-between; border-bottom: 1rpx solid var(--color-border); color: var(--color-text-secondary); font-size: 26rpx; }
+.payment-detail > view:last-child { border-bottom: 0; }
+.payment-detail > view > text:last-child { color: var(--color-text); font-size: 28rpx; font-weight: 600; }
+.payment-detail > view > .payment-detail__green { color: var(--color-primary); }
+.payment-detail > view > .payment-detail__quota { color: var(--color-primary); font-size: 42rpx; }
+.payment-detail__quota text { font-size: 24rpx; }
+.success-actions { display: grid; gap: 20rpx; margin: 84rpx 48rpx 0; }
+.success-actions__secondary { height: 84rpx; border: 2rpx solid var(--color-primary); border-radius: var(--radius-control); color: var(--color-primary); font-size: 28rpx; line-height: 84rpx; }

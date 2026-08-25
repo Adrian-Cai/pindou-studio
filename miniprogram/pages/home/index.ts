@@ -12,6 +12,10 @@ Page({
     generating: false,
   },
 
+  onShow() {
+    this.getTabBar()?.setData({ selected: 0 })
+  },
+
   async chooseImage() {
     if (this.data.choosing) return
     this.setData({ choosing: true })

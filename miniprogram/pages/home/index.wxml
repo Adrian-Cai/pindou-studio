@@ -1,24 +1,25 @@
 <view class="page">
-  <top-bar title="拼豆制作工具" home />
+  <top-bar title="一起拼豆吧" home />
 
   <view class="hero">
-    <view class="hero__title">把图片变成拼豆图</view>
-    <view class="hero__desc">上传图片，自动生成拼豆图案</view>
+    <text class="hero__text">把喜欢的图片，变成</text><text class="hero__accent">拼豆作品</text>
   </view>
 
   <view class="upload card {{sourceImagePath ? 'upload--selected' : ''}}" bindtap="chooseImage">
-    <image wx:if="{{sourceImagePath}}" class="upload__preview" src="{{sourceImagePath}}" mode="aspectFill" />
+    <image wx:if="{{sourceImagePath}}" class="upload__preview" src="{{sourceImagePath}}" mode="aspectFit" />
     <view wx:else class="upload__empty">
       <image class="upload__icon" src="/assets/icons/image-upload.svg" mode="aspectFit" />
       <view class="upload__title">上传图片</view>
       <view class="upload__hint">支持 JPG / PNG / WEBP</view>
+      <view class="upload__description">上传后自动生成拼豆图</view>
     </view>
-    <button
+    <view
       wx:if="{{sourceImagePath}}"
       class="upload__remove"
       catchtap="clearImage"
+      role="button"
       aria-label="移除图片"
-    >×</button>
+    >×</view>
   </view>
 
   <view class="samples">

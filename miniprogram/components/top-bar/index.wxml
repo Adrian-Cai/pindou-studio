@@ -1,6 +1,6 @@
 <view
-  class="top-bar {{home ? 'top-bar--home' : ''}} {{actionType === 'more' ? 'top-bar--with-more' : ''}}"
-  style="padding-top: {{statusBarHeight}}px;"
+  class="top-bar {{home ? 'top-bar--home' : ''}} {{actionType === 'more' ? 'top-bar--with-more' : ''}} {{navigationBarHeight > 0 ? 'top-bar--dynamic-height' : ''}}"
+  style="padding-top: {{statusBarHeight}}px; --top-bar-navigation-height: {{navigationBarHeight}}px;"
 >
   <view
     class="top-bar__inner"

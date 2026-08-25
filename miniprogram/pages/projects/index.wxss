@@ -1,103 +1,29 @@
-.projects__list {
-  padding-top: 22rpx;
-}
+@import "../../styles/profile-pages.wxss";
 
-.work-card {
-  display: flex;
-  align-items: center;
-  margin-bottom: 20rpx;
-  padding: 20rpx;
-  border: 1rpx solid #e8e3dc;
-  border-radius: 28rpx;
-  background: #fff;
-}
+.project-summary { display: flex; padding: 32rpx 20rpx; }
+.project-summary__item { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: center; gap: 18rpx; }
+.project-summary__icon { font-size: 48rpx; }
+.project-summary__icon--green { color: var(--color-primary); }
+.project-summary__icon--blue { color: #2d84f5; }
+.project-summary__icon--yellow { color: #f4b223; }
+.project-summary__label { font-size: 25rpx; white-space: nowrap; }
+.project-summary__value { margin-top: 2rpx; font-size: 40rpx; font-weight: 600; }
+.project-summary__value--green { color: var(--color-primary); }
+.project-summary__line { width: 1rpx; height: 80rpx; align-self: center; background: var(--color-border); }
 
-.work-card__cover {
-  width: 180rpx;
-  height: 180rpx;
-  border-radius: 20rpx;
-  background: #eeeae5;
-}
+.project-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24rpx; margin-top: 24rpx; }
+.project-card { display: grid; min-width: 0; grid-template-columns: 46% minmax(0, 1fr); overflow: hidden; padding: 20rpx; }
+.project-card__cover { width: 100%; height: 100%; min-height: 244rpx; border-radius: var(--radius-media); background: var(--color-surface-muted); }
+.project-card__body { min-width: 0; padding-left: 20rpx; }
+.project-card__top { display: flex; align-items: center; justify-content: space-between; }
+.project-card__more { display: flex; width: 52rpx; height: 52rpx; align-items: center; justify-content: center; border: 1rpx solid var(--color-border); border-radius: 50%; font-size: 18rpx; letter-spacing: 1rpx; }
+.project-card__title { overflow: hidden; margin-top: 28rpx; font-size: 29rpx; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.project-card__meta, .project-card__date { margin-top: 12rpx; color: var(--color-text-secondary); font-size: 22rpx; white-space: nowrap; }
+.project-card__date { color: var(--color-text-tertiary); }
+.project-card__continue { display: flex; height: 54rpx; align-items: center; justify-content: center; margin-top: 20rpx; border: 2rpx solid var(--color-primary); border-radius: var(--radius-control); color: var(--color-primary); font-size: 23rpx; }
 
-.work-card__info {
-  min-width: 0;
-  flex: 1;
-  padding: 0 24rpx;
-}
-
-.work-card__title {
-  overflow: hidden;
-  font-size: 29rpx;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.work-card__meta {
-  margin-top: 14rpx;
-  color: #706a64;
-  font-size: 23rpx;
-}
-
-.work-card__date {
-  margin-top: 10rpx;
-  color: #a19b94;
-  font-size: 21rpx;
-}
-
-.work-card__arrow {
-  color: #b2aba3;
-  font-size: 46rpx;
-}
-
-.projects__new {
-  margin-top: 30rpx;
-}
-
-.empty {
-  display: flex;
-  min-height: 850rpx;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.empty__art {
-  position: relative;
-  width: 240rpx;
-  height: 210rpx;
-  margin-bottom: 30rpx;
-}
-
-.empty__bead {
-  position: absolute;
-  width: 92rpx;
-  height: 92rpx;
-  border: 14rpx solid rgba(255, 255, 255, 0.68);
-  border-radius: 50%;
-  box-shadow: 0 14rpx 30rpx rgba(61, 51, 43, 0.12);
-}
-
-.empty__bead--one { top: 0; left: 18rpx; background: #ff9d7f; }
-.empty__bead--two { top: 12rpx; right: 12rpx; background: #f4cc61; }
-.empty__bead--three { bottom: 0; left: 64rpx; background: #72b694; }
-.empty__bead--four { right: 34rpx; bottom: 8rpx; background: #7aaed3; }
-
-.empty__title {
-  font-size: 34rpx;
-  font-weight: 650;
-}
-
-.empty__desc {
-  width: 480rpx;
-  margin-top: 16rpx;
-  color: #918b84;
-  font-size: 25rpx;
-  line-height: 1.7;
-}
-
-.empty__button {
-  width: 360rpx;
-  margin-top: 36rpx;
+@media (max-width: 380px) {
+  .project-summary__icon { display: none; }
+  .project-grid { grid-template-columns: 1fr; }
+  .project-card { grid-template-columns: 42% minmax(0, 1fr); }
 }

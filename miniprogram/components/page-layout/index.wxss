@@ -1,0 +1,19 @@
+.page-layout {
+  height: 100vh;
+  overflow: hidden;
+  background: var(--color-bg, #f8f9fb);
+}
+
+.page-layout__scroll {
+  width: 100%;
+}
+
+.page-layout__content {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding-bottom: calc(var(--safe-bottom, 32rpx) + env(safe-area-inset-bottom));
+}
+
+.page-layout__content--with-nav {
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
+}

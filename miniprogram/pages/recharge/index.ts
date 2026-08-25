@@ -1,13 +1,15 @@
-const packages = [
-  { id: 'starter', count: 5, price: '3.90', label: '轻量体验' },
-  { id: 'popular', count: 20, price: '9.90', label: '最受欢迎' },
-  { id: 'creator', count: 60, price: '19.90', label: '长期创作' },
-]
+import { DOWNLOAD_PACKAGES } from '../../config/profile'
+import { appStore } from '../../store/app-store'
 
 Page({
   data: {
-    packages,
-    selected: 1,
+    packages: DOWNLOAD_PACKAGES,
+    selected: 0,
+    quota: 0,
+  },
+
+  onShow() {
+    this.setData({ quota: appStore.getSnapshot().downloadQuota })
   },
 
   selectPackage(event: WechatMiniprogram.TouchEvent) {
@@ -17,7 +19,7 @@ Page({
   purchase() {
     wx.showModal({
       title: '支付能力尚未接入',
-      content: '套餐和界面已经预留，待商户号、定价与服务协议确认后再接微信支付。',
+      content: '套餐页面已经完成。待商户号、正式定价和付费服务协议确认后，再调用微信支付并跳转支付成功页。',
       showCancel: false,
     })
   },

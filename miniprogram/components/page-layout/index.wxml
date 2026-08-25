@@ -1,0 +1,23 @@
+<view class="page-layout">
+  <top-bar
+    title="{{title}}"
+    subtitle="{{subtitle}}"
+    back="{{back}}"
+    actionText="{{actionText}}"
+    actionType="{{actionType}}"
+    navigationBarHeight="{{navigationBarHeight}}"
+    bind:action="handleAction"
+  />
+  <scroll-view
+    class="page-layout__scroll"
+    scroll-y
+    enhanced
+    show-scrollbar="{{false}}"
+    style="height: {{scrollAreaHeight}}px;"
+  >
+    <view class="page-layout__content {{showMainNav ? 'page-layout__content--with-nav' : ''}}">
+      <slot />
+    </view>
+  </scroll-view>
+  <main-tab-bar wx:if="{{showMainNav}}" selected="{{selectedTab}}" />
+</view>

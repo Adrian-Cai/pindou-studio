@@ -11,7 +11,8 @@
     "pages/about/index",
     "pages/privacy/index",
     "pages/feedback/index",
-    "pages/recharge/index"
+    "pages/recharge/index",
+    "pages/payment-success/index"
   ],
   "window": {
     "navigationStyle": "custom",
@@ -21,7 +22,7 @@
   "tabBar": {
     "custom": true,
     "color": "#8A908C",
-    "selectedColor": "#6C4CF6",
+    "selectedColor": "#12B466",
     "backgroundColor": "#FFFFFF",
     "list": [
       { "pagePath": "pages/home/index", "text": "首页" },

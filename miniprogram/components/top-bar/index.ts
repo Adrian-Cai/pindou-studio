@@ -1,4 +1,4 @@
-import { navigateBackOrHome } from '../../utils/navigation'
+import { getCustomNavigationMetrics, navigateBackOrHome } from '../../utils/navigation'
 
 Component({
   properties: {
@@ -8,6 +8,7 @@ Component({
     actionText: { type: String, value: '' },
     actionType: { type: String, value: 'text' },
     home: { type: Boolean, value: false },
+    navigationBarHeight: { type: Number, value: 0 },
   },
   data: {
     statusBarHeight: 20,
@@ -15,11 +16,10 @@ Component({
   },
   lifetimes: {
     attached() {
-      const windowInfo = wx.getWindowInfo()
-      const menuButton = wx.getMenuButtonBoundingClientRect()
+      const metrics = getCustomNavigationMetrics()
       this.setData({
-        statusBarHeight: windowInfo.statusBarHeight,
-        menuButtonReserve: Math.max(16, windowInfo.windowWidth - menuButton.left + 8),
+        statusBarHeight: metrics.statusBarHeight,
+        menuButtonReserve: metrics.menuButtonReserve,
       })
     },
   },
