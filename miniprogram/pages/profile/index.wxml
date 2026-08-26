@@ -53,7 +53,7 @@
       </view>
     </view>
 
-    <view class="profile-page__version">拼豆制作工具 · Version 0.3.3</view>
+    <view class="profile-page__version">拼豆制作工具 · Version 0.3.4</view>
   </view>
 </page-layout>
 
@@ -63,18 +63,28 @@
     <view class="recharge-sheet__title">获取下载次数</view>
     <view class="recharge-sheet__quota">今日剩余 <text>{{downloadQuota}}</text> 次</view>
     <view
-      class="recharge-option {{selectedPackage === index ? 'recharge-option--active' : ''}}"
+      class="recharge-option package-row {{selectedPackage === index ? 'recharge-option--active' : ''}}"
       wx:for="{{packages}}"
       wx:key="id"
       data-index="{{index}}"
       bindtap="selectPackage"
     >
-      <image src="/assets/icons/bead-stack.svg" mode="aspectFit" />
+      <view class="package-icon-wrap">
+        <image class="package-icon" src="/assets/icons/bead-stack.svg" mode="aspectFit" />
+      </view>
       <text class="recharge-option__label">{{item.label}}</text>
-      <text class="recharge-option__price">¥ {{item.price}}</text>
-      <text class="recharge-option__check">{{selectedPackage === index ? '●' : ''}}</text>
+      <view class="package-right">
+        <text class="recharge-option__price">¥ {{item.price}}</text>
+        <view class="package-radio {{selectedPackage === index ? 'package-radio--selected' : ''}}"></view>
+      </view>
     </view>
-    <view class="payment-row"><text>支付方式</text><text class="payment-row__method">●　微信支付　›</text></view>
+    <view class="payment-row">
+      <text>支付方式</text>
+      <view class="payment-row__method">
+        <text>微信支付</text>
+        <text class="payment-row__arrow">›</text>
+      </view>
+    </view>
     <button class="button-primary recharge-sheet__pay" style="width: 100%;" bindtap="purchase">立即支付</button>
     <view class="recharge-sheet__cancel" bindtap="hideRechargeSheet">取消</view>
   </view>

@@ -44,12 +44,18 @@
 .recharge-sheet__quota text { color: var(--color-primary); font-size: 34rpx; font-weight: 600; }
 .recharge-option { display: flex; height: 92rpx; align-items: center; margin-bottom: 16rpx; padding: 0 24rpx; border: 1rpx solid var(--color-border); border-radius: var(--radius-control); }
 .recharge-option--active { border: 2rpx solid var(--color-primary); background: #f8fffb; }
-.recharge-option image { width: 70rpx; height: 54rpx; }
-.recharge-option__label { flex: 1; margin-left: 16rpx; font-size: 27rpx; }
-.recharge-option__price { font-size: 30rpx; font-weight: 600; }
-.recharge-option__check { width: 32rpx; margin-left: 16rpx; color: var(--color-primary); }
+.package-row { display: flex; align-items: center; }
+.package-icon-wrap { display: flex; width: 52rpx; height: 52rpx; flex-shrink: 0; align-items: center; justify-content: center; }
+.package-icon { width: 40rpx; height: 40rpx; flex-shrink: 0; }
+.recharge-option__label { min-width: 0; flex: 1; margin-left: 16rpx; font-size: 27rpx; white-space: nowrap; }
+.package-right { display: flex; align-items: center; gap: 16rpx; margin-left: auto; padding-left: 16rpx; }
+.recharge-option__price { min-width: 112rpx; color: var(--color-text); font-size: 30rpx; font-weight: 600; text-align: right; white-space: nowrap; }
+.package-radio { display: flex; width: 32rpx; height: 32rpx; box-sizing: border-box; flex-shrink: 0; align-items: center; justify-content: center; border: 2rpx solid var(--color-disabled); border-radius: 50%; background: var(--color-surface); }
+.package-radio--selected { border-color: var(--color-primary); }
+.package-radio--selected::after { width: 14rpx; height: 14rpx; border-radius: 50%; background: var(--color-primary); content: ""; }
 .payment-row { display: flex; height: 88rpx; align-items: center; justify-content: space-between; padding: 0 24rpx; border: 1rpx solid var(--color-border); border-radius: var(--radius-control); font-size: 26rpx; }
-.payment-row__method { color: var(--color-text); }
+.payment-row__method { display: flex; align-items: center; gap: 16rpx; color: var(--color-text); }
+.payment-row__arrow { color: var(--color-text-secondary); font-size: 40rpx; font-weight: 300; line-height: 1; }
 .recharge-sheet__pay { width: calc(100vw - 64rpx); margin-top: 24rpx; }
 .recharge-sheet__cancel { padding-top: 28rpx; color: var(--color-text-secondary); font-size: 27rpx; text-align: center; }
 
