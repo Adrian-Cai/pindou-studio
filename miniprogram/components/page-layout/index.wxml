@@ -5,6 +5,7 @@
     back="{{back}}"
     actionText="{{actionText}}"
     actionType="{{actionType}}"
+    home="{{home}}"
     navigationBarHeight="{{navigationBarHeight}}"
     bind:action="handleAction"
   />

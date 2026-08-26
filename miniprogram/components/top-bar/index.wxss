@@ -8,7 +8,7 @@
 
 .top-bar--home .top-bar__inner {
   box-sizing: border-box;
-  height: 112rpx;
+  /* 高度由 navigationBarHeight 动态注入，不再硬编码 */
   padding: 0 40rpx;
 }
 

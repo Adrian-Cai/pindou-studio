@@ -18,8 +18,7 @@ page {
 
 .page {
   box-sizing: border-box;
-  min-height: 100vh;
-  padding: 0 40rpx calc(160rpx + env(safe-area-inset-bottom));
+  padding: 0 40rpx;
   color: var(--color-text);
 }
 

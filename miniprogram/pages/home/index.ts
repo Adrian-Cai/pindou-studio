@@ -22,7 +22,7 @@ Page({
   },
 
   onShow() {
-    this.getTabBar()?.setData({ selected: 0 })
+    // tab 高亮由 page-layout selected-tab 属性管理
   },
 
   async chooseImage() {

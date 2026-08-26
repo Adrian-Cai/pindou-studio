@@ -7,6 +7,7 @@ Component({
     back: { type: Boolean, value: false },
     actionText: { type: String, value: '' },
     actionType: { type: String, value: 'text' },
+    home: { type: Boolean, value: false },
     showMainNav: { type: Boolean, value: false },
     selectedTab: { type: Number, value: -1 },
   },

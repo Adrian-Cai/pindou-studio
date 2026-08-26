@@ -1,6 +1,5 @@
+<page-layout title="一起拼豆吧" home show-main-nav selected-tab="{{0}}">
 <view class="page">
-  <top-bar title="一起拼豆吧" home />
-
   <view class="hero">
     <text class="hero__text">把喜欢的图片，变成</text><text class="hero__accent">拼豆作品</text>
   </view>
@@ -75,4 +74,7 @@
     开始生成
   </view>
 </view>
+
+</page-layout>
+
 
