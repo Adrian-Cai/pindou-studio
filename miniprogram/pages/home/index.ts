@@ -47,14 +47,21 @@ Page({
   /**
    * 根据原图尺寸计算受最大宽高约束的预览尺寸（rpx）。
    * 约束原则：保持原图比例，不裁剪，不拉伸。
+   * 若 wx.getImageInfo 失败，返回保守的默认尺寸，不中断上传流程。
    */
-  async _calcPreviewSize(
+  _calcPreviewSize(
     imagePath: string,
   ): Promise<{ previewWidth: number; previewHeight: number }> {
-    return new Promise((resolve, reject) => {
+    /** 宽度兜底：页面内容区全宽，高度兜底：300rpx（近似 1:1 小图） */
+    const fallback = { previewWidth: 670, previewHeight: 300 }
+    return new Promise((resolve) => {
       wx.getImageInfo({
         src: imagePath,
         success({ width: imgW, height: imgH }) {
+          if (!imgW || !imgH) {
+            resolve(fallback)
+            return
+          }
           // 将屏幕像素换算为 rpx
           const imgWRpx = imgW / RPX_RATIO
           const imgHRpx = imgH / RPX_RATIO
@@ -67,7 +74,10 @@ Page({
             previewHeight: Math.round(imgHRpx * scale),
           })
         },
-        fail: reject,
+        fail(err) {
+          console.warn('[home] getImageInfo fail, using fallback size', err)
+          resolve(fallback)
+        },
       })
     })
   },
