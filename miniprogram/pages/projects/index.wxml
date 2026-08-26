@@ -2,18 +2,18 @@
   <view class="subpage projects-page">
     <view class="project-summary ui-card">
       <view class="project-summary__item">
-        <view class="project-summary__icon project-summary__icon--green">▧</view>
-        <view><view class="project-summary__label">全部作品</view><view class="project-summary__value project-summary__value--green">{{allWorks.length}}</view></view>
+        <image class="project-summary__icon" src="/assets/icons/project-summary-gallery.svg" mode="aspectFit" />
+        <view class="project-summary__content"><view class="project-summary__label">全部作品</view><view class="project-summary__value project-summary__value--green">{{allWorks.length}}</view></view>
       </view>
       <view class="project-summary__line"></view>
       <view class="project-summary__item">
-        <view class="project-summary__icon project-summary__icon--blue">◷</view>
-        <view><view class="project-summary__label">最近更新</view><view class="project-summary__value">{{recentCount}}</view></view>
+        <image class="project-summary__icon" src="/assets/icons/project-summary-clock.svg" mode="aspectFit" />
+        <view class="project-summary__content"><view class="project-summary__label">最近更新</view><view class="project-summary__value">{{recentCount}}</view></view>
       </view>
       <view class="project-summary__line"></view>
       <view class="project-summary__item">
-        <view class="project-summary__icon project-summary__icon--yellow">▤</view>
-        <view><view class="project-summary__label">草稿</view><view class="project-summary__value">{{draftCount}}</view></view>
+        <image class="project-summary__icon" src="/assets/icons/project-summary-document.svg" mode="aspectFit" />
+        <view class="project-summary__content"><view class="project-summary__label">草稿</view><view class="project-summary__value">{{draftCount}}</view></view>
       </view>
     </view>
 

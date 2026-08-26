@@ -10,7 +10,7 @@
     </view>
 
     <view class="benefit-card">
-      <view class="benefit-card__label"><text class="benefit-card__diamond">◆</text> 我的权益</view>
+      <view class="benefit-card__label"><image class="benefit-card__icon" src="/assets/icons/profile-benefit-badge.svg" mode="aspectFit" /> <text>我的权益</text></view>
       <view class="benefit-card__body">
         <view>
           <view class="benefit-card__caption">今日免费下载</view>
@@ -24,18 +24,18 @@
 
     <view class="profile-stats ui-card">
       <view class="profile-stat" bindtap="openProjects">
-        <view class="profile-stat__icon profile-stat__icon--green">▧</view>
-        <view><view class="profile-stat__label">作品</view><view class="profile-stat__value">{{workCount}}</view></view>
+        <image class="profile-stat__icon" src="/assets/icons/profile-stat-gallery.svg" mode="aspectFit" />
+        <view class="profile-stat__content"><view class="profile-stat__label">作品</view><view class="profile-stat__value">{{workCount}}</view></view>
       </view>
       <view class="profile-stats__line"></view>
       <view class="profile-stat" bindtap="openDownloads">
-        <view class="profile-stat__icon profile-stat__icon--blue">⇩</view>
-        <view><view class="profile-stat__label">下载</view><view class="profile-stat__value">{{downloadCount}}</view></view>
+        <image class="profile-stat__icon" src="/assets/icons/profile-stat-download.svg" mode="aspectFit" />
+        <view class="profile-stat__content"><view class="profile-stat__label">下载</view><view class="profile-stat__value">{{downloadCount}}</view></view>
       </view>
       <view class="profile-stats__line"></view>
       <view class="profile-stat" bindtap="openFavorites">
-        <view class="profile-stat__icon profile-stat__icon--yellow">☆</view>
-        <view><view class="profile-stat__label">收藏</view><view class="profile-stat__value">{{favoriteCount}}</view></view>
+        <image class="profile-stat__icon" src="/assets/icons/profile-stat-star.svg" mode="aspectFit" />
+        <view class="profile-stat__content"><view class="profile-stat__label">收藏</view><view class="profile-stat__value">{{favoriteCount}}</view></view>
       </view>
     </view>
 
@@ -47,13 +47,13 @@
         data-url="{{item.url}}"
         bindtap="openMenu"
       >
-        <view class="profile-menu__symbol">{{item.symbol}}</view>
+        <view class="profile-menu__icon-wrap"><image class="profile-menu__icon" src="{{item.icon}}" mode="aspectFit" /></view>
         <view class="profile-menu__title">{{item.title}}</view>
         <view class="profile-menu__arrow">›</view>
       </view>
     </view>
 
-    <view class="profile-page__version">拼豆制作工具 · Version 0.3.0</view>
+    <view class="profile-page__version">拼豆制作工具 · Version 0.3.3</view>
   </view>
 </page-layout>
 

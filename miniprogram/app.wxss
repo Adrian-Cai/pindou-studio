@@ -21,6 +21,8 @@ page {
   --color-brand-soft: #ecfaf3;
   --color-success: #12b466;
   --color-success-soft: #ecfdf3;
+  --color-info: #2d84f5;
+  --color-warning: #f4b223;
   --radius-control: 16rpx;
   --radius-media: 24rpx;
   --radius-card: 32rpx;

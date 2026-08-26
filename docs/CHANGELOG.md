@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.3.3
+
+- 修复「我的作品」与「我的」页面统计卡片和功能列表图标，统一使用本地 SVG 线性图标资产。
+- 还原 gallery、download-to-tray、star、question-circle、message-square、shield 和 info-circle 图标，并统一尺寸、线宽与对齐方式。
+- 「我的」页面新增权益状态徽章图标；不改变页面业务逻辑、数字数据、菜单文案和底部 TabBar。
+
 ## 0.3.1
 
 - 修复首页上传图片后预览区域仍保留原上传框浅色背景和固定尺寸的问题。

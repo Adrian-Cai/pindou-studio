@@ -1,15 +1,13 @@
 @import "../../styles/profile-pages.wxss";
 
-.project-summary { display: flex; padding: 32rpx 20rpx; }
-.project-summary__item { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: center; gap: 18rpx; }
-.project-summary__icon { font-size: 48rpx; }
-.project-summary__icon--green { color: var(--color-primary); }
-.project-summary__icon--blue { color: #2d84f5; }
-.project-summary__icon--yellow { color: #f4b223; }
-.project-summary__label { font-size: 25rpx; white-space: nowrap; }
-.project-summary__value { margin-top: 2rpx; font-size: 40rpx; font-weight: 600; }
+.project-summary { display: flex; padding: 28rpx 12rpx; }
+.project-summary__item { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: center; gap: 14rpx; padding: 0 8rpx; }
+.project-summary__icon { width: 44rpx; height: 44rpx; flex-shrink: 0; }
+.project-summary__content { min-width: 0; }
+.project-summary__label { color: var(--color-text-secondary); font-size: 24rpx; line-height: 32rpx; white-space: nowrap; }
+.project-summary__value { margin-top: 2rpx; color: var(--color-text); font-size: 40rpx; font-weight: 700; line-height: 48rpx; }
 .project-summary__value--green { color: var(--color-primary); }
-.project-summary__line { width: 1rpx; height: 80rpx; align-self: center; background: var(--color-border); }
+.project-summary__line { width: 1rpx; height: 72rpx; align-self: center; background: var(--color-border); }
 
 .project-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24rpx; margin-top: 24rpx; }
 .project-card { display: grid; min-width: 0; grid-template-columns: 46% minmax(0, 1fr); overflow: hidden; padding: 20rpx; }
@@ -23,7 +21,11 @@
 .project-card__continue { display: flex; height: 54rpx; align-items: center; justify-content: center; margin-top: 20rpx; border: 2rpx solid var(--color-primary); border-radius: var(--radius-control); color: var(--color-primary); font-size: 23rpx; }
 
 @media (max-width: 380px) {
-  .project-summary__icon { display: none; }
+  .project-summary { padding-right: 4rpx; padding-left: 4rpx; }
+  .project-summary__item { gap: 10rpx; padding-right: 4rpx; padding-left: 4rpx; }
+  .project-summary__icon { width: 40rpx; height: 40rpx; }
+  .project-summary__label { font-size: 22rpx; }
+  .project-summary__value { font-size: 36rpx; line-height: 44rpx; }
   .project-grid { grid-template-columns: 1fr; }
   .project-card { grid-template-columns: 42% minmax(0, 1fr); }
 }
