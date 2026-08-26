@@ -44,18 +44,22 @@ page {
 
 .upload {
   position: relative;
-  overflow: hidden;
   box-sizing: border-box;
   margin-top: 32rpx;
-  padding: 0;
+  /* 未上传时：card 样式（边框、背景、阴影） */
   border: 2rpx solid var(--color-primary-border);
   border-radius: 16rpx;
   background: var(--color-primary-surface);
-  box-shadow: none;
 }
 
+/* 已上传：去掉背景、边框、padding，容器跟随图片尺寸 */
 .upload--selected {
-  background: var(--color-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 
 .upload__empty {
@@ -96,11 +100,18 @@ page {
   line-height: 36rpx;
 }
 
+/* 预览包裹层：作为删除按钮的定位基准，尺寸由 JS 动态注入 */
+.upload__preview-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16rpx;
+}
+
+/* 图片铺满包裹容器，因为容器已精确计算为原图比例 */
 .upload__preview {
   display: block;
   width: 100%;
-  height: 280rpx;
-  background: var(--color-primary-surface);
+  height: 100%;
 }
 
 .upload__remove {

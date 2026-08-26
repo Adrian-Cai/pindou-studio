@@ -2,9 +2,18 @@ import { DEFAULT_PATTERN_SETTINGS } from '../../config/product'
 import { chooseSourceImage, createDraft } from '../../services/image-service'
 import { appStore } from '../../store/app-store'
 
+/** 预览区域最大高度（rpx） */
+const MAX_PREVIEW_HEIGHT_RPX = 480
+/** rpx 转 px 的基准：750rpx = 屏幕宽度 */
+const RPX_RATIO = wx.getSystemInfoSync().windowWidth / 750
+
 Page({
   data: {
     sourceImagePath: '',
+    /** 预览容器宽度（rpx），0 表示未计算 */
+    previewWidth: 0,
+    /** 预览容器高度（rpx），0 表示未计算 */
+    previewHeight: 0,
     settings: { ...DEFAULT_PATTERN_SETTINGS, width: 64, height: 64, colorLimit: 32 },
     sizeOptions: [32, 48, 64, 96, 128],
     colorOptions: [16, 32, 64, 96],
@@ -21,7 +30,10 @@ Page({
     this.setData({ choosing: true })
     try {
       const sourceImagePath = await chooseSourceImage()
-      if (sourceImagePath) this.setData({ sourceImagePath })
+      if (sourceImagePath) {
+        const { previewWidth, previewHeight } = await this._calcPreviewSize(sourceImagePath)
+        this.setData({ sourceImagePath, previewWidth, previewHeight })
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (!message.includes('cancel')) {
@@ -32,8 +44,36 @@ Page({
     }
   },
 
+  /**
+   * 根据原图尺寸计算受最大宽高约束的预览尺寸（rpx）。
+   * 约束原则：保持原图比例，不裁剪，不拉伸。
+   */
+  async _calcPreviewSize(
+    imagePath: string,
+  ): Promise<{ previewWidth: number; previewHeight: number }> {
+    return new Promise((resolve, reject) => {
+      wx.getImageInfo({
+        src: imagePath,
+        success({ width: imgW, height: imgH }) {
+          // 将屏幕像素换算为 rpx
+          const imgWRpx = imgW / RPX_RATIO
+          const imgHRpx = imgH / RPX_RATIO
+          // 最大宽度 = 750rpx（全屏）减去页面左右 padding（各 40rpx）
+          const maxW = 750 - 80
+          const maxH = MAX_PREVIEW_HEIGHT_RPX
+          const scale = Math.min(maxW / imgWRpx, maxH / imgHRpx, 1)
+          resolve({
+            previewWidth: Math.round(imgWRpx * scale),
+            previewHeight: Math.round(imgHRpx * scale),
+          })
+        },
+        fail: reject,
+      })
+    })
+  },
+
   clearImage() {
-    this.setData({ sourceImagePath: '' })
+    this.setData({ sourceImagePath: '', previewWidth: 0, previewHeight: 0 })
   },
 
   selectSize(event: WechatMiniprogram.TouchEvent) {
