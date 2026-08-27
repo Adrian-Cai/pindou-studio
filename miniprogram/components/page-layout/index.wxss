@@ -17,3 +17,7 @@
 .page-layout__content--with-nav {
   padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
 }
+
+.page-layout__content--compact-bottom {
+  padding-bottom: calc(128rpx + env(safe-area-inset-bottom));
+}

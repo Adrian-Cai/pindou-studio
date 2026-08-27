@@ -97,18 +97,18 @@
 
 | Token | 色值 | 用途 |
 | --- | --- | --- |
-| --color-primary | #6C4CF6 | 主按钮、页签选中态、主要链接、底栏选中态 |
-| --color-primary-hover | #6242ED | Web 悬停态 |
-| --color-primary-pressed | #5938DF | 按下态 |
-| --color-primary-soft | #F1EEFF | 轻选中背景、弱提示背景 |
-| --color-primary-gradient-end | #744CF2 | 主按钮渐变终点，仅主按钮使用 |
+| --color-primary | #12B466 | 主按钮、页签选中态、主要链接、底栏选中态 |
+| --color-primary-hover | #10A95F | Web 悬停态 |
+| --color-primary-pressed | #0F9F5B | 按下态 |
+| --color-primary-soft | #ECFAF3 | 轻选中背景、弱提示背景 |
+| --color-primary-gradient-end | #14B668 | 主按钮渐变终点，仅主按钮使用 |
 | --color-success | #12B76A | 已收藏、完成、成功 |
 | --color-success-soft | #ECFDF3 | 成功态浅背景 |
 | --color-danger | #E5484D | 错误和破坏性操作 |
 | --color-bg | #F8F9FB | 页面背景 |
 | --color-surface | #FFFFFF | 卡片、按钮、输入框、底栏背景 |
 | --color-surface-muted | #F5F6F8 | 次级信息区、禁用背景 |
-| --color-preview-bg | #F3EFFF | 作品预览的淡紫背景 |
+| --color-preview-bg | #F4FCF8 | 作品预览和上传区域的淡绿背景 |
 | --color-text | #15151A | 标题、正文、主要图标 |
 | --color-text-secondary | #626573 | 次要信息、未选中页签 |
 | --color-text-tertiary | #9699A8 | 时间、格式、占位文字、禁用文字 |
@@ -118,7 +118,7 @@
 ### 颜色规则
 
 - 每个页面只使用一个品牌强调色，即 --color-primary。
-- 绿色只用于有明确语义的成功状态，禁止把绿色作为普通链接或第二主色。
+- 品牌强调色统一使用主绿色 --color-primary，禁止再引入紫色或橙色作为第二主色。
 - 主按钮允许使用轻微同色渐变，其他卡片、标题和图标禁止随意使用渐变。
 - 页面大面积区域只使用 --color-bg、--color-surface 或 --color-surface-muted。
 - 正文不使用纯黑；边框和分割线必须使用统一 token。
@@ -130,9 +130,9 @@
 - 可见高度 44px（88rpx），点击热区不得小于 44px。
 - 默认宽度填满当前内容区；表单中的并排按钮可等分。
 - 圆角使用 --radius-control，即 8px。
-- 背景使用同色轻渐变：从 #6C4CF6 到 #744CF2，方向为从左到右。
+- 背景使用同色轻渐变：从 #12B466 到 #14B668，方向为从左到右。
 - 文字为白色，15px / 22px，500 字重，不换行。
-- 默认无厚阴影，可使用 0 6px 16px rgba(108, 76, 246, 0.18)。
+- 默认无厚阴影，可使用 0 6px 16px rgba(18, 180, 102, 0.18)。
 - 按下态使用 --color-primary-pressed，并执行 transform: scale(0.98)。
 - 禁用态使用 --color-disabled，移除阴影和渐变，文字保持可读。
 
@@ -167,7 +167,7 @@
 - 输入文字使用 14px / 22px 和 --color-text。
 - 占位文字使用 --color-text-tertiary，不得替代字段标签。
 - 标签位于输入框上方，与输入框间距 8px；标签使用 14px / 22px、500 字重。
-- 聚焦态使用紫色边框和 0 0 0 3px rgba(108, 76, 246, 0.12) 焦点环。
+- 聚焦态使用主绿色边框和 0 0 0 3px rgba(18, 180, 102, 0.12) 焦点环。
 - 错误态使用 --color-danger 边框；错误文案位于下方，使用 12px / 18px。
 - 禁用态使用 --color-surface-muted 背景和三级文字色，不得仅降低透明度。
 
@@ -232,11 +232,11 @@
 
 ~~~css
 page {
-  --color-primary: #6c4cf6;
-  --color-primary-hover: #6242ed;
-  --color-primary-pressed: #5938df;
-  --color-primary-soft: #f1eeff;
-  --color-primary-gradient-end: #744cf2;
+  --color-primary: #12b466;
+  --color-primary-hover: #10a95f;
+  --color-primary-pressed: #0f9f5b;
+  --color-primary-soft: #ecfaf3;
+  --color-primary-gradient-end: #14b668;
   --color-success: #12b76a;
   --color-success-soft: #ecfdf3;
   --color-danger: #e5484d;
@@ -244,7 +244,7 @@ page {
   --color-bg: #f8f9fb;
   --color-surface: #ffffff;
   --color-surface-muted: #f5f6f8;
-  --color-preview-bg: #f3efff;
+  --color-preview-bg: #f4fcf8;
   --color-text: #15151a;
   --color-text-secondary: #626573;
   --color-text-tertiary: #9699a8;

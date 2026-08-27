@@ -1,5 +1,9 @@
 node_modules/*
 miniprogram_npm/
+server/node_modules/
+server/dist/
+server/.env
+server/data/avatars/
 .DS_Store
 *.log
 project.private.config.json

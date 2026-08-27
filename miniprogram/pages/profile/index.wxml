@@ -1,10 +1,10 @@
 <page-layout title="我的" showMainNav selectedTab="2">
   <view class="profile-page">
-    <view class="user-card ui-card" bindtap="showLoginNotice">
+    <view class="user-card ui-card" bindtap="openUserPanel">
       <image class="user-card__avatar" src="{{avatarPath}}" mode="aspectFill" />
       <view class="user-card__content">
-        <view class="user-card__name">拼豆用户</view>
-        <view class="user-card__desc">登录后可同步作品与下载记录</view>
+        <view class="user-card__name">{{isLoggedIn ? accountName : '登录拼豆工作室'}}</view>
+        <view class="user-card__desc">{{isLoggedIn ? accountStatusText : '登录后可保存云端作品和同步账号数据'}}</view>
       </view>
       <view class="user-card__arrow">›</view>
     </view>
@@ -53,13 +53,13 @@
       </view>
     </view>
 
-    <view class="profile-page__version">拼豆制作工具 · Version 0.3.4</view>
+    <view class="profile-page__version">拼豆制作工具 · Version 0.7.0</view>
   </view>
 </page-layout>
 
-<view wx:if="{{showRecharge}}" class="sheet-mask" catchtap="hideRechargeSheet" catchtouchmove="stopPropagation">
-  <view class="recharge-sheet" catchtap="stopPropagation">
-    <view class="recharge-sheet__handle"></view>
+<view wx:if="{{activeSheet === 'recharge'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
+  <view class="profile-sheet recharge-sheet" catchtap="stopPropagation">
+    <view class="profile-sheet__handle"></view>
     <view class="recharge-sheet__title">获取下载次数</view>
     <view class="recharge-sheet__quota">今日剩余 <text>{{downloadQuota}}</text> 次</view>
     <view
@@ -86,6 +86,120 @@
       </view>
     </view>
     <button class="button-primary recharge-sheet__pay" style="width: 100%;" bindtap="purchase">立即支付</button>
-    <view class="recharge-sheet__cancel" bindtap="hideRechargeSheet">取消</view>
+    <view class="recharge-sheet__cancel" bindtap="hideActiveSheet">取消</view>
+  </view>
+</view>
+
+<view wx:if="{{activeSheet === 'login'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
+  <view class="profile-sheet login-sheet" catchtap="stopPropagation">
+    <view class="profile-sheet__handle"></view>
+    <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭登录弹层">×</view>
+    <image class="login-sheet__avatar" src="/assets/icons/brand-avatar.png" mode="aspectFit" />
+    <view class="login-sheet__title">登录拼豆工作室</view>
+    <view class="login-sheet__subtitle">保存云端作品，跨设备查看账号数据</view>
+
+    <view class="login-benefits">
+      <view class="login-benefit">
+        <image src="/assets/icons/profile-stat-gallery.svg" mode="aspectFit" />
+        <text>云端保存作品</text>
+      </view>
+      <view class="login-benefit">
+        <image src="/assets/icons/profile-stat-download.svg" mode="aspectFit" />
+        <text>同步下载记录</text>
+      </view>
+      <view class="login-benefit">
+        <image src="/assets/icons/profile-benefit-badge.svg" mode="aspectFit" />
+        <text>查看账号权益</text>
+      </view>
+    </view>
+
+    <view
+      wx:if="{{loginMessage}}"
+      class="login-sheet__message {{loginMessageTone === 'error' ? 'login-sheet__message--error' : ''}}"
+    >{{loginMessage}}</view>
+
+    <button
+      class="login-sheet__submit"
+      loading="{{loginUiState === 'loading'}}"
+      disabled="{{loginUiState === 'loading'}}"
+      bindtap="startWechatLogin"
+    >{{loginUiState === 'loading' ? '登录中…' : loginUiState === 'error' ? '重新登录' : '微信快捷登录'}}</button>
+    <view class="login-sheet__later" bindtap="hideActiveSheet">暂不登录</view>
+    <view class="login-sheet__agreement">登录即表示你同意《隐私政策》</view>
+    <view class="login-sheet__local-hint">当前本地作品不会自动上传</view>
+  </view>
+</view>
+
+<view wx:if="{{activeSheet === 'profile'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
+  <view class="profile-sheet profile-editor" catchtap="stopPropagation">
+    <view class="profile-sheet__handle"></view>
+    <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭个人资料编辑">×</view>
+    <view class="profile-editor__title">完善个人资料</view>
+    <view class="profile-editor__subtitle">头像和昵称仅在你主动保存后同步到账号</view>
+
+    <button
+      class="profile-editor__avatar-button"
+      open-type="chooseAvatar"
+      bindchooseavatar="chooseProfileAvatar"
+      aria-label="选择头像"
+    >
+      <image class="profile-editor__avatar" src="{{profileDraftAvatarPath}}" mode="aspectFill" />
+      <view class="profile-editor__avatar-badge">更换</view>
+    </button>
+
+    <view class="profile-editor__field">
+      <view class="profile-editor__label">昵称</view>
+      <input
+        class="profile-editor__input"
+        type="nickname"
+        value="{{profileDraftNickname}}"
+        maxlength="80"
+        placeholder="请输入昵称"
+        confirm-type="done"
+        bindinput="updateProfileNickname"
+      />
+    </view>
+
+    <view wx:if="{{profileMessage}}" class="profile-editor__message">{{profileMessage}}</view>
+    <button
+      class="profile-editor__submit"
+      loading="{{profileSaving}}"
+      disabled="{{profileSaving || !profileCanSave}}"
+      bindtap="saveProfile"
+    >{{profileSaving ? '保存中…' : '保存个人资料'}}</button>
+    <view class="profile-editor__later" bindtap="hideActiveSheet">暂不完善</view>
+  </view>
+</view>
+
+<view wx:if="{{activeSheet === 'account'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
+  <view class="profile-sheet account-sheet" catchtap="stopPropagation">
+    <view class="profile-sheet__handle"></view>
+    <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭账号面板">×</view>
+    <view class="account-sheet__title">账号与登录</view>
+
+    <view class="account-summary">
+      <image class="account-summary__avatar" src="{{avatarPath}}" mode="aspectFill" />
+      <view class="account-summary__content">
+        <view class="account-summary__name">{{accountName}}</view>
+        <view class="account-summary__desc">{{accountStatusText}}</view>
+      </view>
+      <view class="account-summary__status">✓ 已登录</view>
+    </view>
+
+    <view class="account-action" bindtap="openProfileEditor">
+      <image class="account-action__avatar-icon" src="/assets/icons/brand-avatar.svg" mode="aspectFit" />
+      <text>编辑个人资料</text>
+      <view>›</view>
+    </view>
+    <view class="account-action {{accountRefreshing ? 'account-action--disabled' : ''}}" bindtap="refreshAccountData">
+      <image src="/assets/icons/profile-stat-download.svg" mode="aspectFit" />
+      <text>{{accountRefreshing ? '正在刷新…' : '刷新账号数据'}}</text>
+      <view>›</view>
+    </view>
+    <view class="account-action account-action--danger" bindtap="confirmLogout">
+      <text class="account-action__logout-icon">↪</text>
+      <text>退出登录</text>
+    </view>
+    <view class="account-sheet__cancel" bindtap="hideActiveSheet">取消</view>
   </view>
 </view>

@@ -1,0 +1,28 @@
+{
+  "name": "@pindou-studio/server",
+  "version": "0.7.0",
+  "private": true,
+  "description": "拼豆工作室后端服务",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "db:inspect": "node dist/db/inspect-cli.js",
+    "start": "node dist/index.js",
+    "test": "npm run build && node --test test/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "busboy": "^1.6.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/busboy": "^1.5.4",
+    "@types/node": "24.13.3",
+    "@types/pg": "8.23.1",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,5 +1,20 @@
 import { DOWNLOAD_PACKAGES, PROFILE_MENU_ITEMS } from '../../config/profile'
 import { appStore } from '../../store/app-store'
+import { authStore, type AuthState } from '../../store/auth-store'
+
+const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.png'
+
+type ProfileSheet = 'none' | 'recharge' | 'login' | 'account' | 'profile'
+type LoginUiState = 'idle' | 'loading' | 'error'
+type LoginMessageTone = 'info' | 'error'
+
+interface ChooseAvatarEvent {
+  detail: { avatarUrl?: string }
+}
+
+interface NicknameInputEvent {
+  detail: { value?: string }
+}
 
 Page({
   data: {
@@ -9,21 +24,100 @@ Page({
     favoriteCount: 0,
     downloadCount: 0,
     downloadQuota: 0,
-    avatarPath: '/assets/icons/brand-avatar.svg',
-    showRecharge: false,
+    avatarPath: DEFAULT_AVATAR_PATH,
+    isLoggedIn: false,
+    accountName: '拼豆用户',
+    accountStatusText: '云端数据已连接',
+    accountRefreshing: false,
+    activeSheet: 'none' as ProfileSheet,
+    loginUiState: 'idle' as LoginUiState,
+    loginMessage: '',
+    loginMessageTone: 'info' as LoginMessageTone,
+    profileDraftAvatarPath: DEFAULT_AVATAR_PATH,
+    profileDraftNickname: '',
+    profileHasNewAvatar: false,
+    profileCanSave: false,
+    profileSaving: false,
+    profileMessage: '',
     selectedPackage: 0,
+  },
+
+  authUnsubscribe: undefined as (() => void) | undefined,
+
+  onLoad() {
+    this.authUnsubscribe = authStore.subscribe((state) => this.applyAuthState(state))
   },
 
   onShow() {
     this.getTabBar()?.setData({ selected: 2 })
+    this.applyAuthState(authStore.getSnapshot())
+  },
+
+  onUnload() {
+    this.authUnsubscribe?.()
+    this.authUnsubscribe = undefined
+  },
+
+  applyAuthState(authState: Readonly<AuthState>) {
     const state = appStore.getSnapshot()
+    const profile = authState.profile
+    const user = profile?.user ?? authState.user
+    const hasAuthenticatedUser = Boolean(user) && (
+      authState.status === 'authenticated'
+      || authState.status === 'refreshing'
+      || authState.status === 'restoring'
+      || authState.status === 'updating'
+    )
+    const completedLogin = hasAuthenticatedUser && this.data.activeSheet === 'login'
+    const profileComplete = Boolean(user?.nickname?.trim() && user?.avatarUrl)
+    const shouldCompleteProfile = completedLogin && !profileComplete
+    const nextSheet = completedLogin
+      ? shouldCompleteProfile ? 'profile' : 'none'
+      : this.data.activeSheet
+
     this.setData({
-      workCount: state.works.length,
-      favoriteCount: state.favoriteIds.length,
-      downloadCount: state.downloadRecords.length,
-      downloadQuota: state.downloadQuota,
-      avatarPath: state.currentDraft?.sourceImagePath || '/assets/icons/brand-avatar.svg',
+      workCount: profile?.stats.workCount ?? state.works.length,
+      favoriteCount: profile?.stats.favoriteCount ?? state.favoriteIds.length,
+      downloadCount: profile?.stats.downloadCount ?? state.downloadRecords.length,
+      downloadQuota: profile?.quota.remaining ?? state.downloadQuota,
+      avatarPath: user?.avatarUrl || DEFAULT_AVATAR_PATH,
+      isLoggedIn: hasAuthenticatedUser,
+      accountName: user?.nickname?.trim() || '拼豆用户',
+      accountStatusText: accountStatusText(authState),
+      accountRefreshing: authState.status === 'refreshing' || authState.status === 'updating',
+      loginUiState: authState.status === 'authenticating'
+        ? 'loading'
+        : authState.status === 'error' ? 'error' : 'idle',
+      loginMessage: authState.status === 'error' ? authState.errorMessage : '',
+      loginMessageTone: 'error',
+      activeSheet: nextSheet,
+      ...(shouldCompleteProfile ? {
+        profileDraftAvatarPath: user?.avatarUrl || DEFAULT_AVATAR_PATH,
+        profileDraftNickname: user?.nickname?.trim() || '',
+        profileHasNewAvatar: false,
+        profileCanSave: Boolean(user?.avatarUrl && user?.nickname?.trim()),
+        profileMessage: '',
+      } : {}),
     })
+
+    if (completedLogin) {
+      if (!shouldCompleteProfile) this.restoreTabBar()
+      wx.showToast({
+        title: authState.isOffline
+          ? '已登录，等待网络恢复'
+          : shouldCompleteProfile ? '登录成功，请完善资料' : '登录成功',
+        icon: 'none',
+      })
+    }
+
+    if (authState.status === 'expired') {
+      if (this.data.activeSheet !== 'none') {
+        this.setData({ activeSheet: 'none' })
+        this.restoreTabBar()
+      }
+      wx.showToast({ title: '登录状态已过期，请重新登录', icon: 'none' })
+      authStore.acknowledgeExpiry()
+    }
   },
 
   openMenu(event: WechatMiniprogram.TouchEvent) {
@@ -42,23 +136,63 @@ Page({
     wx.navigateTo({ url: '/pages/downloads/index' })
   },
 
-  showRechargeSheet() {
-    wx.hideTabBar({ animation: false })
-    this.getTabBar()?.setData({ hidden: true })
-    this.setData({ showRecharge: true })
+  openUserPanel() {
+    if (!this.data.isLoggedIn) authStore.clearError()
+    this.showProfileSheet(this.data.isLoggedIn ? 'account' : 'login')
   },
 
-  hideRechargeSheet() {
-    this.setData({ showRecharge: false })
-    this.getTabBar()?.setData({ hidden: false })
-    wx.showTabBar({ animation: false })
+  showProfileSheet(sheet: Exclude<ProfileSheet, 'none'>) {
+    wx.hideTabBar({ animation: false })
+    this.getTabBar()?.setData({ hidden: true })
+    this.setData({
+      activeSheet: sheet,
+      loginUiState: sheet === 'login' ? 'idle' : this.data.loginUiState,
+      loginMessage: sheet === 'login' ? '' : this.data.loginMessage,
+    })
+  },
+
+  showRechargeSheet() {
+    this.showProfileSheet('recharge')
+  },
+
+  openProfileEditor() {
+    const user = authStore.getSnapshot().profile?.user ?? authStore.getSnapshot().user
+    this.setData({
+      profileDraftAvatarPath: user?.avatarUrl || DEFAULT_AVATAR_PATH,
+      profileDraftNickname: user?.nickname?.trim() || '',
+      profileHasNewAvatar: false,
+      profileCanSave: Boolean(user?.avatarUrl && user?.nickname?.trim()),
+      profileSaving: false,
+      profileMessage: '',
+    })
+    this.showProfileSheet('profile')
+  },
+
+  hideActiveSheet() {
+    this.setData({
+      activeSheet: 'none',
+      loginUiState: 'idle',
+      loginMessage: '',
+      profileSaving: false,
+      profileMessage: '',
+    })
+    this.restoreTabBar()
   },
 
   onHide() {
-    if (this.data.showRecharge) {
-      this.getTabBar()?.setData({ hidden: false })
-      wx.showTabBar({ animation: false })
+    if (this.data.activeSheet !== 'none') {
+      this.setData({
+        activeSheet: 'none',
+        loginUiState: 'idle',
+        loginMessage: '',
+      })
+      this.restoreTabBar()
     }
+  },
+
+  restoreTabBar() {
+    this.getTabBar()?.setData({ hidden: false })
+    wx.showTabBar({ animation: false })
   },
 
   stopPropagation() {},
@@ -75,7 +209,85 @@ Page({
     })
   },
 
-  showLoginNotice() {
-    wx.showToast({ title: '账号登录能力待接入', icon: 'none' })
+  startWechatLogin() {
+    void authStore.login()
+  },
+
+  refreshAccountData() {
+    if (this.data.accountRefreshing) return
+    void authStore.refresh()
+  },
+
+  chooseProfileAvatar(event: ChooseAvatarEvent) {
+    const avatarUrl = event.detail.avatarUrl
+    if (!avatarUrl) {
+      this.setData({ profileMessage: '未能读取所选头像，请重新选择。' })
+      return
+    }
+    this.setData({
+      profileDraftAvatarPath: avatarUrl,
+      profileHasNewAvatar: true,
+      profileCanSave: Boolean(this.data.profileDraftNickname.trim()),
+      profileMessage: '',
+    })
+  },
+
+  updateProfileNickname(event: NicknameInputEvent) {
+    const nickname = event.detail.value ?? ''
+    const hasAvatar = this.data.profileHasNewAvatar
+      || this.data.profileDraftAvatarPath !== DEFAULT_AVATAR_PATH
+    this.setData({
+      profileDraftNickname: nickname,
+      profileCanSave: Boolean(nickname.trim() && hasAvatar),
+      profileMessage: '',
+    })
+  },
+
+  async saveProfile() {
+    if (this.data.profileSaving || !this.data.profileCanSave) return
+    const nickname = this.data.profileDraftNickname.trim()
+    const length = Array.from(nickname).length
+    if (length < 1 || length > 80) {
+      this.setData({ profileMessage: '昵称长度需要在 1 到 80 个字符之间。' })
+      return
+    }
+
+    this.setData({ profileSaving: true, profileMessage: '' })
+    try {
+      await authStore.saveProfile(
+        nickname,
+        this.data.profileHasNewAvatar ? this.data.profileDraftAvatarPath : undefined,
+      )
+      this.hideActiveSheet()
+      wx.showToast({ title: '个人资料已保存', icon: 'success' })
+    } catch (error) {
+      this.setData({
+        profileSaving: false,
+        profileMessage: error instanceof Error ? error.message : '个人资料保存失败，请稍后重试。',
+      })
+    }
+  },
+
+  confirmLogout() {
+    wx.showModal({
+      title: '确认退出登录？',
+      content: '退出后将停止访问云端作品和下载记录，本机草稿不会被删除。再次登录后可以恢复云端数据。',
+      confirmText: '确认退出',
+      confirmColor: '#e5484d',
+      success: ({ confirm }) => {
+        if (!confirm) return
+        authStore.logout()
+        this.hideActiveSheet()
+        wx.showToast({ title: '已退出登录', icon: 'success' })
+      },
+    })
   },
 })
+
+function accountStatusText(state: Readonly<AuthState>): string {
+  if (state.status === 'restoring') return '正在恢复登录状态…'
+  if (state.status === 'refreshing') return '正在刷新账号数据…'
+  if (state.status === 'updating') return '正在保存个人资料…'
+  if (state.isOffline) return '网络异常，当前显示缓存账号'
+  return '云端数据已连接'
+}

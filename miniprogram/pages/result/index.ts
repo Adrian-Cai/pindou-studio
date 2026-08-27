@@ -1,5 +1,6 @@
 import type { PatternDraft } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
+import { getCustomNavigationMetrics } from '../../utils/navigation'
 
 type ResultTab = 'preview' | 'materials' | 'chart' | 'palette'
 
@@ -57,12 +58,20 @@ Page({
     quota: 0,
     chartWidthRpx: 0,
     chartHeightRpx: 0,
+    thumbnailSrc: '' as string,
+    navigationBarHeight: 0,
+    topBarHeight: 0,
+    scrollAreaHeight: 0,
     tabs: [
       { id: 'preview', label: '成品图' },
       { id: 'materials', label: '材料清单' },
       { id: 'chart', label: '施工图' },
       { id: 'palette', label: '色板参考' },
     ],
+  },
+
+  onLoad() {
+    this.updateLayoutMetrics()
   },
 
   onShow() {
@@ -97,6 +106,19 @@ Page({
 
   onReady() {
     this.setData({ canvasReady: true }, () => this.renderVisibleCanvases())
+  },
+
+  onResize() {
+    this.updateLayoutMetrics()
+  },
+
+  updateLayoutMetrics() {
+    const metrics = getCustomNavigationMetrics()
+    this.setData({
+      navigationBarHeight: metrics.navigationBarHeight,
+      topBarHeight: metrics.topBarHeight,
+      scrollAreaHeight: Math.max(0, metrics.windowHeight - metrics.topBarHeight),
+    })
   },
 
   changeTab(event: WechatMiniprogram.TouchEvent) {
@@ -139,7 +161,7 @@ Page({
     if (!draft || !this.data.canvasReady) return
 
     try {
-      const jobs: Promise<void>[] = [this.drawBeadCanvas('#thumbnailCanvas', draft)]
+      const jobs: Promise<void>[] = [this.drawThumbnail(draft)]
       if (this.data.activeTab === 'preview') {
         jobs.push(this.drawBeadCanvas('#previewCanvas', draft))
       }
@@ -152,6 +174,93 @@ Page({
       console.error('作品图渲染失败', error)
       this.setData({ renderError: true })
     }
+  },
+
+  async drawThumbnail(draft: PatternDraft) {
+    // type="2d" canvas 仅用于离屏绘制，绘完后导出为临时图片由 <image> 展示
+    // 避免原生 canvas 组件脱离文档流导致滚动时漂移
+    const THUMB_SIZE_PX = Math.round((144 / 750) * wx.getWindowInfo().windowWidth)
+    const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
+
+    // 先获取 canvas node（必须通过 queryCanvas 查询 in(this)）
+    const canvasNode = await new Promise<PatternCanvas>((resolve, reject) => {
+      wx.createSelectorQuery()
+        .in(this)
+        .select('#thumbnailCanvas')
+        .fields({ node: true })
+        .exec((results: [{ node?: PatternCanvas } | undefined]) => {
+          const node = results[0]?.node
+          if (!node) {
+            reject(new Error('thumbnailCanvas not found'))
+            return
+          }
+          resolve(node)
+        })
+    })
+
+    // 手动设置 canvas 分辨率（不依赖 CSS 布局尺寸）
+    const drawSize = THUMB_SIZE_PX
+    canvasNode.width = Math.round(drawSize * pixelRatio)
+    canvasNode.height = Math.round(drawSize * pixelRatio)
+
+    const context = canvasNode.getContext('2d')
+    context.scale(pixelRatio, pixelRatio)
+    context.fillStyle = '#f7f7f9'
+    context.fillRect(0, 0, drawSize, drawSize)
+
+    const cellWidth = drawSize / draft.settings.width
+    const cellHeight = drawSize / draft.settings.height
+    const radius = Math.min(cellWidth, cellHeight) * 0.43
+
+    draft.cells.forEach((cell, index) => {
+      if (cell.color === 'transparent') return
+      const column = index % draft.settings.width
+      const row = Math.floor(index / draft.settings.width)
+      const centerX = column * cellWidth + cellWidth / 2
+      const centerY = row * cellHeight + cellHeight / 2
+
+      context.globalAlpha = 0.16
+      context.fillStyle = '#111111'
+      context.beginPath()
+      context.arc(centerX + radius * 0.1, centerY + radius * 0.14, radius, 0, Math.PI * 2)
+      context.fill()
+
+      context.globalAlpha = 1
+      context.fillStyle = cell.color
+      context.beginPath()
+      context.arc(centerX, centerY, radius, 0, Math.PI * 2)
+      context.fill()
+
+      if (radius >= 1.7) {
+        context.globalAlpha = 0.35
+        context.fillStyle = '#ffffff'
+        context.beginPath()
+        context.arc(
+          centerX - radius * 0.3,
+          centerY - radius * 0.32,
+          radius * 0.2,
+          0,
+          Math.PI * 2,
+        )
+        context.fill()
+      }
+    })
+    context.globalAlpha = 1
+
+    const tempFilePath = await new Promise<string>((resolve, reject) => {
+      wx.canvasToTempFilePath(
+        {
+          canvas: canvasNode as unknown as WechatMiniprogram.Canvas,
+          fileType: 'png' as const,
+          quality: 1,
+          success: (res: WechatMiniprogram.CanvasToTempFilePathSuccessCallbackResult) =>
+            resolve(res.tempFilePath),
+          fail: (err: WechatMiniprogram.GeneralCallbackResult) => reject(new Error(err.errMsg)),
+        },
+        this,
+      )
+    })
+    this.setData({ thumbnailSrc: tempFilePath })
   },
 
   async drawBeadCanvas(selector: string, draft: PatternDraft) {

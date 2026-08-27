@@ -1,0 +1,228 @@
+export interface ExpectedColumn {
+  readonly type: string;
+  readonly nullable: boolean;
+  readonly length?: number;
+}
+
+export interface RequiredDatabaseObject {
+  readonly table: ExpectedTableName;
+  readonly label: string;
+  readonly type?: "p" | "u" | "f" | "c";
+  readonly includes: readonly string[];
+}
+
+const column = (type: string, nullable = false, length?: number): ExpectedColumn => {
+  if (length === undefined) return { type, nullable };
+  return { type, nullable, length };
+};
+
+export const EXPECTED_SCHEMA = {
+  pindou_users: {
+    id: column("varchar", false, 32),
+    openid_hash: column("varchar", false, 128),
+    openid_ciphertext: column("text", true),
+    nickname: column("varchar", true, 80),
+    avatar_url: column("text", true),
+    created_at: column("timestamptz"),
+    updated_at: column("timestamptz"),
+    deleted_at: column("timestamptz", true),
+  },
+  pindou_auth_sessions: {
+    id: column("varchar", false, 32),
+    user_id: column("varchar", false, 32),
+    token_hash: column("varchar", false, 128),
+    expires_at: column("timestamptz"),
+    revoked_at: column("timestamptz", true),
+    created_at: column("timestamptz"),
+    last_used_at: column("timestamptz", true),
+  },
+  pindou_file_assets: {
+    id: column("varchar", false, 32),
+    user_id: column("varchar", false, 32),
+    file_type: column("varchar", false, 20),
+    object_key: column("varchar", false, 512),
+    public_url: column("text"),
+    content_type: column("varchar", false, 100),
+    byte_size: column("int8"),
+    width: column("int4", true),
+    height: column("int4", true),
+    created_at: column("timestamptz"),
+    deleted_at: column("timestamptz", true),
+  },
+  pindou_works: {
+    id: column("varchar", false, 32),
+    user_id: column("varchar", false, 32),
+    title: column("varchar", false, 120),
+    cover_file_id: column("varchar", false, 32),
+    width: column("int2"),
+    height: column("int2"),
+    bead_count: column("int4"),
+    color_count: column("int2"),
+    brand: column("varchar", false, 40),
+    status: column("varchar", false, 20),
+    created_at: column("timestamptz"),
+    updated_at: column("timestamptz"),
+    deleted_at: column("timestamptz", true),
+  },
+  pindou_work_patterns: {
+    work_id: column("varchar", false, 32),
+    schema_version: column("int2"),
+    width: column("int2"),
+    height: column("int2"),
+    color_limit: column("int2"),
+    brand: column("varchar", false, 40),
+    palette_json: column("jsonb"),
+    cells_json: column("jsonb"),
+    created_at: column("timestamptz"),
+    updated_at: column("timestamptz"),
+  },
+  pindou_favorites: {
+    user_id: column("varchar", false, 32),
+    work_id: column("varchar", false, 32),
+    created_at: column("timestamptz"),
+  },
+  pindou_download_records: {
+    id: column("varchar", false, 32),
+    user_id: column("varchar", false, 32),
+    work_id: column("varchar", true, 32),
+    work_title_snapshot: column("varchar", false, 120),
+    file_type: column("varchar", false, 20),
+    consumed_quota: column("bool"),
+    quota_transaction_id: column("varchar", true, 32),
+    idempotency_key: column("varchar", false, 128),
+    downloaded_at: column("timestamptz"),
+  },
+  pindou_quota_transactions: {
+    id: column("varchar", false, 32),
+    user_id: column("varchar", false, 32),
+    type: column("varchar", false, 30),
+    amount: column("int4"),
+    source: column("varchar", false, 40),
+    bucket: column("varchar", false, 20),
+    quota_date: column("date", true),
+    order_id: column("varchar", true, 32),
+    download_record_id: column("varchar", true, 32),
+    idempotency_key: column("varchar", true, 128),
+    note: column("varchar", true, 255),
+    created_at: column("timestamptz"),
+  },
+  pindou_packages: {
+    id: column("varchar", false, 40),
+    label: column("varchar", false, 80),
+    quota_amount: column("int4"),
+    membership_type: column("varchar", true, 30),
+    membership_days: column("int4", true),
+    price_fen: column("int4"),
+    currency: column("varchar", false, 3),
+    enabled: column("bool"),
+    sort_order: column("int4"),
+    created_at: column("timestamptz"),
+    updated_at: column("timestamptz"),
+  },
+  pindou_orders: {
+    id: column("varchar", false, 32),
+    user_id: column("varchar", false, 32),
+    package_id: column("varchar", true, 40),
+    package_label_snapshot: column("varchar", false, 80),
+    quota_amount_snapshot: column("int4"),
+    membership_type_snapshot: column("varchar", true, 30),
+    price_fen: column("int4"),
+    status: column("varchar", false, 20),
+    wx_prepay_id: column("varchar", true, 128),
+    wx_transaction_id: column("varchar", true, 128),
+    paid_at: column("timestamptz", true),
+    created_at: column("timestamptz"),
+    updated_at: column("timestamptz"),
+  },
+} as const;
+
+export type ExpectedTableName = keyof typeof EXPECTED_SCHEMA;
+export const EXPECTED_TABLES = Object.keys(EXPECTED_SCHEMA) as ExpectedTableName[];
+
+export const REQUIRED_INDEXES: readonly RequiredDatabaseObject[] = [
+  { table: "pindou_users", label: "openid_hash 唯一索引", includes: ["unique index", "(openid_hash)"] },
+  { table: "pindou_auth_sessions", label: "token_hash 唯一索引", includes: ["unique index", "(token_hash)"] },
+  { table: "pindou_auth_sessions", label: "user_id 索引", includes: ["index", "(user_id)"] },
+  { table: "pindou_auth_sessions", label: "expires_at 索引", includes: ["index", "(expires_at)"] },
+  { table: "pindou_file_assets", label: "object_key 唯一索引", includes: ["unique index", "(object_key)"] },
+  { table: "pindou_file_assets", label: "用户文件列表索引", includes: ["(user_id, file_type, created_at)"] },
+  { table: "pindou_works", label: "用户作品更新时间索引", includes: ["(user_id, updated_at)"] },
+  { table: "pindou_works", label: "用户作品状态索引", includes: ["(user_id, status, updated_at)"] },
+  { table: "pindou_favorites", label: "最近收藏索引", includes: ["(user_id, created_at)"] },
+  { table: "pindou_download_records", label: "下载幂等唯一索引", includes: ["unique index", "(idempotency_key)"] },
+  { table: "pindou_download_records", label: "下载时间索引", includes: ["(user_id, downloaded_at)"] },
+  { table: "pindou_download_records", label: "下载类型索引", includes: ["(user_id, file_type, downloaded_at)"] },
+  { table: "pindou_quota_transactions", label: "额度流水时间索引", includes: ["(user_id, created_at)"] },
+  { table: "pindou_quota_transactions", label: "每日额度唯一索引", includes: ["unique index", "(user_id, type, quota_date)", "daily_grant", "where"] },
+  { table: "pindou_quota_transactions", label: "购买发放唯一索引", includes: ["unique index", "(order_id)", "purchase_grant", "where"] },
+  { table: "pindou_quota_transactions", label: "下载扣减唯一索引", includes: ["unique index", "(download_record_id)"] },
+  { table: "pindou_orders", label: "微信交易号唯一索引", includes: ["unique index", "(wx_transaction_id)"] },
+];
+
+const primaryKeys: readonly RequiredDatabaseObject[] = [
+  ["pindou_users", "id"],
+  ["pindou_auth_sessions", "id"],
+  ["pindou_file_assets", "id"],
+  ["pindou_works", "id"],
+  ["pindou_work_patterns", "work_id"],
+  ["pindou_favorites", "user_id, work_id"],
+  ["pindou_download_records", "id"],
+  ["pindou_quota_transactions", "id"],
+  ["pindou_packages", "id"],
+  ["pindou_orders", "id"],
+].map(([table, fields]) => ({
+  table: table as ExpectedTableName,
+  label: `${table} 主键`,
+  type: "p" as const,
+  includes: [`primary key (${fields})`],
+}));
+
+const foreignKeys: readonly RequiredDatabaseObject[] = [
+  ["pindou_auth_sessions", "user_id", "pindou_users", "restrict"],
+  ["pindou_file_assets", "user_id", "pindou_users", "restrict"],
+  ["pindou_works", "user_id", "pindou_users", "restrict"],
+  ["pindou_works", "cover_file_id", "pindou_file_assets", "restrict"],
+  ["pindou_work_patterns", "work_id", "pindou_works", "restrict"],
+  ["pindou_favorites", "user_id", "pindou_users", "restrict"],
+  ["pindou_favorites", "work_id", "pindou_works", "restrict"],
+  ["pindou_download_records", "user_id", "pindou_users", "restrict"],
+  ["pindou_download_records", "work_id", "pindou_works", "set null"],
+  ["pindou_download_records", "quota_transaction_id", "pindou_quota_transactions", "restrict"],
+  ["pindou_quota_transactions", "user_id", "pindou_users", "restrict"],
+  ["pindou_quota_transactions", "order_id", "pindou_orders", "restrict"],
+  ["pindou_quota_transactions", "download_record_id", "pindou_download_records", "restrict"],
+  ["pindou_orders", "user_id", "pindou_users", "restrict"],
+  ["pindou_orders", "package_id", "pindou_packages", "set null"],
+].map(([table, field, target, deleteRule]) => ({
+  table: table as ExpectedTableName,
+  label: `${table}.${field} 外键`,
+  type: "f" as const,
+  includes: [`foreign key (${field})`, `references ${target}(id)`, `on delete ${deleteRule}`],
+}));
+
+export const REQUIRED_CONSTRAINTS: readonly RequiredDatabaseObject[] = [
+  ...primaryKeys,
+  ...foreignKeys,
+  { table: "pindou_file_assets", label: "文件类型 CHECK", type: "c", includes: ["file_type", "cover"] },
+  { table: "pindou_file_assets", label: "文件大小 CHECK", type: "c", includes: ["byte_size", "> 0"] },
+  { table: "pindou_works", label: "作品状态 CHECK", type: "c", includes: ["status", "draft", "completed"] },
+  { table: "pindou_works", label: "作品宽度 CHECK", type: "c", includes: ["width", "<= 128"] },
+  { table: "pindou_works", label: "作品高度 CHECK", type: "c", includes: ["height", "<= 128"] },
+  { table: "pindou_works", label: "豆数 CHECK", type: "c", includes: ["bead_count", ">= 0"] },
+  { table: "pindou_works", label: "颜色数 CHECK", type: "c", includes: ["color_count", ">= 0"] },
+  { table: "pindou_work_patterns", label: "图案版本 CHECK", type: "c", includes: ["schema_version", "= 1"] },
+  { table: "pindou_work_patterns", label: "图案宽度 CHECK", type: "c", includes: ["width", "<= 128"] },
+  { table: "pindou_work_patterns", label: "图案高度 CHECK", type: "c", includes: ["height", "<= 128"] },
+  { table: "pindou_work_patterns", label: "颜色上限 CHECK", type: "c", includes: ["color_limit", "> 0"] },
+  { table: "pindou_download_records", label: "下载类型 CHECK", type: "c", includes: ["file_type", "preview", "chart", "materials"] },
+  { table: "pindou_quota_transactions", label: "额度类型 CHECK", type: "c", includes: ["type", "daily_grant", "download_debit", "purchase_grant", "refund", "adjustment"] },
+  { table: "pindou_quota_transactions", label: "额度桶 CHECK", type: "c", includes: ["bucket", "daily_free", "purchased", "membership"] },
+  { table: "pindou_quota_transactions", label: "额度值 CHECK", type: "c", includes: ["amount", "<> 0"] },
+  { table: "pindou_packages", label: "套餐额度 CHECK", type: "c", includes: ["quota_amount", ">= 0"] },
+  { table: "pindou_packages", label: "套餐价格 CHECK", type: "c", includes: ["price_fen", ">= 0"] },
+  { table: "pindou_packages", label: "会员天数 CHECK", type: "c", includes: ["membership_days", "> 0"] },
+  { table: "pindou_packages", label: "币种 CHECK", type: "c", includes: ["currency", "cny"] },
+  { table: "pindou_orders", label: "订单额度 CHECK", type: "c", includes: ["quota_amount_snapshot", ">= 0"] },
+  { table: "pindou_orders", label: "订单价格 CHECK", type: "c", includes: ["price_fen", ">= 0"] },
+  { table: "pindou_orders", label: "订单状态 CHECK", type: "c", includes: ["status", "pending", "paid", "failed", "closed", "refunded"] },
+];

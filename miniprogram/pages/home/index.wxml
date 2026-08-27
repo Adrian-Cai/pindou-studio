@@ -1,4 +1,4 @@
-<page-layout title="一起拼豆吧" home show-main-nav selected-tab="{{0}}">
+<page-layout title="一起拼豆吧" home show-main-nav compact-bottom-padding selected-tab="{{0}}">
 <view class="page">
   <view class="hero">
     <text class="hero__text">把喜欢的图片，变成</text><text class="hero__accent">拼豆作品</text>
@@ -76,5 +76,4 @@
 </view>
 
 </page-layout>
-
 

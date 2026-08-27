@@ -1,15 +1,27 @@
 <view class="result-page">
-  <top-bar
-    title="作品结果"
-    back
-    actionText="•••"
-    actionType="more"
-    bind:action="openMore"
-  />
+  <view class="result-header">
+    <top-bar
+      title="作品结果"
+      back
+      actionText="•••"
+      actionType="more"
+      navigationBarHeight="{{navigationBarHeight}}"
+      bind:action="openMore"
+    />
+  </view>
 
+  <scroll-view
+    class="result-scroll"
+    scroll-y
+    enhanced
+    show-scrollbar="{{false}}"
+    style="height: {{scrollAreaHeight}}px; margin-top: {{topBarHeight}}px;"
+  >
   <view wx:if="{{draft && summary}}" class="result-content">
     <view class="work-summary">
-      <canvas id="thumbnailCanvas" class="work-summary__thumb" type="2d"></canvas>
+      <!-- thumbnailCanvas 仅用于离屏绘制，渲染完成后导出为 image 显示，避免原生 canvas 脱离文档流导致滚动漂移 -->
+      <canvas id="thumbnailCanvas" class="work-summary__thumb-canvas" type="2d"></canvas>
+      <image class="work-summary__thumb" src="{{thumbnailSrc}}" mode="aspectFill"></image>
       <view class="work-summary__info">
         <view class="work-summary__title">{{summary.title}}</view>
         <view class="work-summary__meta">
@@ -135,6 +147,9 @@
     <view class="result-empty__hint">先上传图片并保存作品，这里会生成完整的制作资料。</view>
     <button class="download-button result-empty__button" bindtap="goCreate">开始制作</button>
   </view>
+
+  <view class="result-scroll__spacer"></view>
+  </scroll-view>
 
   <view wx:if="{{draft}}" class="result-nav">
     <view class="result-nav__item" data-path="/pages/home/index" bindtap="switchMainTab">

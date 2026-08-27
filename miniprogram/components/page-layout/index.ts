@@ -10,6 +10,7 @@ Component({
     home: { type: Boolean, value: false },
     showMainNav: { type: Boolean, value: false },
     selectedTab: { type: Number, value: -1 },
+    compactBottomPadding: { type: Boolean, value: false },
   },
 
   data: {
