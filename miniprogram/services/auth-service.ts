@@ -1,6 +1,5 @@
 import type { AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
-import { buildApiUrl } from '../config/api'
-import { ApiError, apiRequest, apiUploadFile } from './http-client'
+import { ApiError, apiRequest } from './http-client'
 
 export async function loginWithWechat(): Promise<AuthSession> {
   const code = await getWechatLoginCode()
@@ -26,20 +25,6 @@ export async function updateNickname(token: string, nickname: string): Promise<A
     method: 'PUT',
     token,
     data: { nickname },
-  })
-  return parseUserResponse(response)
-}
-
-export async function uploadAvatar(
-  token: string,
-  filePath: string,
-  nickname: string,
-): Promise<AuthUser> {
-  const response = await apiUploadFile<unknown>({
-    path: '/api/users/me/avatar',
-    filePath,
-    token,
-    formData: { nickname },
   })
   return parseUserResponse(response)
 }
@@ -129,21 +114,7 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
 function parseUser(value: unknown): AuthUser | null {
   if (!isRecord(value) || typeof value.id !== 'string' || !value.id) return null
   if (value.nickname !== null && typeof value.nickname !== 'string') return null
-  if (value.avatarUrl !== null && typeof value.avatarUrl !== 'string') return null
-  const avatarUrl = resolveAvatarUrl(value.avatarUrl)
-  if (value.avatarUrl !== null && !avatarUrl) return null
-  return { id: value.id, nickname: value.nickname, avatarUrl }
-}
-
-function resolveAvatarUrl(value: string | null): string | null {
-  if (value === null) return null
-  if (/^https:\/\//i.test(value) || /^http:\/\/127\.0\.0\.1(?::\d+)?\//i.test(value)) return value
-  if (!value.startsWith('/api/media/avatars/')) return null
-  try {
-    return buildApiUrl(value)
-  } catch {
-    return null
-  }
+  return { id: value.id, nickname: value.nickname, avatarUrl: null }
 }
 
 function invalidResponse(): ApiError {

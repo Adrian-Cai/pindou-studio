@@ -21,3 +21,15 @@ export function invalidArgument(message: string, details: ErrorDetails = {}): Ap
 export function unauthorized(message = "请先登录"): AppError {
   return new AppError(401, "UNAUTHORIZED", message);
 }
+
+export function forbidden(message = "无权访问该资源"): AppError {
+  return new AppError(403, "FORBIDDEN", message);
+}
+
+export function notFound(message = "资源不存在"): AppError {
+  return new AppError(404, "NOT_FOUND", message);
+}
+
+export function idempotencyConflict(message = "幂等键已用于另一份请求"): AppError {
+  return new AppError(409, "IDEMPOTENCY_CONFLICT", message);
+}

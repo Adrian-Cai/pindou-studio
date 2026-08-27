@@ -15,6 +15,9 @@ import { BearerTokenAuthenticator } from "./modules/auth/authenticator";
 import { OfficialWeChatLoginClient } from "./modules/auth/wechat-client";
 import { FileSystemAvatarStorage } from "./modules/users/avatar-storage";
 import { PostgresUserProfileService } from "./modules/users/user-profile-service";
+import { FileSystemCoverStorage } from "./modules/files/cover-storage";
+import { PostgresFileAssetService } from "./modules/files/file-asset-service";
+import { PostgresWorkService } from "./modules/works/work-service";
 
 export interface RunningApplication {
   readonly inspection: DatabaseInspection;
@@ -30,6 +33,10 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
     const database = new DatabaseRuntime(pool, inspection);
     const authRepository = new PostgresAuthRepository(pool);
     const avatars = new FileSystemAvatarStorage(config.avatars.storageDirectory);
+    const covers = new FileSystemCoverStorage(
+      config.covers.storageDirectory,
+      config.covers.publicBaseUrl,
+    );
     const http = await startHttpServer(
       createHttpApplication({
         database,
@@ -42,6 +49,9 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         users: new PostgresUserProfileService(pool, config.quota),
         avatars,
         avatarMaximumBytes: config.avatars.maximumBytes,
+        files: new PostgresFileAssetService(pool, covers),
+        works: new PostgresWorkService(pool),
+        coverMaximumBytes: config.covers.maximumBytes,
       }),
       config.host,
       config.port,

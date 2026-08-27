@@ -1,16 +1,13 @@
 import { DOWNLOAD_PACKAGES, PROFILE_MENU_ITEMS } from '../../config/profile'
 import { appStore } from '../../store/app-store'
-import { authStore, type AuthState } from '../../store/auth-store'
+import { authStore } from '../../store/auth-store'
 
 const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.png'
 
 type ProfileSheet = 'none' | 'recharge' | 'login' | 'account' | 'profile'
 type LoginUiState = 'idle' | 'loading' | 'error'
 type LoginMessageTone = 'info' | 'error'
-
-interface ChooseAvatarEvent {
-  detail: { avatarUrl?: string }
-}
+type AuthState = ReturnType<typeof authStore.getSnapshot>
 
 interface NicknameInputEvent {
   detail: { value?: string }
@@ -35,7 +32,6 @@ Page({
     loginMessageTone: 'info' as LoginMessageTone,
     profileDraftAvatarPath: DEFAULT_AVATAR_PATH,
     profileDraftNickname: '',
-    profileHasNewAvatar: false,
     profileCanSave: false,
     profileSaving: false,
     profileMessage: '',
@@ -69,7 +65,7 @@ Page({
       || authState.status === 'updating'
     )
     const completedLogin = hasAuthenticatedUser && this.data.activeSheet === 'login'
-    const profileComplete = Boolean(user?.nickname?.trim() && user?.avatarUrl)
+    const profileComplete = Boolean(user?.nickname?.trim())
     const shouldCompleteProfile = completedLogin && !profileComplete
     const nextSheet = completedLogin
       ? shouldCompleteProfile ? 'profile' : 'none'
@@ -80,7 +76,7 @@ Page({
       favoriteCount: profile?.stats.favoriteCount ?? state.favoriteIds.length,
       downloadCount: profile?.stats.downloadCount ?? state.downloadRecords.length,
       downloadQuota: profile?.quota.remaining ?? state.downloadQuota,
-      avatarPath: user?.avatarUrl || DEFAULT_AVATAR_PATH,
+      avatarPath: DEFAULT_AVATAR_PATH,
       isLoggedIn: hasAuthenticatedUser,
       accountName: user?.nickname?.trim() || '拼豆用户',
       accountStatusText: accountStatusText(authState),
@@ -92,10 +88,9 @@ Page({
       loginMessageTone: 'error',
       activeSheet: nextSheet,
       ...(shouldCompleteProfile ? {
-        profileDraftAvatarPath: user?.avatarUrl || DEFAULT_AVATAR_PATH,
+        profileDraftAvatarPath: DEFAULT_AVATAR_PATH,
         profileDraftNickname: user?.nickname?.trim() || '',
-        profileHasNewAvatar: false,
-        profileCanSave: Boolean(user?.avatarUrl && user?.nickname?.trim()),
+        profileCanSave: Boolean(user?.nickname?.trim()),
         profileMessage: '',
       } : {}),
     })
@@ -158,10 +153,9 @@ Page({
   openProfileEditor() {
     const user = authStore.getSnapshot().profile?.user ?? authStore.getSnapshot().user
     this.setData({
-      profileDraftAvatarPath: user?.avatarUrl || DEFAULT_AVATAR_PATH,
+      profileDraftAvatarPath: DEFAULT_AVATAR_PATH,
       profileDraftNickname: user?.nickname?.trim() || '',
-      profileHasNewAvatar: false,
-      profileCanSave: Boolean(user?.avatarUrl && user?.nickname?.trim()),
+      profileCanSave: Boolean(user?.nickname?.trim()),
       profileSaving: false,
       profileMessage: '',
     })
@@ -209,8 +203,10 @@ Page({
     })
   },
 
-  startWechatLogin() {
-    void authStore.login()
+  async startWechatLogin() {
+    if (this.data.loginUiState === 'loading') return
+    this.setData({ loginUiState: 'loading', loginMessage: '' })
+    await authStore.login()
   },
 
   refreshAccountData() {
@@ -218,27 +214,11 @@ Page({
     void authStore.refresh()
   },
 
-  chooseProfileAvatar(event: ChooseAvatarEvent) {
-    const avatarUrl = event.detail.avatarUrl
-    if (!avatarUrl) {
-      this.setData({ profileMessage: '未能读取所选头像，请重新选择。' })
-      return
-    }
-    this.setData({
-      profileDraftAvatarPath: avatarUrl,
-      profileHasNewAvatar: true,
-      profileCanSave: Boolean(this.data.profileDraftNickname.trim()),
-      profileMessage: '',
-    })
-  },
-
   updateProfileNickname(event: NicknameInputEvent) {
     const nickname = event.detail.value ?? ''
-    const hasAvatar = this.data.profileHasNewAvatar
-      || this.data.profileDraftAvatarPath !== DEFAULT_AVATAR_PATH
     this.setData({
       profileDraftNickname: nickname,
-      profileCanSave: Boolean(nickname.trim() && hasAvatar),
+      profileCanSave: Boolean(nickname.trim()),
       profileMessage: '',
     })
   },
@@ -254,10 +234,7 @@ Page({
 
     this.setData({ profileSaving: true, profileMessage: '' })
     try {
-      await authStore.saveProfile(
-        nickname,
-        this.data.profileHasNewAvatar ? this.data.profileDraftAvatarPath : undefined,
-      )
+      await authStore.saveProfile(nickname)
       this.hideActiveSheet()
       wx.showToast({ title: '个人资料已保存', icon: 'success' })
     } catch (error) {

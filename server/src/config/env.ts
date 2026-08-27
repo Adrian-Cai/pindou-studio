@@ -37,6 +37,11 @@ export interface ServerConfig {
     readonly storageDirectory: string;
     readonly maximumBytes: number;
   };
+  readonly covers: {
+    readonly storageDirectory: string;
+    readonly publicBaseUrl: string;
+    readonly maximumBytes: number;
+  };
 }
 
 export class ConfigError extends Error {
@@ -151,6 +156,13 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
         env.AVATAR_STORAGE_DIR?.trim() || resolve(__dirname, "../../data/avatars"),
       ),
       maximumBytes: integer(env, "AVATAR_MAX_BYTES", 2 * 1_024 * 1_024, 64 * 1_024, 10 * 1_024 * 1_024, issues),
+    },
+    covers: {
+      storageDirectory: resolve(
+        env.COVER_STORAGE_DIR?.trim() || resolve(__dirname, "../../data/covers"),
+      ),
+      publicBaseUrl: env.COVER_PUBLIC_BASE_URL?.trim() || "http://127.0.0.1:3000/api/media/covers",
+      maximumBytes: integer(env, "COVER_MAX_BYTES", 10 * 1_024 * 1_024, 64 * 1_024, 20 * 1_024 * 1_024, issues),
     },
   };
 

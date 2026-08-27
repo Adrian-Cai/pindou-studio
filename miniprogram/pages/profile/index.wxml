@@ -53,7 +53,7 @@
       </view>
     </view>
 
-    <view class="profile-page__version">拼豆制作工具 · Version 0.7.0</view>
+    <view class="profile-page__version">拼豆制作工具 · Version 0.7.1</view>
   </view>
 </page-layout>
 
@@ -135,17 +135,10 @@
     <view class="profile-sheet__handle"></view>
     <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭个人资料编辑">×</view>
     <view class="profile-editor__title">完善个人资料</view>
-    <view class="profile-editor__subtitle">头像和昵称仅在你主动保存后同步到账号</view>
-
-    <button
-      class="profile-editor__avatar-button"
-      open-type="chooseAvatar"
-      bindchooseavatar="chooseProfileAvatar"
-      aria-label="选择头像"
-    >
+    <view class="profile-editor__subtitle">头像使用默认品牌图，昵称保存到账号</view>
+    <view class="profile-editor__avatar-button" aria-label="默认头像">
       <image class="profile-editor__avatar" src="{{profileDraftAvatarPath}}" mode="aspectFill" />
-      <view class="profile-editor__avatar-badge">更换</view>
-    </button>
+    </view>
 
     <view class="profile-editor__field">
       <view class="profile-editor__label">昵称</view>

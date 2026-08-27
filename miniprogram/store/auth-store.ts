@@ -3,7 +3,6 @@ import {
   fetchCurrentUser,
   loginWithWechat,
   updateNickname,
-  uploadAvatar,
 } from '../services/auth-service'
 import { ApiError } from '../services/http-client'
 import {
@@ -122,7 +121,7 @@ export class AuthStore {
     }
   }
 
-  async saveProfile(nickname: string, avatarFilePath?: string): Promise<void> {
+  async saveProfile(nickname: string): Promise<void> {
     const session = loadAuthSession()
     if (!session || isAuthSessionExpired(session)) {
       this.expireSession()
@@ -132,13 +131,17 @@ export class AuthStore {
     const previousState = this.state
     this.setState({ ...this.state, status: 'updating', errorMessage: '' })
     try {
-      if (avatarFilePath) {
-        await uploadAvatar(session.token, avatarFilePath, nickname)
-      } else {
-        await updateNickname(session.token, nickname)
+      let activeSession = session
+      let profile: CurrentUserProfile
+      try {
+        profile = await this.persistProfile(activeSession, nickname)
+      } catch (error) {
+        if (!isUnauthorized(error)) throw error
+        activeSession = await loginWithWechat()
+        saveAuthSession(activeSession)
+        profile = await this.persistProfile(activeSession, nickname)
       }
-      const profile = await fetchCurrentUser(session.token)
-      saveAuthSession({ ...session, user: profile.user, profile })
+      saveAuthSession({ ...activeSession, user: profile.user, profile })
       this.setState({
         status: 'authenticated',
         user: profile.user,
@@ -216,6 +219,19 @@ export class AuthStore {
         isOffline: true,
         errorMessage: friendlyAuthError(error),
       })
+    }
+  }
+
+  private async persistProfile(
+    session: AuthSession,
+    nickname: string,
+  ): Promise<CurrentUserProfile> {
+    const user = await updateNickname(session.token, nickname)
+    const cachedProfile = session.profile ?? this.state.profile
+    if (!cachedProfile) return fetchCurrentUser(session.token)
+    return {
+      ...cachedProfile,
+      user: { ...user, createdAt: cachedProfile.user.createdAt },
     }
   }
 

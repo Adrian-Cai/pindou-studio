@@ -5,6 +5,9 @@ import type { AuthLoginService } from "../modules/auth/auth-service";
 import type { RequestAuthenticator } from "../modules/auth/authenticator";
 import type { AvatarStorage } from "../modules/users/avatar-storage";
 import type { UserProfileService } from "../modules/users/user-profile-service";
+import type { FileAssetService } from "../modules/files/file-asset-service";
+import { validatePersistedPattern, type PersistedPattern } from "../modules/works/pattern";
+import type { WorkService, WorkStatus } from "../modules/works/work-service";
 import { AppError, invalidArgument } from "../shared/app-error";
 import { readJsonObject, readSingleUploadedFile } from "./request-body";
 
@@ -60,6 +63,9 @@ export interface HttpApplicationDependencies {
   readonly users: UserProfileService;
   readonly avatars: AvatarStorage;
   readonly avatarMaximumBytes: number;
+  readonly files: FileAssetService;
+  readonly works: WorkService;
+  readonly coverMaximumBytes: number;
 }
 
 function validateLoginBody(body: Record<string, unknown>): string {
@@ -81,6 +87,68 @@ function validateNicknameBody(body: Record<string, unknown>): string {
     throw invalidArgument("昵称长度必须为 1 到 80 个字符，且不能包含控制字符");
   }
   return nickname;
+}
+
+function idempotencyKey(request: IncomingMessage): string {
+  const value = request.headers["idempotency-key"];
+  if (typeof value !== "string" || value.length < 1 || value.length > 128 || !/^[\x21-\x7e]+$/u.test(value)) {
+    throw invalidArgument("请求必须包含合法的 Idempotency-Key");
+  }
+  return value;
+}
+
+function validateWorkBody(body: Record<string, unknown>): {
+  readonly title: string;
+  readonly coverFileId: string;
+  readonly status: WorkStatus;
+  readonly pattern: PersistedPattern;
+} {
+  const allowed = ["title", "coverFileId", "status", "pattern"];
+  if (!Object.keys(body).every((key) => allowed.includes(key)) || typeof body.coverFileId !== "string" || !body.coverFileId.trim()) {
+    throw invalidArgument("作品请求只能包含 title、coverFileId、status 和 pattern");
+  }
+  const title = body.title === undefined ? "未命名作品" : body.title;
+  if (typeof title !== "string" || title.trim().length < 1 || Array.from(title.trim()).length > 120 || /[\u0000-\u001f\u007f]/u.test(title)) {
+    throw invalidArgument("作品标题长度必须为 1 到 120 个字符，且不能包含控制字符");
+  }
+  const status = body.status === undefined ? "completed" : body.status;
+  if (status !== "draft" && status !== "completed") throw invalidArgument("作品 status 只能是 draft 或 completed");
+  const validated = validatePersistedPattern(body.pattern);
+  return { title: title.trim(), coverFileId: body.coverFileId.trim(), status, pattern: validated.pattern };
+}
+
+function listOptions(url: URL, userId: string): { userId: string; status?: WorkStatus; page: number; pageSize: number; query?: string } {
+  for (const key of url.searchParams.keys()) {
+    if (!["status", "page", "pageSize", "query"].includes(key)) throw invalidArgument("作品列表包含不支持的查询参数");
+    if (url.searchParams.getAll(key).length > 1) throw invalidArgument(`查询参数 ${key} 不能重复`);
+  }
+  const page = positiveQueryInteger(url.searchParams.get("page"), 1, 1_000_000, "page");
+  const pageSize = positiveQueryInteger(url.searchParams.get("pageSize"), 20, 50, "pageSize");
+  const statusValue = url.searchParams.get("status");
+  if (statusValue !== null && statusValue !== "draft" && statusValue !== "completed") throw invalidArgument("status 只能是 draft 或 completed");
+  const query = url.searchParams.get("query")?.trim() || undefined;
+  if (query && Array.from(query).length > 120) throw invalidArgument("query 不能超过 120 个字符");
+  return { userId, page, pageSize, ...(statusValue ? { status: statusValue } : {}), ...(query ? { query } : {}) };
+}
+
+function positiveQueryInteger(value: string | null, fallback: number, maximum: number, name: string): number {
+  if (value === null) return fallback;
+  if (!/^[0-9]+$/u.test(value)) throw invalidArgument(`${name} 必须是整数`);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) throw invalidArgument(`${name} 超出允许范围`);
+  return parsed;
+}
+
+function workId(pathname: string): string | null {
+  const match = pathname.match(/^\/api\/works\/([^/]+)$/u);
+  return match?.[1] ?? null;
+}
+
+function sendNoContent(response: ServerResponse): void {
+  response.statusCode = 204;
+  response.removeHeader("content-type");
+  response.removeHeader("cache-control");
+  response.end();
 }
 
 export function createHttpApplication(dependencies: HttpApplicationDependencies): HttpApplication {
@@ -123,6 +191,58 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         const body = await readJsonObject(request);
         const result = await dependencies.auth.login(validateLoginBody(body));
         sendJson(response, 200, result);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/files/upload") {
+        if (url.searchParams.size > 0) throw invalidArgument("文件上传接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const upload = await readSingleUploadedFile(request, "file", dependencies.coverMaximumBytes, ["type"]);
+        if (upload.fields.type !== "cover" || Object.keys(upload.fields).length !== 1) {
+          throw invalidArgument("文件上传的 type 只能是 cover");
+        }
+        sendJson(response, 201, {
+          file: await dependencies.files.upload(currentUser.id, {
+            type: "cover",
+            buffer: upload.buffer,
+            filename: upload.filename,
+            declaredContentType: upload.declaredContentType,
+          }),
+        });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/works") {
+        if (url.searchParams.size > 0) throw invalidArgument("作品保存接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const validated = validateWorkBody(await readJsonObject(request, 2 * 1024 * 1024));
+        sendJson(response, 201, await dependencies.works.create({
+          userId: currentUser.id,
+          idempotencyKey: idempotencyKey(request),
+          title: validated.title,
+          coverFileId: validated.coverFileId,
+          status: validated.status,
+          validatedPattern: validatePersistedPattern(validated.pattern),
+        }));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/works") {
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, await dependencies.works.list(listOptions(url, currentUser.id)));
+        return;
+      }
+
+      const requestedWorkId = workId(url.pathname);
+      if (requestedWorkId && (request.method === "GET" || request.method === "DELETE")) {
+        if (url.searchParams.size > 0) throw invalidArgument("作品详情接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        if (request.method === "GET") {
+          sendJson(response, 200, await dependencies.works.get(currentUser.id, requestedWorkId));
+        } else {
+          await dependencies.works.delete(currentUser.id, requestedWorkId);
+          sendNoContent(response);
+        }
         return;
       }
 

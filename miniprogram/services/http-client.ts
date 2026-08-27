@@ -19,14 +19,6 @@ interface ApiErrorBody {
   }
 }
 
-interface ApiUploadOptions {
-  path: string
-  filePath: string
-  token: string
-  formData?: Record<string, string>
-  timeoutMs?: number
-}
-
 export class ApiError extends Error {
   readonly statusCode: number
   readonly code: string
@@ -87,41 +79,6 @@ export function apiRequest<T>(options: ApiRequestOptions): Promise<T> {
   })
 }
 
-export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
-  let url: string
-  try {
-    url = buildApiUrl(options.path)
-  } catch (error) {
-    const message = error instanceof ApiConfigurationError ? error.message : 'API 地址配置无效'
-    return Promise.reject(new ApiError(message, { code: 'API_CONFIGURATION_ERROR' }))
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    wx.uploadFile({
-      url,
-      filePath: options.filePath,
-      name: 'file',
-      formData: options.formData,
-      header: {
-        accept: 'application/json',
-        authorization: `Bearer ${options.token}`,
-      },
-      timeout: options.timeoutMs ?? 20_000,
-      success: (response) => {
-        const data = parseUploadResponse(response.data)
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          resolve(data as T)
-          return
-        }
-        reject(createApiError(response.statusCode, data))
-      },
-      fail: () => {
-        reject(new ApiError('头像上传失败，请检查网络后重试。', { code: 'NETWORK_ERROR' }))
-      },
-    })
-  })
-}
-
 function createApiError(statusCode: number, value: unknown): ApiError {
   const body = isRecord(value) ? value as ApiErrorBody : {}
   const error = body.error
@@ -130,14 +87,6 @@ function createApiError(statusCode: number, value: unknown): ApiError {
   const requestId = typeof error?.requestId === 'string' ? error.requestId : null
   const details = isRecord(error?.details) ? error.details : {}
   return new ApiError(message, { statusCode, code, requestId, details })
-}
-
-function parseUploadResponse(value: string): unknown {
-  try {
-    return JSON.parse(value) as unknown
-  } catch {
-    return {}
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

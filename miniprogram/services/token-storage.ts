@@ -49,11 +49,10 @@ function parseSession(value: unknown): AuthSession | null {
 function parseUser(value: unknown): AuthUser | null {
   if (!isRecord(value) || typeof value.id !== 'string' || !value.id) return null
   if (value.nickname !== null && typeof value.nickname !== 'string') return null
-  if (value.avatarUrl !== null && typeof value.avatarUrl !== 'string') return null
   return {
     id: value.id,
     nickname: value.nickname,
-    avatarUrl: value.avatarUrl,
+    avatarUrl: null,
   }
 }
 

@@ -4,7 +4,10 @@ import { AppError, invalidArgument } from "../shared/app-error";
 
 const MAX_JSON_BYTES = 64 * 1_024;
 
-export async function readJsonObject(request: IncomingMessage): Promise<Record<string, unknown>> {
+export async function readJsonObject(
+  request: IncomingMessage,
+  maximumBytes = MAX_JSON_BYTES,
+): Promise<Record<string, unknown>> {
   const contentType = request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
   if (contentType !== "application/json") {
     throw new AppError(415, "UNSUPPORTED_MEDIA_TYPE", "请求必须使用 application/json");
@@ -15,7 +18,7 @@ export async function readJsonObject(request: IncomingMessage): Promise<Record<s
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += buffer.length;
-    if (size > MAX_JSON_BYTES) {
+    if (size > maximumBytes) {
       throw new AppError(413, "PAYLOAD_TOO_LARGE", "请求体过大");
     }
     chunks.push(buffer);
@@ -36,6 +39,7 @@ export async function readJsonObject(request: IncomingMessage): Promise<Record<s
 export interface UploadedFile {
   readonly buffer: Buffer;
   readonly declaredContentType: string;
+  readonly filename: string;
   readonly fields: Readonly<Record<string, string>>;
 }
 
@@ -98,6 +102,7 @@ export function readSingleUploadedFile(
         uploaded = {
           buffer: Buffer.concat(chunks),
           declaredContentType: info.mimeType.toLowerCase(),
+          filename: info.filename,
           fields,
         };
       });

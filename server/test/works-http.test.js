@@ -1,0 +1,132 @@
+const assert = require("node:assert/strict");
+const test = require("node:test");
+const { AppError } = require("../dist/shared/app-error.js");
+const { createHttpApplication } = require("../dist/http/app.js");
+const { startHttpServer } = require("../dist/http/server.js");
+
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+
+function pattern() {
+  return {
+    schemaVersion: 1,
+    width: 32,
+    height: 32,
+    settings: { colorLimit: 1, brand: "MARD" },
+    palette: [{ code: "C01", color: "#000000" }],
+    cells: Array(1024).fill(0),
+  };
+}
+
+function summary() {
+  return {
+    id: "work_test",
+    title: "作品",
+    coverUrl: "https://cdn.example/cover.png",
+    width: 32,
+    height: 32,
+    beadCount: 1024,
+    colorCount: 1,
+    brand: "MARD",
+    status: "completed",
+    isFavorite: false,
+    createdAt: "2026-08-27T01:00:00.000Z",
+    updatedAt: "2026-08-27T01:00:00.000Z",
+  };
+}
+
+function dependencies(overrides = {}) {
+  return {
+    database: { async check() { return { status: "up", product: "PostgreSQL", version: "17.11", schemaStatus: "valid" }; } },
+    auth: { async login() { throw new Error("unused"); } },
+    authenticator: { async authenticate() { return { id: "usr_current" }; } },
+    users: { async getCurrentUser() { throw new Error("unused"); } },
+    avatars: { async save() { throw new Error("unused"); }, async read() { return null; }, async remove() {} },
+    avatarMaximumBytes: 2 * 1024 * 1024,
+    coverMaximumBytes: 10 * 1024 * 1024,
+    files: { async upload() { return { id: "file_test", type: "cover", url: "https://cdn.example/cover.png", contentType: "image/png", size: PNG.length, createdAt: "2026-08-27T01:00:00.000Z" }; } },
+    works: {
+      async create() { return summary(); },
+      async list() { return { total: 0, page: 1, pageSize: 20, items: [] }; },
+      async get() { return { ...summary(), pattern: pattern() }; },
+      async delete() {},
+    },
+    ...overrides,
+  };
+}
+
+async function withApplication(deps, callback) {
+  const running = await startHttpServer(createHttpApplication(deps), "127.0.0.1", 0);
+  try { await callback(`http://127.0.0.1:${running.port}`); } finally { await running.close(); }
+}
+
+test("cover upload authenticates and accepts only type=cover", async () => {
+  let received;
+  await withApplication(dependencies({
+    files: { async upload(userId, input) { received = { userId, input }; return { id: "file_test", type: "cover", url: "https://cdn.example/cover.png", contentType: "image/png", size: PNG.length, createdAt: "2026-08-27T01:00:00.000Z" }; } },
+  }), async (baseUrl) => {
+    const form = new FormData();
+    form.append("file", new Blob([PNG], { type: "image/png" }), "client.png");
+    form.append("type", "cover");
+    const response = await fetch(`${baseUrl}/api/files/upload`, { method: "POST", headers: { authorization: "Bearer token" }, body: form });
+    const body = await response.json();
+    assert.equal(response.status, 201, JSON.stringify(body));
+    assert.equal(received.userId, "usr_current");
+    assert.equal(received.input.filename, "client.png");
+
+    const invalid = new FormData();
+    invalid.append("file", new Blob([PNG], { type: "image/png" }), "client.png");
+    invalid.append("type", "original");
+    const invalidResponse = await fetch(`${baseUrl}/api/files/upload`, { method: "POST", headers: { authorization: "Bearer token" }, body: invalid });
+    assert.equal(invalidResponse.status, 400);
+  });
+});
+
+test("work creation rejects client-owned URLs/statistics and requires idempotency", async () => {
+  let called = false;
+  await withApplication(dependencies({ works: { async create() { called = true; return summary(); }, async list() {}, async get() {}, async delete() {} } }), async (baseUrl) => {
+    const payload = { coverFileId: "file_test", pattern: pattern(), coverUrl: "https://attacker", beadCount: 1 };
+    const response = await fetch(`${baseUrl}/api/works`, { method: "POST", headers: { authorization: "Bearer token", "content-type": "application/json", "Idempotency-Key": "save-1" }, body: JSON.stringify(payload) });
+    assert.equal(response.status, 400);
+    assert.equal(called, false);
+
+    const missingKey = await fetch(`${baseUrl}/api/works`, { method: "POST", headers: { authorization: "Bearer token", "content-type": "application/json" }, body: JSON.stringify({ coverFileId: "file_test", pattern: pattern() }) });
+    assert.equal(missingKey.status, 400);
+  });
+});
+
+test("work list, detail recovery and delete use the authenticated owner", async () => {
+  const calls = [];
+  await withApplication(dependencies({
+    works: {
+      async create() { return summary(); },
+      async list(options) { calls.push({ method: "list", options }); return { total: 1, page: 2, pageSize: 10, items: [summary()] }; },
+      async get(userId, id) { calls.push({ method: "get", userId, id }); return { ...summary(), pattern: pattern() }; },
+      async delete(userId, id) { calls.push({ method: "delete", userId, id }); },
+    },
+  }), async (baseUrl) => {
+    const listResponse = await fetch(`${baseUrl}/api/works?page=2&pageSize=10&status=completed&query=%E7%8C%AB`, { headers: { authorization: "Bearer token" } });
+    const listBody = await listResponse.json();
+    assert.equal(listResponse.status, 200);
+    assert.equal(listBody.items[0].pattern, undefined);
+    assert.deepEqual(calls[0], { method: "list", options: { userId: "usr_current", page: 2, pageSize: 10, status: "completed", query: "猫" } });
+
+    const detailResponse = await fetch(`${baseUrl}/api/works/work_test`, { headers: { authorization: "Bearer token" } });
+    const detailBody = await detailResponse.json();
+    assert.equal(detailResponse.status, 200);
+    assert.equal(detailBody.pattern.cells.length, 1024);
+    assert.deepEqual(calls[1], { method: "get", userId: "usr_current", id: "work_test" });
+
+    const deleteResponse = await fetch(`${baseUrl}/api/works/work_test`, { method: "DELETE", headers: { authorization: "Bearer token" } });
+    assert.equal(deleteResponse.status, 204);
+    assert.deepEqual(calls[2], { method: "delete", userId: "usr_current", id: "work_test" });
+  });
+});
+
+test("cross-owner work deletion follows the ownership error contract", async () => {
+  await withApplication(dependencies({ works: { async create() {}, async list() {}, async get() {}, async delete() { throw new AppError(403, "FORBIDDEN", "作品不属于当前用户"); } } }), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/works/work_other`, { method: "DELETE", headers: { authorization: "Bearer token" } });
+    const body = await response.json();
+    assert.equal(response.status, 403);
+    assert.equal(body.error.code, "FORBIDDEN");
+  });
+});
