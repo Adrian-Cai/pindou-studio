@@ -22,7 +22,7 @@
   margin: 0;
   padding: 0 24rpx;
   border-radius: 12rpx;
-  background: var(--color-primary);
+  background: var(--download-btn-bg, var(--color-primary));
   color: #ffffff;
   font-size: 28rpx;
   font-weight: 500;
@@ -30,7 +30,7 @@
 }
 
 .download-button--pressed {
-  background: var(--color-primary-pressed);
+  background: var(--download-btn-bg-pressed, var(--color-primary-pressed));
   transform: scale(0.98);
 }
 

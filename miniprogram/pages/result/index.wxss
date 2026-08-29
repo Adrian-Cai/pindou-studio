@@ -1,14 +1,18 @@
 .result-page {
-  --color-primary: #12b466;
-  --color-primary-pressed: #0f9f5b;
-  --color-primary-soft: #ecfaf3;
+  /* ── 结果页专属紫色主题，隔离于此选择器内，不影响全局绿色 ── */
+  --color-primary: #6F5BFF;
+  --color-primary-pressed: #5B48E0;
+  --color-primary-soft: #f0eeff;
   --color-surface: #ffffff;
   --color-surface-muted: #fafafa;
   --color-text: #111111;
   --color-text-secondary: #666666;
   --color-text-tertiary: #888888;
   --color-border: #eeeeee;
-  --color-brand: #12b466;
+  --color-brand: #6F5BFF;
+  /* 下载按钮紫色渐变，供 result-download-button 组件继承 */
+  --download-btn-bg: linear-gradient(90deg, #6A55F6, #8A63FF);
+  --download-btn-bg-pressed: #5B48E0;
   height: 100vh;
   overflow: hidden;
   background: #f8f9f8;
@@ -290,7 +294,8 @@
 }
 
 .download-format {
-  margin-top: 16rpx;
+  margin-top: var(--space-2);
+  margin-bottom: 20rpx;
   color: var(--color-text-secondary);
   font-size: 22rpx;
   line-height: 32rpx;
@@ -495,6 +500,55 @@
   color: var(--color-text-secondary);
   font-size: 24rpx;
   line-height: 36rpx;
+  text-align: center;
+}
+
+/* 高清施工图离屏 canvas，不参与布局 */
+.chart-hd-render-canvas {
+  position: absolute;
+  top: 0;
+  left: -9999px;
+  pointer-events: none;
+}
+
+/* 施工图可点击态 */
+.chart-stage--clickable {
+  position: relative;
+  cursor: pointer;
+}
+
+.chart-stage--clickable:active {
+  opacity: 0.88;
+}
+
+/* 右下角放大图标 */
+.chart-zoom-icon {
+  position: absolute;
+  right: 16rpx;
+  bottom: 16rpx;
+  display: flex;
+  width: 56rpx;
+  height: 56rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.14);
+}
+
+.chart-zoom-icon__img {
+  display: block;
+  width: 32rpx;
+  height: 32rpx;
+  color: var(--color-text-secondary);
+}
+
+/* 图片下方弱提示文字 */
+.chart-tap-hint {
+  margin-top: 14rpx;
+  color: var(--color-text-tertiary);
+  font-size: 22rpx;
+  line-height: 32rpx;
   text-align: center;
 }
 

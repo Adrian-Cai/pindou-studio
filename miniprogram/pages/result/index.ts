@@ -96,6 +96,7 @@ Page({
     thumbnailSrc: '' as string,
     previewSrc: '' as string,
     chartSrc: '' as string,
+    chartHdSrc: '' as string,
     patternImagesRendering: false,
     chartImageRendering: false,
     renamingTitle: false,
@@ -155,7 +156,7 @@ Page({
         chartWidthRpx: draft ? draft.settings.width * 32 : 0,
         chartHeightRpx: draft ? draft.settings.height * 32 : 0,
         renderedDraftKey: draftRenderKey,
-        ...(shouldRenderPatternImages ? { thumbnailSrc: '', previewSrc: '', chartSrc: '' } : {}),
+        ...(shouldRenderPatternImages ? { thumbnailSrc: '', previewSrc: '', chartSrc: '', chartHdSrc: '' } : {}),
       },
       () => {
         if (this.data.canvasReady) this.renderVisibleCanvases()
@@ -618,9 +619,15 @@ Page({
   async drawChartImage(draft: PatternDraft) {
     this.setData({ chartImageRendering: true })
     try {
-      const canvas = await this.drawChartCanvas('#chartRenderCanvas', draft)
-      const tempFilePath = await this.exportCanvas(canvas)
-      this.setData({ chartSrc: tempFilePath })
+      const [canvas, hdCanvas] = await Promise.all([
+        this.drawChartCanvas('#chartRenderCanvas', draft),
+        this.drawChartHdCanvas('#chartHdRenderCanvas', draft),
+      ])
+      const [tempFilePath, hdTempFilePath] = await Promise.all([
+        this.exportCanvas(canvas),
+        this.exportCanvas(hdCanvas),
+      ])
+      this.setData({ chartSrc: tempFilePath, chartHdSrc: hdTempFilePath })
     } finally {
       this.setData({ chartImageRendering: false })
     }
@@ -628,11 +635,13 @@ Page({
 
   async drawChartCanvas(selector: string, draft: PatternDraft): Promise<PatternCanvas> {
     const result = await this.queryCanvas(selector)
+    const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
     const canvas = result.node
-    canvas.width = Math.round(result.width)
-    canvas.height = Math.round(result.height)
+    canvas.width = Math.round(result.width * pixelRatio)
+    canvas.height = Math.round(result.height * pixelRatio)
 
     const context = canvas.getContext('2d')
+    context.scale(pixelRatio, pixelRatio)
     const cellWidth = result.width / draft.settings.width
     const cellHeight = result.height / draft.settings.height
     context.fillStyle = '#ffffff'
@@ -658,6 +667,67 @@ Page({
       }
     })
     return canvas
+  },
+
+  // 高清施工图：每格固定 CHART_HD_CELL_PX 像素，用于全屏预览
+  async drawChartHdCanvas(selector: string, draft: PatternDraft): Promise<PatternCanvas> {
+    const CHART_HD_CELL_PX = 24
+    const totalWidth = draft.settings.width * CHART_HD_CELL_PX
+    const totalHeight = draft.settings.height * CHART_HD_CELL_PX
+
+    const canvas = await new Promise<PatternCanvas>((resolve, reject) => {
+      wx.createSelectorQuery()
+        .in(this)
+        .select(selector)
+        .fields({ node: true })
+        .exec((results: [{ node?: PatternCanvas } | undefined]) => {
+          const node = results[0]?.node
+          if (!node) {
+            reject(new Error(`未找到画布 ${selector}`))
+            return
+          }
+          resolve(node)
+        })
+    })
+
+    canvas.width = totalWidth
+    canvas.height = totalHeight
+
+    const context = canvas.getContext('2d')
+    const cellPx = CHART_HD_CELL_PX
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, totalWidth, totalHeight)
+    context.lineWidth = 0.5
+    context.strokeStyle = '#cccccc'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    // 每格 24px，字体约 12px 可清晰读出 C01~C99 编号
+    context.font = `${Math.round(cellPx * 0.5)}px sans-serif`
+
+    draft.cells.forEach((cell, index) => {
+      const column = index % draft.settings.width
+      const row = Math.floor(index / draft.settings.width)
+      const x = column * cellPx
+      const y = row * cellPx
+      context.fillStyle = cell.color === 'transparent' ? '#ffffff' : cell.color
+      context.fillRect(x, y, cellPx, cellPx)
+      context.strokeRect(x, y, cellPx, cellPx)
+
+      if (cell.colorCode) {
+        context.fillStyle = getTextColor(cell.color)
+        context.fillText(cell.colorCode.replace(/^C0?/, ''), x + cellPx / 2, y + cellPx / 2)
+      }
+    })
+    return canvas
+  },
+
+  openChartPreview() {
+    const hdSrc = this.data.chartHdSrc
+    if (!hdSrc) return
+    wx.previewImage({
+      urls: [hdSrc],
+      current: hdSrc,
+    })
   },
 
   queryCanvas(selector: string): Promise<CanvasQueryResult> {
