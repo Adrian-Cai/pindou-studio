@@ -3,18 +3,46 @@
 
   <view wx:if="{{draft}}" class="editor__body">
     <view class="editor__content">
-      <view class="preview-card">
-        <view class="preview-transform">
-          <canvas id="patternCanvas" class="pattern-canvas" type="2d" bindtouchend="editPattern"></canvas>
+
+      <!-- ── 工作区：接收所有手势 ── -->
+      <view
+        class="workspace"
+        bindtouchstart="onWorkspaceTouchStart"
+        bindtouchmove="onWorkspaceTouchMove"
+        bindtouchend="onWorkspaceTouchEnd"
+        catchtouchmove="onWorkspaceTouchMove"
+      >
+        <view
+          class="canvas-stage"
+          style="transform: translate(calc(-50% + {{panX}}px), calc(-50% + {{panY}}px)) scale({{zoom}}); transform-origin: center center; will-change: transform;"
+        >
+          <canvas
+            id="patternCanvas"
+            class="pattern-canvas"
+            type="2d"
+          ></canvas>
         </view>
       </view>
 
+      <!-- ── 缩放控制 ── -->
       <view class="zoom-control">
-        <button class="zoom-control__button" bindtap="zoomOut" aria-label="缩小">−</button>
+        <button
+          class="zoom-control__button"
+          bindtap="zoomOut"
+          disabled="{{zoom <= 0.5}}"
+          aria-label="缩小"
+        >−</button>
         <text class="zoom-control__value">{{zoomPercent}}%</text>
-        <button class="zoom-control__button" bindtap="zoomIn" aria-label="放大">＋</button>
+        <button
+          class="zoom-control__button"
+          bindtap="zoomIn"
+          disabled="{{zoom >= 1.8}}"
+          aria-label="放大"
+        >＋</button>
+        <button class="zoom-control__reset" bindtap="resetView" aria-label="适应画布">适应</button>
       </view>
 
+      <!-- ── 信息卡 ── -->
       <view class="info-card">
         <view class="info-card__row">
           <text>尺寸：{{draft.settings.width}}×{{draft.settings.height}}</text>
@@ -23,6 +51,7 @@
         <text class="info-card__count">共 {{beadCount}} 颗</text>
       </view>
 
+      <!-- ── 工具栏 ── -->
       <view class="tools">
         <view
           wx:for="{{tools}}"
@@ -32,11 +61,16 @@
           data-disabled="{{item.disabled}}"
           bindtap="selectTool"
         >
-          <image class="tool__icon" src="{{item.icon}}" mode="aspectFit" />
+          <image
+            class="tool__icon"
+            src="{{activeTool === item.id ? item.activeIcon : item.icon}}"
+            mode="aspectFit"
+          />
           <text class="tool__label">{{item.label}}</text>
         </view>
       </view>
 
+      <!-- ── 调色板 ── -->
       <view class="palette">
         <view wx:for="{{paletteColors}}" wx:key="*this" class="palette__slot">
           <button
@@ -51,10 +85,24 @@
         </view>
       </view>
 
+      <!-- ── 底部操作 ── -->
       <view class="editor-actions">
         <button class="button-secondary editor-actions__button" bindtap="regenerate">重新生成</button>
         <button class="button-primary editor-actions__button" bindtap="saveAndView" loading="{{saving}}" disabled="{{saving}}">{{saving ? '保存中' : '保存作品'}}</button>
       </view>
+
     </view>
   </view>
+
+  <!-- 放大镜 overlay -->
+  <canvas
+    wx:if="{{magnifier.visible}}"
+    id="magnifierCanvas"
+    class="magnifier-canvas"
+    type="2d"
+    style="top: {{magnifier.top}}px; left: {{magnifier.left}}px;"
+  ></canvas>
+
+  <!-- 取色成功 Toast -->
+  <view class="editor-toast {{toast.visible ? 'editor-toast--visible' : ''}}">{{toast.message}}</view>
 </view>
