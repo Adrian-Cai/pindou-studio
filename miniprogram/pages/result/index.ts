@@ -1,4 +1,5 @@
-import type { PatternDraft } from '../../models/pattern'
+import type { PatternDraft, WorkItem } from '../../models/pattern'
+import { cloudSummaryToWorkItem, renameCloudWork } from '../../services/work-service'
 import { appStore } from '../../store/app-store'
 import { getCustomNavigationMetrics } from '../../utils/navigation'
 
@@ -8,7 +9,10 @@ interface MaterialItem {
   color: string
   colorCode: string
   count: number
+  percentage: string
 }
+
+const MATERIAL_PREVIEW_LIMIT = 5
 
 interface ResultSummary {
   title: string
@@ -51,6 +55,8 @@ Page({
     draft: null as PatternDraft | null,
     summary: null as ResultSummary | null,
     materials: [] as MaterialItem[],
+    visibleMaterials: [] as MaterialItem[],
+    materialListExpanded: false,
     activeTab: 'preview' as ResultTab,
     isFavorite: false,
     canvasReady: false,
@@ -59,6 +65,12 @@ Page({
     chartWidthRpx: 0,
     chartHeightRpx: 0,
     thumbnailSrc: '' as string,
+    previewSrc: '' as string,
+    chartSrc: '' as string,
+    patternImagesRendering: false,
+    chartImageRendering: false,
+    renamingTitle: false,
+    renderedDraftKey: '',
     navigationBarHeight: 0,
     topBarHeight: 0,
     scrollAreaHeight: 0,
@@ -80,11 +92,20 @@ Page({
     const work = draft ? state.works.find((item) => item.id === draft.id) : undefined
     const materials = draft ? summarizeMaterials(draft) : []
     const beadCount = materials.reduce((total, item) => total + item.count, 0)
+    const materialListExpanded = materials.length > MATERIAL_PREVIEW_LIMIT
+      && this.data.draft?.id === draft?.id
+      && this.data.materialListExpanded
+    const draftRenderKey = draft ? createDraftRenderKey(draft) : ''
+    const shouldRenderPatternImages = draftRenderKey !== this.data.renderedDraftKey
 
     this.setData(
       {
         draft,
         materials,
+        visibleMaterials: materialListExpanded
+          ? materials
+          : materials.slice(0, MATERIAL_PREVIEW_LIMIT),
+        materialListExpanded,
         quota: state.downloadQuota,
         isFavorite: draft ? state.favoriteIds.includes(draft.id) : false,
         summary: draft
@@ -97,6 +118,8 @@ Page({
           : null,
         chartWidthRpx: draft ? draft.settings.width * 32 : 0,
         chartHeightRpx: draft ? draft.settings.height * 32 : 0,
+        renderedDraftKey: draftRenderKey,
+        ...(shouldRenderPatternImages ? { thumbnailSrc: '', previewSrc: '', chartSrc: '' } : {}),
       },
       () => {
         if (this.data.canvasReady) this.renderVisibleCanvases()
@@ -127,6 +150,16 @@ Page({
     this.setData({ activeTab, renderError: false }, () => this.renderVisibleCanvases())
   },
 
+  toggleMaterialList() {
+    const materialListExpanded = !this.data.materialListExpanded
+    this.setData({
+      materialListExpanded,
+      visibleMaterials: materialListExpanded
+        ? this.data.materials
+        : this.data.materials.slice(0, MATERIAL_PREVIEW_LIMIT),
+    })
+  },
+
   toggleFavorite() {
     const draft = this.data.draft
     if (!draft) return
@@ -134,14 +167,73 @@ Page({
     this.setData({ isFavorite: !this.data.isFavorite })
   },
 
-  openMore() {
-    wx.showActionSheet({
-      itemList: ['返回作品列表', '重新制作'],
-      success: ({ tapIndex }) => {
-        const url = tapIndex === 0 ? '/pages/projects/index' : '/pages/home/index'
-        wx.switchTab({ url })
+  editTitle() {
+    if (this.data.renamingTitle) return
+    const draft = this.data.draft
+    const summary = this.data.summary
+    if (!draft || !summary) return
+
+    const work = appStore.getSnapshot().works.find((item) => item.id === draft.id)
+    if (!work) {
+      wx.showToast({ title: '作品记录不存在，请返回后重试', icon: 'none' })
+      return
+    }
+
+    wx.showModal({
+      title: '编辑作品名称',
+      content: summary.title,
+      editable: true,
+      placeholderText: '请输入作品名称',
+      confirmText: '保存',
+      success: ({ confirm, content }) => {
+        if (!confirm) return
+        const nextTitle = content.trim()
+        if (!nextTitle) {
+          wx.showToast({ title: '作品名称不能为空', icon: 'none' })
+          return
+        }
+        if (Array.from(nextTitle).length > 120) {
+          wx.showToast({ title: '作品名称不能超过 120 个字符', icon: 'none' })
+          return
+        }
+        if (/[\u0000-\u001f\u007f]/u.test(nextTitle)) {
+          wx.showToast({ title: '作品名称包含不可用字符', icon: 'none' })
+          return
+        }
+        if (nextTitle === summary.title) return
+        void this.persistTitleRename(work, nextTitle)
       },
     })
+  },
+
+  async persistTitleRename(work: WorkItem, title: string) {
+    if (this.data.renamingTitle) return
+    this.setData({ renamingTitle: true })
+    wx.showLoading({ title: '正在保存', mask: true })
+    try {
+      let savedTitle = title
+      if (work.isCloud) {
+        const savedWork = await renameCloudWork(work.id, title)
+        savedTitle = savedWork.title
+        appStore.saveWork(cloudSummaryToWorkItem(savedWork))
+      } else {
+        appStore.saveWork({ ...work, title, updatedAt: Date.now() })
+      }
+
+      const summary = this.data.summary
+      if (summary) this.setData({ summary: { ...summary, title: savedTitle } })
+      wx.hideLoading()
+      wx.showToast({ title: '作品名称已保存', icon: 'success' })
+    } catch (error) {
+      console.error('保存作品名称失败', error)
+      wx.hideLoading()
+      wx.showToast({
+        title: error instanceof Error ? error.message : '保存失败，请重试',
+        icon: 'none',
+      })
+    } finally {
+      this.setData({ renamingTitle: false })
+    }
   },
 
   openDownloads() {
@@ -161,18 +253,34 @@ Page({
     if (!draft || !this.data.canvasReady) return
 
     try {
-      const jobs: Promise<void>[] = [this.drawThumbnail(draft)]
-      if (this.data.activeTab === 'preview') {
-        jobs.push(this.drawBeadCanvas('#previewCanvas', draft))
+      const jobs: Promise<void>[] = []
+      if (
+        (!this.data.thumbnailSrc || !this.data.previewSrc)
+        && !this.data.patternImagesRendering
+      ) {
+        jobs.push(this.renderPatternImages(draft))
       }
-      if (this.data.activeTab === 'chart') {
-        jobs.push(this.drawChartCanvas('#chartCanvas', draft))
+      if (
+        this.data.activeTab === 'chart'
+        && !this.data.chartSrc
+        && !this.data.chartImageRendering
+      ) {
+        jobs.push(this.drawChartImage(draft))
       }
       await Promise.all(jobs)
       if (this.data.renderError) this.setData({ renderError: false })
     } catch (error) {
       console.error('作品图渲染失败', error)
       this.setData({ renderError: true })
+    }
+  },
+
+  async renderPatternImages(draft: PatternDraft) {
+    this.setData({ patternImagesRendering: true })
+    try {
+      await Promise.all([this.drawThumbnail(draft), this.drawPreviewImage(draft)])
+    } finally {
+      this.setData({ patternImagesRendering: false })
     }
   },
 
@@ -263,7 +371,13 @@ Page({
     this.setData({ thumbnailSrc: tempFilePath })
   },
 
-  async drawBeadCanvas(selector: string, draft: PatternDraft) {
+  async drawPreviewImage(draft: PatternDraft) {
+    const canvas = await this.drawBeadCanvas('#previewRenderCanvas', draft)
+    const tempFilePath = await this.exportCanvas(canvas)
+    this.setData({ previewSrc: tempFilePath })
+  },
+
+  async drawBeadCanvas(selector: string, draft: PatternDraft): Promise<PatternCanvas> {
     const result = await this.queryCanvas(selector)
     const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
     const canvas = result.node
@@ -307,9 +421,36 @@ Page({
       }
     })
     context.globalAlpha = 1
+    return canvas
   },
 
-  async drawChartCanvas(selector: string, draft: PatternDraft) {
+  exportCanvas(canvas: PatternCanvas): Promise<string> {
+    return new Promise((resolve, reject) => {
+      wx.canvasToTempFilePath(
+        {
+          canvas: canvas as unknown as WechatMiniprogram.Canvas,
+          fileType: 'png',
+          quality: 1,
+          success: ({ tempFilePath }) => resolve(tempFilePath),
+          fail: (error) => reject(new Error(error.errMsg || '图片生成失败')),
+        },
+        this,
+      )
+    })
+  },
+
+  async drawChartImage(draft: PatternDraft) {
+    this.setData({ chartImageRendering: true })
+    try {
+      const canvas = await this.drawChartCanvas('#chartRenderCanvas', draft)
+      const tempFilePath = await this.exportCanvas(canvas)
+      this.setData({ chartSrc: tempFilePath })
+    } finally {
+      this.setData({ chartImageRendering: false })
+    }
+  },
+
+  async drawChartCanvas(selector: string, draft: PatternDraft): Promise<PatternCanvas> {
     const result = await this.queryCanvas(selector)
     const canvas = result.node
     canvas.width = Math.round(result.width)
@@ -340,6 +481,7 @@ Page({
         context.fillText(cell.colorCode.replace(/^C0?/, ''), x + cellWidth / 2, y + cellHeight / 2)
       }
     })
+    return canvas
   },
 
   queryCanvas(selector: string): Promise<CanvasQueryResult> {
@@ -368,7 +510,7 @@ Page({
 })
 
 function summarizeMaterials(draft: PatternDraft): MaterialItem[] {
-  const materials = new Map<string, MaterialItem>()
+  const materials = new Map<string, Omit<MaterialItem, 'percentage'>>()
   draft.cells.forEach((cell) => {
     if (cell.color === 'transparent' || !cell.colorCode) return
     const key = `${cell.colorCode}-${cell.color}`
@@ -379,7 +521,26 @@ function summarizeMaterials(draft: PatternDraft): MaterialItem[] {
     }
     materials.set(key, { color: cell.color, colorCode: cell.colorCode, count: 1 })
   })
-  return [...materials.values()].sort((left, right) => right.count - left.count)
+  const materialList = [...materials.values()]
+  const totalCount = materialList.reduce((total, item) => total + item.count, 0)
+  return materialList
+    .sort((left, right) => right.count - left.count)
+    .map((item) => ({
+      ...item,
+      percentage: `${((item.count / totalCount) * 100).toFixed(1)}%`,
+    }))
+}
+
+function createDraftRenderKey(draft: PatternDraft): string {
+  let hash = 2166136261
+  draft.cells.forEach((cell) => {
+    const value = `${cell.color}:${cell.colorCode};`
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index)
+      hash = Math.imul(hash, 16777619)
+    }
+  })
+  return `${draft.id}:${draft.settings.width}x${draft.settings.height}:${hash >>> 0}`
 }
 
 function formatDateTime(timestamp: number): string {

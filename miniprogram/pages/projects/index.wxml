@@ -1,4 +1,4 @@
-<page-layout title="我的作品" showMainNav selectedTab="1">
+<page-layout title="我的作品" showMainNav="{{showPageNav}}" selectedTab="1">
   <view class="subpage projects-page">
     <view class="project-summary ui-card">
       <view class="project-summary__item">
@@ -35,27 +35,109 @@
       >{{item.label}}</view>
     </view>
 
-    <view wx:if="{{works.length}}" class="project-grid">
-      <view class="project-card ui-card" wx:for="{{works}}" wx:key="id" data-id="{{item.id}}" bindtap="openWork">
+    <view wx:if="{{works.length}}" class="project-list">
+      <view
+        class="project-card ui-card"
+        wx:for="{{works}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="openWork"
+        aria-role="button"
+        aria-label="查看作品 {{item.title}}"
+      >
         <image class="project-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
         <view class="project-card__body">
           <view class="project-card__top">
             <text class="status-pill {{item.isDraft ? 'status-pill--draft' : ''}}">{{item.statusLabel}}</text>
-            <view class="project-card__more" data-id="{{item.id}}" catchtap="openWorkMenu">•••</view>
+            <view
+              class="project-card__more"
+              data-id="{{item.id}}"
+              catchtap="openWorkMenu"
+              aria-role="button"
+              aria-label="打开 {{item.title}} 的更多操作"
+            ><text>•••</text></view>
           </view>
           <view class="project-card__title">{{item.title}}</view>
-          <view class="project-card__meta">{{item.dimensions}}　{{item.colorCount}} 色</view>
+          <view class="project-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>
           <view class="project-card__date">{{item.updatedText}}</view>
-          <view wx:if="{{item.isDraft}}" class="project-card__continue">✎　继续编辑</view>
+          <view
+            wx:if="{{item.isDraft}}"
+            class="project-card__continue"
+            data-id="{{item.id}}"
+            catchtap="editWork"
+            aria-role="button"
+            aria-label="继续编辑 {{item.title}}"
+          >
+            <image class="project-card__continue-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
+            <text>继续编辑</text>
+          </view>
         </view>
       </view>
     </view>
 
     <view wx:else class="empty-state">
       <view class="empty-state__icon">▧</view>
-      <view class="empty-state__title">{{allWorks.length ? '没有匹配的作品' : '还没有作品'}}</view>
-      <view class="empty-state__desc">{{allWorks.length ? '换个关键词或筛选条件试试。' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸。'}}</view>
-      <button wx:if="{{!allWorks.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
+      <view class="empty-state__title">{{loading ? '正在读取作品' : (allWorks.length ? '没有匹配的作品' : '还没有作品')}}</view>
+      <view class="empty-state__desc">{{loading ? '正在同步云端数据，请稍候。' : (allWorks.length ? '换个关键词或筛选条件试试。' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸。')}}</view>
+      <button wx:if="{{!loading && !allWorks.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
     </view>
   </view>
+
+<view wx:if="{{activeWork}}" class="work-sheet-mask" catchtap="closeWorkMenu" catchtouchmove="stopPropagation">
+  <view class="work-sheet" catchtap="stopPropagation">
+    <view class="work-sheet__handle"></view>
+    <view class="work-sheet__header">
+      <image class="work-sheet__cover" src="{{activeWork.coverPath}}" mode="aspectFill" />
+      <view class="work-sheet__info">
+        <view class="work-sheet__title">{{activeWork.title}}</view>
+        <view class="work-sheet__meta">{{activeWork.dimensions}} · {{activeWork.colorCount}}色</view>
+      </view>
+    </view>
+    <view class="work-sheet__actions">
+      <view class="work-sheet__action" catchtap="startRename" aria-role="button" aria-label="重命名作品">
+        <image class="work-sheet__action-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
+        <text>重命名</text>
+      </view>
+      <view class="work-sheet__action" catchtap="downloadWork" aria-role="button" aria-label="下载作品">
+        <image class="work-sheet__action-icon" src="/assets/icons/profile-menu-download.svg" mode="aspectFit" />
+        <text>下载作品</text>
+      </view>
+      <view class="work-sheet__divider"></view>
+      <view class="work-sheet__action work-sheet__action--danger" catchtap="deleteWork" aria-role="button" aria-label="删除作品">
+        <image class="work-sheet__action-icon" src="/assets/icons/work-delete.svg" mode="aspectFit" />
+        <text>删除作品</text>
+      </view>
+    </view>
+  </view>
+</view>
+
+<view wx:if="{{renameWorkId}}" class="rename-dialog-mask" catchtap="closeRenameDialog" catchtouchmove="stopPropagation">
+  <view class="rename-dialog" catchtap="stopPropagation" aria-role="dialog" aria-label="重命名作品">
+    <view class="rename-dialog__title">重命名作品</view>
+    <input
+      class="rename-dialog__input"
+      value="{{renameDraft}}"
+      maxlength="120"
+      focus
+      confirm-type="done"
+      placeholder="请输入作品名称"
+      aria-label="作品名称"
+      bindinput="changeRenameDraft"
+      bindconfirm="submitRename"
+    />
+    <view class="rename-dialog__feedback">
+      <text class="rename-dialog__error">{{renameError}}</text>
+      <text>{{renameLength}} / 120</text>
+    </view>
+    <view class="rename-dialog__buttons">
+      <button class="rename-dialog__button rename-dialog__button--cancel" disabled="{{renameSaving}}" bindtap="closeRenameDialog">取消</button>
+      <button
+        class="rename-dialog__button rename-dialog__button--save"
+        loading="{{renameSaving}}"
+        disabled="{{!renameCanSave || renameSaving}}"
+        bindtap="submitRename"
+      >保存</button>
+    </view>
+  </view>
+</view>
 </page-layout>

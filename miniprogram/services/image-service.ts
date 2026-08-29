@@ -35,20 +35,35 @@ export class UnsupportedImageFormatError extends Error {
 }
 
 export async function chooseSourceImage(): Promise<string | null> {
-  const result = await wx.chooseMedia({
-    count: 1,
-    mediaType: ['image'],
-    sourceType: ['album', 'camera'],
-  })
-  const sourceImagePath = result.tempFiles[0]?.tempFilePath ?? null
+  let result: WechatMiniprogram.ChooseImageSuccessCallbackResult
+  try {
+    result = await wx.chooseImage({
+      count: 1,
+      sizeType: ['original'],
+      sourceType: ['album', 'camera'],
+    })
+  } catch (error) {
+    if (isImagePickerCancel(error)) return null
+    throw error
+  }
+  const sourceImagePath = result.tempFilePaths[0] ?? null
   if (!sourceImagePath) return null
 
-  const header = await readFileHeader(sourceImagePath)
-  if (!isSupportedImageHeader(header)) {
-    throw new UnsupportedImageFormatError()
+  try {
+    const header = await readFileHeader(sourceImagePath)
+    if (!isSupportedImageHeader(header)) throw new UnsupportedImageFormatError()
+  } catch (error) {
+    if (error instanceof UnsupportedImageFormatError) throw error
+    // 部分真机和 Windows 开发者工具不允许直接读取选择器临时路径，交给 <image> 解码。
   }
-
   return sourceImagePath
+}
+
+function isImagePickerCancel(error: unknown): boolean {
+  if (error instanceof Error) return error.message.toLowerCase().includes('cancel')
+  if (typeof error !== 'object' || error === null || !('errMsg' in error)) return false
+  const errMsg = (error as { errMsg?: unknown }).errMsg
+  return typeof errMsg === 'string' && errMsg.toLowerCase().includes('cancel')
 }
 
 export async function createDraft(

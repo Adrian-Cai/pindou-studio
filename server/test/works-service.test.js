@@ -67,6 +67,40 @@ test("list query does not load cells and detail query maps the persisted pattern
   assert.equal(detail.pattern.cells[1], 1);
 });
 
+test("update replaces edited pattern and derived summary in one transaction", async () => {
+  const calls = [];
+  const existing = row("work_edit");
+  const edited = pattern();
+  edited.cells[0] = -1;
+  edited.cells[1] = 0;
+  const client = {
+    async query(sql, parameters) {
+      calls.push({ sql, parameters });
+      if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.includes("FROM pindou_works works") && sql.includes("FOR UPDATE")) return { rows: [existing] };
+      if (sql.includes("FROM pindou_file_assets")) return { rows: [{ user_id: "usr_current", deleted_at: null, file_type: "cover", public_url: "https://cdn/edited.png" }] };
+      if (sql.includes("UPDATE pindou_works")) return { rows: [{ ...existing, title: "编辑后的作品", cover_file_id: "file_edited", cover_url: undefined, bead_count: 1, color_count: 1, updated_at: new Date("2026-08-27T02:00:00.000Z") }] };
+      if (sql.includes("UPDATE pindou_work_patterns")) return { rows: [] };
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    release() {},
+  };
+  const service = new PostgresWorkService({ async connect() { return client; } }, () => new Date("2026-08-27T02:00:00.000Z"));
+  const result = await service.update({
+    userId: "usr_current",
+    workId: "work_edit",
+    title: "编辑后的作品",
+    coverFileId: "file_edited",
+    status: "completed",
+    validatedPattern: validatePersistedPattern(edited),
+  });
+  assert.equal(result.title, "编辑后的作品");
+  assert.equal(result.coverUrl, "https://cdn/edited.png");
+  assert.equal(result.beadCount, 1);
+  assert.ok(calls.some((call) => call.sql.includes("UPDATE pindou_work_patterns")));
+  assert.equal(calls.at(-1).sql, "COMMIT");
+});
+
 test("same idempotency key returns the committed work and rejects a changed request", async () => {
   const workId = createIdempotentWorkId("usr_current", "save-retry");
   let committed = false;

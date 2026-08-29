@@ -50,6 +50,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         avatars,
         avatarMaximumBytes: config.avatars.maximumBytes,
         files: new PostgresFileAssetService(pool, covers),
+        covers,
         works: new PostgresWorkService(pool),
         coverMaximumBytes: config.covers.maximumBytes,
       }),

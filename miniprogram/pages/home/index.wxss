@@ -64,11 +64,29 @@ page {
 .upload__empty {
   display: flex;
   box-sizing: border-box;
+  width: 100%;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 40rpx 24rpx;
+  border: 0;
+  border-radius: 16rpx;
+  background: transparent;
+  color: inherit;
+  line-height: normal;
   text-align: center;
+}
+
+.upload__empty::after {
+  border: 0;
+}
+
+.upload__empty:active {
+  background: var(--color-primary-soft);
+}
+
+.upload__empty[disabled] {
+  opacity: 0.72;
 }
 
 .upload__icon {

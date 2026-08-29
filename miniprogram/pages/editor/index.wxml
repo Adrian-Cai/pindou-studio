@@ -1,11 +1,11 @@
 <view class="editor">
-  <top-bar title="编辑拼豆图" back />
+  <top-bar title="编辑拼豆图" back back-inset-rpx="{{32}}" />
 
   <view wx:if="{{draft}}" class="editor__body">
     <view class="editor__content">
       <view class="preview-card">
         <view class="preview-transform">
-          <canvas id="patternCanvas" class="pattern-canvas" type="2d"></canvas>
+          <canvas id="patternCanvas" class="pattern-canvas" type="2d" bindtouchend="editPattern"></canvas>
         </view>
       </view>
 
@@ -53,7 +53,7 @@
 
       <view class="editor-actions">
         <button class="button-secondary editor-actions__button" bindtap="regenerate">重新生成</button>
-        <button class="button-primary editor-actions__button" bindtap="saveAndView">保存作品</button>
+        <button class="button-primary editor-actions__button" bindtap="saveAndView" loading="{{saving}}" disabled="{{saving}}">{{saving ? '保存中' : '保存作品'}}</button>
       </view>
     </view>
   </view>

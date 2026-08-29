@@ -1,12 +1,17 @@
 <view
-  class="top-bar {{home ? 'top-bar--home' : ''}} {{actionType === 'more' ? 'top-bar--with-more' : ''}} {{navigationBarHeight > 0 ? 'top-bar--dynamic-height' : ''}}"
-  style="padding-top: {{statusBarHeight}}px; --top-bar-navigation-height: {{navigationBarHeight}}px;"
+  class="top-bar {{home ? 'top-bar--home' : ''}} {{actionType === 'more' ? 'top-bar--with-more' : ''}} {{resolvedNavigationBarHeight > 0 ? 'top-bar--dynamic-height' : ''}}"
+  style="padding-top: {{statusBarHeight}}px; --top-bar-navigation-height: {{resolvedNavigationBarHeight}}px; --top-bar-back-inset: {{backInsetRpx}}rpx;"
 >
   <view
     class="top-bar__inner"
     style="padding-right: {{actionType === 'more' ? menuButtonReserve : 16}}px;"
   >
-    <button wx:if="{{back}}" class="top-bar__back" bindtap="handleBack" aria-label="返回">
+    <button
+      wx:if="{{back}}"
+      class="top-bar__back {{backInsetRpx > 0 ? 'top-bar__back--positioned' : ''}}"
+      bindtap="handleBack"
+      aria-label="返回"
+    >
       <text class="top-bar__back-icon">‹</text>
     </button>
     <view wx:elif="{{!home}}" class="top-bar__side"></view>

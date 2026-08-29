@@ -19,12 +19,11 @@
 .about-menu__icon--blue { color: #4c8df6; }
 .about-menu__icon--yellow { color: #f4a11f; }
 .about-menu__item view { flex: 1; font-size: 28rpx; }
-.about-menu__item > text:last-child { color: var(--color-text-secondary); font-size: 40rpx; }
-.about-menu__item .about-menu__meta { font-size: 22rpx; white-space: nowrap; }
+.about-menu__arrow { color: var(--color-text-secondary); font-size: 40rpx; line-height: 1; }
+.about-menu__meta { color: var(--color-text-secondary); font-size: 24rpx; line-height: 36rpx; white-space: nowrap; }
 .about-footer { padding: 36rpx 0 8rpx; color: var(--color-text-secondary); font-size: 23rpx; line-height: 40rpx; }
 .about-footer text { color: var(--color-primary); }
 
 @media (max-width: 340px) {
   .about-intro__body { max-width: 72%; }
-  .about-menu__item .about-menu__meta { font-size: 19rpx; }
 }

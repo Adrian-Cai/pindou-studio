@@ -18,6 +18,20 @@ export interface PatternDraft {
   cells: PatternCell[]
 }
 
+export interface PersistedPaletteItem {
+  code: string
+  color: string
+}
+
+export interface PersistedPattern {
+  schemaVersion: 1
+  width: number
+  height: number
+  settings: Pick<PatternSettings, 'colorLimit' | 'brand'>
+  palette: PersistedPaletteItem[]
+  cells: number[]
+}
+
 export interface WorkItem {
   id: string
   title: string
@@ -28,6 +42,8 @@ export interface WorkItem {
   width?: number
   height?: number
   status?: 'draft' | 'completed'
+  isCloud?: boolean
+  createdAt?: number
 }
 
 export type DownloadFileType = 'preview' | 'chart' | 'materials'

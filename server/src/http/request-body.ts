@@ -48,11 +48,12 @@ export function readSingleUploadedFile(
   fieldName: string,
   maximumBytes: number,
   allowedFields: readonly string[] = [],
+  label = "文件",
 ): Promise<UploadedFile> {
   const contentType = request.headers["content-type"]?.toLowerCase() ?? "";
   if (!contentType.startsWith("multipart/form-data;")) {
     return Promise.reject(
-      new AppError(415, "UNSUPPORTED_MEDIA_TYPE", "头像上传必须使用 multipart/form-data"),
+      new AppError(415, "UNSUPPORTED_MEDIA_TYPE", `${label}上传必须使用 multipart/form-data`),
     );
   }
 
@@ -70,7 +71,7 @@ export function readSingleUploadedFile(
         },
       });
     } catch {
-      reject(invalidArgument("头像上传请求格式不正确"));
+      reject(invalidArgument(`${label}上传请求格式不正确`));
       return;
     }
 
@@ -93,10 +94,10 @@ export function readSingleUploadedFile(
       }
       const chunks: Buffer[] = [];
       stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-      stream.on("error", () => fail(invalidArgument("头像文件读取失败")));
+      stream.on("error", () => fail(invalidArgument(`${label}读取失败`)));
       stream.on("close", () => {
         if (stream.truncated) {
-          fail(new AppError(413, "PAYLOAD_TOO_LARGE", "头像文件不能超过 2 MB"));
+          fail(new AppError(413, "PAYLOAD_TOO_LARGE", `${label}超过大小限制`));
           return;
         }
         uploaded = {
@@ -114,23 +115,23 @@ export function readSingleUploadedFile(
       }
       fields[name] = value;
     });
-    parser.on("filesLimit", () => fail(invalidArgument("每次只能上传一个头像文件")));
-    parser.on("partsLimit", () => fail(invalidArgument("头像上传只接受 file 字段")));
-    parser.on("error", () => fail(invalidArgument("头像上传请求格式不正确")));
+    parser.on("filesLimit", () => fail(invalidArgument(`每次只能上传一个${label}`)));
+    parser.on("partsLimit", () => fail(invalidArgument(`${label}上传包含过多表单字段`)));
+    parser.on("error", () => fail(invalidArgument(`${label}上传请求格式不正确`)));
     parser.on("close", () => {
       if (settled) return;
       if (rejectedField) {
-        fail(invalidArgument("头像上传包含不支持的表单字段"));
+        fail(invalidArgument(`${label}上传包含不支持的表单字段`));
         return;
       }
       if (rejectedFile || !uploaded || uploaded.buffer.length === 0) {
-        fail(invalidArgument("缺少头像文件字段 file"));
+        fail(invalidArgument(`缺少${label}字段 ${fieldName}`));
         return;
       }
       settled = true;
       resolve(uploaded);
     });
-    request.on("aborted", () => fail(invalidArgument("头像上传已中断")));
+    request.on("aborted", () => fail(invalidArgument(`${label}上传已中断`)));
     request.pipe(parser);
   });
 }

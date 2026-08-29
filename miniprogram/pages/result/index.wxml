@@ -3,10 +3,7 @@
     <top-bar
       title="作品结果"
       back
-      actionText="•••"
-      actionType="more"
       navigationBarHeight="{{navigationBarHeight}}"
-      bind:action="openMore"
     />
   </view>
 
@@ -19,13 +16,23 @@
   >
   <view wx:if="{{draft && summary}}" class="result-content">
     <view class="work-summary">
-      <!-- thumbnailCanvas 仅用于离屏绘制，渲染完成后导出为 image 显示，避免原生 canvas 脱离文档流导致滚动漂移 -->
+      <!-- 画布仅用于离屏绘制，页面内展示导出后的 image，避免原生 canvas 滚动漂移 -->
       <canvas id="thumbnailCanvas" class="work-summary__thumb-canvas" type="2d"></canvas>
+      <canvas id="previewRenderCanvas" class="preview-render-canvas" type="2d"></canvas>
       <image class="work-summary__thumb" src="{{thumbnailSrc}}" mode="aspectFill"></image>
       <view class="work-summary__info">
-        <view class="work-summary__title">{{summary.title}}</view>
+        <button
+          class="work-summary__title-button"
+          hover-class="work-summary__title-button--pressed"
+          bindtap="editTitle"
+          disabled="{{renamingTitle}}"
+          aria-label="编辑作品名称，当前名称 {{summary.title}}"
+        >
+          <text class="work-summary__title">{{summary.title}}</text>
+          <image class="work-summary__edit-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
+        </button>
         <view class="work-summary__meta">
-          {{draft.settings.width}}×{{draft.settings.height}}　{{summary.colorCount}} 色
+          {{draft.settings.width}}×{{draft.settings.height}} · {{summary.colorCount}}色
         </view>
         <view class="work-summary__count">共 {{summary.beadCount}} 颗</view>
         <view class="work-summary__date">创建于 {{summary.createdText}}</view>
@@ -62,7 +69,7 @@
         <view class="panel-heading__hint">高清展示拼豆成品效果，适合预览和分享</view>
       </view>
       <view class="preview-stage">
-        <canvas id="previewCanvas" class="preview-stage__canvas" type="2d"></canvas>
+        <image class="preview-stage__image" src="{{previewSrc}}" mode="aspectFill"></image>
       </view>
       <view class="download-format">PNG 格式　高清图</view>
       <button class="download-button" bindtap="openDownloads">
@@ -89,16 +96,39 @@
         </view>
       </view>
       <view wx:if="{{materials.length}}" class="material-list">
-        <view class="material-row" wx:for="{{materials}}" wx:key="colorCode">
-          <view class="material-row__swatch" style="background-color: {{item.color}};"></view>
-          <view class="material-row__detail">
-            <view class="material-row__code">{{item.colorCode}}</view>
-            <view class="material-row__hex">{{item.color}}</view>
+        <view class="material-list__header">
+          <view>颜色</view>
+          <view class="material-list__header-number">数量</view>
+          <view class="material-list__header-number">占比</view>
+        </view>
+        <view class="material-row" wx:for="{{visibleMaterials}}" wx:key="colorCode">
+          <view class="material-row__color">
+            <view class="material-row__swatch" style="background-color: {{item.color}};"></view>
+            <view class="material-row__detail">
+              <view class="material-row__code">{{item.colorCode}}</view>
+              <view class="material-row__hex">{{item.color}}</view>
+            </view>
           </view>
-          <view class="material-row__count">{{item.count}} 颗</view>
+          <view class="material-row__count">{{item.count}}</view>
+          <view class="material-row__percentage">{{item.percentage}}</view>
         </view>
       </view>
       <view wx:else class="panel-empty">这幅作品没有可统计的颜色。</view>
+      <button
+        wx:if="{{materials.length > 5}}"
+        class="material-list__toggle"
+        bindtap="toggleMaterialList"
+        aria-expanded="{{materialListExpanded}}"
+        aria-label="{{materialListExpanded ? '收起颜色列表' : '展开全部颜色'}}"
+      >
+        <text wx:if="{{materialListExpanded}}">收起颜色列表</text>
+        <text wx:else>展开全部 {{materials.length}} 种颜色</text>
+        <text class="material-list__toggle-icon">{{materialListExpanded ? '↑' : '↓'}}</text>
+      </button>
+      <button wx:if="{{materials.length}}" class="download-button" bindtap="openDownloads">
+        <text class="download-button__icon">↓</text>
+        <text>下载材料清单</text>
+      </button>
     </view>
 
     <view wx:elif="{{activeTab === 'chart'}}" class="result-panel">
@@ -106,14 +136,21 @@
         <view class="panel-heading__title">编号施工图</view>
         <view class="panel-heading__hint">双向滑动查看完整图纸，格内编号对应材料色号</view>
       </view>
-      <scroll-view class="chart-stage" scroll-x scroll-y enhanced show-scrollbar="{{false}}">
-        <canvas
-          id="chartCanvas"
-          class="chart-stage__canvas"
-          style="width: {{chartWidthRpx}}rpx; height: {{chartHeightRpx}}rpx;"
-          type="2d"
-        ></canvas>
-      </scroll-view>
+      <canvas
+        id="chartRenderCanvas"
+        class="chart-render-canvas"
+        style="width: {{chartWidthRpx}}rpx; height: {{chartHeightRpx}}rpx;"
+        type="2d"
+      ></canvas>
+      <view wx:if="{{chartSrc}}" class="chart-stage">
+        <image
+          class="chart-stage__image"
+          src="{{chartSrc}}"
+          mode="widthFix"
+          aria-label="编号施工图，格内编号对应材料色号"
+        ></image>
+      </view>
+      <view wx:else class="chart-loading">施工图生成中...</view>
       <button class="download-button" bindtap="openDownloads">
         <text class="download-button__icon">↓</text>
         <text>下载施工图</text>
@@ -126,13 +163,25 @@
         <view class="panel-heading__hint">制作时可按色号、颜色和数量快速核对</view>
       </view>
       <view wx:if="{{materials.length}}" class="palette-grid">
-        <view class="palette-card" wx:for="{{materials}}" wx:key="colorCode">
+        <view
+          class="palette-card"
+          wx:for="{{materials}}"
+          wx:key="colorCode"
+          aria-label="{{item.colorCode}}，{{item.count}}颗，颜色值 {{item.color}}"
+        >
           <view class="palette-card__color" style="background-color: {{item.color}};"></view>
           <view class="palette-card__code">{{item.colorCode}}</view>
-          <view class="palette-card__meta">{{item.count}} 颗　{{item.color}}</view>
+          <view class="palette-card__count">{{item.count}}颗</view>
         </view>
       </view>
       <view wx:else class="panel-empty">当前没有可参考的颜色。</view>
+      <block wx:if="{{materials.length}}">
+        <view class="download-format">PNG 格式　高清图</view>
+        <button class="download-button" bindtap="openDownloads">
+          <text class="download-button__icon">↓</text>
+          <text>下载色板参考</text>
+        </button>
+      </block>
     </view>
 
     <view class="quota-strip">

@@ -73,6 +73,11 @@ export class AppStore {
     this.update({ works })
   }
 
+  replaceCloudWorks(cloudWorks: WorkItem[]) {
+    const localWorks = this.state.works.filter((item) => !item.isCloud)
+    this.update({ works: [...cloudWorks, ...localWorks] })
+  }
+
   toggleFavorite(workId: string) {
     const exists = this.state.favoriteIds.includes(workId)
     const favoriteIds = exists

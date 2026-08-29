@@ -33,6 +33,15 @@ export interface CreateWorkInput {
   readonly validatedPattern: ValidatedPattern;
 }
 
+export interface UpdateWorkInput {
+  readonly userId: string;
+  readonly workId: string;
+  readonly title?: string;
+  readonly coverFileId?: string;
+  readonly status?: WorkStatus;
+  readonly validatedPattern?: ValidatedPattern;
+}
+
 export interface WorkListOptions {
   readonly userId: string;
   readonly status?: WorkStatus;
@@ -79,6 +88,7 @@ interface OwnershipRow extends QueryResultRow {
 
 export interface WorkService {
   create(input: CreateWorkInput): Promise<WorkSummary>;
+  update(input: UpdateWorkInput): Promise<WorkSummary>;
   list(options: WorkListOptions): Promise<WorkListResponse>;
   get(userId: string, workId: string): Promise<WorkDetail>;
   delete(userId: string, workId: string): Promise<void>;
@@ -166,6 +176,89 @@ export class PostgresWorkService implements WorkService {
     }
   }
 
+  public async update(input: UpdateWorkInput): Promise<WorkSummary> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const existing = await readWorkDetail(client, input.workId, true);
+      if (!existing || existing.deleted_at) throw notFound("作品不存在");
+      if (existing.user_id !== input.userId) throw forbidden("作品不属于当前用户");
+
+      let coverUrl = existing.cover_url;
+      if (input.coverFileId !== undefined) {
+        const cover = await client.query<OwnershipRow & { readonly file_type: string; readonly public_url: string }>(
+          `SELECT user_id, deleted_at, file_type, public_url
+             FROM pindou_file_assets
+            WHERE id = $1
+            LIMIT 1`,
+          [input.coverFileId],
+        );
+        const coverRow = cover.rows[0];
+        if (!coverRow) throw notFound("封面文件不存在");
+        if (coverRow.user_id !== input.userId) throw forbidden("封面文件不属于当前用户");
+        if (coverRow.file_type !== "cover" || coverRow.deleted_at) throw notFound("封面文件不可用");
+        coverUrl = coverRow.public_url;
+      }
+
+      const validatedPattern = input.validatedPattern ?? validatePersistedPattern(mapPattern(existing));
+      const { pattern, beadCount, colorCount } = validatedPattern;
+      const currentTime = this.now();
+      const updated = await client.query<WorkRow>(
+        `UPDATE pindou_works
+            SET title = $3, cover_file_id = $4, width = $5, height = $6,
+                bead_count = $7, color_count = $8, brand = $9, status = $10,
+                updated_at = $11
+          WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+          RETURNING id, user_id, title, cover_file_id, width, height, bead_count,
+                    color_count, brand, status, created_at, updated_at, deleted_at`,
+        [
+          input.workId,
+          input.userId,
+          input.title ?? existing.title,
+          input.coverFileId ?? existing.cover_file_id,
+          pattern.width,
+          pattern.height,
+          beadCount,
+          colorCount,
+          pattern.settings.brand,
+          input.status ?? existing.status,
+          currentTime,
+        ],
+      );
+      const updatedRow = updated.rows[0];
+      if (!updatedRow) throw notFound("作品不存在");
+
+      if (input.validatedPattern !== undefined) {
+        await client.query(
+          `UPDATE pindou_work_patterns
+              SET schema_version = $2, width = $3, height = $4, color_limit = $5,
+                  brand = $6, palette_json = $7::jsonb, cells_json = $8::jsonb,
+                  updated_at = $9
+            WHERE work_id = $1`,
+          [
+            input.workId,
+            pattern.schemaVersion,
+            pattern.width,
+            pattern.height,
+            pattern.settings.colorLimit,
+            pattern.settings.brand,
+            JSON.stringify(pattern.palette),
+            JSON.stringify(pattern.cells),
+            currentTime,
+          ],
+        );
+      }
+
+      await client.query("COMMIT");
+      return mapSummary({ ...updatedRow, cover_url: coverUrl });
+    } catch (error: unknown) {
+      await rollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   public async list(options: WorkListOptions): Promise<WorkListResponse> {
     const conditions = ["works.user_id = $1", "works.deleted_at IS NULL"];
     const parameters: unknown[] = [options.userId];
@@ -245,7 +338,11 @@ export class PostgresWorkService implements WorkService {
   }
 }
 
-async function readWorkDetail(client: PoolClient, workId: string): Promise<WorkRow | null> {
+async function readWorkDetail(
+  client: PoolClient,
+  workId: string,
+  lock = false,
+): Promise<WorkRow | null> {
   const result = await client.query<WorkRow>(
     `SELECT works.id, works.user_id, works.title, works.cover_file_id,
             files.public_url AS cover_url, works.width, works.height,
@@ -256,7 +353,7 @@ async function readWorkDetail(client: PoolClient, workId: string): Promise<WorkR
        FROM pindou_works works
        JOIN pindou_work_patterns patterns ON patterns.work_id = works.id
        LEFT JOIN pindou_file_assets files ON files.id = works.cover_file_id AND files.deleted_at IS NULL
-      WHERE works.id = $1 LIMIT 1`,
+      WHERE works.id = $1 LIMIT 1${lock ? " FOR UPDATE OF works" : ""}`,
     [workId],
   );
   return result.rows[0] ?? null;

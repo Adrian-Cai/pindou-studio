@@ -152,13 +152,14 @@ cells 按行优先排列，长度必须严格等于 width * height；-1 表示�
 阶段 2：封面文件和作品 CRUD
 ====================
 
-目标：支持保存作品、作品列表、详情恢复和删除。
+目标：支持保存作品、作品列表、详情恢复、覆盖编辑和删除。
 
 接口：
 - POST /api/files/upload
 - POST /api/works
 - GET /api/works
 - GET /api/works/:id
+- PUT/PATCH /api/works/:id
 - DELETE /api/works/:id
 
 任务：
@@ -171,15 +172,17 @@ cells 按行优先排列，长度必须严格等于 width * height；-1 表示�
 7. 从图案数据重新计算 bead_count、color_count、width、height。
 8. GET /api/works 只返回作品摘要，不加载完整 cells。
 9. GET /api/works/:id 返回完整 pattern，使历史作品不依赖原图即可恢复。
-10. DELETE /api/works/:id 按当前用户校验归属，优先软删除作品；不得级联删除额度流水和已支付订单。
-11. 使用 Idempotency-Key 防止保存作品网络重试产生重复作品。
-12. 增加上传、图案校验、作品归属、列表分页、历史恢复、删除和幂等测试。
+10. PUT/PATCH /api/works/:id 支持改名、换封面、修改状态和覆盖保存完整图案；更新图案时重新校验并计算摘要字段。
+11. DELETE /api/works/:id 按当前用户校验归属，优先软删除作品；不得级联删除额度流水和已支付订单。
+12. 使用 Idempotency-Key 防止保存作品网络重试产生重复作品。
+13. 增加上传、图案校验、作品归属、列表分页、历史恢复、更新、删除和幂等测试。
 
 阶段 2 验收：
 - 128×128 图案保存的是 16384 个整数，不是 16384 个对象。
 - 删除本地临时图片后，GET /api/works/:id 仍能恢复完整网格。
 - 用户 A 不能读取、删除或绑定用户 B 的作品和文件。
 - 作品列表响应不携带完整 pattern。
+- 编辑覆盖保存后，详情可以恢复最新网格，摘要统计由服务端重新计算。
 
 完成后停止并报告。
 

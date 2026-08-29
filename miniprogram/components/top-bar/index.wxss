@@ -98,6 +98,26 @@
   transform: translateY(-50%);
 }
 
+.top-bar__back.top-bar__back--positioned {
+  position: absolute;
+  left: var(--top-bar-back-inset);
+  display: flex;
+  width: 88rpx;
+  min-width: 88rpx;
+  max-width: 88rpx;
+  height: 88rpx;
+  min-height: 88rpx;
+  align-items: center;
+  justify-content: flex-start;
+  line-height: 1;
+  text-align: left;
+}
+
+.top-bar__back.top-bar__back--positioned .top-bar__back-icon {
+  position: static;
+  transform: none;
+}
+
 .top-bar__action {
   color: #12b466;
   font-size: 24rpx;

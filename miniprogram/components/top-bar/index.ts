@@ -8,11 +8,19 @@ Component({
     actionText: { type: String, value: '' },
     actionType: { type: String, value: 'text' },
     home: { type: Boolean, value: false },
-    navigationBarHeight: { type: Number, value: 0 },
+    backInsetRpx: { type: Number, value: 32 },
+    navigationBarHeight: {
+      type: Number,
+      value: 0,
+      observer(value: number) {
+        if (value > 0) this.setData({ resolvedNavigationBarHeight: value })
+      },
+    },
   },
   data: {
     statusBarHeight: 20,
     menuButtonReserve: 16,
+    resolvedNavigationBarHeight: 0,
   },
   lifetimes: {
     attached() {
@@ -20,6 +28,10 @@ Component({
       this.setData({
         statusBarHeight: metrics.statusBarHeight,
         menuButtonReserve: metrics.menuButtonReserve,
+        resolvedNavigationBarHeight:
+          this.properties.navigationBarHeight > 0
+            ? this.properties.navigationBarHeight
+            : metrics.navigationBarHeight,
       })
     },
   },

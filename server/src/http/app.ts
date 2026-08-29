@@ -6,8 +6,9 @@ import type { RequestAuthenticator } from "../modules/auth/authenticator";
 import type { AvatarStorage } from "../modules/users/avatar-storage";
 import type { UserProfileService } from "../modules/users/user-profile-service";
 import type { FileAssetService } from "../modules/files/file-asset-service";
+import type { CoverStorage } from "../modules/files/cover-storage";
 import { validatePersistedPattern, type PersistedPattern } from "../modules/works/pattern";
-import type { WorkService, WorkStatus } from "../modules/works/work-service";
+import type { UpdateWorkInput, WorkService, WorkStatus } from "../modules/works/work-service";
 import { AppError, invalidArgument } from "../shared/app-error";
 import { readJsonObject, readSingleUploadedFile } from "./request-body";
 
@@ -33,7 +34,7 @@ function sendJson(response: ServerResponse, statusCode: number, payload: unknown
   response.end(JSON.stringify(payload));
 }
 
-function sendAvatar(
+function sendImage(
   response: ServerResponse,
   avatar: { readonly buffer: Buffer; readonly contentType: string },
 ): void {
@@ -64,6 +65,7 @@ export interface HttpApplicationDependencies {
   readonly avatars: AvatarStorage;
   readonly avatarMaximumBytes: number;
   readonly files: FileAssetService;
+  readonly covers: CoverStorage;
   readonly works: WorkService;
   readonly coverMaximumBytes: number;
 }
@@ -115,6 +117,40 @@ function validateWorkBody(body: Record<string, unknown>): {
   if (status !== "draft" && status !== "completed") throw invalidArgument("作品 status 只能是 draft 或 completed");
   const validated = validatePersistedPattern(body.pattern);
   return { title: title.trim(), coverFileId: body.coverFileId.trim(), status, pattern: validated.pattern };
+}
+
+function validateWorkUpdateBody(body: Record<string, unknown>): Omit<UpdateWorkInput, "userId" | "workId"> {
+  const allowed = ["title", "coverFileId", "status", "pattern"];
+  const keys = Object.keys(body);
+  if (keys.length < 1 || !keys.every((key) => allowed.includes(key))) {
+    throw invalidArgument("作品更新只能包含 title、coverFileId、status 和 pattern，且至少包含一项");
+  }
+  const result: {
+    title?: string;
+    coverFileId?: string;
+    status?: WorkStatus;
+    validatedPattern?: ReturnType<typeof validatePersistedPattern>;
+  } = {};
+  if ("title" in body) {
+    if (typeof body.title !== "string" || body.title.trim().length < 1 || Array.from(body.title.trim()).length > 120 || /[\u0000-\u001f\u007f]/u.test(body.title)) {
+      throw invalidArgument("作品标题长度必须为 1 到 120 个字符，且不能包含控制字符");
+    }
+    result.title = body.title.trim();
+  }
+  if ("coverFileId" in body) {
+    if (typeof body.coverFileId !== "string" || !body.coverFileId.trim()) {
+      throw invalidArgument("coverFileId 必须是非空字符串");
+    }
+    result.coverFileId = body.coverFileId.trim();
+  }
+  if ("status" in body) {
+    if (body.status !== "draft" && body.status !== "completed") {
+      throw invalidArgument("作品 status 只能是 draft 或 completed");
+    }
+    result.status = body.status;
+  }
+  if ("pattern" in body) result.validatedPattern = validatePersistedPattern(body.pattern);
+  return result;
 }
 
 function listOptions(url: URL, userId: string): { userId: string; status?: WorkStatus; page: number; pageSize: number; query?: string } {
@@ -182,7 +218,16 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         if (url.searchParams.size > 0) throw invalidArgument("头像地址不接受查询参数");
         const avatar = await dependencies.avatars.read(url.pathname);
         if (avatar) {
-          sendAvatar(response, avatar);
+          sendImage(response, avatar);
+          return;
+        }
+      }
+
+      if (request.method === "GET" && url.pathname.startsWith("/api/media/covers/")) {
+        if (url.searchParams.size > 0) throw invalidArgument("封面地址不接受查询参数");
+        const cover = await dependencies.covers.read(url.pathname);
+        if (cover) {
+          sendImage(response, cover);
           return;
         }
       }
@@ -197,7 +242,13 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       if (request.method === "POST" && url.pathname === "/api/files/upload") {
         if (url.searchParams.size > 0) throw invalidArgument("文件上传接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
-        const upload = await readSingleUploadedFile(request, "file", dependencies.coverMaximumBytes, ["type"]);
+        const upload = await readSingleUploadedFile(
+          request,
+          "file",
+          dependencies.coverMaximumBytes,
+          ["type"],
+          "封面文件",
+        );
         if (upload.fields.type !== "cover" || Object.keys(upload.fields).length !== 1) {
           throw invalidArgument("文件上传的 type 只能是 cover");
         }
@@ -234,14 +285,21 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       }
 
       const requestedWorkId = workId(url.pathname);
-      if (requestedWorkId && (request.method === "GET" || request.method === "DELETE")) {
+      if (requestedWorkId && (request.method === "GET" || request.method === "DELETE" || request.method === "PATCH" || request.method === "PUT")) {
         if (url.searchParams.size > 0) throw invalidArgument("作品详情接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         if (request.method === "GET") {
           sendJson(response, 200, await dependencies.works.get(currentUser.id, requestedWorkId));
-        } else {
+        } else if (request.method === "DELETE") {
           await dependencies.works.delete(currentUser.id, requestedWorkId);
           sendNoContent(response);
+        } else {
+          const update = validateWorkUpdateBody(await readJsonObject(request, 2 * 1024 * 1024));
+          sendJson(response, 200, await dependencies.works.update({
+            userId: currentUser.id,
+            workId: requestedWorkId,
+            ...update,
+          }));
         }
         return;
       }
@@ -276,6 +334,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           "file",
           dependencies.avatarMaximumBytes,
           ["nickname"],
+          "头像文件",
         );
         const nickname = validateNicknameBody({ nickname: upload.fields.nickname });
         const avatar = await dependencies.avatars.save(upload.buffer, upload.declaredContentType);

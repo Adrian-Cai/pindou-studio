@@ -43,9 +43,11 @@ function dependencies(overrides = {}) {
     avatars: { async save() { throw new Error("unused"); }, async read() { return null; }, async remove() {} },
     avatarMaximumBytes: 2 * 1024 * 1024,
     coverMaximumBytes: 10 * 1024 * 1024,
+    covers: { async read() { return null; }, async save() { throw new Error("unused"); }, async remove() {} },
     files: { async upload() { return { id: "file_test", type: "cover", url: "https://cdn.example/cover.png", contentType: "image/png", size: PNG.length, createdAt: "2026-08-27T01:00:00.000Z" }; } },
     works: {
       async create() { return summary(); },
+      async update() { return summary(); },
       async list() { return { total: 0, page: 1, pageSize: 20, items: [] }; },
       async get() { return { ...summary(), pattern: pattern() }; },
       async delete() {},
@@ -78,6 +80,25 @@ test("cover upload authenticates and accepts only type=cover", async () => {
     invalid.append("type", "original");
     const invalidResponse = await fetch(`${baseUrl}/api/files/upload`, { method: "POST", headers: { authorization: "Bearer token" }, body: invalid });
     assert.equal(invalidResponse.status, 400);
+  });
+});
+
+test("GET /api/media/covers serves an uploaded cover path", async () => {
+  await withApplication(dependencies({
+    covers: {
+      async read(path) {
+        assert.equal(path, "/api/media/covers/cover_0123456789abcdef0123456789abcdef.png");
+        return { buffer: PNG, contentType: "image/png" };
+      },
+      async save() { throw new Error("unused"); },
+      async remove() {},
+    },
+  }), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/media/covers/cover_0123456789abcdef0123456789abcdef.png`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "image/png");
+    assert.equal(response.headers.get("cache-control"), "public, max-age=31536000, immutable");
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), PNG);
   });
 });
 
@@ -119,6 +140,39 @@ test("work list, detail recovery and delete use the authenticated owner", async 
     const deleteResponse = await fetch(`${baseUrl}/api/works/work_test`, { method: "DELETE", headers: { authorization: "Bearer token" } });
     assert.equal(deleteResponse.status, 204);
     assert.deepEqual(calls[2], { method: "delete", userId: "usr_current", id: "work_test" });
+  });
+});
+
+test("PUT /api/works/:id updates title, cover and edited pattern for the authenticated owner", async () => {
+  let received;
+  await withApplication(dependencies({
+    works: {
+      async create() { return summary(); },
+      async update(input) { received = input; return { ...summary(), title: input.title, beadCount: 1 }; },
+      async list() { return { total: 0, page: 1, pageSize: 20, items: [] }; },
+      async get() { return { ...summary(), pattern: pattern() }; },
+      async delete() {},
+    },
+  }), async (baseUrl) => {
+    const editedPattern = pattern();
+    editedPattern.cells[0] = -1;
+    const response = await fetch(`${baseUrl}/api/works/work_test`, {
+      method: "PUT",
+      headers: { authorization: "Bearer token", "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "编辑后的作品",
+        coverFileId: "file_edited",
+        status: "completed",
+        pattern: editedPattern,
+      }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(body.title, "编辑后的作品");
+    assert.equal(received.userId, "usr_current");
+    assert.equal(received.workId, "work_test");
+    assert.equal(received.coverFileId, "file_edited");
+    assert.equal(received.validatedPattern.beadCount, 1023);
   });
 });
 

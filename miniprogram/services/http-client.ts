@@ -8,6 +8,16 @@ interface ApiRequestOptions {
   data?: WechatMiniprogram.IAnyObject | string | ArrayBuffer
   token?: string
   timeoutMs?: number
+  headers?: Readonly<Record<string, string>>
+}
+
+interface ApiUploadOptions {
+  path: string
+  filePath: string
+  name: string
+  formData?: Readonly<Record<string, string>>
+  token?: string
+  timeoutMs?: number
 }
 
 interface ApiErrorBody {
@@ -56,6 +66,7 @@ export function apiRequest<T>(options: ApiRequestOptions): Promise<T> {
     const header: Record<string, string> = {
       accept: 'application/json',
       'content-type': 'application/json',
+      ...options.headers,
     }
     if (options.token) header.authorization = `Bearer ${options.token}`
 
@@ -74,6 +85,49 @@ export function apiRequest<T>(options: ApiRequestOptions): Promise<T> {
       },
       fail: () => {
         reject(new ApiError('网络连接失败，请检查网络后重试。', { code: 'NETWORK_ERROR' }))
+      },
+    })
+  })
+}
+
+export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
+  let url: string
+  try {
+    url = buildApiUrl(options.path)
+  } catch (error) {
+    const message = error instanceof ApiConfigurationError ? error.message : 'API 地址配置无效'
+    return Promise.reject(new ApiError(message, { code: 'API_CONFIGURATION_ERROR' }))
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const header: Record<string, string> = { accept: 'application/json' }
+    if (options.token) header.authorization = `Bearer ${options.token}`
+    wx.uploadFile({
+      url,
+      filePath: options.filePath,
+      name: options.name,
+      formData: { ...options.formData },
+      header,
+      timeout: options.timeoutMs ?? 30_000,
+      success: (response) => {
+        let body: unknown
+        try {
+          body = response.data ? JSON.parse(response.data) as unknown : {}
+        } catch {
+          reject(new ApiError('服务返回了无法识别的数据，请稍后重试。', {
+            statusCode: response.statusCode,
+            code: 'INVALID_RESPONSE',
+          }))
+          return
+        }
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          resolve(body as T)
+          return
+        }
+        reject(createApiError(response.statusCode, body))
+      },
+      fail: () => {
+        reject(new ApiError('图片上传失败，请检查网络后重试。', { code: 'NETWORK_ERROR' }))
       },
     })
   })

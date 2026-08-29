@@ -15,7 +15,7 @@
 | 阶段 | 能力 | 接口 |
 | --- | --- | --- |
 | 1 | 微信登录、当前用户 | `POST /api/auth/login`、`GET/PUT/PATCH /api/users/me`、`POST /api/users/me/avatar` |
-| 2 | 封面上传、作品保存与恢复 | `POST /api/files/upload`、`POST /api/works`、`GET /api/works`、`GET /api/works/:id`、`DELETE /api/works/:id` |
+| 2 | 封面上传、作品保存与恢复 | `POST /api/files/upload`、`GET /api/media/covers/:filename`、`POST /api/works`、`GET /api/works`、`GET /api/works/:id`、`PUT/PATCH /api/works/:id`、`DELETE /api/works/:id` |
 | 3 | 收藏 | `PATCH /api/works/:id/favorite`、`GET /api/favorites` |
 | 4 | 额度与下载记录 | `GET /api/quota/me`、`GET /api/downloads`、`POST /api/downloads` |
 | 5 | 套餐与支付 | `GET /api/packages`、`POST /api/payments/create`、`POST /api/payments/notify` |
@@ -364,6 +364,10 @@ Authorization: Bearer <token>
 
 作品保存时使用 `file.id`，不直接信任客户端传入的任意 URL。文件必须归属于当前用户；只有当前用户可以把它绑定到自己的作品。
 
+### GET `/api/media/covers/:filename`
+
+用途：公开读取服务端生成的作品封面，供作品列表和详情页展示。文件名必须符合服务端生成规则；响应使用不可变缓存头。
+
 ### POST `/api/works`
 
 用途：创建一份云端作品，保存摘要和完整的压缩图案。
@@ -404,8 +408,6 @@ Authorization: Bearer <token>
 - 校验 `coverFileId` 属于当前用户且类型为 `cover`。
 - 使用请求幂等键避免小程序网络重试创建重复作品；推荐使用 `Idempotency-Key` 请求头。
 
-第一版此接口只负责创建。作品改名、编辑后覆盖保存和局部更新属于后续 `PATCH /api/works/:id` 范围。
-
 ### GET `/api/works`
 
 用途：获取当前用户的作品列表，支持历史作品入口。
@@ -435,6 +437,16 @@ Authorization: Bearer <token>
 - 只允许读取当前用户的作品。
 - 返回的 `pattern` 必须能独立恢复编辑器网格，不依赖原始图片。
 - 如果封面文件不可用，作品数据仍应可读取；客户端显示默认占位图。
+
+### PUT/PATCH `/api/works/:id`
+
+用途：更新当前用户作品。小程序使用 `PUT`，服务端同时兼容标准 `PATCH`。
+
+鉴权：需要。
+
+请求体可包含 `title`、`coverFileId`、`status`、`pattern` 中的一项或多项，且至少包含一项。更新 `pattern` 时服务端必须重新校验完整图案，并重新计算尺寸、豆数、颜色数和品牌；更新封面时必须重新校验文件归属和类型。
+
+响应 `200`：返回更新后的 `WorkSummary`。
 
 ### DELETE `/api/works/:id`
 
@@ -672,7 +684,6 @@ Authorization: Bearer <token>
 | --- | --- |
 | `/api/generations` | 图像量化已经在客户端同步完成 |
 | `/api/files/download/:workId/:type` | 第一版由客户端 Canvas 导出并保存相册 |
-| `PATCH /api/works/:id` | 作品改名和覆盖编辑尚未进入 MVP |
 | `POST /api/feedbacks` | 反馈属于后续增强阶段 |
 | `PATCH /api/users/me/privacy` | 云同步语义未定义，暂不提供开关 |
 | `DELETE /api/users/me` | 注销流程和数据保留策略未确定 |
@@ -683,8 +694,9 @@ Authorization: Bearer <token>
 1. 增加 HTTP 客户端和 token 存储；`app.ts` 调用 `wx.login()`，成功后获取 `/api/users/me`。
 2. 保存作品前，客户端将当前 `PatternCell[]` 转成 `PersistedPattern`，先上传客户端生成的封面，再创建作品。
 3. 作品列表只读摘要；打开历史作品时请求详情并将 `pattern` 还原成编辑器结构。
-4. 收藏、额度、下载记录切换到对应接口；本地 Storage 只保留 token、当前临时草稿和必要的离线 UI 状态。
-5. 接入支付时，套餐和额度均以服务端响应为准；支付成功页只刷新额度，不读取 URL 中的 `quota` 直接加数。
+4. 编辑历史作品后重新生成封面，并通过 `PUT /api/works/:id` 覆盖保存完整图案；单独改名只提交 `title`。
+5. 收藏、额度、下载记录切换到对应接口；本地 Storage 只保留 token、当前临时草稿和必要的离线 UI 状态。
+6. 接入支付时，套餐和额度均以服务端响应为准；支付成功页只刷新额度，不读取 URL 中的 `quota` 直接加数。
 
 ## 8. 验收清单
 
@@ -694,6 +706,7 @@ Authorization: Bearer <token>
 - `cells.length = width * height`，透明格使用 `-1`，颜色索引不越界。
 - 历史作品详情只依赖服务端 `pattern`，删除本地临时图片后仍能恢复网格。
 - 作品列表不返回完整 `cells`，作品详情才返回完整 `pattern`。
+- 作品编辑、改名和换封面更新后再次读取详情，服务端摘要和完整 `pattern` 均为最新数据。
 - 删除、收藏、下载、额度和订单均按 token 归属校验。
 - 下载请求重试不重复扣除额度；额度不足不写下载记录。
 - 支付回调重复通知不重复发放额度。

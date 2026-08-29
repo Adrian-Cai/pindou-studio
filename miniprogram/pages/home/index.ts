@@ -9,6 +9,10 @@ const MAX_PREVIEW_WIDTH_RPX = 750 - PAGE_HORIZONTAL_PADDING_RPX * 2
 /** 预览区域最大高度（rpx） */
 const MAX_PREVIEW_HEIGHT_RPX = 480
 
+interface PreviewImageLoadEvent extends WechatMiniprogram.BaseEvent {
+  detail: { width: number; height: number }
+}
+
 Page({
   data: {
     sourceImagePath: '',
@@ -33,22 +37,47 @@ Page({
     try {
       const sourceImagePath = await chooseSourceImage()
       if (sourceImagePath) {
-        const { previewWidth, previewHeight } = await this._calcPreviewSize(sourceImagePath)
-        this.setData({ sourceImagePath, previewWidth, previewHeight })
+        this.setData({
+          sourceImagePath,
+          previewWidth: MAX_PREVIEW_WIDTH_RPX,
+          previewHeight: MAX_PREVIEW_HEIGHT_RPX,
+        })
+        try {
+          const { previewWidth, previewHeight } = await this._calcPreviewSize(sourceImagePath)
+          this.setData({ previewWidth, previewHeight })
+        } catch (error) {
+          // 部分开发者工具临时路径无法调用 getImageInfo，等待 <image> bindload 返回真实尺寸。
+          console.warn('图片尺寸接口不可用，改用图片加载事件计算预览', error)
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (!message.includes('cancel')) {
-        wx.showToast({ title: '图片读取失败', icon: 'none' })
+        console.error('选择图片失败', error)
+        wx.showToast({
+          title: message.includes('仅支持') ? message : '图片无法读取，请换一张重试',
+          icon: 'none',
+        })
       }
     } finally {
       this.setData({ choosing: false })
     }
   },
 
+  handlePreviewLoad(event: PreviewImageLoadEvent) {
+    const { width, height } = event.detail
+    const size = this._previewSizeFromDimensions(width, height)
+    if (size) this.setData(size)
+  },
+
+  handlePreviewError() {
+    this.clearImage()
+    wx.showToast({ title: '图片无法解码，请选择 JPG、PNG 或 WEBP', icon: 'none' })
+  },
+
   /**
    * 根据原图尺寸计算受最大宽高约束的预览尺寸（rpx）。
-   * 只在真实尺寸读取成功后展示图片，避免读取失败时用正方形兜底导致图片变形。
+   * 优先读取原图尺寸；开发者工具不支持临时路径时由图片加载事件补充真实尺寸。
    */
   async _calcPreviewSize(
     imagePath: string,
@@ -58,9 +87,19 @@ Page({
       throw new Error('图片尺寸无效')
     }
 
+    const size = this._previewSizeFromDimensions(imageWidth, imageHeight)
+    if (!size) throw new Error('无法读取页面尺寸')
+    return size
+  },
+
+  _previewSizeFromDimensions(
+    imageWidth: number,
+    imageHeight: number,
+  ): { previewWidth: number; previewHeight: number } | null {
+    if (!imageWidth || !imageHeight) return null
     const windowWidth = wx.getWindowInfo().windowWidth
     if (!windowWidth) {
-      throw new Error('无法读取页面尺寸')
+      return null
     }
 
     // 将图片像素换算为 rpx，再按最大宽度和最大高度等比缩放。
