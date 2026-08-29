@@ -1,4 +1,4 @@
-<view class="result-page">
+<view class="result-page" bindtap="closeQuotaTips">
   <view class="result-header">
     <top-bar
       title="作品结果"
@@ -19,18 +19,31 @@
       <!-- 画布仅用于离屏绘制，页面内展示导出后的 image，避免原生 canvas 滚动漂移 -->
       <canvas id="thumbnailCanvas" class="work-summary__thumb-canvas" type="2d"></canvas>
       <canvas id="previewRenderCanvas" class="preview-render-canvas" type="2d"></canvas>
-      <image class="work-summary__thumb" src="{{thumbnailSrc}}" mode="aspectFill"></image>
+      <canvas
+        id="materialsDownloadCanvas"
+        class="download-render-canvas"
+        style="width: {{downloadCanvasWidth}}px; height: {{materialsCanvasHeight}}px;"
+        type="2d"
+      ></canvas>
+      <canvas
+        id="paletteDownloadCanvas"
+        class="download-render-canvas"
+        style="width: {{downloadCanvasWidth}}px; height: {{paletteCanvasHeight}}px;"
+        type="2d"
+      ></canvas>
+      <image class="work-summary__thumb" src="{{thumbnailSrc}}" mode="aspectFit"></image>
       <view class="work-summary__info">
-        <button
-          class="work-summary__title-button"
-          hover-class="work-summary__title-button--pressed"
+        <view
+          class="work-summary__title-row {{renamingTitle ? 'work-summary__title-row--disabled' : ''}}"
+          hover-class="work-summary__title-row--pressed"
           bindtap="editTitle"
-          disabled="{{renamingTitle}}"
+          role="button"
           aria-label="编辑作品名称，当前名称 {{summary.title}}"
+          aria-disabled="{{renamingTitle}}"
         >
           <text class="work-summary__title">{{summary.title}}</text>
           <image class="work-summary__edit-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
-        </button>
+        </view>
         <view class="work-summary__meta">
           {{draft.settings.width}}×{{draft.settings.height}} · {{summary.colorCount}}色
         </view>
@@ -39,7 +52,7 @@
       </view>
       <view
         class="favorite {{isFavorite ? 'favorite--active' : ''}}"
-        bindtap="toggleFavorite"
+        catchtap="toggleFavorite"
         aria-label="{{isFavorite ? '取消收藏' : '收藏作品'}}"
       >
         <text class="favorite__heart">{{isFavorite ? '♥' : '♡'}}</text>
@@ -72,10 +85,15 @@
         <image class="preview-stage__image" src="{{previewSrc}}" mode="aspectFill"></image>
       </view>
       <view class="download-format">PNG 格式　高清图</view>
-      <button class="download-button" bindtap="openDownloads">
-        <text class="download-button__icon">↓</text>
-        <text>下载成品图</text>
-      </button>
+      <view class="download-action">
+        <result-download-button
+          text="下载成品图"
+          fileType="preview"
+          loading="{{downloadLoading && downloadingType === 'preview'}}"
+          disabled="{{downloadLoading || !previewSrc}}"
+          bind:download="downloadResultFile"
+        />
+      </view>
     </view>
 
     <view wx:elif="{{activeTab === 'materials'}}" class="result-panel">
@@ -125,10 +143,15 @@
         <text wx:else>展开全部 {{materials.length}} 种颜色</text>
         <text class="material-list__toggle-icon">{{materialListExpanded ? '↑' : '↓'}}</text>
       </button>
-      <button wx:if="{{materials.length}}" class="download-button" bindtap="openDownloads">
-        <text class="download-button__icon">↓</text>
-        <text>下载材料清单</text>
-      </button>
+      <view wx:if="{{materials.length}}" class="download-action">
+        <result-download-button
+          text="下载材料清单"
+          fileType="materials"
+          loading="{{downloadLoading && downloadingType === 'materials'}}"
+          disabled="{{downloadLoading}}"
+          bind:download="downloadResultFile"
+        />
+      </view>
     </view>
 
     <view wx:elif="{{activeTab === 'chart'}}" class="result-panel">
@@ -151,10 +174,15 @@
         ></image>
       </view>
       <view wx:else class="chart-loading">施工图生成中...</view>
-      <button class="download-button" bindtap="openDownloads">
-        <text class="download-button__icon">↓</text>
-        <text>下载施工图</text>
-      </button>
+      <view class="download-action">
+        <result-download-button
+          text="下载施工图"
+          fileType="chart"
+          loading="{{downloadLoading && downloadingType === 'chart'}}"
+          disabled="{{downloadLoading || !chartSrc}}"
+          bind:download="downloadResultFile"
+        />
+      </view>
     </view>
 
     <view wx:else class="result-panel">
@@ -207,11 +235,6 @@
               <view class="palette-card__count">{{item.count}}颗</view>
             </view>
           </view>
-          <view class="download-format">PNG 格式　高清图</view>
-          <button class="download-button" bindtap="openDownloads">
-            <text class="download-button__icon">↓</text>
-            <text>下载色板参考</text>
-          </button>
           <view
             class="palette-toggle palette-toggle--collapse"
             hover-class="palette-toggle--pressed"
@@ -226,19 +249,32 @@
         </block>
       </block>
       <view wx:else class="panel-empty">当前没有可参考的颜色。</view>
+      <view wx:if="{{materials.length}}" class="download-format">PNG 格式　高清图</view>
+      <view wx:if="{{materials.length}}" class="download-action">
+        <result-download-button
+          text="下载色板参考"
+          fileType="palette"
+          loading="{{downloadLoading && downloadingType === 'palette'}}"
+          disabled="{{downloadLoading}}"
+          bind:download="downloadResultFile"
+        />
+      </view>
     </view>
 
-    <view class="quota-strip">
-      <view>今日剩余免费下载次数 <text class="quota-strip__value">{{quota}} 次</text></view>
-      <view class="quota-strip__link" bindtap="openDownloads">查看下载方案　›</view>
-    </view>
+    <download-quota-bar
+      quota="{{quota}}"
+      tipsOpen="{{quotaTipsOpen}}"
+      bind:toggletips="toggleQuotaTips"
+      bind:closetips="closeQuotaTips"
+      bind:openmembership="openMembership"
+    />
   </view>
 
   <view wx:else class="result-empty">
     <view class="result-empty__mark">◇</view>
     <view class="result-empty__title">当前没有可查看的作品</view>
     <view class="result-empty__hint">先上传图片并保存作品，这里会生成完整的制作资料。</view>
-    <button class="download-button result-empty__button" bindtap="goCreate">开始制作</button>
+    <button class="start-btn" bindtap="goCreate">开始制作</button>
   </view>
 
   <view class="result-scroll__spacer"></view>

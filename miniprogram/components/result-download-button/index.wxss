@@ -1,0 +1,46 @@
+:host {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 100%;
+  flex: 1 1 100%;
+  align-self: stretch;
+  margin-top: 20rpx;
+}
+
+.download-button {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  height: 80rpx;
+  min-width: 100%;
+  max-width: 100%;
+  flex: 1 1 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  margin: 0;
+  padding: 0 24rpx;
+  border-radius: 12rpx;
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 500;
+  line-height: 80rpx;
+}
+
+.download-button--pressed {
+  background: var(--color-primary-pressed);
+  transform: scale(0.98);
+}
+
+.download-button[aria-disabled="true"] {
+  background: #d8dae2;
+  color: #ffffff;
+}
+
+.download-button__icon {
+  display: block;
+  width: 36rpx;
+  height: 36rpx;
+}

@@ -45,7 +45,7 @@
     <view wx:else class="empty-state">
       <view class="empty-state__icon">⇩</view>
       <view class="empty-state__title">{{allRecords.length ? '没有匹配的下载记录' : '还没有下载记录'}}</view>
-      <view class="empty-state__desc">下载成品图、施工图或材料清单后，记录会保留在这里。</view>
+      <view class="empty-state__desc">下载成品图、材料清单、施工图或色板参考后，记录会保留在这里。</view>
       <button wx:if="{{!allRecords.length}}" class="button-primary empty-state__button" bindtap="openProjects">查看我的作品</button>
     </view>
 

@@ -1,0 +1,16 @@
+<view
+  class="download-button"
+  bindtap="requestDownload"
+  hover-class="{{disabled || loading ? 'none' : 'download-button--pressed'}}"
+  role="button"
+  aria-label="{{loading ? '正在' + text : text}}"
+  aria-disabled="{{disabled || loading}}"
+>
+  <image
+    wx:if="{{!loading}}"
+    class="download-button__icon"
+    src="/assets/icons/import-arrow.svg"
+    mode="aspectFit"
+  />
+  <text>{{loading ? '正在保存…' : text}}</text>
+</view>

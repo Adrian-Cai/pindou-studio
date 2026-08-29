@@ -12,7 +12,7 @@
       bindtap="handleBack"
       aria-label="返回"
     >
-      <text class="top-bar__back-icon">‹</text>
+      <image class="top-bar__back-icon" src="/assets/icons/arrow-left3.svg" mode="aspectFit" />
     </button>
     <view wx:elif="{{!home}}" class="top-bar__side"></view>
     <view class="top-bar__heading">

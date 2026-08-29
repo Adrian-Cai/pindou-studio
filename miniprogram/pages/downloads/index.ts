@@ -14,12 +14,14 @@ const tabs = [
   { id: 'preview', label: '成品图' },
   { id: 'chart', label: '施工图' },
   { id: 'materials', label: '材料清单' },
+  { id: 'palette', label: '色板参考' },
 ] as const
 
 const typeLabels: Record<DownloadFileType, string> = {
   preview: '成品图',
   chart: '施工图',
   materials: '材料清单',
+  palette: '色板参考',
 }
 
 Page({
@@ -35,6 +37,7 @@ Page({
   },
 
   onShow() {
+    appStore.refreshDownloadQuota()
     const state = appStore.getSnapshot()
     const allRecords = state.downloadRecords.map((record) => ({
       ...record,

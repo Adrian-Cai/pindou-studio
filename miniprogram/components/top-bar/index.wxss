@@ -90,11 +90,11 @@
 
 .top-bar__back-icon {
   position: absolute;
+  display: block;
+  width: 48rpx;
+  height: 48rpx;
   top: 50%;
   left: 0;
-  font-size: 48rpx;
-  font-weight: 300;
-  line-height: 1;
   transform: translateY(-50%);
 }
 

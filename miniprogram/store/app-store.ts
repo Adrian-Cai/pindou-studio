@@ -10,17 +10,20 @@ interface AppState {
   works: WorkItem[]
   favoriteIds: string[]
   downloadQuota: number
+  downloadQuotaDate: string
   downloadRecords: DownloadRecord[]
   privacyPreferences: PrivacyPreferences
 }
 
 const STORAGE_KEY = 'pindou-app-state-v1'
+const DAILY_FREE_DOWNLOAD_QUOTA = 3
 
 const initialState: AppState = {
   currentDraft: null,
   works: [],
   favoriteIds: [],
-  downloadQuota: 3,
+  downloadQuota: DAILY_FREE_DOWNLOAD_QUOTA,
+  downloadQuotaDate: '',
   downloadRecords: [],
   privacyPreferences: {
     localOnly: true,
@@ -40,9 +43,14 @@ export class AppStore {
     try {
       const cached = wx.getStorageSync<AppState>(STORAGE_KEY)
       if (cached) {
+        const today = getLocalBusinessDate()
         this.state = {
           ...createInitialState(),
           ...cached,
+          downloadQuota: cached.downloadQuotaDate === today
+            ? normalizeQuota(cached.downloadQuota)
+            : DAILY_FREE_DOWNLOAD_QUOTA,
+          downloadQuotaDate: today,
           privacyPreferences: {
             ...initialState.privacyPreferences,
             ...cached.privacyPreferences,
@@ -102,6 +110,29 @@ export class AppStore {
     this.update({ downloadRecords })
   }
 
+  refreshDownloadQuota(): number {
+    const today = getLocalBusinessDate()
+    if (this.state.downloadQuotaDate !== today) {
+      this.update({
+        downloadQuota: DAILY_FREE_DOWNLOAD_QUOTA,
+        downloadQuotaDate: today,
+      })
+    }
+    return this.state.downloadQuota
+  }
+
+  completeDownload(record: DownloadRecord): number | null {
+    this.refreshDownloadQuota()
+    if (this.state.downloadQuota <= 0) return null
+    const downloadQuota = this.state.downloadQuota - 1
+    const downloadRecords = [
+      record,
+      ...this.state.downloadRecords.filter((item) => item.id !== record.id),
+    ]
+    this.update({ downloadQuota, downloadRecords })
+    return downloadQuota
+  }
+
   setPrivacyPreferences(patch: Partial<PrivacyPreferences>) {
     this.update({
       privacyPreferences: { ...this.state.privacyPreferences, ...patch },
@@ -132,7 +163,21 @@ function createInitialState(): AppState {
     ...initialState,
     works: [],
     favoriteIds: [],
+    downloadQuotaDate: getLocalBusinessDate(),
     downloadRecords: [],
     privacyPreferences: { ...initialState.privacyPreferences },
   }
+}
+
+function getLocalBusinessDate(): string {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function normalizeQuota(value: number): number {
+  if (!Number.isFinite(value)) return DAILY_FREE_DOWNLOAD_QUOTA
+  return Math.max(0, Math.floor(value))
 }

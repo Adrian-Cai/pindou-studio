@@ -46,7 +46,7 @@ export interface WorkItem {
   createdAt?: number
 }
 
-export type DownloadFileType = 'preview' | 'chart' | 'materials'
+export type DownloadFileType = 'preview' | 'chart' | 'materials' | 'palette'
 
 export interface DownloadRecord {
   id: string

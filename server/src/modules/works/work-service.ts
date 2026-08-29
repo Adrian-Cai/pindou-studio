@@ -57,6 +57,19 @@ export interface WorkListResponse {
   readonly items: readonly WorkSummary[];
 }
 
+export interface FavoriteListOptions {
+  readonly userId: string;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly query?: string;
+}
+
+export interface FavoriteUpdateResponse {
+  readonly workId: string;
+  readonly isFavorite: boolean;
+  readonly favoritedAt: string | null;
+}
+
 interface WorkRow extends QueryResultRow {
   readonly id: string;
   readonly user_id: string;
@@ -92,6 +105,8 @@ export interface WorkService {
   list(options: WorkListOptions): Promise<WorkListResponse>;
   get(userId: string, workId: string): Promise<WorkDetail>;
   delete(userId: string, workId: string): Promise<void>;
+  setFavorite(userId: string, workId: string, favorite: boolean): Promise<FavoriteUpdateResponse>;
+  listFavorites(options: FavoriteListOptions): Promise<WorkListResponse>;
 }
 
 export class PostgresWorkService implements WorkService {
@@ -323,18 +338,76 @@ export class PostgresWorkService implements WorkService {
   }
 
   public async delete(userId: string, workId: string): Promise<void> {
-    const ownership = await this.pool.query<OwnershipRow>(
-      `SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1`,
-      [workId],
-    );
-    const row = ownership.rows[0];
-    if (!row || row.deleted_at) throw notFound("作品不存在");
-    if (row.user_id !== userId) throw forbidden("作品不属于当前用户");
+    await assertWorkOwner(this.pool, workId, userId);
     await this.pool.query(
       `UPDATE pindou_works SET deleted_at = $3, updated_at = $3
         WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
       [workId, userId, this.now()],
     );
+  }
+
+  public async setFavorite(userId: string, workId: string, favorite: boolean): Promise<FavoriteUpdateResponse> {
+    await assertWorkOwner(this.pool, workId, userId);
+    if (!favorite) {
+      await this.pool.query(
+        `DELETE FROM pindou_favorites
+          WHERE user_id = $1 AND work_id = $2`,
+        [userId, workId],
+      );
+      return { workId, isFavorite: false, favoritedAt: null };
+    }
+
+    const result = await this.pool.query<{ readonly created_at: Date | string }>(
+      `INSERT INTO pindou_favorites (user_id, work_id, created_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, work_id) DO UPDATE
+       SET created_at = pindou_favorites.created_at
+       RETURNING created_at`,
+      [userId, workId, this.now()],
+    );
+    const createdAt = result.rows[0]?.created_at;
+    if (!createdAt) throw new AppError(500, "INTERNAL_ERROR", "收藏关系写入失败");
+    return { workId, isFavorite: true, favoritedAt: toIso(createdAt) };
+  }
+
+  public async listFavorites(options: FavoriteListOptions): Promise<WorkListResponse> {
+    const conditions = ["favorites.user_id = $1", "works.deleted_at IS NULL"];
+    const parameters: unknown[] = [options.userId];
+    if (options.query) {
+      parameters.push(`%${options.query}%`);
+      conditions.push(`works.title ILIKE $${parameters.length}`);
+    }
+    const countResult = await this.pool.query<{ readonly total_count: string }>(
+      `SELECT COUNT(*)::text AS total_count
+         FROM pindou_favorites favorites
+         JOIN pindou_works works
+           ON works.id = favorites.work_id AND works.user_id = favorites.user_id
+        WHERE ${conditions.join(" AND ")}`,
+      [...parameters],
+    );
+    parameters.push(options.pageSize, (options.page - 1) * options.pageSize);
+    const result = await this.pool.query<WorkRow>(
+      `SELECT works.id, works.user_id, works.title, works.cover_file_id,
+              files.public_url AS cover_url, works.width, works.height,
+              works.bead_count, works.color_count, works.brand, works.status,
+              works.created_at, works.updated_at, works.deleted_at,
+              TRUE AS is_favorite
+         FROM pindou_favorites favorites
+         JOIN pindou_works works
+           ON works.id = favorites.work_id AND works.user_id = favorites.user_id
+         LEFT JOIN pindou_file_assets files ON files.id = works.cover_file_id AND files.deleted_at IS NULL
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY favorites.created_at DESC, works.id DESC
+        LIMIT $${parameters.length - 1} OFFSET $${parameters.length}`,
+      parameters,
+    );
+    const total = Number(countResult.rows[0]?.total_count ?? 0);
+    return {
+      total: Number.isSafeInteger(total) ? total : 0,
+      page: options.page,
+      pageSize: options.pageSize,
+      items: result.rows.map(mapSummary),
+    };
   }
 }
 
@@ -413,6 +486,16 @@ async function throwOwnershipAwareNotFound(pool: Pool, workId: string, userId: s
   const row = result.rows[0];
   if (row && !row.deleted_at && row.user_id !== userId) throw forbidden("作品不属于当前用户");
   throw notFound("作品不存在");
+}
+
+async function assertWorkOwner(pool: Pool, workId: string, userId: string): Promise<void> {
+  const result = await pool.query<OwnershipRow>(
+    "SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1",
+    [workId],
+  );
+  const row = result.rows[0];
+  if (!row || row.deleted_at) throw notFound("作品不存在");
+  if (row.user_id !== userId) throw forbidden("作品不属于当前用户");
 }
 
 async function rollback(client: PoolClient): Promise<void> {

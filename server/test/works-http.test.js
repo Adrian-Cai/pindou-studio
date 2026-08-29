@@ -51,6 +51,8 @@ function dependencies(overrides = {}) {
       async list() { return { total: 0, page: 1, pageSize: 20, items: [] }; },
       async get() { return { ...summary(), pattern: pattern() }; },
       async delete() {},
+      async setFavorite() { return { workId: "work_test", isFavorite: true, favoritedAt: "2026-08-27T01:00:00.000Z" }; },
+      async listFavorites() { return { total: 0, page: 1, pageSize: 20, items: [] }; },
     },
     ...overrides,
   };
@@ -179,6 +181,84 @@ test("PUT /api/works/:id updates title, cover and edited pattern for the authent
 test("cross-owner work deletion follows the ownership error contract", async () => {
   await withApplication(dependencies({ works: { async create() {}, async list() {}, async get() {}, async delete() { throw new AppError(403, "FORBIDDEN", "作品不属于当前用户"); } } }), async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/works/work_other`, { method: "DELETE", headers: { authorization: "Bearer token" } });
+    const body = await response.json();
+    assert.equal(response.status, 403);
+    assert.equal(body.error.code, "FORBIDDEN");
+  });
+});
+
+test("favorite update uses the authenticated user and validates the exact boolean body", async () => {
+  const calls = [];
+  const works = {
+    ...dependencies().works,
+    async setFavorite(userId, workId, favorite) {
+      calls.push({ userId, workId, favorite });
+      return { workId, isFavorite: favorite, favoritedAt: favorite ? "2026-08-29T01:00:00.000Z" : null };
+    },
+  };
+  await withApplication(dependencies({ works }), async (baseUrl) => {
+    const favoriteResponse = await fetch(`${baseUrl}/api/works/work_test/favorite`, {
+      method: "PATCH",
+      headers: { authorization: "Bearer token", "content-type": "application/json" },
+      body: JSON.stringify({ favorite: true }),
+    });
+    assert.equal(favoriteResponse.status, 200);
+    assert.deepEqual(await favoriteResponse.json(), {
+      workId: "work_test",
+      isFavorite: true,
+      favoritedAt: "2026-08-29T01:00:00.000Z",
+    });
+    assert.deepEqual(calls[0], { userId: "usr_current", workId: "work_test", favorite: true });
+
+    const invalidResponse = await fetch(`${baseUrl}/api/works/work_test/favorite`, {
+      method: "PATCH",
+      headers: { authorization: "Bearer token", "content-type": "application/json" },
+      body: JSON.stringify({ favorite: 1 }),
+    });
+    assert.equal(invalidResponse.status, 400);
+    assert.equal(calls.length, 1);
+  });
+});
+
+test("favorite list accepts query pagination and returns summaries without pattern", async () => {
+  let received;
+  const favoriteSummary = { ...summary(), isFavorite: true, pattern: pattern() };
+  const works = {
+    ...dependencies().works,
+    async listFavorites(options) {
+      received = options;
+      const { pattern: _pattern, ...item } = favoriteSummary;
+      return { total: 3, page: 2, pageSize: 1, items: [item] };
+    },
+  };
+  await withApplication(dependencies({ works }), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/favorites?query=%E7%8C%AB&page=2&pageSize=1`, {
+      headers: { authorization: "Bearer token" },
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.deepEqual(received, { userId: "usr_current", query: "猫", page: 2, pageSize: 1 });
+    assert.equal(body.items[0].isFavorite, true);
+    assert.equal(body.items[0].pattern, undefined);
+
+    const unsupported = await fetch(`${baseUrl}/api/favorites?status=completed`, {
+      headers: { authorization: "Bearer token" },
+    });
+    assert.equal(unsupported.status, 400);
+  });
+});
+
+test("cross-owner favorite access follows the ownership error contract", async () => {
+  const works = {
+    ...dependencies().works,
+    async setFavorite() { throw new AppError(403, "FORBIDDEN", "作品不属于当前用户"); },
+  };
+  await withApplication(dependencies({ works }), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/works/work_other/favorite`, {
+      method: "PATCH",
+      headers: { authorization: "Bearer token", "content-type": "application/json" },
+      body: JSON.stringify({ favorite: true }),
+    });
     const body = await response.json();
     assert.equal(response.status, 403);
     assert.equal(body.error.code, "FORBIDDEN");

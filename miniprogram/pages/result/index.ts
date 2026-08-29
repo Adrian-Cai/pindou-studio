@@ -1,4 +1,10 @@
-import type { PatternDraft, WorkItem } from '../../models/pattern'
+import type { DownloadFileType, PatternDraft, WorkItem } from '../../models/pattern'
+import {
+  drawMaterialsDownload,
+  drawPaletteDownload,
+  friendlyDownloadError,
+  saveImageToAlbum,
+} from '../../services/result-download-service'
 import { cloudSummaryToWorkItem, renameCloudWork } from '../../services/work-service'
 import { appStore } from '../../store/app-store'
 import { getCustomNavigationMetrics } from '../../utils/navigation'
@@ -19,6 +25,7 @@ interface MaterialSummary {
 
 const MATERIAL_PREVIEW_LIMIT = 5
 const PALETTE_PREVIEW_LIMIT = 5
+const THUMB_SIZE_RPX = 176
 
 interface ResultSummary {
   title: string
@@ -56,6 +63,14 @@ interface CanvasQueryResult {
   height: number
 }
 
+interface DownloadRequestEvent extends WechatMiniprogram.CustomEvent {
+  detail: {
+    fileType: DownloadFileType
+  }
+}
+
+const DOWNLOAD_CANVAS_WIDTH = 900
+
 Page({
   data: {
     draft: null as PatternDraft | null,
@@ -70,6 +85,12 @@ Page({
     canvasReady: false,
     renderError: false,
     quota: 0,
+    quotaTipsOpen: false,
+    downloadLoading: false,
+    downloadingType: '' as DownloadFileType | '',
+    downloadCanvasWidth: DOWNLOAD_CANVAS_WIDTH,
+    materialsCanvasHeight: 360,
+    paletteCanvasHeight: 420,
     chartWidthRpx: 0,
     chartHeightRpx: 0,
     thumbnailSrc: '' as string,
@@ -95,6 +116,7 @@ Page({
   },
 
   onShow() {
+    appStore.refreshDownloadQuota()
     const state = appStore.getSnapshot()
     const draft = state.currentDraft
     const work = draft ? state.works.find((item) => item.id === draft.id) : undefined
@@ -162,7 +184,7 @@ Page({
     const activeTab = String(event.currentTarget.dataset.tab) as ResultTab
     if (activeTab === this.data.activeTab) return
     this.setData(
-      { activeTab, paletteExpanded: false, renderError: false },
+      { activeTab, paletteExpanded: false, quotaTipsOpen: false, renderError: false },
       () => this.renderVisibleCanvases(),
     )
   },
@@ -257,8 +279,141 @@ Page({
     }
   },
 
-  openDownloads() {
-    wx.navigateTo({ url: '/pages/downloads/index' })
+  toggleQuotaTips() {
+    this.setData({ quotaTipsOpen: !this.data.quotaTipsOpen })
+  },
+
+  closeQuotaTips() {
+    if (this.data.quotaTipsOpen) this.setData({ quotaTipsOpen: false })
+  },
+
+  openMembership() {
+    this.closeQuotaTips()
+    wx.navigateTo({ url: '/pages/recharge/index' })
+  },
+
+  async downloadResultFile(event: DownloadRequestEvent) {
+    if (this.data.downloadLoading) return
+
+    const fileType = event.detail.fileType
+    const currentQuota = appStore.refreshDownloadQuota()
+    if (currentQuota <= 0) {
+      this.setData({ quota: 0, quotaTipsOpen: false })
+      wx.showModal({
+        title: '今日免费次数已用完',
+        content: '开通会员后可享无限下载。',
+        confirmText: '去开通',
+        success: ({ confirm }) => {
+          if (confirm) this.openMembership()
+        },
+      })
+      return
+    }
+
+    this.setData({
+      downloadLoading: true,
+      downloadingType: fileType,
+      quotaTipsOpen: false,
+    })
+
+    try {
+      const filePath = await this.createDownloadImage(fileType)
+      await saveImageToAlbum(filePath)
+
+      const quota = this.recordSuccessfulDownload(fileType)
+      if (quota === null) throw new Error('下载次数状态已变化，请刷新后重试')
+      this.setData({ quota })
+      wx.showToast({ title: '已保存到相册', icon: 'success' })
+    } catch (error) {
+      console.error('保存下载文件失败', error)
+      wx.showToast({
+        title: friendlyDownloadError(error),
+        icon: 'none',
+      })
+    } finally {
+      this.setData({ downloadLoading: false, downloadingType: '' })
+    }
+  },
+
+  async createDownloadImage(fileType: DownloadFileType): Promise<string> {
+    const draft = this.data.draft
+    if (!draft) throw new Error('当前作品不存在')
+
+    if (fileType === 'preview') {
+      if (this.data.previewSrc) return this.data.previewSrc
+      await this.drawPreviewImage(draft)
+      if (!this.data.previewSrc) throw new Error('成品图生成失败')
+      return this.data.previewSrc
+    }
+
+    if (fileType === 'chart') {
+      if (this.data.chartSrc) return this.data.chartSrc
+      await this.drawChartImage(draft)
+      if (!this.data.chartSrc) throw new Error('施工图生成失败')
+      return this.data.chartSrc
+    }
+
+    if (fileType === 'materials') return this.drawMaterialsDownloadImage()
+    return this.drawPaletteDownloadImage()
+  },
+
+  async drawMaterialsDownloadImage(): Promise<string> {
+    const materials = this.data.materials
+    const height = 220 + materials.length * 72
+    await this.resizeDownloadCanvas({ materialsCanvasHeight: height })
+    const canvas = await this.queryCanvas('#materialsDownloadCanvas')
+    canvas.node.width = DOWNLOAD_CANVAS_WIDTH
+    canvas.node.height = height
+    const context = canvas.node.getContext('2d')
+
+    drawMaterialsDownload(context, {
+      width: DOWNLOAD_CANVAS_WIDTH,
+      height,
+      workTitle: this.data.summary?.title ?? '未命名作品',
+      fileTitle: '材料清单',
+    }, materials, this.data.summary?.beadCount ?? 0)
+    return this.exportCanvas(canvas.node)
+  },
+
+  async drawPaletteDownloadImage(): Promise<string> {
+    const materials = this.data.materials
+    const columns = 4
+    const rows = Math.max(1, Math.ceil(materials.length / columns))
+    const height = 210 + rows * 190
+    await this.resizeDownloadCanvas({ paletteCanvasHeight: height })
+    const canvas = await this.queryCanvas('#paletteDownloadCanvas')
+    canvas.node.width = DOWNLOAD_CANVAS_WIDTH
+    canvas.node.height = height
+    const context = canvas.node.getContext('2d')
+
+    drawPaletteDownload(context, {
+      width: DOWNLOAD_CANVAS_WIDTH,
+      height,
+      workTitle: this.data.summary?.title ?? '未命名作品',
+      fileTitle: '色板参考',
+    }, materials)
+    return this.exportCanvas(canvas.node)
+  },
+
+  resizeDownloadCanvas(patch: { materialsCanvasHeight?: number; paletteCanvasHeight?: number }) {
+    return new Promise<void>((resolve) => this.setData(patch, resolve))
+  },
+
+  recordSuccessfulDownload(fileType: DownloadFileType): number | null {
+    const draft = this.data.draft
+    const summary = this.data.summary
+    if (!draft || !summary) return null
+    return appStore.completeDownload({
+      id: `download_${draft.id}_${fileType}_${Date.now()}`,
+      workId: draft.id,
+      title: summary.title,
+      coverPath: this.data.previewSrc || this.data.thumbnailSrc,
+      downloadedAt: Date.now(),
+      fileType,
+      width: draft.settings.width,
+      height: draft.settings.height,
+      colorCount: summary.colorCount,
+    })
   },
 
   goCreate() {
@@ -308,7 +463,7 @@ Page({
   async drawThumbnail(draft: PatternDraft) {
     // type="2d" canvas 仅用于离屏绘制，绘完后导出为临时图片由 <image> 展示
     // 避免原生 canvas 组件脱离文档流导致滚动时漂移
-    const THUMB_SIZE_PX = Math.round((144 / 750) * wx.getWindowInfo().windowWidth)
+    const THUMB_SIZE_PX = Math.round((THUMB_SIZE_RPX / 750) * wx.getWindowInfo().windowWidth)
     const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
 
     // 先获取 canvas node（必须通过 queryCanvas 查询 in(this)）

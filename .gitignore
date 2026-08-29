@@ -3,9 +3,10 @@ miniprogram_npm/
 server/node_modules/
 server/dist/
 server/.env
-server/data/avatars/
+server/data/
 .DS_Store
 *.log
 project.private.config.json
 
 docs/ui/*
+.agents/*

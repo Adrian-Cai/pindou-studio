@@ -8,7 +8,7 @@ import type { UserProfileService } from "../modules/users/user-profile-service";
 import type { FileAssetService } from "../modules/files/file-asset-service";
 import type { CoverStorage } from "../modules/files/cover-storage";
 import { validatePersistedPattern, type PersistedPattern } from "../modules/works/pattern";
-import type { UpdateWorkInput, WorkService, WorkStatus } from "../modules/works/work-service";
+import type { FavoriteListOptions, UpdateWorkInput, WorkService, WorkStatus } from "../modules/works/work-service";
 import { AppError, invalidArgument } from "../shared/app-error";
 import { readJsonObject, readSingleUploadedFile } from "./request-body";
 
@@ -153,6 +153,14 @@ function validateWorkUpdateBody(body: Record<string, unknown>): Omit<UpdateWorkI
   return result;
 }
 
+function validateFavoriteBody(body: Record<string, unknown>): boolean {
+  const keys = Object.keys(body);
+  if (keys.length !== 1 || keys[0] !== "favorite" || typeof body.favorite !== "boolean") {
+    throw invalidArgument("收藏请求体只能包含布尔字段 favorite");
+  }
+  return body.favorite;
+}
+
 function listOptions(url: URL, userId: string): { userId: string; status?: WorkStatus; page: number; pageSize: number; query?: string } {
   for (const key of url.searchParams.keys()) {
     if (!["status", "page", "pageSize", "query"].includes(key)) throw invalidArgument("作品列表包含不支持的查询参数");
@@ -167,6 +175,18 @@ function listOptions(url: URL, userId: string): { userId: string; status?: WorkS
   return { userId, page, pageSize, ...(statusValue ? { status: statusValue } : {}), ...(query ? { query } : {}) };
 }
 
+function favoriteListOptions(url: URL, userId: string): FavoriteListOptions {
+  for (const key of url.searchParams.keys()) {
+    if (!["page", "pageSize", "query"].includes(key)) throw invalidArgument("收藏列表包含不支持的查询参数");
+    if (url.searchParams.getAll(key).length > 1) throw invalidArgument(`查询参数 ${key} 不能重复`);
+  }
+  const page = positiveQueryInteger(url.searchParams.get("page"), 1, 1_000_000, "page");
+  const pageSize = positiveQueryInteger(url.searchParams.get("pageSize"), 20, 50, "pageSize");
+  const query = url.searchParams.get("query")?.trim() || undefined;
+  if (query && Array.from(query).length > 120) throw invalidArgument("query 不能超过 120 个字符");
+  return { userId, page, pageSize, ...(query ? { query } : {}) };
+}
+
 function positiveQueryInteger(value: string | null, fallback: number, maximum: number, name: string): number {
   if (value === null) return fallback;
   if (!/^[0-9]+$/u.test(value)) throw invalidArgument(`${name} 必须是整数`);
@@ -177,6 +197,11 @@ function positiveQueryInteger(value: string | null, fallback: number, maximum: n
 
 function workId(pathname: string): string | null {
   const match = pathname.match(/^\/api\/works\/([^/]+)$/u);
+  return match?.[1] ?? null;
+}
+
+function favoriteWorkId(pathname: string): string | null {
+  const match = pathname.match(/^\/api\/works\/([^/]+)\/favorite$/u);
   return match?.[1] ?? null;
 }
 
@@ -281,6 +306,21 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       if (request.method === "GET" && url.pathname === "/api/works") {
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         sendJson(response, 200, await dependencies.works.list(listOptions(url, currentUser.id)));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/favorites") {
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, await dependencies.works.listFavorites(favoriteListOptions(url, currentUser.id)));
+        return;
+      }
+
+      const requestedFavoriteWorkId = favoriteWorkId(url.pathname);
+      if (requestedFavoriteWorkId && request.method === "PATCH") {
+        if (url.searchParams.size > 0) throw invalidArgument("收藏操作接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const favorite = validateFavoriteBody(await readJsonObject(request));
+        sendJson(response, 200, await dependencies.works.setFavorite(currentUser.id, requestedFavoriteWorkId, favorite));
         return;
       }
 
