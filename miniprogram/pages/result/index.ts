@@ -12,7 +12,13 @@ interface MaterialItem {
   percentage: string
 }
 
+interface MaterialSummary {
+  items: MaterialItem[]
+  totalCount: number
+}
+
 const MATERIAL_PREVIEW_LIMIT = 5
+const PALETTE_PREVIEW_LIMIT = 5
 
 interface ResultSummary {
   title: string
@@ -56,7 +62,9 @@ Page({
     summary: null as ResultSummary | null,
     materials: [] as MaterialItem[],
     visibleMaterials: [] as MaterialItem[],
+    palettePreviewMaterials: [] as MaterialItem[],
     materialListExpanded: false,
+    paletteExpanded: false,
     activeTab: 'preview' as ResultTab,
     isFavorite: false,
     canvasReady: false,
@@ -90,11 +98,15 @@ Page({
     const state = appStore.getSnapshot()
     const draft = state.currentDraft
     const work = draft ? state.works.find((item) => item.id === draft.id) : undefined
-    const materials = draft ? summarizeMaterials(draft) : []
-    const beadCount = materials.reduce((total, item) => total + item.count, 0)
+    const materialSummary = draft
+      ? summarizeMaterials(draft)
+      : { items: [], totalCount: 0 }
+    const materials = materialSummary.items
+    const beadCount = materialSummary.totalCount
     const materialListExpanded = materials.length > MATERIAL_PREVIEW_LIMIT
       && this.data.draft?.id === draft?.id
       && this.data.materialListExpanded
+    const paletteExpanded = this.data.draft?.id === draft?.id && this.data.paletteExpanded
     const draftRenderKey = draft ? createDraftRenderKey(draft) : ''
     const shouldRenderPatternImages = draftRenderKey !== this.data.renderedDraftKey
 
@@ -105,7 +117,9 @@ Page({
         visibleMaterials: materialListExpanded
           ? materials
           : materials.slice(0, MATERIAL_PREVIEW_LIMIT),
+        palettePreviewMaterials: materials.slice(0, PALETTE_PREVIEW_LIMIT),
         materialListExpanded,
+        paletteExpanded,
         quota: state.downloadQuota,
         isFavorite: draft ? state.favoriteIds.includes(draft.id) : false,
         summary: draft
@@ -147,7 +161,10 @@ Page({
   changeTab(event: WechatMiniprogram.TouchEvent) {
     const activeTab = String(event.currentTarget.dataset.tab) as ResultTab
     if (activeTab === this.data.activeTab) return
-    this.setData({ activeTab, renderError: false }, () => this.renderVisibleCanvases())
+    this.setData(
+      { activeTab, paletteExpanded: false, renderError: false },
+      () => this.renderVisibleCanvases(),
+    )
   },
 
   toggleMaterialList() {
@@ -158,6 +175,10 @@ Page({
         ? this.data.materials
         : this.data.materials.slice(0, MATERIAL_PREVIEW_LIMIT),
     })
+  },
+
+  togglePalette() {
+    this.setData({ paletteExpanded: !this.data.paletteExpanded })
   },
 
   toggleFavorite() {
@@ -509,7 +530,7 @@ Page({
   },
 })
 
-function summarizeMaterials(draft: PatternDraft): MaterialItem[] {
+function summarizeMaterials(draft: PatternDraft): MaterialSummary {
   const materials = new Map<string, Omit<MaterialItem, 'percentage'>>()
   draft.cells.forEach((cell) => {
     if (cell.color === 'transparent' || !cell.colorCode) return
@@ -522,13 +543,26 @@ function summarizeMaterials(draft: PatternDraft): MaterialItem[] {
     materials.set(key, { color: cell.color, colorCode: cell.colorCode, count: 1 })
   })
   const materialList = [...materials.values()]
-  const totalCount = materialList.reduce((total, item) => total + item.count, 0)
-  return materialList
-    .sort((left, right) => right.count - left.count)
-    .map((item) => ({
-      ...item,
-      percentage: `${((item.count / totalCount) * 100).toFixed(1)}%`,
-    }))
+  const calculatedTotal = materialList.reduce((total, item) => total + item.count, 0)
+  const totalCount = Number.isFinite(calculatedTotal) && calculatedTotal > 0
+    ? calculatedTotal
+    : 0
+  return {
+    totalCount,
+    items: materialList
+      .sort((left, right) => right.count - left.count)
+      .map((item) => ({
+        ...item,
+        percentage: formatPercentage(item.count, totalCount),
+      })),
+  }
+}
+
+function formatPercentage(count: number, totalCount: number): string {
+  if (!Number.isFinite(count) || count < 0 || !Number.isFinite(totalCount) || totalCount <= 0) {
+    return '0.0%'
+  }
+  return `${((count / totalCount) * 100).toFixed(1)}%`
 }
 
 function createDraftRenderKey(draft: PatternDraft): string {
