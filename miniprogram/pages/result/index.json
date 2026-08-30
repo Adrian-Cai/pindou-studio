@@ -3,6 +3,7 @@
   "usingComponents": {
     "top-bar": "/components/top-bar/index",
     "result-download-button": "/components/result-download-button/index",
-    "download-quota-bar": "/components/download-quota-bar/index"
+    "download-quota-bar": "/components/download-quota-bar/index",
+    "download-bottom-sheet": "/components/download-bottom-sheet/index"
   }
 }

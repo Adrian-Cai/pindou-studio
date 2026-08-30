@@ -55,29 +55,25 @@
   padding: var(--card-padding-compact);
 }
 
-.work-summary__thumb-canvas {
+.work-summary__thumb-canvas,
+.preview-render-canvas,
+.download-render-canvas,
+.chart-render-canvas,
+.chart-hd-render-canvas {
   position: absolute;
   top: 0;
   left: -9999px;
+  pointer-events: none;
+}
+
+.work-summary__thumb-canvas {
   width: 176rpx;
   height: 176rpx;
-  pointer-events: none;
 }
 
 .preview-render-canvas {
-  position: absolute;
-  top: 0;
-  left: -9999px;
   width: calc(100vw - 120rpx);
   height: calc(100vw - 120rpx);
-  pointer-events: none;
-}
-
-.download-render-canvas {
-  position: absolute;
-  top: 0;
-  left: -9999px;
-  pointer-events: none;
 }
 
 .work-summary__thumb {
@@ -121,10 +117,7 @@
   content: "";
 }
 
-.work-summary__title-row--pressed {
-  opacity: 0.58;
-}
-
+.work-summary__title-row--pressed,
 .work-summary__title-row--disabled {
   opacity: 0.58;
 }
@@ -327,11 +320,9 @@
   font-weight: 500;
   line-height: 80rpx;
 }
-
 .start-btn::after {
   border: 0;
 }
-
 .start-btn:active {
   background: var(--color-primary-pressed);
   transform: scale(0.98);
@@ -472,13 +463,6 @@
   font-size: 26rpx;
 }
 
-.chart-render-canvas {
-  position: absolute;
-  top: 0;
-  left: -9999px;
-  pointer-events: none;
-}
-
 .chart-stage {
   box-sizing: border-box;
   width: 100%;
@@ -501,14 +485,6 @@
   font-size: 24rpx;
   line-height: 36rpx;
   text-align: center;
-}
-
-/* 高清施工图离屏 canvas，不参与布局 */
-.chart-hd-render-canvas {
-  position: absolute;
-  top: 0;
-  left: -9999px;
-  pointer-events: none;
 }
 
 /* 施工图可点击态 */
@@ -698,9 +674,6 @@
   text-align: center;
 }
 
-
-
-
 .result-empty {
   margin: 120rpx 32rpx 0;
   padding: 64rpx 40rpx;
@@ -727,8 +700,6 @@
   font-size: 23rpx;
   line-height: 36rpx;
 }
-
-
 
 .result-nav {
   position: fixed;
@@ -772,45 +743,35 @@
     padding-right: 24rpx;
     padding-left: 24rpx;
   }
-
   .work-summary {
     gap: var(--space-2);
   }
-
   .favorite {
     width: 100rpx;
   }
-
   .work-summary__title-row {
     width: calc(100% - 108rpx);
   }
-
   .result-tabs__item {
     font-size: 24rpx;
   }
-
   .result-panel {
     padding-right: 24rpx;
     padding-left: 24rpx;
   }
-
   .palette-preview {
     column-gap: 8rpx;
   }
-
   .palette-preview__code,
   .palette-preview__more-label {
     font-size: 19rpx;
   }
-
   .palette-preview__count {
     font-size: 16rpx;
   }
-
   .palette-preview__percentage-inline {
     display: none;
   }
-
   .palette-preview__percentage-stacked {
     display: block;
     color: var(--color-text-tertiary);
@@ -819,5 +780,5 @@
     line-height: 24rpx;
     white-space: nowrap;
   }
-
 }
+

@@ -91,7 +91,7 @@
           fileType="preview"
           loading="{{downloadLoading && downloadingType === 'preview'}}"
           disabled="{{downloadLoading || !previewSrc}}"
-          bind:download="downloadResultFile"
+          bind:download="handleRequestDownload"
         />
       </view>
     </view>
@@ -149,7 +149,7 @@
           fileType="materials"
           loading="{{downloadLoading && downloadingType === 'materials'}}"
           disabled="{{downloadLoading}}"
-          bind:download="downloadResultFile"
+          bind:download="handleRequestDownload"
         />
       </view>
     </view>
@@ -189,7 +189,7 @@
           fileType="chart"
           loading="{{downloadLoading && downloadingType === 'chart'}}"
           disabled="{{downloadLoading || !chartSrc}}"
-          bind:download="downloadResultFile"
+          bind:download="handleRequestDownload"
         />
       </view>
     </view>
@@ -265,7 +265,7 @@
           fileType="palette"
           loading="{{downloadLoading && downloadingType === 'palette'}}"
           disabled="{{downloadLoading}}"
-          bind:download="downloadResultFile"
+          bind:download="handleRequestDownload"
         />
       </view>
     </view>
@@ -303,4 +303,18 @@
       <text>我的</text>
     </view>
   </view>
+
+  <!-- 统一下载半屏交互组件 (4 个 Tab 共用) -->
+  <download-bottom-sheet
+    visible="{{downloadSheetVisible}}"
+    state="{{downloadSheetState}}"
+    config="{{currentDownloadConfig}}"
+    quota="{{downloadSheetQuota}}"
+    costText="1 次下载次数"
+    bind:confirm="handleConfirmDownload"
+    bind:cancel="handleCancelDownload"
+    bind:close="handleCloseDownloadSheet"
+    bind:preview="handlePreviewDownloadedFile"
+    bind:complete="handleCompleteDownloadSheet"
+  />
 </view>
