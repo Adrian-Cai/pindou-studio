@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.16.0
+
+- 将 10 个二级页面（editor/result/downloads/favorites/help/about/privacy/feedback/recharge/payment-success）从主包迁移至分包 `pages-sub`，主包仅保留 home/projects/profile 三个 Tab 页，显著降低主包体积。
+- `app.json` 新增 `subPackages` 配置，路由路径统一更新为 `pages-sub/xxx/index`。
+- 同步修复 profile、projects、home 中跳转二级页面的 `navigateTo` 路径（`pages/` → `pages-sub/`）。
+- 示例图片全部从 JPG 转为 WebP（home-sample-standard-1/2、home-sample-ai-1/2），brand-avatar 同步转 WebP，图片体积大幅缩减。
+- 删除旧版 JPG 资源（home-sample-*.jpg、home-bead-*.jpg）及设计参考图 home-reference.png，清理冗余静态资源。
+
 ## 0.15.0
 
 - 作品结果页补齐 4 个 Tab（成品图、材料清单、施工图、色板参考）统一下载半屏交互组件（`download-bottom-sheet`）。
