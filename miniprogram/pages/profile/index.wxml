@@ -94,7 +94,7 @@
   <view class="profile-sheet login-sheet" catchtap="stopPropagation">
     <view class="profile-sheet__handle"></view>
     <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭登录弹层">×</view>
-    <image class="login-sheet__avatar" src="/assets/icons/brand-avatar.png" mode="aspectFit" />
+    <image class="login-sheet__avatar" src="/assets/icons/brand-avatar.webp" mode="aspectFit" />
     <view class="login-sheet__title">登录拼豆工作室</view>
     <view class="login-sheet__subtitle">保存云端作品，跨设备查看账号数据</view>
 

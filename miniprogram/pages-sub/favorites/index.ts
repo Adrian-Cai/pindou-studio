@@ -82,7 +82,7 @@ Page({
   openWork(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
     if (appStore.getSnapshot().currentDraft?.id === id) {
-      wx.navigateTo({ url: '/pages/result/index' })
+      wx.navigateTo({ url: '/pages-sub/result/index' })
       return
     }
     wx.showToast({ title: '历史作品详情服务待接入', icon: 'none' })
@@ -105,7 +105,7 @@ Page({
           appStore.toggleFavorite(id)
           this.refreshFavorites()
         }
-        if (tapIndex === 2) wx.navigateTo({ url: '/pages/downloads/index' })
+        if (tapIndex === 2) wx.navigateTo({ url: '/pages-sub/downloads/index' })
       },
     })
   },

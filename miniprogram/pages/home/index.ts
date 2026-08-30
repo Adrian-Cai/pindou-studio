@@ -58,25 +58,25 @@ const GENERATION_MODES: GenerationModeOption[] = [
 
 const SAMPLE_IMAGES: SampleImage[] = [
   {
-    src: '/assets/samples/home-sample-standard-1.jpg',
+    src: '/assets/samples/home-sample-standard-1.webp',
     mode: 'standard',
     label: '标准模式',
     alt: '标准模式示例作品一',
   },
   {
-    src: '/assets/samples/home-sample-standard-2.jpg',
+    src: '/assets/samples/home-sample-standard-2.webp',
     mode: 'standard',
     label: '标准模式',
     alt: '标准模式示例作品二',
   },
   {
-    src: '/assets/samples/home-sample-ai-1.jpg',
+    src: '/assets/samples/home-sample-ai-1.webp',
     mode: 'ai',
     label: 'AI 精致模式',
     alt: 'AI 精致模式示例作品一',
   },
   {
-    src: '/assets/samples/home-sample-ai-2.jpg',
+    src: '/assets/samples/home-sample-ai-2.webp',
     mode: 'ai',
     label: 'AI 精致模式',
     alt: 'AI 精致模式示例作品二',
@@ -235,7 +235,7 @@ Page({
     try {
       const draft = await createDraft(this.data.sourceImagePath, this.data.settings)
       appStore.setCurrentDraft(draft)
-      wx.navigateTo({ url: '/pages/editor/index' })
+      wx.navigateTo({ url: '/pages-sub/editor/index' })
     } catch (error) {
       console.error('生成拼豆图失败', error)
       wx.showToast({ title: '生成失败，请重试', icon: 'none' })

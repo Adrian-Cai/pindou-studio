@@ -18,6 +18,6 @@ Page({
   },
 
   openDownloads() {
-    wx.navigateTo({ url: '/pages/downloads/index' })
+    wx.navigateTo({ url: '/pages-sub/downloads/index' })
   },
 })

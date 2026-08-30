@@ -2,7 +2,7 @@ import { DOWNLOAD_PACKAGES, PROFILE_MENU_ITEMS } from '../../config/profile'
 import { appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
 
-const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.png'
+const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.webp'
 
 type ProfileSheet = 'none' | 'recharge' | 'login' | 'account' | 'profile'
 type LoginUiState = 'idle' | 'loading' | 'error'
@@ -124,11 +124,11 @@ Page({
   },
 
   openFavorites() {
-    wx.navigateTo({ url: '/pages/favorites/index' })
+    wx.navigateTo({ url: '/pages-sub/favorites/index' })
   },
 
   openDownloads() {
-    wx.navigateTo({ url: '/pages/downloads/index' })
+    wx.navigateTo({ url: '/pages-sub/downloads/index' })
   },
 
   openUserPanel() {

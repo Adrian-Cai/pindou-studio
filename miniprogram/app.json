@@ -2,17 +2,24 @@
   "pages": [
     "pages/home/index",
     "pages/projects/index",
-    "pages/profile/index",
-    "pages/editor/index",
-    "pages/result/index",
-    "pages/downloads/index",
-    "pages/favorites/index",
-    "pages/help/index",
-    "pages/about/index",
-    "pages/privacy/index",
-    "pages/feedback/index",
-    "pages/recharge/index",
-    "pages/payment-success/index"
+    "pages/profile/index"
+  ],
+  "subPackages": [
+    {
+      "root": "pages-sub",
+      "pages": [
+        "editor/index",
+        "result/index",
+        "downloads/index",
+        "favorites/index",
+        "help/index",
+        "about/index",
+        "privacy/index",
+        "feedback/index",
+        "recharge/index",
+        "payment-success/index"
+      ]
+    }
   ],
   "window": {
     "navigationStyle": "custom",

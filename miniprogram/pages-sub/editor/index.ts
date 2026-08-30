@@ -775,7 +775,7 @@ Page({
           isCloud: false,
         })
       }
-      wx.navigateTo({ url: '/pages/result/index' })
+      wx.navigateTo({ url: '/pages-sub/result/index' })
     } catch (error) {
       console.error('保存作品失败', error)
       wx.showToast({

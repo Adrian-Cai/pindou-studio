@@ -2,11 +2,11 @@ Page({
   openItem(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
     if (id === 'privacy') {
-      wx.navigateTo({ url: '/pages/privacy/index' })
+      wx.navigateTo({ url: '/pages-sub/privacy/index' })
       return
     }
     if (id === 'support') {
-      wx.navigateTo({ url: '/pages/feedback/index' })
+      wx.navigateTo({ url: '/pages-sub/feedback/index' })
       return
     }
     const messages: Record<string, string> = {

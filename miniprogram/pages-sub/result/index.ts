@@ -1,4 +1,5 @@
-import { DOWNLOAD_CONFIGS, type DownloadSheetState, type DownloadTabConfig } from '../../config/download'
+import { DOWNLOAD_CONFIGS } from '../../config/download'
+import type { DownloadSheetState, DownloadTabConfig } from '../../config/download'
 import type { DownloadFileType, PatternDraft, WorkItem } from '../../models/pattern'
 import {
   drawMaterialsDownload,
@@ -144,11 +145,11 @@ Page({
         isFavorite: draft ? state.favoriteIds.includes(draft.id) : false,
         summary: draft
           ? {
-              title: work?.title ?? '未命名作品',
-              createdText: formatDateTime(draft.createdAt),
-              beadCount,
-              colorCount: materials.length,
-            }
+            title: work?.title ?? '未命名作品',
+            createdText: formatDateTime(draft.createdAt),
+            beadCount,
+            colorCount: materials.length,
+          }
           : null,
         chartWidthRpx: draft ? draft.settings.width * 32 : 0,
         chartHeightRpx: draft ? draft.settings.height * 32 : 0,
@@ -287,7 +288,7 @@ Page({
 
   openMembership() {
     this.closeQuotaTips()
-    wx.navigateTo({ url: '/pages/recharge/index' })
+    wx.navigateTo({ url: '/pages-sub/recharge/index' })
   },
 
   // ── 统一下载交互处理 ──

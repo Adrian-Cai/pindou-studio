@@ -24,7 +24,7 @@ Page({
   openQuickHelp(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
     if (id === 'feedback') {
-      wx.navigateTo({ url: '/pages/feedback/index' })
+      wx.navigateTo({ url: '/pages-sub/feedback/index' })
       return
     }
     const messages: Record<string, string> = {

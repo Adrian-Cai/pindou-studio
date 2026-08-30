@@ -94,7 +94,7 @@ Page({
   },
 
   openRecharge() {
-    wx.navigateTo({ url: '/pages/recharge/index' })
+    wx.navigateTo({ url: '/pages-sub/recharge/index' })
   },
 })
 
