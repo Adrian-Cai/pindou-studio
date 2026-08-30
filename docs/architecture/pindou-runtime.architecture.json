@@ -6,7 +6,7 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "repository": { "url": "https://github.com/Adrian-Cai/pindou-studio.git", "revision": "29f82be69f0b4304098d29d17bc6623ce3a413ae" },
-    "viewBox": [1440, 560],
+    "viewBox": [1080, 600],
     "views": [
       { "id": "main-path", "label": "主链路：图片到图纸", "focus": ["user", "mp-pages", "canvas", "mp-services", "http-app", "biz-mod", "pg"], "note": "用户选图后在本地 Canvas 2D 转成拼豆图纸，登录用户再经 HTTPS 保存到自建后端。" },
       { "id": "login", "label": "登录与鉴权", "focus": ["mp-services", "http-app", "auth-mod", "wx-open", "pg"], "note": "wx.login 取 code，服务端调 jscode2session 换 openid，签发 Bearer 令牌。" },
@@ -14,35 +14,35 @@
     ]
   },
   "components": [
-    { "id": "user", "type": "external", "label": "用户", "sublabel": "微信内", "pos": [30, 302], "size": [110, 60] },
-    { "id": "mp-pages", "type": "frontend", "label": "小程序页面", "sublabel": "home · editor · result · projects", "brand": "wechat", "pos": [260, 302], "size": [150, 64], "sources": [{ "path": "miniprogram/pages/home/index.ts" }] },
-    { "id": "canvas", "type": "frontend", "label": "Canvas 2D 转换", "sublabel": "图像 → 拼豆图纸", "pos": [260, 150], "size": [150, 60], "sources": [{ "path": "miniprogram/services/image-service.ts" }] },
-    { "id": "mp-services", "type": "frontend", "label": "services 层", "sublabel": "http-client · auth · work", "pos": [480, 302], "size": [150, 64], "sources": [{ "path": "miniprogram/services/http-client.ts" }] },
-    { "id": "local-store", "type": "database", "label": "本地存储", "sublabel": "wx.setStorageSync", "tag": "游客作品 · 收藏 · 令牌", "pos": [480, 450], "size": [150, 60], "sources": [{ "path": "miniprogram/store/app-store.ts" }, { "path": "miniprogram/services/token-storage.ts" }] },
-    { "id": "http-app", "type": "backend", "label": "Node HTTP 服务", "sublabel": "node:http :3000", "tag": "无 Web 框架", "pos": [740, 302], "size": [150, 64], "sources": [{ "path": "server/src/http/app.ts" }] },
-    { "id": "auth-mod", "type": "security", "label": "认证模块", "sublabel": "AuthService · Bearer", "pos": [740, 150], "size": [150, 60], "sources": [{ "path": "server/src/modules/auth/auth-service.ts" }] },
-    { "id": "biz-mod", "type": "backend", "label": "业务模块", "sublabel": "works · users · files", "pos": [980, 302], "size": [150, 64], "sources": [{ "path": "server/src/modules/works/work-service.ts" }] },
-    { "id": "fs-media", "type": "database", "label": "本地文件存储", "sublabel": "data/avatars · data/covers", "pos": [980, 450], "size": [150, 60], "sources": [{ "path": "server/src/modules/files/cover-storage.ts" }] },
-    { "id": "pg", "type": "database", "label": "PostgreSQL", "sublabel": "pg Pool :5432", "pos": [1230, 302], "size": [150, 64], "sources": [{ "path": "server/src/db/pool.ts" }] },
-    { "id": "wx-open", "type": "external", "label": "微信开放平台", "sublabel": "api.weixin.qq.com", "brand": "wechat", "pos": [1010, 40], "size": [150, 60], "sources": [{ "path": "server/src/modules/auth/wechat-client.ts" }] }
+    { "id": "user", "type": "external", "label": "用户", "sublabel": "微信内", "pos": [10, 320], "size": [110, 60] },
+    { "id": "mp-pages", "type": "frontend", "label": "小程序页面", "sublabel": "首页 · 编辑 · 结果", "brand": "wechat", "pos": [160, 320], "size": [140, 62], "sources": [{ "path": "miniprogram/pages/home/index.ts" }] },
+    { "id": "canvas", "type": "frontend", "label": "Canvas 2D 转换", "sublabel": "图像 → 图纸", "pos": [160, 160], "size": [140, 60], "sources": [{ "path": "miniprogram/services/image-service.ts" }] },
+    { "id": "mp-services", "type": "frontend", "label": "services 层", "sublabel": "http-client", "pos": [340, 320], "size": [140, 62], "sources": [{ "path": "miniprogram/services/http-client.ts" }] },
+    { "id": "local-store", "type": "database", "label": "本地存储", "sublabel": "wx storage", "pos": [340, 470], "size": [140, 60], "sources": [{ "path": "miniprogram/store/app-store.ts" }] },
+    { "id": "http-app", "type": "backend", "label": "Node HTTP 服务", "sublabel": "node:http :3000", "pos": [560, 320], "size": [140, 62], "sources": [{ "path": "server/src/http/app.ts" }] },
+    { "id": "auth-mod", "type": "security", "label": "认证模块", "sublabel": "Bearer 令牌", "pos": [560, 160], "size": [140, 60], "sources": [{ "path": "server/src/modules/auth/auth-service.ts" }] },
+    { "id": "wx-open", "type": "external", "label": "微信开放平台", "sublabel": "jscode2session", "brand": "wechat", "pos": [770, 40], "size": [140, 60], "sources": [{ "path": "server/src/modules/auth/wechat-client.ts" }] },
+    { "id": "biz-mod", "type": "backend", "label": "业务模块", "sublabel": "works · files", "pos": [740, 320], "size": [140, 62], "sources": [{ "path": "server/src/modules/works/work-service.ts" }] },
+    { "id": "fs-media", "type": "database", "label": "文件存储", "sublabel": "data/covers", "pos": [740, 470], "size": [160, 60], "sources": [{ "path": "server/src/modules/files/cover-storage.ts" }] },
+    { "id": "pg", "type": "database", "label": "PostgreSQL", "sublabel": "pg Pool :5432", "pos": [920, 320], "size": [140, 62], "sources": [{ "path": "server/src/db/pool.ts" }] }
   ],
   "boundaries": [
     { "kind": "region", "label": "微信客户端 · 小程序运行时", "wraps": ["mp-pages", "canvas", "mp-services", "local-store"] },
-    { "kind": "region", "label": "自建后端 · Node.js 进程 + 本地磁盘", "wraps": ["http-app", "auth-mod", "biz-mod", "fs-media"] }
+    { "kind": "region", "label": "自建后端 · Node.js + 本地磁盘", "wraps": ["http-app", "auth-mod", "biz-mod", "fs-media"] }
   ],
   "connections": [
-    { "id": "user-to-pages", "from": "user", "to": "mp-pages", "label": "选图 · 编辑 · 浏览", "variant": "emphasis" },
+    { "id": "user-to-pages", "from": "user", "to": "mp-pages", "label": "选图 · 编辑", "variant": "emphasis", "labelDy": -44 },
     { "id": "pages-to-canvas", "from": "mp-pages", "to": "canvas", "label": "像素采样", "fromSide": "top", "toSide": "bottom" },
     { "id": "pages-to-services", "from": "mp-pages", "to": "mp-services" },
     { "id": "services-to-local", "from": "mp-services", "to": "local-store", "label": "游客数据 · 会话", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
-    { "id": "services-to-http", "from": "mp-services", "to": "http-app", "label": "HTTPS /api/* · Bearer", "variant": "emphasis" },
+    { "id": "services-to-http", "from": "mp-services", "to": "http-app", "label": "HTTPS · Bearer", "variant": "emphasis", "labelDy": -44 },
     { "id": "http-to-auth", "from": "http-app", "to": "auth-mod", "label": "登录 · 鉴权", "fromSide": "top", "toSide": "bottom" },
-    { "id": "auth-to-wechat", "from": "auth-mod", "to": "wx-open", "label": "jscode2session", "variant": "security" },
-    { "id": "auth-to-pg", "from": "auth-mod", "to": "pg", "label": "用户 · 令牌 SQL" },
-    { "id": "http-to-biz", "from": "http-app", "to": "biz-mod", "label": "路由分发" },
+    { "id": "auth-to-wechat", "from": "auth-mod", "to": "wx-open", "label": "code 换 openid", "variant": "security", "fromSide": "right", "toSide": "left", "labelAt": [735, 118] },
+    { "id": "auth-to-pg", "from": "auth-mod", "to": "pg", "label": "用户 · 令牌 SQL", "fromSide": "right", "toSide": "top" },
+    { "id": "http-to-biz", "from": "http-app", "to": "biz-mod", "label": "路由分发", "labelDy": -44 },
     { "id": "biz-to-pg", "from": "biz-mod", "to": "pg", "label": "SQL" },
-    { "id": "biz-to-fs", "from": "biz-mod", "to": "fs-media", "label": "封面 · 头像写入", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
-    { "id": "http-to-fs", "from": "http-app", "to": "fs-media", "label": "GET /api/media/*", "fromSide": "bottom", "toSide": "left" }
+    { "id": "biz-to-fs", "from": "biz-mod", "to": "fs-media", "label": "封面 · 头像写入", "fromSide": "bottom", "toSide": "top" },
+    { "id": "http-to-fs", "from": "http-app", "to": "fs-media", "label": "GET /api/media", "fromSide": "bottom", "toSide": "left", "labelDy": 20 }
   ],
   "cards": [
     { "dot": "cyan", "title": "小程序端", "items": ["图纸转换在本地 Canvas 2D 完成，不上传原图", "游客作品、收藏、下载记录留在 wx storage", "登录令牌由 token-storage 缓存并自动附带"] },

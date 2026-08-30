@@ -8,20 +8,22 @@
       <view
         class="workspace"
         bindtouchstart="onWorkspaceTouchStart"
-        bindtouchmove="onWorkspaceTouchMove"
         bindtouchend="onWorkspaceTouchEnd"
+        bindtouchcancel="onWorkspaceTouchCancel"
         catchtouchmove="onWorkspaceTouchMove"
       >
-        <view
-          class="canvas-stage"
-          style="transform: translate(calc(-50% + {{panX}}px), calc(-50% + {{panY}}px)) scale({{zoom}}); transform-origin: center center; will-change: transform;"
-        >
+        <view class="canvas-stage">
           <canvas
             id="patternCanvas"
             class="pattern-canvas"
             type="2d"
           ></canvas>
         </view>
+        <view
+          wx:if="{{targetHighlight.visible}}"
+          class="target-highlight"
+          style="top: {{targetHighlight.top}}px; left: {{targetHighlight.left}}px; width: {{targetHighlight.width}}px; height: {{targetHighlight.height}}px;"
+        ></view>
       </view>
 
       <!-- ── 缩放控制 ── -->
@@ -29,17 +31,16 @@
         <button
           class="zoom-control__button"
           bindtap="zoomOut"
-          disabled="{{zoom <= 0.5}}"
+          disabled="{{scale <= 1}}"
           aria-label="缩小"
         >−</button>
-        <text class="zoom-control__value">{{zoomPercent}}%</text>
+        <text class="zoom-control__value">{{scalePercent}}%</text>
         <button
           class="zoom-control__button"
           bindtap="zoomIn"
-          disabled="{{zoom >= 1.8}}"
+          disabled="{{scale >= 3}}"
           aria-label="放大"
         >＋</button>
-        <button class="zoom-control__reset" bindtap="resetView" aria-label="适应画布">适应</button>
       </view>
 
       <!-- ── 信息卡 ── -->
@@ -95,12 +96,25 @@
   </view>
 
   <!-- 放大镜 overlay -->
-  <canvas
+  <view
     wx:if="{{magnifier.visible}}"
-    id="magnifierCanvas"
-    class="magnifier-canvas"
-    type="2d"
+    class="magnifier"
     style="top: {{magnifier.top}}px; left: {{magnifier.left}}px;"
+  >
+    <canvas
+      id="magnifierCanvas"
+      class="magnifier-canvas"
+      type="2d"
+      aria-label="第 {{magnifier.row}} 行，第 {{magnifier.column}} 列，当前色号 {{magnifier.colorCode}}"
+    ></canvas>
+  </view>
+
+  <canvas
+    wx:if="{{draft}}"
+    id="exportPatternCanvas"
+    class="export-pattern-canvas"
+    type="2d"
+    style="width: {{draft.settings.width >= draft.settings.height ? 640 : 640 * draft.settings.width / draft.settings.height}}px; height: {{draft.settings.height >= draft.settings.width ? 640 : 640 * draft.settings.height / draft.settings.width}}px;"
   ></canvas>
 
   <!-- 取色成功 Toast -->
