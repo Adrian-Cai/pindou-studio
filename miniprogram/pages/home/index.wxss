@@ -1,4 +1,5 @@
 page {
+  /* ── 绿色品牌 token（保持原有） ── */
   --color-primary: #12b466;
   --color-primary-pressed: #0f9f5b;
   --color-primary-soft: #ecfaf3;
@@ -13,7 +14,17 @@ page {
   --color-disabled: #d8dae2;
   --color-bg: #f8f9fb;
   --color-surface: #ffffff;
-  background: var(--color-surface);
+
+  /* ── AI 模式紫色 token（仅首页使用） ── */
+  --color-ai: #7c5cfc;
+  --color-ai-pressed: #6948e8;
+  --color-ai-soft: #f5f1ff;
+  --color-ai-border: rgba(124, 92, 252, 0.4);
+  --color-ai-text: #7c5cfc;
+
+  /* ── 示例图片统一尺寸 token（标准 / AI 共用同一套，禁止各自定义） ── */
+  --sample-media-height: 156rpx;
+  --sample-label-height: 44rpx;
 }
 
 .page {
@@ -22,55 +33,74 @@ page {
   color: var(--color-text);
 }
 
+/* ════════════════════════════════
+   Hero 主标题
+════════════════════════════════ */
 .hero {
   max-width: 100%;
   margin-top: 32rpx;
+  text-align: center;
+}
+
+.hero__title {
+  display: block;
   color: var(--color-text);
   font-size: 42rpx;
-  line-height: 60rpx;
-  text-align: center;
-  white-space: normal;
-}
-
-.hero__text {
-  font-weight: 600;
-}
-
-.hero__accent {
-  color: var(--color-primary);
   font-weight: 700;
+  line-height: 60rpx;
 }
 
+.hero__subtitle {
+  display: block;
+  margin-top: 8rpx;
+  color: var(--color-text-secondary);
+  font-size: 26rpx;
+  line-height: 40rpx;
+}
+
+/* ════════════════════════════════
+   上传图片
+════════════════════════════════ */
 .upload {
   position: relative;
+  display: flex;
   box-sizing: border-box;
   margin-top: 32rpx;
-  /* 未上传时：card 样式（边框、背景、阴影） */
-  border: 2rpx solid var(--color-primary-border);
-  border-radius: 16rpx;
-  background: var(--color-primary-surface);
+  padding: 16rpx;
+  border: 1rpx solid var(--color-border);
+  border-radius: 32rpx;
+  background: var(--color-surface);
+  box-shadow: 0 8rpx 32rpx rgba(42, 35, 78, 0.06);
 }
 
-/* 已上传：去掉背景、边框、padding，容器跟随图片尺寸 */
+/* 已上传：去掉背景、边框，容器跟随图片尺寸 */
 .upload--selected {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
   border: none;
   border-radius: 0;
   background: transparent;
+  box-shadow: none;
 }
 
 .upload__empty {
   display: flex;
   box-sizing: border-box;
-  width: 100%;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  min-height: 272rpx;
+  flex: 1;
+  align-self: stretch;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40rpx 24rpx;
-  border: 0;
-  border-radius: 16rpx;
+  margin: 0;
+  padding: 32rpx 24rpx;
+  border: 2rpx dashed var(--color-primary);
+  border-radius: 24rpx;
   background: transparent;
   color: inherit;
   line-height: normal;
@@ -111,20 +141,19 @@ page {
 
 .upload__description {
   max-width: 100%;
-  margin-top: 8rpx;
+  margin-top: 4rpx;
   color: var(--color-text-tertiary);
   font-size: 24rpx;
   line-height: 36rpx;
 }
 
-/* 预览包裹层：作为删除按钮的定位基准，尺寸由 JS 动态注入 */
+/* 预览包裹层 */
 .upload__preview-wrap {
   position: relative;
   overflow: hidden;
   border-radius: 16rpx;
 }
 
-/* 图片铺满包裹容器，因为容器已精确计算为原图比例 */
 .upload__preview {
   display: block;
   width: 100%;
@@ -152,64 +181,245 @@ page {
   line-height: 1;
 }
 
-.samples {
+/* ════════════════════════════════
+   公共 Section 块
+════════════════════════════════ */
+.section-block {
   margin-top: 40rpx;
 }
 
 .section-label {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
   color: var(--color-text);
   font-size: 28rpx;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 44rpx;
 }
 
-.samples__grid {
+.section-label::before {
+  content: '';
+  display: block;
+  flex-shrink: 0;
+  width: 6rpx;
+  height: 32rpx;
+  border-radius: 3rpx;
+  background: var(--color-primary);
+}
+
+/* ════════════════════════════════
+   生成方式 — 两张卡片一行
+════════════════════════════════ */
+.mode-cards {
   display: flex;
-  gap: 24rpx;
+  gap: 16rpx;
   margin-top: 16rpx;
 }
 
-.sample-card {
+.mode-card {
   position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  padding: 20rpx 16rpx;
+  border: 2rpx solid var(--color-border);
+  border-radius: 20rpx;
+  background: var(--color-surface);
   overflow: hidden;
-  width: calc((100% - 72rpx) / 4);
-  height: 164rpx;
-  border-radius: 24rpx;
+}
+
+/* 标准模式 — 选中态 */
+.mode-card--active-standard {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+/* AI 模式 — 默认（未选中）浅紫边框 */
+.mode-card:not(.mode-card--active):last-child {
+  border-color: var(--color-ai-border);
+  background: var(--color-ai-soft);
+}
+
+/* AI 模式 — 选中态 */
+.mode-card--active-ai {
+  border-color: var(--color-ai);
+  background: var(--color-ai-soft);
+}
+
+/* 模式图标 */
+.mode-card__icon {
+  flex-shrink: 0;
+  width: 80rpx;
+  height: 80rpx;
+}
+
+/* 文字区域 */
+.mode-card__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.mode-card__title {
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 40rpx;
+  color: var(--color-text);
+}
+
+.mode-card__title--standard {
+  color: var(--color-primary);
+}
+
+.mode-card__title--ai {
+  color: var(--color-ai-text);
+}
+
+.mode-card__desc {
+  font-size: 22rpx;
+  line-height: 34rpx;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mode-card__desc--standard {
+  color: var(--color-primary);
+  opacity: 0.8;
+}
+
+.mode-card__desc--ai {
+  color: var(--color-ai-text);
+  opacity: 0.8;
+}
+
+/* 右上角 Badge */
+.mode-card__badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 4rpx 12rpx;
+  border-radius: 0 20rpx 0 12rpx;
+  font-size: 20rpx;
+  font-weight: 500;
+  line-height: 28rpx;
+}
+
+.mode-card__badge--ai {
+  background: var(--color-ai-soft);
+  color: var(--color-ai-text);
+}
+
+.mode-card--active-ai .mode-card__badge--ai {
+  background: var(--color-ai);
+  color: #fff;
+}
+
+/* 右上角选中 ✓ */
+.mode-card__check {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  display: flex;
+  width: 32rpx;
+  height: 32rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.mode-card__check--standard {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.mode-card__check--ai {
+  background: var(--color-ai);
+  color: #fff;
+}
+
+/* badge 存在时，check 位置让位 */
+.mode-card__badge ~ .mode-card__check {
+  top: 40rpx;
+}
+
+
+
+/* ════════════════════════════════
+   示例图片 — 四个 item 共用同一套 flex / 尺寸规则
+   标准模式与 AI 精致模式只允许颜色不同，不允许尺寸不同
+════════════════════════════════ */
+.samples__grid {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+
+/* flex-basis 为 0 + 等比放大：四列宽度必然相等，不受标签文字长度影响 */
+.sample-card {
+  box-sizing: border-box;
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+  border-radius: 20rpx;
   background: var(--color-surface-muted);
 }
 
-.sample-card__sprite {
-  position: absolute;
-  width: 864rpx;
-  height: 1946rpx;
+.sample-card__media {
+  width: 100%;
+  height: var(--sample-media-height);
+  overflow: hidden;
+  background: var(--color-surface-muted);
 }
 
-.sample-card__sprite--1 {
-  top: -922rpx;
-  left: -66rpx;
+/* 图片始终铺满 media 容器，尺寸不再单独声明 */
+.sample-card__image {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.sample-card__sprite--2 {
-  top: -922rpx;
-  left: -248rpx;
+.sample-card__label {
+  box-sizing: border-box;
+  display: block;
+  height: var(--sample-label-height);
+  padding: 8rpx 6rpx 0;
+  overflow: hidden;
+  font-size: 20rpx;
+  font-weight: 500;
+  line-height: 28rpx;
+  text-align: center;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.sample-card__sprite--3 {
-  top: -922rpx;
-  left: -430rpx;
+/* 仅配色差异 */
+.sample-card__label--standard {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 
-.sample-card__sprite--4 {
-  top: -922rpx;
-  left: -613rpx;
+.sample-card__label--ai {
+  background: var(--color-ai-soft);
+  color: var(--color-ai-text);
 }
 
+/* ════════════════════════════════
+   尺寸选择 & 颜色数量
+════════════════════════════════ */
 .setting-options {
-  margin-top: 48rpx;
+  margin-top: 40rpx;
 }
 
 .option-group--colors {
-  margin-top: 48rpx;
+  margin-top: 40rpx;
 }
 
 .option-row {
@@ -245,6 +455,17 @@ page {
   background: var(--color-primary-soft);
 }
 
+.option-row--sizes .option-button {
+  box-sizing: border-box;
+  padding: 0 4rpx;
+  font-size: 24rpx;
+  line-height: 36rpx;
+  white-space: nowrap;
+}
+
+/* ════════════════════════════════
+   开始生成按钮
+════════════════════════════════ */
 .home__submit {
   box-sizing: border-box;
   width: auto;
@@ -269,4 +490,42 @@ page {
   background: var(--color-disabled);
   box-shadow: none;
   color: #ffffff;
+}
+
+/* ════════════════════════════════
+   小屏幕适配（≤ 340px / 320rpx 逻辑宽度）
+   只调整统一变量，不单独给某一类示例图写尺寸
+════════════════════════════════ */
+@media (max-width: 340px) {
+  page {
+    /* 内容区 686rpx - 3 × 16rpx 间距 = 638rpx，四等分 ≈ 160rpx */
+    --sample-media-height: 160rpx;
+  }
+
+  .page {
+    padding-right: 32rpx;
+    padding-left: 32rpx;
+  }
+
+  .mode-cards {
+    gap: 12rpx;
+  }
+
+  .mode-card {
+    gap: 12rpx;
+    padding: 16rpx 12rpx;
+  }
+
+  .mode-card__icon {
+    width: 64rpx;
+    height: 64rpx;
+  }
+
+  .mode-card__title {
+    font-size: 24rpx;
+  }
+
+  .mode-card__desc {
+    font-size: 20rpx;
+  }
 }

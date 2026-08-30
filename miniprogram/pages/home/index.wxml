@@ -1,9 +1,13 @@
 <page-layout title="一起拼豆吧" home show-main-nav compact-bottom-padding selected-tab="{{0}}">
 <view class="page">
+
+  <!-- ① 主标题 -->
   <view class="hero">
-    <text class="hero__text">把喜欢的图片，变成</text><text class="hero__accent">拼豆作品</text>
+    <text class="hero__title">把图片变成拼豆图</text>
+    <text class="hero__subtitle">上传图片，自动生成拼豆图案</text>
   </view>
 
+  <!-- ② 上传图片 -->
   <view class="upload {{sourceImagePath ? 'upload--selected' : ''}}">
     <view
       wx:if="{{sourceImagePath}}"
@@ -26,30 +30,75 @@
       disabled="{{choosing}}"
       aria-label="选择一张图片"
     >
-      <image class="upload__icon" src="/assets/icons/image-upload.svg" mode="aspectFit" />
+      <image class="upload__icon" src="/assets/icons/upload-cloud.svg" mode="aspectFit" />
       <view class="upload__title">上传图片</view>
-      <view class="upload__hint">支持 JPG / PNG / WEBP</view>
-      <view class="upload__description">上传后自动生成拼豆图</view>
+      <view class="upload__hint">支持 JPG / PNG / WEBP 格式</view>
+      <view class="upload__description">建议图片清晰，效果更佳</view>
     </button>
   </view>
 
-  <view class="samples">
+  <!-- ③ 生成方式 -->
+  <view class="section-block">
+    <view class="section-label">生成方式</view>
+    <view class="mode-cards" role="radiogroup" aria-label="生成方式">
+      <view
+        wx:for="{{generationModes}}"
+        wx:key="id"
+        class="mode-card {{generationMode === item.id ? 'mode-card--active mode-card--active-' + item.id : ''}}"
+        data-mode="{{item.id}}"
+        bindtap="selectMode"
+        role="radio"
+        aria-checked="{{generationMode === item.id}}"
+        aria-label="{{item.title}}，{{item.description}}"
+      >
+        <!-- 右上角 badge -->
+        <view
+          wx:if="{{item.badge}}"
+          class="mode-card__badge mode-card__badge--{{item.id}}"
+        >{{item.badge}}</view>
+
+        <!-- 右上角选中对勾 -->
+        <view
+          wx:if="{{generationMode === item.id}}"
+          class="mode-card__check mode-card__check--{{item.id}}"
+        >✓</view>
+
+        <!-- 图标 -->
+        <image class="mode-card__icon" src="{{item.icon}}" mode="aspectFit" />
+
+        <!-- 文字 -->
+        <view class="mode-card__content">
+          <view class="mode-card__title mode-card__title--{{generationMode === item.id ? item.id : ''}}">{{item.title}}</view>
+          <view class="mode-card__desc mode-card__desc--{{generationMode === item.id ? item.id : ''}}">{{item.description}}</view>
+        </view>
+      </view>
+    </view>
+
+  </view>
+
+  <!-- ⑤ 示例图片 -->
+  <view class="section-block">
     <view class="section-label">示例图片</view>
     <view class="samples__grid">
-      <view class="sample-card">
-        <image class="sample-card__sprite sample-card__sprite--1" src="/assets/reference/home-reference.png" />
-      </view>
-      <view class="sample-card">
-        <image class="sample-card__sprite sample-card__sprite--2" src="/assets/reference/home-reference.png" />
-      </view>
-      <view class="sample-card">
-        <image class="sample-card__sprite sample-card__sprite--3" src="/assets/reference/home-reference.png" />
-      </view>
-      <view class="sample-card">
-        <image class="sample-card__sprite sample-card__sprite--4" src="/assets/reference/home-reference.png" />
+      <view
+        wx:for="{{sampleImages}}"
+        wx:key="src"
+        class="sample-card"
+      >
+        <view class="sample-card__media">
+          <image
+            class="sample-card__image"
+            src="{{item.src}}"
+            mode="aspectFill"
+            aria-label="{{item.alt}}"
+          />
+        </view>
+        <view class="sample-card__label sample-card__label--{{item.mode}}">{{item.label}}</view>
       </view>
     </view>
   </view>
+
+  <!-- ⑥ 尺寸选择 & 颜色数量 -->
   <view class="setting-options">
     <view class="option-group">
       <view class="section-label">尺寸选择</view>
@@ -77,9 +126,11 @@
       </view>
     </view>
   </view>
+
+  <!-- ⑦ 开始生成 -->
   <view class="button-primary home__submit" role="button" bindtap="startCreating">
     开始生成
   </view>
-</view>
 
+</view>
 </page-layout>

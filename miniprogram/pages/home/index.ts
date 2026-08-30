@@ -9,9 +9,79 @@ const MAX_PREVIEW_WIDTH_RPX = 750 - PAGE_HORIZONTAL_PADDING_RPX * 2
 /** 预览区域最大高度（rpx） */
 const MAX_PREVIEW_HEIGHT_RPX = 480
 
+/** 生成模式 */
+type GenerationMode = 'standard' | 'ai'
+
+interface GenerationModeOption {
+  id: GenerationMode
+  title: string
+  description: string
+  /** 「模式说明」区块使用的完整说明文案（仅展示，不参与业务判断） */
+  note: string
+  icon: string
+  badge: string
+  /** 预留：未来 AI 额度消耗，当前阶段不使用 */
+  quotaCost: number
+}
+
+interface SampleImage {
+  src: string
+  mode: GenerationMode
+  label: string
+  alt: string
+}
+
 interface PreviewImageLoadEvent extends WechatMiniprogram.BaseEvent {
   detail: { width: number; height: number }
 }
+
+const GENERATION_MODES: GenerationModeOption[] = [
+  {
+    id: 'standard',
+    title: '标准模式',
+    description: '快速转换，免费使用',
+    note: '快速转换，免费使用，适合日常生成',
+    icon: '/assets/icons/mode-standard.svg',
+    badge: '',
+    quotaCost: 0,
+  },
+  {
+    id: 'ai',
+    title: 'AI 精致模式',
+    description: 'AI 优化细节，更接近原图',
+    note: 'AI 优化细节，效果更精致，更接近原图',
+    icon: '/assets/icons/mode-ai-sparkle.svg',
+    badge: '更精致',
+    quotaCost: 1,
+  },
+]
+
+const SAMPLE_IMAGES: SampleImage[] = [
+  {
+    src: '/assets/samples/home-sample-standard-1.jpg',
+    mode: 'standard',
+    label: '标准模式',
+    alt: '标准模式示例作品一',
+  },
+  {
+    src: '/assets/samples/home-sample-standard-2.jpg',
+    mode: 'standard',
+    label: '标准模式',
+    alt: '标准模式示例作品二',
+  },
+  {
+    src: '/assets/samples/home-sample-ai-1.jpg',
+    mode: 'ai',
+    label: 'AI 精致模式',
+    alt: 'AI 精致模式示例作品一',
+  },
+  {
+    src: '/assets/samples/home-sample-ai-2.jpg',
+    mode: 'ai',
+    label: 'AI 精致模式',
+    alt: 'AI 精致模式示例作品二',
+  },
+]
 
 Page({
   data: {
@@ -25,10 +95,22 @@ Page({
     colorOptions: [16, 32, 64, 96],
     choosing: false,
     generating: false,
+    /** 当前选中的生成方式 */
+    generationMode: 'standard' as GenerationMode,
+    /** 生成方式选项列表（数据驱动渲染，避免 UI 写死） */
+    generationModes: GENERATION_MODES,
+    /** 示例图片列表 */
+    sampleImages: SAMPLE_IMAGES,
   },
 
   onShow() {
     // tab 高亮由 page-layout selected-tab 属性管理
+  },
+
+  selectMode(event: WechatMiniprogram.TouchEvent) {
+    const mode = event.currentTarget.dataset.mode as GenerationMode
+    if (mode === this.data.generationMode) return
+    this.setData({ generationMode: mode })
   },
 
   async chooseImage() {
@@ -140,6 +222,13 @@ Page({
       return
     }
 
+    // AI 精致模式暂未上线，明确提示用户，不伪执行标准流程
+    if (this.data.generationMode === 'ai') {
+      wx.showToast({ title: 'AI 精致模式即将上线，敬请期待', icon: 'none', duration: 2000 })
+      return
+    }
+
+    // 标准模式：保持现有完整生成流程
     this.setData({ generating: true })
     wx.showLoading({ title: '正在生成', mask: true })
 
