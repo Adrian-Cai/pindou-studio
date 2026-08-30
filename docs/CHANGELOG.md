@@ -7,6 +7,8 @@
 - 同步修复 profile、projects、home 中跳转二级页面的 `navigateTo` 路径（`pages/` → `pages-sub/`）。
 - 示例图片全部从 JPG 转为 WebP（home-sample-standard-1/2、home-sample-ai-1/2），brand-avatar 同步转 WebP，图片体积大幅缩减。
 - 删除旧版 JPG 资源（home-sample-*.jpg、home-bead-*.jpg）及设计参考图 home-reference.png，清理冗余静态资源。
+- 首页 `index.wxml` 仅做缩进格式化，无功能变化。
+- 作品结果页拆分混合类型导入为独立 `import type` 语句，消除一致类型导入导包告警。
 
 ## 0.15.0
 
