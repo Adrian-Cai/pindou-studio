@@ -1,12 +1,12 @@
-import { DOWNLOAD_CONFIGS } from '../../config/download'
-import type { DownloadSheetState, DownloadTabConfig } from '../../config/download'
+import { DOWNLOAD_CONFIGS } from '../config/download'
+import type { DownloadSheetState, DownloadTabConfig } from '../config/download'
 import type { DownloadFileType, PatternDraft, WorkItem } from '../../models/pattern'
 import {
   drawMaterialsDownload,
   drawPaletteDownload,
   friendlyDownloadError,
   saveImageToAlbum,
-} from '../../services/result-download-service'
+} from '../services/result-download-service'
 import { cloudSummaryToWorkItem, renameCloudWork } from '../../services/work-service'
 import { appStore } from '../../store/app-store'
 import { getCustomNavigationMetrics } from '../../utils/navigation'

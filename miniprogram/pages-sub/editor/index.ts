@@ -22,7 +22,7 @@ import {
   type GridCell,
   type PatternCanvasContext,
   type ViewTransform,
-} from '../../services/pattern-editor-service'
+} from '../services/pattern-editor-service'
 import {
   buildPrecisionSelectionFeedback,
   createPrecisionSelection,

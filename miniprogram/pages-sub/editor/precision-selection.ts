@@ -5,7 +5,7 @@ import {
   type FittedImageSize,
   type GridCell,
   type ViewTransform,
-} from '../../services/pattern-editor-service'
+} from '../services/pattern-editor-service'
 
 export const MAGNIFIER_SIZE = 140
 export const MAGNIFIER_CANVAS_HEIGHT = 188

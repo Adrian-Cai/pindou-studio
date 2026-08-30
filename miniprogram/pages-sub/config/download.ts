@@ -1,4 +1,4 @@
-import type { DownloadFileType } from '../models/pattern'
+import type { DownloadFileType } from '../../models/pattern'
 
 export type DownloadSheetState = 'closed' | 'confirm' | 'processing' | 'success'
 

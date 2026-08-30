@@ -1,4 +1,4 @@
-import type { PatternCell, PatternDraft } from '../models/pattern'
+﻿import type { PatternCell, PatternDraft } from '../../models/pattern'
 
 export interface PatternCanvasContext {
   fillStyle: string
@@ -23,7 +23,7 @@ export interface PatternCanvasContext {
   rect(x: number, y: number, width: number, height: number): void
 }
 
-/** 矩形位置与尺寸（CSS 像素） */
+/** 鐭╁舰浣嶇疆涓庡昂瀵革紙CSS 鍍忕礌锛?*/
 export interface CanvasRect {
   left: number
   top: number
@@ -31,7 +31,7 @@ export interface CanvasRect {
   height: number
 }
 
-/** 100% 状态下，完整拼豆图在 viewport 内的基础尺寸（CSS 像素） */
+/** 100% 鐘舵€佷笅锛屽畬鏁存嫾璞嗗浘鍦?viewport 鍐呯殑鍩虹灏哄锛圕SS 鍍忕礌锛?*/
 export interface FittedImageSize {
   width: number
   height: number
@@ -39,14 +39,14 @@ export interface FittedImageSize {
   cellHeight: number
 }
 
-/** 拼豆图相对 viewport 中心的视图变换 */
+/** 鎷艰眴鍥剧浉瀵?viewport 涓績鐨勮鍥惧彉鎹?*/
 export interface ViewTransform {
   scale: number
   translateX: number
   translateY: number
 }
 
-/** 格子位置 */
+/** 鏍煎瓙浣嶇疆 */
 export interface GridCell {
   row: number
   column: number
@@ -55,12 +55,12 @@ export interface GridCell {
 
 export function editorTools(canUndo: boolean, canRedo: boolean) {
   return [
-    { id: 'undo', label: '撤销', icon: '/assets/icons/editor-undo.svg', activeIcon: '/assets/icons/editor-undo.svg', disabled: !canUndo },
-    { id: 'redo', label: '重做', icon: '/assets/icons/editor-redo.svg', activeIcon: '/assets/icons/editor-redo.svg', disabled: !canRedo },
-    { id: 'pencil', label: '画笔', icon: '/assets/icons/editor-pencil.svg', activeIcon: '/assets/icons/editor-pencil-active.svg', disabled: false },
-    { id: 'eyedropper', label: '吸管', icon: '/assets/icons/editor-eyedropper.svg', activeIcon: '/assets/icons/editor-eyedropper-active.svg', disabled: false },
-    { id: 'fill', label: '填充', icon: '/assets/icons/editor-fill.svg', activeIcon: '/assets/icons/editor-fill-active.svg', disabled: false },
-    { id: 'eraser', label: '橡皮擦', icon: '/assets/icons/editor-eraser.svg', activeIcon: '/assets/icons/editor-eraser-active.svg', disabled: false },
+    { id: 'undo', label: '鎾ら攢', icon: '/assets/icons/editor-undo.svg', activeIcon: '/assets/icons/editor-undo.svg', disabled: !canUndo },
+    { id: 'redo', label: '閲嶅仛', icon: '/assets/icons/editor-redo.svg', activeIcon: '/assets/icons/editor-redo.svg', disabled: !canRedo },
+    { id: 'pencil', label: '鐢荤瑪', icon: '/assets/icons/editor-pencil.svg', activeIcon: '/assets/icons/editor-pencil-active.svg', disabled: false },
+    { id: 'eyedropper', label: '鍚哥', icon: '/assets/icons/editor-eyedropper.svg', activeIcon: '/assets/icons/editor-eyedropper-active.svg', disabled: false },
+    { id: 'fill', label: '濉厖', icon: '/assets/icons/editor-fill.svg', activeIcon: '/assets/icons/editor-fill-active.svg', disabled: false },
+    { id: 'eraser', label: '姗＄毊鎿?, icon: '/assets/icons/editor-eraser.svg', activeIcon: '/assets/icons/editor-eraser-active.svg', disabled: false },
   ]
 }
 
@@ -121,7 +121,7 @@ export function exportPatternCoverImage(
           height?: number
         } | undefined
         if (!result?.node || !result.width || !result.height) {
-          reject(new Error('封面画布尚未准备好'))
+          reject(new Error('灏侀潰鐢诲竷灏氭湭鍑嗗濂?))
           return
         }
         result.node.width = Math.round(result.width)
@@ -133,7 +133,7 @@ export function exportPatternCoverImage(
             fileType: 'png',
             quality: 1,
             success: ({ tempFilePath }) => resolve(tempFilePath),
-            fail: (error) => reject(new Error(error.errMsg || '封面生成失败')),
+            fail: (error) => reject(new Error(error.errMsg || '灏侀潰鐢熸垚澶辫触')),
           },
           component,
         )
@@ -141,7 +141,7 @@ export function exportPatternCoverImage(
   })
 }
 
-/** 在固定 viewport Canvas 内按当前视图变换绘制，仅遍历可见 grid cell。 */
+/** 鍦ㄥ浐瀹?viewport Canvas 鍐呮寜褰撳墠瑙嗗浘鍙樻崲缁樺埗锛屼粎閬嶅巻鍙 grid cell銆?*/
 export function drawPatternViewport(
   context: PatternCanvasContext,
   viewportWidth: number,
@@ -193,9 +193,7 @@ export function drawPatternViewport(
 }
 
 /**
- * 计算完整拼豆图在固定 viewport 内的 100% 尺寸。
- * 限制轴铺满 viewport，另一轴按网格比例完整显示。
- */
+ * 璁＄畻瀹屾暣鎷艰眴鍥惧湪鍥哄畾 viewport 鍐呯殑 100% 灏哄銆? * 闄愬埗杞撮摵婊?viewport锛屽彟涓€杞存寜缃戞牸姣斾緥瀹屾暣鏄剧ず銆? */
 export function calculateFittedImageSize(
   viewportWidth: number,
   viewportHeight: number,
@@ -215,9 +213,7 @@ export function calculateFittedImageSize(
 }
 
 /**
- * 以 viewport 内的指定点为锚点计算缩放后的平移量。
- * 缩放前锚点对应的图片坐标，在缩放后仍落在同一个手指位置。
- */
+ * 浠?viewport 鍐呯殑鎸囧畾鐐逛负閿氱偣璁＄畻缂╂斁鍚庣殑骞崇Щ閲忋€? * 缂╂斁鍓嶉敋鐐瑰搴旂殑鍥剧墖鍧愭爣锛屽湪缂╂斁鍚庝粛钀藉湪鍚屼竴涓墜鎸囦綅缃€? */
 export function scaleAroundViewportPoint(
   transform: ViewTransform,
   nextScale: number,
@@ -237,9 +233,7 @@ export function scaleAroundViewportPoint(
 }
 
 /**
- * 限制图片平移范围。100% 时锁定居中；放大后允许最外侧 cell 的中心
- * 移动到 viewport 中心，满足四角区域可居中查看，同时禁止图片无限移出。
- */
+ * 闄愬埗鍥剧墖骞崇Щ鑼冨洿銆?00% 鏃堕攣瀹氬眳涓紱鏀惧ぇ鍚庡厑璁告渶澶栦晶 cell 鐨勪腑蹇? * 绉诲姩鍒?viewport 涓績锛屾弧瓒冲洓瑙掑尯鍩熷彲灞呬腑鏌ョ湅锛屽悓鏃剁姝㈠浘鐗囨棤闄愮Щ鍑恒€? */
 export function clampViewTranslation(
   translateX: number,
   translateY: number,
@@ -266,14 +260,13 @@ export function clampViewTranslation(
 }
 
 /**
- * 将屏幕触点坐标转换为格子坐标（公共函数，供所有工具复用）
+ * 灏嗗睆骞曡Е鐐瑰潗鏍囪浆鎹负鏍煎瓙鍧愭爣锛堝叕鍏卞嚱鏁帮紝渚涙墍鏈夊伐鍏峰鐢級
  * @param touchClientX  touch.clientX
  * @param touchClientY  touch.clientY
- * @param viewportRect 固定编辑工作区在屏幕上的位置
- * @param image        100% 状态下的完整图片尺寸
- * @param transform    当前 scale 与 translate
- * @param draft         当前草稿
- * @returns GridCell 或 null（超出画布范围）
+ * @param viewportRect 鍥哄畾缂栬緫宸ヤ綔鍖哄湪灞忓箷涓婄殑浣嶇疆
+ * @param image        100% 鐘舵€佷笅鐨勫畬鏁村浘鐗囧昂瀵? * @param transform    褰撳墠 scale 涓?translate
+ * @param draft         褰撳墠鑽夌
+ * @returns GridCell 鎴?null锛堣秴鍑虹敾甯冭寖鍥达級
  */
 export function screenPointToGridCell(
   touchClientX: number,
@@ -305,7 +298,7 @@ export function screenPointToGridCell(
   return { row, column, index: row * draft.settings.width + column }
 }
 
-/** 将 grid cell 正向映射到 viewport 局部坐标，用于绘制固定线宽的选中框。 */
+/** 灏?grid cell 姝ｅ悜鏄犲皠鍒?viewport 灞€閮ㄥ潗鏍囷紝鐢ㄤ簬缁樺埗鍥哄畾绾垮鐨勯€変腑妗嗐€?*/
 export function gridCellToViewportRect(
   cell: GridCell,
   image: FittedImageSize,
@@ -326,13 +319,9 @@ export function gridCellToViewportRect(
 }
 
 /**
- * 放大镜渲染：直接读取 grid 数据重绘，保证清晰度
- * @param magCtx        放大镜 canvas 的 2d context（已按 pixelRatio scale）
- * @param magSize       放大镜 canvas 的 CSS 边长（px）
- * @param centerRow     中心行
- * @param centerColumn  中心列
- * @param draft         当前草稿
- * @param halfGrid      半径格数，默认 3 → 显示 7×7
+ * 鏀惧ぇ闀滄覆鏌擄細鐩存帴璇诲彇 grid 鏁版嵁閲嶇粯锛屼繚璇佹竻鏅板害
+ * @param magCtx        鏀惧ぇ闀?canvas 鐨?2d context锛堝凡鎸?pixelRatio scale锛? * @param magSize       鏀惧ぇ闀?canvas 鐨?CSS 杈归暱锛坧x锛? * @param centerRow     涓績琛? * @param centerColumn  涓績鍒? * @param draft         褰撳墠鑽夌
+ * @param halfGrid      鍗婂緞鏍兼暟锛岄粯璁?3 鈫?鏄剧ず 7脳7
  */
 export function drawMagnifier(
   magCtx: PatternCanvasContext,
@@ -348,7 +337,7 @@ export function drawMagnifier(
   const totalRows = draft.settings.height
   const totalCols = draft.settings.width
 
-  // 背景
+  // 鑳屾櫙
   magCtx.fillStyle = '#f0f0f0'
   magCtx.fillRect(0, 0, magSize, magSize)
 
@@ -363,8 +352,7 @@ export function drawMagnifier(
       const isCenter = dr === 0 && dc === 0
 
       if (row < 0 || row >= totalRows || col < 0 || col >= totalCols) {
-        // 越界格子用浅灰填充
-        magCtx.globalAlpha = 0.3
+        // 瓒婄晫鏍煎瓙鐢ㄦ祬鐏板～鍏?        magCtx.globalAlpha = 0.3
         magCtx.fillStyle = '#cccccc'
         magCtx.fillRect(px, py, cellSize, cellSize)
         magCtx.globalAlpha = 1
@@ -373,13 +361,13 @@ export function drawMagnifier(
 
       const cell = draft.cells[row * totalCols + col]
       if (!cell || cell.color === 'transparent') {
-        // 透明格：显示格线
+        // 閫忔槑鏍硷細鏄剧ず鏍肩嚎
         magCtx.globalAlpha = 0.12
         magCtx.fillStyle = '#aaaaaa'
         magCtx.fillRect(px, py, cellSize, cellSize)
         magCtx.globalAlpha = 1
       } else {
-        // 投影
+        // 鎶曞奖
         magCtx.globalAlpha = 0.18
         magCtx.fillStyle = '#000000'
         magCtx.beginPath()
@@ -387,13 +375,13 @@ export function drawMagnifier(
         magCtx.fill()
         magCtx.globalAlpha = 1
 
-        // 拼豆主体
+        // 鎷艰眴涓讳綋
         magCtx.fillStyle = cell.color
         magCtx.beginPath()
         magCtx.arc(cx, cy, radius, 0, Math.PI * 2)
         magCtx.fill()
 
-        // 高光
+        // 楂樺厜
         if (radius >= 3) {
           magCtx.globalAlpha = 0.34
           magCtx.fillStyle = '#ffffff'
@@ -404,8 +392,7 @@ export function drawMagnifier(
         }
       }
 
-      // 中心格高亮描边
-      if (isCenter) {
+      // 涓績鏍奸珮浜弿杈?      if (isCenter) {
         magCtx.strokeStyle = '#ffffff'
         magCtx.lineWidth = 3
         magCtx.strokeRect(px + 1.5, py + 1.5, cellSize - 3, cellSize - 3)
@@ -415,7 +402,7 @@ export function drawMagnifier(
 
       }
 
-      // 格线分隔
+      // 鏍肩嚎鍒嗛殧
       magCtx.globalAlpha = 0.08
       magCtx.strokeStyle = '#000000'
       magCtx.lineWidth = 0.5
@@ -424,7 +411,7 @@ export function drawMagnifier(
     }
   }
 
-  // 中心十字准星
+  // 涓績鍗佸瓧鍑嗘槦
   const half = magSize / 2
   magCtx.strokeStyle = 'rgba(22,119,255,0.75)'
   magCtx.lineWidth = 1
@@ -439,7 +426,7 @@ export function drawMagnifier(
 
   const captionTop = magSize
   const captionHeight = 48
-  const code = draft.cells[centerRow * totalCols + centerColumn]?.colorCode || '空白'
+  const code = draft.cells[centerRow * totalCols + centerColumn]?.colorCode || '绌虹櫧'
   magCtx.fillStyle = '#ffffff'
   magCtx.fillRect(0, captionTop, magSize, captionHeight)
   magCtx.fillStyle = '#1677ff'
@@ -448,7 +435,7 @@ export function drawMagnifier(
   magCtx.font = '600 12px sans-serif'
   magCtx.textAlign = 'center'
   magCtx.textBaseline = 'middle'
-  magCtx.fillText(`第 ${centerRow + 1} 行 · 第 ${centerColumn + 1} 列`, magSize / 2, captionTop + 16)
+  magCtx.fillText(`绗?${centerRow + 1} 琛?路 绗?${centerColumn + 1} 鍒梎, magSize / 2, captionTop + 16)
   magCtx.fillStyle = '#eaf3ff'
   magCtx.fillRect(magSize / 2 - 22, captionTop + 27, 44, 18)
   magCtx.fillStyle = '#0b63ce'
