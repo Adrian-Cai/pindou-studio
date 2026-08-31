@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  miniprogram-static-check:
+    name: Miniprogram Static Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Pattern generation regression tests
+        run: npm run test:pattern
+
+  server-static-check:
+    name: Server Static Check
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript typecheck
+        run: npm run typecheck
