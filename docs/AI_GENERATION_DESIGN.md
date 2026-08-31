@@ -40,17 +40,11 @@ AI 精致模式解决的问题不是“让模型直接输出最终拼豆格子�
 - 用于内部 A/B 测试不同 provider 的拼豆转换效果。
 - 如果未来具备稳定网络、成本和合规条件，可作为备用 Provider。
 
-### 不建议首版绑定单一厂商
+### 首版实现原则
 
-代码层只保留一个很薄的 Provider 接口：
+首版只有 Qwen 一个生产实现时，直接使用一个小的 `qwen-image-provider.ts` 模块即可，不提前定义单实现接口、Factory、Plugin Registry 或多层 Adapter。
 
-```ts
-interface AiImageProvider {
-  createImageJob(input: AiImageInput): Promise<AiImageProviderResult>
-}
-```
-
-首版只实现一个 Provider。没有第二个生产 Provider 之前，不引入复杂 Factory、Plugin Registry 或多层 Adapter。
+只有第二个生产 Provider 真正接入时，再抽取统一 Provider 接口。
 
 ## 3. AI Prompt 目标
 
@@ -83,7 +77,7 @@ flowchart LR
     MP[微信小程序]
     API[Node API]
     JOB[AI Generation Service]
-    PROVIDER[AI Image Provider\n首版 Qwen Image]
+    PROVIDER[Qwen Image Provider]
     FS[文件存储]
     PG[(PostgreSQL)]
     ENGINE[Standard Pattern Engine V2]
@@ -308,6 +302,7 @@ server/src/modules/ai/
 
 首版不要新增：
 
+- Provider interface
 - BaseAiProvider
 - ProviderFactory
 - ProviderRegistry
