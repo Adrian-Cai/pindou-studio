@@ -60,7 +60,7 @@ export function editorTools(canUndo: boolean, canRedo: boolean) {
     { id: 'pencil', label: '鐢荤瑪', icon: '/assets/icons/editor-pencil.svg', activeIcon: '/assets/icons/editor-pencil-active.svg', disabled: false },
     { id: 'eyedropper', label: '鍚哥', icon: '/assets/icons/editor-eyedropper.svg', activeIcon: '/assets/icons/editor-eyedropper-active.svg', disabled: false },
     { id: 'fill', label: '濉厖', icon: '/assets/icons/editor-fill.svg', activeIcon: '/assets/icons/editor-fill-active.svg', disabled: false },
-    { id: 'eraser', label: '姗＄毊鎿?, icon: '/assets/icons/editor-eraser.svg', activeIcon: '/assets/icons/editor-eraser-active.svg', disabled: false },
+    { id: 'eraser', label: '橡皮擦', icon: '/assets/icons/editor-eraser.svg', activeIcon: '/assets/icons/editor-eraser-active.svg', disabled: false },
   ]
 }
 
@@ -121,7 +121,7 @@ export function exportPatternCoverImage(
           height?: number
         } | undefined
         if (!result?.node || !result.width || !result.height) {
-          reject(new Error('灏侀潰鐢诲竷灏氭湭鍑嗗濂?))
+          reject(new Error('封面画布尚未准备好'))
           return
         }
         result.node.width = Math.round(result.width)
@@ -352,7 +352,8 @@ export function drawMagnifier(
       const isCenter = dr === 0 && dc === 0
 
       if (row < 0 || row >= totalRows || col < 0 || col >= totalCols) {
-        // 瓒婄晫鏍煎瓙鐢ㄦ祬鐏板～鍏?        magCtx.globalAlpha = 0.3
+        // 越界格子使用浅灰填充
+        magCtx.globalAlpha = 0.3
         magCtx.fillStyle = '#cccccc'
         magCtx.fillRect(px, py, cellSize, cellSize)
         magCtx.globalAlpha = 1
@@ -392,7 +393,8 @@ export function drawMagnifier(
         }
       }
 
-      // 涓績鏍奸珮浜弿杈?      if (isCenter) {
+      // 中心格高亮描边
+      if (isCenter) {
         magCtx.strokeStyle = '#ffffff'
         magCtx.lineWidth = 3
         magCtx.strokeRect(px + 1.5, py + 1.5, cellSize - 3, cellSize - 3)
@@ -435,7 +437,7 @@ export function drawMagnifier(
   magCtx.font = '600 12px sans-serif'
   magCtx.textAlign = 'center'
   magCtx.textBaseline = 'middle'
-  magCtx.fillText(`绗?${centerRow + 1} 琛?路 绗?${centerColumn + 1} 鍒梎, magSize / 2, captionTop + 16)
+  magCtx.fillText(`第${centerRow + 1} 行 · 第${centerColumn + 1} 列`, magSize / 2, captionTop + 16)
   magCtx.fillStyle = '#eaf3ff'
   magCtx.fillRect(magSize / 2 - 22, captionTop + 27, 44, 18)
   magCtx.fillStyle = '#0b63ce'
