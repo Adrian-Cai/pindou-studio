@@ -7,6 +7,7 @@ server/data/
 .DS_Store
 *.log
 project.private.config.json
+.pattern-test-build/
 
 docs/ui/*
 .agents/*

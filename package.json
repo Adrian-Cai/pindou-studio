@@ -3,7 +3,8 @@
   "version": "0.16.0",
   "private": true,
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:pattern": "node test/pattern-generation/run-tests.js"
   },
   "devDependencies": {
     "miniprogram-api-typings": "^4.0.0",
