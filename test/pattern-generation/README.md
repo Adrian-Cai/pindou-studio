@@ -84,4 +84,4 @@ miniprogram/tests/pattern-generation/wechat-canvas-baseline.ts
 
 `fixtures/v1-baseline-manifest.json` 中 `baselineStatus = pending-wechat-devtools` 表示尚未获得真实微信结果。只有真实运行后才能改成 `recorded` 并填写 Hash；禁止用浏览器 Canvas 或 Node Canvas 结果代填。
 
-当前 V1 before baseline 已由微信开发者工具 `2.02.2607271` 实际运行并记录为 `fixtures/wechat-v1-before.json`，Manifest 中 6 项均为 `recorded`。Phase 1 后仍须用同一工具、同一 runner 生成 after 文件并执行严格比较。
+当前 V1 before/after baseline 已由微信开发者工具 `2.02.2607271` 实际运行，分别记录为 `fixtures/wechat-v1-before.json` 与 `fixtures/wechat-v1-after.json`。Manifest 中 6 项均为 `recorded`，严格比较结果为 PASS；普通 `npm run test:pattern` 也会持续校验这两份真实微信记录。

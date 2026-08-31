@@ -2,6 +2,9 @@
 
 ## 0.16.0
 
+- 建立 Standard V1 可重复执行的 Characterization Baseline，覆盖 Alpha 31/32、Median Cut tie-break、RGB 最近色 tie、Palette/ColorCode 顺序、HEX 与中心裁剪几何。
+- 新增 6 张程序生成的结构化 PNG fixture、微信开发者工具真实 OffscreenCanvas before/after baseline，以及稳定的 Cell Matrix / Palette FNV-1a Hash 比较；不引入第三方测试依赖。
+- 将 Standard V1 图片生成职责从 `image-service.ts` 原样拆分到 Standard Generator、Median Cut、RGB Color Utils 与 Crop 模块，`createDraft()`、Pattern Schema 和生成结果保持不变。
 - 将 10 个二级页面（editor/result/downloads/favorites/help/about/privacy/feedback/recharge/payment-success）从主包迁移至分包 `pages-sub`，主包仅保留 home/projects/profile 三个 Tab 页，显著降低主包体积。
 - `app.json` 新增 `subPackages` 配置，路由路径统一更新为 `pages-sub/xxx/index`。
 - 同步修复 profile、projects、home 中跳转二级页面的 `navigateTo` 路径（`pages/` → `pages-sub/`）。
@@ -233,4 +236,3 @@
 
 - 小程序开发规范。
 - 产品流程管理。
-

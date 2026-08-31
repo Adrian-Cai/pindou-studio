@@ -4,6 +4,7 @@ const test = require('node:test')
 
 const casesFixture = require('./fixtures/v1-characterization-cases.json')
 const baselineManifest = require('./fixtures/v1-baseline-manifest.json')
+const wechatAfterBaseline = require('./fixtures/wechat-v1-after.json')
 const wechatBeforeBaseline = require('./fixtures/wechat-v1-before.json')
 const reference = require('./v1-reference')
 const {
@@ -24,6 +25,27 @@ const compiledImageServicePath = path.resolve(
   'image-service.js',
 )
 const { createDraft } = require(compiledImageServicePath)
+const compiledPatternGenerationDirectory = path.dirname(
+  require.resolve(path.resolve(
+    __dirname,
+    '..',
+    '..',
+    '.pattern-test-build',
+    'miniprogram',
+    'services',
+    'pattern-generation',
+    'standard-generator.js',
+  )),
+)
+const { findNearestColor, rgbToHex } = require(
+  path.join(compiledPatternGenerationDirectory, 'color-utils.js'),
+)
+const { calculateCenterCrop } = require(
+  path.join(compiledPatternGenerationDirectory, 'crop.js'),
+)
+const { createMedianCutPalette } = require(
+  path.join(compiledPatternGenerationDirectory, 'median-cut.js'),
+)
 
 function installWxHarness({ sourceWidth, sourceHeight, imageData }) {
   const calls = { canvasOptions: null, drawImage: null, getImageData: null }
@@ -99,6 +121,64 @@ test('frozen V1 reference records empty-pixel fallback and strict tie behavior',
   ]), { r: 1, g: 2, b: 3 })
   assert.equal(reference.rgbToHex({ r: 0, g: 15, b: 16 }), '#000f10')
   assert.equal(reference.rgbToHex({ r: 255, g: 255, b: 255 }), '#ffffff')
+})
+
+test('extracted RGB and Median Cut modules preserve V1 pure behavior', () => {
+  assert.deepEqual(createMedianCutPalette([], 16), [{ r: 255, g: 255, b: 255 }])
+
+  const first = { r: 0, g: 0, b: 0 }
+  const second = { r: 2, g: 0, b: 0 }
+  assert.equal(findNearestColor({ r: 1, g: 0, b: 0 }, [first, second]), first)
+  assert.equal(rgbToHex({ r: 0, g: 15, b: 16 }), '#000f10')
+  assert.equal(rgbToHex({ r: 255, g: 255, b: 255 }), '#ffffff')
+
+  assert.deepEqual(createMedianCutPalette([
+    { r: 0, g: 100, b: 100 },
+    { r: 100, g: 0, b: 100 },
+    { r: 100, g: 100, b: 0 },
+    { r: 0, g: 0, b: 0 },
+  ], 2), [
+    { r: 0, g: 50, b: 50 },
+    { r: 100, g: 50, b: 50 },
+  ])
+  assert.deepEqual(createMedianCutPalette([
+    { r: 50, g: 0, b: 100 },
+    { r: 50, g: 100, b: 0 },
+    { r: 50, g: 100, b: 100 },
+    { r: 50, g: 0, b: 0 },
+  ], 2), [
+    { r: 50, g: 0, b: 50 },
+    { r: 50, g: 100, b: 50 },
+  ])
+  assert.deepEqual(createMedianCutPalette([
+    { r: 0, g: 0, b: 0 },
+    { r: 10, g: 0, b: 0 },
+    { r: 20, g: 0, b: 0 },
+    { r: 30, g: 0, b: 0 },
+  ], 3), [
+    { r: 0, g: 0, b: 0 },
+    { r: 10, g: 0, b: 0 },
+    { r: 25, g: 0, b: 0 },
+  ])
+  assert.deepEqual(createMedianCutPalette([
+    { r: 0, g: 0, b: 0 },
+    { r: 1, g: 3, b: 5 },
+  ], 1), [{ r: 1, g: 2, b: 3 }])
+})
+
+test('extracted calculateCenterCrop preserves every V1 geometry case', () => {
+  casesFixture.cropCases.forEach((cropCase) => {
+    assert.deepEqual(
+      calculateCenterCrop(
+        cropCase.source.width,
+        cropCase.source.height,
+        cropCase.target.width,
+        cropCase.target.height,
+      ),
+      cropCase.expected,
+      cropCase.id,
+    )
+  })
 })
 
 for (const caseDefinition of casesFixture.cases) {
@@ -209,4 +289,29 @@ test('WeChat Canvas manifest keeps all required fixture settings explicit', () =
       baselineStatus: 'recorded',
     })),
   )
+})
+
+test('real WeChat Canvas before and after baselines are identical', () => {
+  const comparableFields = [
+    'id',
+    'fixture',
+    'sourceWidth',
+    'sourceHeight',
+    'width',
+    'height',
+    'colorLimit',
+    'brand',
+    'cellCount',
+    'opaqueCellCount',
+    'colorCount',
+    'matrixHash',
+    'paletteHash',
+  ]
+  assert.equal(wechatAfterBaseline.cases.length, wechatBeforeBaseline.cases.length)
+  wechatBeforeBaseline.cases.forEach((beforeCase, index) => {
+    const afterCase = wechatAfterBaseline.cases[index]
+    comparableFields.forEach((field) => {
+      assert.deepEqual(afterCase[field], beforeCase[field], `${beforeCase.id}: ${field}`)
+    })
+  })
 })
