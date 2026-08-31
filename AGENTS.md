@@ -123,19 +123,22 @@
 
 ## 11. 提交前代码审查规则
 
-每次准备提交代码前，必须执行 `ponytail-review` 对本次代码变更进行审查。
+本仓库已安装 Ponytail 的 `ponytail-review` skill，来源：`DietrichGebert/ponytail`，本地路径：`.agents/skills/ponytail-review/SKILL.md`。
 
-要求：
+每次准备提交代码前，必须读取并执行该 skill，对本次代码变更进行过度设计与复杂度审查。
 
-1. `ponytail-review` 必须在最终提交代码之前执行，不能跳过。
-2. 审查范围必须覆盖本次任务涉及的全部代码变更。
-3. 必须处理审查发现的高优先级问题；如决定不修改，必须明确说明原因。
-4. 修复审查问题后，如果代码发生实质性变化，应再次执行 `ponytail-review`，确认没有引入新的问题。
-5. 只有在 `ponytail-review` 完成后，才允许进行最终代码提交。
-6. 任务完成说明中必须明确记录 `ponytail-review` 是否执行，以及审查结果。
+调用要求：
+
+1. 提交前必须执行 `ponytail-review`，不能跳过。
+2. 必须按照 `.agents/skills/ponytail-review/SKILL.md` 中定义的规则审查本次任务的全部 diff。
+3. 重点检查：可删除代码、重复造轮子、可使用标准库/原生能力替代的实现、无必要依赖、投机式抽象、YAGNI 问题以及可明显缩短的实现。
+4. `ponytail-review` 只负责复杂度/过度设计审查；正确性、安全性和性能问题仍需正常代码审查与测试覆盖。
+5. 根据 review 结果处理应修改的问题；如果修复产生实质性代码变化，应再次执行 `ponytail-review`。
+6. 只有完成 `ponytail-review` 后，才允许最终提交代码。
+7. 任务完成说明中必须明确记录 `ponytail-review` 是否执行、发现了什么、处理了什么，以及最终结果。
 
 标准提交前流程：
 
-`代码修改完成 -> lint/test/build/typecheck -> ponytail-review -> 修复审查问题 -> 必要时再次 ponytail-review -> 最终提交`
+`代码修改完成 -> lint/test/build/typecheck -> 正常正确性审查 -> ponytail-review -> 修复审查问题 -> 必要时再次 ponytail-review -> 最终提交`
 
-如果当前环境无法执行 `ponytail-review`，禁止默认视为通过；必须明确说明无法执行的原因，并告知用户该提交尚未完成规定的代码审查流程。
+如果当前 Agent/环境无法自动发现该 skill，必须直接读取 `.agents/skills/ponytail-review/SKILL.md` 并按其中规则人工执行，禁止因此跳过审查。
