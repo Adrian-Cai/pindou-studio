@@ -33,3 +33,7 @@ export function notFound(message = "资源不存在"): AppError {
 export function idempotencyConflict(message = "幂等键已用于另一份请求"): AppError {
   return new AppError(409, "IDEMPOTENCY_CONFLICT", message);
 }
+
+export function quotaInsufficient(message = "下载额度不足"): AppError {
+  return new AppError(402, "QUOTA_INSUFFICIENT", message);
+}

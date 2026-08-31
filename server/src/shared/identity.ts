@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 
-export function createEntityId(prefix: "usr" | "ses" | "file" | "work"): string {
+export function createEntityId(prefix: "usr" | "ses" | "file" | "work" | "dl" | "qt"): string {
   return `${prefix}_${randomBytes(15).toString("base64url")}`;
 }
 

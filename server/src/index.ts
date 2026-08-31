@@ -17,6 +17,7 @@ import { FileSystemAvatarStorage } from "./modules/users/avatar-storage";
 import { PostgresUserProfileService } from "./modules/users/user-profile-service";
 import { FileSystemCoverStorage } from "./modules/files/cover-storage";
 import { PostgresFileAssetService } from "./modules/files/file-asset-service";
+import { PostgresQuotaDownloadService } from "./modules/downloads/quota-download-service";
 import { PostgresWorkService } from "./modules/works/work-service";
 
 export interface RunningApplication {
@@ -52,6 +53,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         files: new PostgresFileAssetService(pool, covers),
         covers,
         works: new PostgresWorkService(pool),
+        quotaDownloads: new PostgresQuotaDownloadService(pool, config.quota),
         coverMaximumBytes: config.covers.maximumBytes,
       }),
       config.host,

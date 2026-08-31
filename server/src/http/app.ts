@@ -7,6 +7,11 @@ import type { AvatarStorage } from "../modules/users/avatar-storage";
 import type { UserProfileService } from "../modules/users/user-profile-service";
 import type { FileAssetService } from "../modules/files/file-asset-service";
 import type { CoverStorage } from "../modules/files/cover-storage";
+import type {
+  DownloadFileType,
+  DownloadListOptions,
+  QuotaDownloadService,
+} from "../modules/downloads/quota-download-service";
 import { validatePersistedPattern, type PersistedPattern } from "../modules/works/pattern";
 import type { FavoriteListOptions, UpdateWorkInput, WorkService, WorkStatus } from "../modules/works/work-service";
 import { AppError, invalidArgument } from "../shared/app-error";
@@ -67,6 +72,7 @@ export interface HttpApplicationDependencies {
   readonly files: FileAssetService;
   readonly covers: CoverStorage;
   readonly works: WorkService;
+  readonly quotaDownloads: QuotaDownloadService;
   readonly coverMaximumBytes: number;
 }
 
@@ -161,6 +167,23 @@ function validateFavoriteBody(body: Record<string, unknown>): boolean {
   return body.favorite;
 }
 
+function validateDownloadBody(body: Record<string, unknown>): {
+  readonly workId: string;
+  readonly fileType: DownloadFileType;
+} {
+  const keys = Object.keys(body);
+  if (
+    keys.length !== 2
+    || !keys.every((key) => key === "workId" || key === "fileType")
+    || typeof body.workId !== "string"
+    || !body.workId.trim()
+    || (body.fileType !== "preview" && body.fileType !== "chart" && body.fileType !== "materials")
+  ) {
+    throw invalidArgument("下载请求体只能包含非空 workId 和合法 fileType");
+  }
+  return { workId: body.workId.trim(), fileType: body.fileType };
+}
+
 function listOptions(url: URL, userId: string): { userId: string; status?: WorkStatus; page: number; pageSize: number; query?: string } {
   for (const key of url.searchParams.keys()) {
     if (!["status", "page", "pageSize", "query"].includes(key)) throw invalidArgument("作品列表包含不支持的查询参数");
@@ -185,6 +208,28 @@ function favoriteListOptions(url: URL, userId: string): FavoriteListOptions {
   const query = url.searchParams.get("query")?.trim() || undefined;
   if (query && Array.from(query).length > 120) throw invalidArgument("query 不能超过 120 个字符");
   return { userId, page, pageSize, ...(query ? { query } : {}) };
+}
+
+function downloadListOptions(url: URL, userId: string): DownloadListOptions {
+  for (const key of url.searchParams.keys()) {
+    if (!["fileType", "page", "pageSize", "query"].includes(key)) throw invalidArgument("下载记录列表包含不支持的查询参数");
+    if (url.searchParams.getAll(key).length > 1) throw invalidArgument(`查询参数 ${key} 不能重复`);
+  }
+  const page = positiveQueryInteger(url.searchParams.get("page"), 1, 1_000_000, "page");
+  const pageSize = positiveQueryInteger(url.searchParams.get("pageSize"), 20, 50, "pageSize");
+  const fileType = url.searchParams.get("fileType");
+  if (fileType !== null && fileType !== "preview" && fileType !== "chart" && fileType !== "materials") {
+    throw invalidArgument("fileType 只能是 preview、chart 或 materials");
+  }
+  const query = url.searchParams.get("query")?.trim() || undefined;
+  if (query && Array.from(query).length > 120) throw invalidArgument("query 不能超过 120 个字符");
+  return {
+    userId,
+    page,
+    pageSize,
+    ...(fileType ? { fileType } : {}),
+    ...(query ? { query } : {}),
+  };
 }
 
 function positiveQueryInteger(value: string | null, fallback: number, maximum: number, name: string): number {
@@ -312,6 +357,32 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       if (request.method === "GET" && url.pathname === "/api/favorites") {
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         sendJson(response, 200, await dependencies.works.listFavorites(favoriteListOptions(url, currentUser.id)));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/quota/me") {
+        if (url.searchParams.size > 0) throw invalidArgument("额度接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, await dependencies.quotaDownloads.getQuota(currentUser.id));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/downloads") {
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, await dependencies.quotaDownloads.listDownloads(downloadListOptions(url, currentUser.id)));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/downloads") {
+        if (url.searchParams.size > 0) throw invalidArgument("下载记录接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const body = validateDownloadBody(await readJsonObject(request));
+        sendJson(response, 201, await dependencies.quotaDownloads.createDownload({
+          userId: currentUser.id,
+          idempotencyKey: idempotencyKey(request),
+          workId: body.workId,
+          fileType: body.fileType,
+        }));
         return;
       }
 

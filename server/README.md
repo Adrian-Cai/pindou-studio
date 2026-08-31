@@ -1,6 +1,6 @@
 # 拼豆工作室后端
 
-当前完成阶段 0、阶段 1 和阶段 2：服务基础、PostgreSQL 结构校验、健康检查、微信登录、Bearer token 鉴权、当前用户查询及头像昵称维护，以及封面上传和读取、作品保存、列表、历史恢复、覆盖编辑和软删除。
+当前完成阶段 0 至阶段 4：服务基础、PostgreSQL 结构校验、健康检查、微信登录、Bearer token 鉴权、用户资料、文件与作品、收藏，以及下载额度和下载记录。
 
 ## 环境要求
 
@@ -93,6 +93,25 @@ type=cover
 作品保存使用 `Idempotency-Key`，请求体只能包含 `title`、`coverFileId`、`status` 和 `pattern`。`PUT/PATCH /api/works/:id` 支持改名、换封面、修改状态和覆盖保存图案，服务端会重新校验图案和统计数据。作品列表不返回完整 `cells`，详情接口返回可独立恢复的 `pattern`；删除采用软删除，不删除额度流水或已支付订单。
 
 封面默认使用本地文件系统适配器作为开发环境的对象存储替身，并可从 `GET /api/media/covers/:filename` 读取。生产环境应配置 `COVER_STORAGE_DIR` 的持久化目录，并将 `COVER_PUBLIC_BASE_URL` 指向 CDN/对象存储公开地址；如接入云对象存储，替换 `CoverStorage` 实现即可，数据库接口不变。
+
+## 阶段 3、4 接口
+
+收藏接口包括 `PATCH /api/works/:id/favorite` 和 `GET /api/favorites`，只允许操作当前登录用户自己的可用作品。
+
+`GET /api/quota/me` 从额度流水汇总当前用户额度，并按 `Asia/Shanghai` 自然日懒创建每日免费额度流水；数据库中的 `created_at` 仍使用 UTC 时间。`GET /api/downloads` 只返回下载记录和作品标题快照，不返回文件 URL。
+
+客户端成功保存 Canvas 导出的图片后调用：
+
+```http
+POST /api/downloads
+Authorization: Bearer <token>
+Idempotency-Key: <一次导出动作的稳定唯一键>
+Content-Type: application/json
+
+{"workId":"work_xxx","fileType":"preview"}
+```
+
+服务端在同一事务中校验幂等键和作品归属、锁定当前用户额度、写下载记录并写一笔 `amount = -1` 的额度流水。今日免费额度优先，之后使用购买额度；不足时返回 `402 QUOTA_INSUFFICIENT`，且不留下下载记录或负数流水。
 
 ## 可用命令
 
