@@ -1,4 +1,5 @@
 import type { PatternCell, PatternSettings } from '../../models/pattern'
+import { SAMPLE_SCALE, sampleCellsLinearRgb } from './cell-sampler'
 import { findNearestColor, rgbToHex } from './color-utils'
 import type { RGB } from './color-utils'
 import { calculateCenterCrop } from './crop'
@@ -29,7 +30,13 @@ export async function generateStandardPatternCells(
   settings: PatternSettings,
 ): Promise<PatternCell[]> {
   const { width, height, colorLimit } = settings
-  const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })
+  const sampleWidth = width * SAMPLE_SCALE
+  const sampleHeight = height * SAMPLE_SCALE
+  const canvas = wx.createOffscreenCanvas({
+    type: '2d',
+    width: sampleWidth,
+    height: sampleHeight,
+  })
   const context = canvas.getContext('2d') as Canvas2DContext
   const image = canvas.createImage()
 
@@ -44,24 +51,25 @@ export async function generateStandardPatternCells(
     crop.sourceHeight,
     0,
     0,
-    width,
-    height,
+    sampleWidth,
+    sampleHeight,
   )
 
-  const imageData = context.getImageData(0, 0, width, height)
-  const pixels = readOpaquePixels(imageData.data)
+  const imageData = context.getImageData(0, 0, sampleWidth, sampleHeight)
+  const sampledData = sampleCellsLinearRgb(imageData.data, width, height)
+  const pixels = readOpaquePixels(sampledData)
   const palette = createMedianCutPalette(pixels, Math.max(1, colorLimit))
 
   return Array.from({ length: width * height }, (_, index) => {
     const offset = index * 4
-    const alpha = imageData.data[offset + 3]
+    const alpha = sampledData[offset + 3]
     if (alpha < 32) return { color: 'transparent', colorCode: '' }
 
     const color = findNearestColor(
       {
-        r: imageData.data[offset],
-        g: imageData.data[offset + 1],
-        b: imageData.data[offset + 2],
+        r: sampledData[offset],
+        g: sampledData[offset + 1],
+        b: sampledData[offset + 2],
       },
       palette,
     )

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.17.0
+
+- 完成 Standard Pattern Engine V2 Phase 2：原图中心裁剪后先缩放至目标网格的 4× 中间 Canvas，再对每个 4×4 区域执行 Linear RGB Area Average，改善直接缩小造成的信息损失。
+- 采样 RGB 使用 Alpha 权重，透明像素的隐藏 RGB 不污染边缘颜色；Cell Alpha 使用区域平均并继续遵循现有 `alpha < 32` 透明阈值。
+- 新增 Phase 2 纯算法与编排测试，覆盖 sRGB/Linear RGB 边界、常量色、黑白平均、透明像素、行优先顺序、4× Canvas 参数和采样后 Alpha 31/32 边界。
+- 使用微信开发者工具真实 OffscreenCanvas 对 6 张结构化 Fixture 完成 V1/Phase 2 A/B：5 个案例产生预期 Matrix/Palette 变化，纯色案例保持一致，尺寸、设置、Cell 数量与业务接口不变。
+- `createDraft()`、Pattern Schema、Median Cut、RGB nearest、Palette/ColorCode、页面、服务器与数据库均保持现有接口和语义；本阶段未进入 OKLab、MARD、Cleanup、Edge 或 AI。
+
 ## 0.16.0
 
 - 修复编辑器工具栏“撤销、重做、画笔、吸管、填充”及封面生成、放大镜兜底文案的中文乱码，不改变工具行为或页面布局。

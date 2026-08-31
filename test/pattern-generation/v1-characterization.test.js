@@ -46,6 +46,9 @@ const { calculateCenterCrop } = require(
 const { createMedianCutPalette } = require(
   path.join(compiledPatternGenerationDirectory, 'median-cut.js'),
 )
+const { SAMPLE_SCALE } = require(
+  path.join(compiledPatternGenerationDirectory, 'cell-sampler.js'),
+)
 
 function installWxHarness({ sourceWidth, sourceHeight, imageData }) {
   const calls = { canvasOptions: null, drawImage: null, getImageData: null }
@@ -79,7 +82,28 @@ function installWxHarness({ sourceWidth, sourceHeight, imageData }) {
   return calls
 }
 
-async function generateWithCurrentV1(caseDefinition) {
+function expandForSampling(data, targetWidth, targetHeight) {
+  const sourceWidth = targetWidth * SAMPLE_SCALE
+  const expanded = new Uint8ClampedArray(
+    sourceWidth * targetHeight * SAMPLE_SCALE * 4,
+  )
+  for (let targetY = 0; targetY < targetHeight; targetY += 1) {
+    for (let targetX = 0; targetX < targetWidth; targetX += 1) {
+      const targetOffset = (targetY * targetWidth + targetX) * 4
+      for (let sampleY = 0; sampleY < SAMPLE_SCALE; sampleY += 1) {
+        for (let sampleX = 0; sampleX < SAMPLE_SCALE; sampleX += 1) {
+          const sourceX = targetX * SAMPLE_SCALE + sampleX
+          const sourceY = targetY * SAMPLE_SCALE + sampleY
+          const sourceOffset = (sourceY * sourceWidth + sourceX) * 4
+          expanded.set(data.subarray(targetOffset, targetOffset + 4), sourceOffset)
+        }
+      }
+    }
+  }
+  return expanded
+}
+
+async function generateWithCurrentPhase2(caseDefinition) {
   const data = expandPixels(
     caseDefinition.pixels,
     caseDefinition.settings.width,
@@ -88,7 +112,11 @@ async function generateWithCurrentV1(caseDefinition) {
   const calls = installWxHarness({
     sourceWidth: caseDefinition.source.width,
     sourceHeight: caseDefinition.source.height,
-    imageData: data,
+    imageData: expandForSampling(
+      data,
+      caseDefinition.settings.width,
+      caseDefinition.settings.height,
+    ),
   })
   const draft = await createDraft(`fixture://${caseDefinition.id}`, caseDefinition.settings)
   return { calls, data, draft }
@@ -182,8 +210,8 @@ test('extracted calculateCenterCrop preserves every V1 geometry case', () => {
 })
 
 for (const caseDefinition of casesFixture.cases) {
-  test(`current image-service matches V1 characterization: ${caseDefinition.id}`, async () => {
-    const { calls, data, draft } = await generateWithCurrentV1(caseDefinition)
+  test(`Phase 2 preserves V1 downstream behavior for uniform sample regions: ${caseDefinition.id}`, async () => {
+    const { calls, data, draft } = await generateWithCurrentPhase2(caseDefinition)
     const serializedCells = draft.cells.map(serializeCell)
     const palette = derivePalette(draft.cells)
     const baseline = baselineManifest.characterizationCases.find(
@@ -199,14 +227,14 @@ for (const caseDefinition of casesFixture.cases) {
     assert.equal(typeof draft.createdAt, 'number')
     assert.deepEqual(calls.canvasOptions, {
       type: '2d',
-      width: caseDefinition.settings.width,
-      height: caseDefinition.settings.height,
+      width: caseDefinition.settings.width * SAMPLE_SCALE,
+      height: caseDefinition.settings.height * SAMPLE_SCALE,
     })
     assert.deepEqual(calls.getImageData, [
       0,
       0,
-      caseDefinition.settings.width,
-      caseDefinition.settings.height,
+      caseDefinition.settings.width * SAMPLE_SCALE,
+      caseDefinition.settings.height * SAMPLE_SCALE,
     ])
 
     const referenceCells = reference.createPatternCells(
@@ -230,7 +258,12 @@ for (const cropCase of casesFixture.cropCases) {
     }
     const pixels = new Uint8ClampedArray(
       Array.from(
-        { length: settings.width * settings.height },
+        {
+          length: settings.width
+            * SAMPLE_SCALE
+            * settings.height
+            * SAMPLE_SCALE,
+        },
         () => [10, 20, 30, 255],
       ).flat(),
     )
@@ -252,8 +285,8 @@ for (const cropCase of casesFixture.cropCases) {
     assert.deepEqual(drawArguments.slice(5), [
       0,
       0,
-      settings.width,
-      settings.height,
+      settings.width * SAMPLE_SCALE,
+      settings.height * SAMPLE_SCALE,
     ])
     assert.deepEqual(
       reference.calculateCenterCrop(
