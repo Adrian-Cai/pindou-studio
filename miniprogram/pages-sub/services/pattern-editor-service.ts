@@ -55,11 +55,11 @@ export interface GridCell {
 
 export function editorTools(canUndo: boolean, canRedo: boolean) {
   return [
-    { id: 'undo', label: '鎾ら攢', icon: '/assets/icons/editor-undo.svg', activeIcon: '/assets/icons/editor-undo.svg', disabled: !canUndo },
-    { id: 'redo', label: '閲嶅仛', icon: '/assets/icons/editor-redo.svg', activeIcon: '/assets/icons/editor-redo.svg', disabled: !canRedo },
-    { id: 'pencil', label: '鐢荤瑪', icon: '/assets/icons/editor-pencil.svg', activeIcon: '/assets/icons/editor-pencil-active.svg', disabled: false },
-    { id: 'eyedropper', label: '鍚哥', icon: '/assets/icons/editor-eyedropper.svg', activeIcon: '/assets/icons/editor-eyedropper-active.svg', disabled: false },
-    { id: 'fill', label: '濉厖', icon: '/assets/icons/editor-fill.svg', activeIcon: '/assets/icons/editor-fill-active.svg', disabled: false },
+    { id: 'undo', label: '撤销', icon: '/assets/icons/editor-undo.svg', activeIcon: '/assets/icons/editor-undo.svg', disabled: !canUndo },
+    { id: 'redo', label: '重做', icon: '/assets/icons/editor-redo.svg', activeIcon: '/assets/icons/editor-redo.svg', disabled: !canRedo },
+    { id: 'pencil', label: '画笔', icon: '/assets/icons/editor-pencil.svg', activeIcon: '/assets/icons/editor-pencil-active.svg', disabled: false },
+    { id: 'eyedropper', label: '吸管', icon: '/assets/icons/editor-eyedropper.svg', activeIcon: '/assets/icons/editor-eyedropper-active.svg', disabled: false },
+    { id: 'fill', label: '填充', icon: '/assets/icons/editor-fill.svg', activeIcon: '/assets/icons/editor-fill-active.svg', disabled: false },
     { id: 'eraser', label: '橡皮擦', icon: '/assets/icons/editor-eraser.svg', activeIcon: '/assets/icons/editor-eraser-active.svg', disabled: false },
   ]
 }
@@ -133,7 +133,7 @@ export function exportPatternCoverImage(
             fileType: 'png',
             quality: 1,
             success: ({ tempFilePath }) => resolve(tempFilePath),
-            fail: (error) => reject(new Error(error.errMsg || '灏侀潰鐢熸垚澶辫触')),
+            fail: (error) => reject(new Error(error.errMsg || '封面生成失败')),
           },
           component,
         )
@@ -428,7 +428,7 @@ export function drawMagnifier(
 
   const captionTop = magSize
   const captionHeight = 48
-  const code = draft.cells[centerRow * totalCols + centerColumn]?.colorCode || '绌虹櫧'
+  const code = draft.cells[centerRow * totalCols + centerColumn]?.colorCode || '空白'
   magCtx.fillStyle = '#ffffff'
   magCtx.fillRect(0, captionTop, magSize, captionHeight)
   magCtx.fillStyle = '#1677ff'
