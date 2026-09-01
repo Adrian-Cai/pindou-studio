@@ -77,7 +77,10 @@ export async function runWechatCanvasBaseline(
 
   const output: WechatCanvasOutput = {
     schemaVersion: 1,
-    algorithm: `standard-v2-phase-${phase}`,
+    algorithm:
+      phase === 4
+        ? 'standard-v2-phase-4-classic-221-weighted-greedy'
+        : 'standard-v2-phase-2',
     runtime: 'wechat-offscreen-canvas',
     sampleScale: SAMPLE_SCALE,
     generatedAt: new Date().toISOString(),

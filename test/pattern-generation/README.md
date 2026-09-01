@@ -1,6 +1,6 @@
 # Standard Pattern Generation Baselines
 
-本目录冻结 Standard V1 行为，记录 Standard V2 Phase 2 的 4× Area Sampling A/B 结果，并验证 Phase 3 OKLab 与 Phase 4 MARD 真实色卡链路。
+本目录冻结 Standard V1 行为，记录 Standard V2 Phase 2 的 4× Area Sampling A/B 结果，并验证 Phase 3 OKLab 与 Phase 4 MARD 经典 221 色施工链路。
 
 ## 自动 Characterization
 
@@ -18,7 +18,7 @@ npm run test:pattern
 4. 对比冻结的 Cell、Palette 顺序、ColorCode、Alpha、Crop 和 FNV-1a Hash；
 5. 验证 4× Canvas、Linear RGB Area Average、Alpha 加权与透明阈值；
 6. 验证标准 OKLab 参考值、感知最近色、Palette 顺序和 tie 行为；
-7. 验证固定版本 MARD 291 色数据、候选色去重、限色和生产真实色号输出；
+7. 验证固定版本 MARD 291 色源数据、经典 221 色范围、候选权重、加权贪心限色和生产真实色号输出；
 8. 比较真实微信 V1 与 Phase 2 的固定字段及 Matrix 变化；
 9. 删除临时编译目录。
 
@@ -145,8 +145,10 @@ test/pattern-generation/phase-3-4-color-matching.test.js
 - Distance identity / symmetry；
 - Prepared Palette 顺序与严格 `<` tie；
 - RGB nearest 与 OKLab nearest 结果分歧的固定案例；
-- MARD 291 色数量、唯一色号、HEX 格式、来源提交和抽样值；
-- 候选色映射后的色号去重与 `colorLimit`；
+- MARD 291 色源数据数量、唯一色号、HEX 格式、来源提交和抽样值；
+- 默认经典 221 个不透明色号范围及特殊效果色排除；
+- 最多 128 个过采样候选色的像素权重守恒；
+- 加权贪心选择的主色优先、确定性与 `colorLimit`；
 - 生产 `createDraft()` 输出真实 MARD HEX 与色号。
 
 MARD 数据位于 `miniprogram/data/bead-palettes/mard.ts`，固定到
@@ -168,9 +170,12 @@ node test/pattern-generation/compare-wechat-phase-4.js
 ```
 
 会严格校验 Phase 2 / Phase 4 的尺寸、设置、Cell 数和透明 Cell 数，并检查限色与
-Matrix/Palette Hash 变化；耗时只记录、不参与严格 equality。当前 6/6 Matrix 和
-Palette 均发生预期变化，最大案例 `128×128 / 64 色` 本次记录为 100 ms。
+Matrix/Palette Hash 变化；耗时只记录、不参与严格 equality。当前优化基线使用
+`standard-v2-phase-4-classic-221-weighted-greedy`，6/6 Matrix 和 Palette 均发生
+预期变化，最大案例 `128×128 / 64 色` 本次记录为 124 ms。
 
 Phase 3 已被 Phase 4 生产链路取代，因此未伪造独立的 Phase 3 微信 Hash；Phase 3
-使用固定 RGB/OKLab 分歧案例证明生产所用 matcher 的感知距离行为。人物、动漫、宠物、
-高饱和与低饱和图片的主观视觉 A/B 仍属于发布前人工验收项。
+使用固定 RGB/OKLab 分歧案例证明生产所用 matcher 的感知距离行为。使用同一组 6 张
+人物/动漫图片完成 64×64 / 32 色视觉 A/B，并对高动态案例补充 96×96 / 32 色：经典
+色号合规率 100%，平均实际色数从旧 Phase 4 的 19.9 提升到 29.4；经典色卡色域收窄
+造成平均 OKLab 误差增加 3.3%，属于可施工性优先的已知取舍。

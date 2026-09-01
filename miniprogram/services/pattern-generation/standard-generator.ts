@@ -2,9 +2,12 @@ import type { PatternCell, PatternSettings } from '../../models/pattern'
 import { SAMPLE_SCALE, sampleCellsLinearRgb } from './cell-sampler'
 import type { RGB } from './color-utils'
 import { calculateCenterCrop } from './crop'
-import { createMedianCutPalette } from './median-cut'
+import { createMedianCutCandidates } from './median-cut'
 import { findNearestColorIndexOklab } from './oklab-matcher'
 import { selectMardPalette } from './palette-selector'
+
+const CANDIDATE_OVERSAMPLING_FACTOR = 4
+const MAX_CANDIDATE_COLORS = 128
 
 interface Canvas2DContext {
   drawImage(
@@ -59,8 +62,12 @@ export async function generateStandardPatternCells(
   const imageData = context.getImageData(0, 0, sampleWidth, sampleHeight)
   const sampledData = sampleCellsLinearRgb(imageData.data, width, height)
   const pixels = readOpaquePixels(sampledData)
-  const candidatePalette = createMedianCutPalette(pixels, Math.max(1, colorLimit))
-  const palette = selectMardPalette(candidatePalette, colorLimit)
+  const candidateLimit = Math.min(
+    MAX_CANDIDATE_COLORS,
+    Math.max(1, colorLimit) * CANDIDATE_OVERSAMPLING_FACTOR,
+  )
+  const candidates = createMedianCutCandidates(pixels, candidateLimit)
+  const palette = selectMardPalette(candidates, colorLimit)
 
   return Array.from({ length: width * height }, (_, index) => {
     const offset = index * 4

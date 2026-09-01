@@ -26,12 +26,16 @@ const {
 const { findNearestColor } = require(
   path.join(patternGenerationDirectory, 'color-utils.js'),
 )
+const { createMedianCutCandidates } = require(
+  path.join(patternGenerationDirectory, 'median-cut.js'),
+)
 const {
   findNearestColorOklab,
   prepareOklabPalette,
 } = require(path.join(patternGenerationDirectory, 'oklab-matcher.js'))
 const {
   findNearestMardColor,
+  MARD_CLASSIC_PALETTE,
   MARD_PALETTE,
   selectMardPalette,
 } = require(path.join(patternGenerationDirectory, 'palette-selector.js'))
@@ -149,16 +153,51 @@ test('MARD data is pinned, complete, unique, and valid', () => {
   assert.equal(byCode.get('ZG8'), '#ab91c0')
 })
 
-test('MARD selection deduplicates mapped colors and obeys colorLimit', () => {
+test('classic MARD palette contains only the 221 opaque construction colors', () => {
+  assert.equal(MARD_CLASSIC_PALETTE.length, 221)
+  MARD_CLASSIC_PALETTE.forEach((item) => {
+    assert.match(item.code, /^(?:[A-H]|M)\d+$/)
+  })
+  for (const code of ['P1', 'Q4', 'R1', 'T1', 'Y1', 'ZG1']) {
+    assert.equal(MARD_CLASSIC_PALETTE.some((item) => item.code === code), false)
+  }
+})
+
+test('oversampled Median Cut candidates retain their represented pixel weights', () => {
+  const pixels = Array.from({ length: 17 }, (_, index) => ({
+    r: index * 11,
+    g: index * 7,
+    b: index * 3,
+  }))
+  const candidates = createMedianCutCandidates(pixels, 8)
+
+  assert.equal(candidates.length, 8)
+  assert.equal(
+    candidates.reduce((total, candidate) => total + candidate.weight, 0),
+    pixels.length,
+  )
+  candidates.forEach((candidate) => assert.ok(candidate.weight > 0))
+})
+
+test('weighted greedy MARD selection favors prominent colors and obeys colorLimit', () => {
   const a1 = MARD_PALETTE.find((item) => item.code === 'A1')
   const h7 = MARD_PALETTE.find((item) => item.code === 'H7')
   assert.ok(a1)
   assert.ok(h7)
 
-  const selected = selectMardPalette([a1.rgb, a1.rgb, h7.rgb], 2)
+  const selected = selectMardPalette(
+    [
+      { rgb: a1.rgb, weight: 100 },
+      { rgb: h7.rgb, weight: 1 },
+    ],
+    2,
+  )
   assert.deepEqual(selected.map((item) => item.code), ['A1', 'H7'])
   assert.ok(selected.length <= 2)
-  assert.equal(findNearestMardColor({ r: 255, g: 235, b: 250 }).code, 'Q4')
+  assert.match(
+    findNearestMardColor({ r: 255, g: 235, b: 250 }).code,
+    /^(?:[A-H]|M)\d+$/,
+  )
 })
 
 test('production generator emits constructible MARD colors and codes', async () => {

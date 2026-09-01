@@ -1,10 +1,26 @@
 import type { RGB } from './color-utils'
 
+export interface WeightedColorCandidate {
+  rgb: RGB
+  weight: number
+}
+
 export function createMedianCutPalette(pixels: RGB[], colorLimit: number): RGB[] {
-  if (pixels.length === 0) return [{ r: 255, g: 255, b: 255 }]
+  return createMedianCutCandidates(pixels, colorLimit).map(
+    (candidate) => candidate.rgb,
+  )
+}
+
+export function createMedianCutCandidates(
+  pixels: RGB[],
+  candidateLimit: number,
+): WeightedColorCandidate[] {
+  if (pixels.length === 0) {
+    return [{ rgb: { r: 255, g: 255, b: 255 }, weight: 1 }]
+  }
 
   const buckets: RGB[][] = [pixels]
-  while (buckets.length < colorLimit) {
+  while (buckets.length < candidateLimit) {
     const splitIndex = findBucketToSplit(buckets)
     const bucket = buckets[splitIndex]
     if (bucket.length < 2) break
@@ -15,7 +31,10 @@ export function createMedianCutPalette(pixels: RGB[], colorLimit: number): RGB[]
     buckets.splice(splitIndex, 1, bucket.slice(0, middle), bucket.slice(middle))
   }
 
-  return buckets.map(averageColor)
+  return buckets.map((bucket) => ({
+    rgb: averageColor(bucket),
+    weight: bucket.length,
+  }))
 }
 
 function findBucketToSplit(buckets: RGB[][]): number {

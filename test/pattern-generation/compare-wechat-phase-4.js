@@ -18,7 +18,10 @@ const stableFields = [
 ]
 
 assert.equal(phase2.algorithm, 'standard-v2-phase-2')
-assert.equal(phase4.algorithm, 'standard-v2-phase-4')
+assert.equal(
+  phase4.algorithm,
+  'standard-v2-phase-4-classic-221-weighted-greedy',
+)
 assert.equal(phase4.runtime, 'wechat-offscreen-canvas')
 assert.equal(phase4.sampleScale, 4)
 assert.equal(phase4.cases.length, phase2.cases.length)

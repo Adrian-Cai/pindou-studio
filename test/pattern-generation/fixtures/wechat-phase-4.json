@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "algorithm": "standard-v2-phase-4",
+  "algorithm": "standard-v2-phase-4-classic-221-weighted-greedy",
   "runtime": "wechat-offscreen-canvas",
   "sampleScale": 4,
-  "generatedAt": "2026-09-01T08:57:23.423Z",
+  "generatedAt": "2026-09-01T09:34:14.752Z",
   "cases": [
     {
       "id": "square-flat-32-16",
@@ -19,7 +19,7 @@
       "colorCount": 1,
       "matrixHash": "b51cda3b",
       "paletteHash": "6899eec5",
-      "generationTimeMs": 153
+      "generationTimeMs": 147
     },
     {
       "id": "landscape-two-color-64-32",
@@ -33,8 +33,8 @@
       "cellCount": 4096,
       "opaqueCellCount": 4096,
       "colorCount": 4,
-      "matrixHash": "b49f3b3b",
-      "paletteHash": "9e9ce85d",
+      "matrixHash": "e915e7bb",
+      "paletteHash": "1fb564e4",
       "generationTimeMs": 53
     },
     {
@@ -48,10 +48,10 @@
       "brand": "MARD",
       "cellCount": 9216,
       "opaqueCellCount": 9216,
-      "colorCount": 4,
-      "matrixHash": "33120c1b",
-      "paletteHash": "5839a91f",
-      "generationTimeMs": 183
+      "colorCount": 3,
+      "matrixHash": "df3ce09b",
+      "paletteHash": "3c8fe02d",
+      "generationTimeMs": 62
     },
     {
       "id": "alpha-edge-32-16",
@@ -64,10 +64,10 @@
       "brand": "MARD",
       "cellCount": 1024,
       "opaqueCellCount": 512,
-      "colorCount": 4,
-      "matrixHash": "d187137b",
-      "paletteHash": "111ebd75",
-      "generationTimeMs": 9
+      "colorCount": 3,
+      "matrixHash": "2697307b",
+      "paletteHash": "8d0fd62b",
+      "generationTimeMs": 12
     },
     {
       "id": "gradient-128-64",
@@ -80,10 +80,10 @@
       "brand": "MARD",
       "cellCount": 16384,
       "opaqueCellCount": 16384,
-      "colorCount": 30,
-      "matrixHash": "dcef6640",
-      "paletteHash": "0b025133",
-      "generationTimeMs": 100
+      "colorCount": 33,
+      "matrixHash": "59fdf7cf",
+      "paletteHash": "121b73df",
+      "generationTimeMs": 124
     },
     {
       "id": "detail-pattern-64-32",
@@ -96,10 +96,10 @@
       "brand": "MARD",
       "cellCount": 4096,
       "opaqueCellCount": 3996,
-      "colorCount": 15,
-      "matrixHash": "f66615ba",
-      "paletteHash": "9adbc284",
-      "generationTimeMs": 21
+      "colorCount": 28,
+      "matrixHash": "21418981",
+      "paletteHash": "68de7a1a",
+      "generationTimeMs": 41
     }
   ]
 }
