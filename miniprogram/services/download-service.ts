@@ -2,8 +2,6 @@ import type { DownloadFileType, DownloadRecord } from '../models/pattern'
 import { isAuthSessionExpired, loadAuthSession } from './token-storage'
 import { ApiError, apiRequest } from './http-client'
 
-export type ServerDownloadFileType = Exclude<DownloadFileType, 'palette'>
-
 export interface QuotaResponse {
   dailyFree: number
   usedToday: number
@@ -18,7 +16,7 @@ export interface CloudDownloadRecord {
   id: string
   workId: string | null
   title: string
-  fileType: ServerDownloadFileType
+  fileType: DownloadFileType
   consumedQuota: true
   quotaTransactionId: string
   downloadedAt: string
@@ -47,7 +45,7 @@ export async function fetchQuota(): Promise<QuotaResponse> {
 export async function fetchDownloads(options: {
   page?: number
   pageSize?: number
-  fileType?: ServerDownloadFileType
+  fileType?: DownloadFileType
   query?: string
 } = {}): Promise<DownloadListResponse> {
   const params = [
@@ -65,7 +63,7 @@ export async function fetchDownloads(options: {
 
 export async function createDownload(
   workId: string,
-  fileType: ServerDownloadFileType,
+  fileType: DownloadFileType,
   idempotencyKey: string,
 ): Promise<CreateDownloadResponse> {
   const response = await apiRequest<unknown>({
@@ -76,10 +74,6 @@ export async function createDownload(
     data: { workId, fileType },
   })
   return parseCreateDownload(response)
-}
-
-export function isServerDownloadFileType(fileType: DownloadFileType): fileType is ServerDownloadFileType {
-  return fileType !== 'palette'
 }
 
 export function cloudDownloadToLocalRecord(
@@ -156,7 +150,7 @@ function parseDownloadRecord(value: unknown): CloudDownloadRecord {
     || typeof value.id !== 'string'
     || (value.workId !== null && typeof value.workId !== 'string')
     || typeof value.title !== 'string'
-    || !isServerDownloadFileTypeValue(value.fileType)
+    || !isDownloadFileTypeValue(value.fileType)
     || value.consumedQuota !== true
     || typeof value.quotaTransactionId !== 'string'
     || typeof value.downloadedAt !== 'string'
@@ -172,8 +166,11 @@ function parseDownloadRecord(value: unknown): CloudDownloadRecord {
   }
 }
 
-function isServerDownloadFileTypeValue(value: unknown): value is ServerDownloadFileType {
-  return value === 'preview' || value === 'chart' || value === 'materials'
+function isDownloadFileTypeValue(value: unknown): value is DownloadFileType {
+  return value === 'preview'
+    || value === 'chart'
+    || value === 'materials'
+    || value === 'palette'
 }
 
 function requireToken(): string {

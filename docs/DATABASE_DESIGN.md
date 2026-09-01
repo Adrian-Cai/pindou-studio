@@ -250,7 +250,7 @@ pindou_users
 | `user_id` | varchar(32) | FK, NOT NULL | 下载用户 |
 | `work_id` | varchar(32) | FK, NULL | 作品删除后可置空 |
 | `work_title_snapshot` | varchar(120) | NOT NULL | 保留历史显示名称 |
-| `file_type` | varchar(20) | NOT NULL | `preview`、`chart`、`materials` |
+| `file_type` | varchar(20) | NOT NULL | `preview`、`chart`、`materials`、`palette` |
 | `consumed_quota` | boolean | NOT NULL | 本次是否扣额度 |
 | `quota_transaction_id` | varchar(32) | FK, NULL | 关联扣减流水 |
 | `idempotency_key` | varchar(128) | UNIQUE, NOT NULL | 一次导出动作的幂等键 |

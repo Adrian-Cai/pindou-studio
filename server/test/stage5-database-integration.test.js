@@ -53,11 +53,11 @@ test("stage 5 real database flow: package snapshot, tamper rejection, verified g
     );
     await pool.query(
       `INSERT INTO pindou_packages (
-         id, label, quota_amount, membership_type, membership_days,
+         id, label, quota_amount, quota_kind, membership_type, membership_days,
          price_fen, currency, enabled, sort_order, created_at, updated_at
        ) VALUES
-         ($1, '加购 3 次', 3, NULL, NULL, 990, 'CNY', TRUE, 1, $3, $3),
-         ($2, '隐藏套餐', 99, NULL, NULL, 1, 'CNY', FALSE, 0, $3, $3)`,
+         ($1, '加购 3 次', 3, 'ai_generation', NULL, NULL, 990, 'CNY', TRUE, 1, $3, $3),
+         ($2, '隐藏套餐', 99, 'ai_generation', NULL, NULL, 1, 'CNY', FALSE, 0, $3, $3)`,
       [enabledPackageId, disabledPackageId, now],
     );
 
@@ -78,7 +78,7 @@ test("stage 5 real database flow: package snapshot, tamper rejection, verified g
     assert.equal(createCount, 1);
 
     const snapshot = await pool.query(
-      `SELECT package_label_snapshot, quota_amount_snapshot,
+      `SELECT package_label_snapshot, quota_amount_snapshot, quota_kind_snapshot,
               membership_type_snapshot, price_fen, status, wx_prepay_id
          FROM pindou_orders
         WHERE id = $1`,
@@ -87,6 +87,7 @@ test("stage 5 real database flow: package snapshot, tamper rejection, verified g
     assert.deepEqual(snapshot.rows[0], {
       package_label_snapshot: "加购 3 次",
       quota_amount_snapshot: 3,
+      quota_kind_snapshot: "ai_generation",
       membership_type_snapshot: null,
       price_fen: 990,
       status: "pending",

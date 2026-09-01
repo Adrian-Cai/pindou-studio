@@ -1,5 +1,6 @@
-import type { Pool, PoolClient, QueryResultRow } from "pg";
+import type { Pool, QueryResultRow } from "pg";
 import { AppError } from "../../shared/app-error";
+import { rollbackTransaction } from "../../shared/transaction";
 import type { SessionRecord, UserRecord } from "./types";
 
 interface UserRow extends QueryResultRow {
@@ -40,14 +41,6 @@ function userRecord(row: UserRow): UserRecord {
   };
 }
 
-async function rollback(client: PoolClient): Promise<void> {
-  try {
-    await client.query("ROLLBACK");
-  } catch {
-    // 保留触发回滚的原始错误。
-  }
-}
-
 export class PostgresAuthRepository implements AuthRepository {
   public constructor(private readonly pool: Pool) {}
 
@@ -80,7 +73,7 @@ export class PostgresAuthRepository implements AuthRepository {
       await client.query("COMMIT");
       return userRecord(user);
     } catch (error: unknown) {
-      await rollback(client);
+      await rollbackTransaction(client);
       throw error;
     } finally {
       client.release();

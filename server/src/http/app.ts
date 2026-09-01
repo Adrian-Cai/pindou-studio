@@ -7,14 +7,21 @@ import type { AvatarStorage } from "../modules/users/avatar-storage";
 import type { UserProfileService } from "../modules/users/user-profile-service";
 import type { FileAssetService } from "../modules/files/file-asset-service";
 import type { CoverStorage } from "../modules/files/cover-storage";
+import type { AiFileStorage } from "../modules/files/ai-file-storage";
+import type {
+  AiGenerationBackgroundMode,
+  AiGenerationDetailLevel,
+  AiGenerationStyle,
+  PostgresAiGenerationService,
+} from "../modules/ai/ai-generation-service";
 import type {
   DownloadFileType,
   DownloadListOptions,
-  QuotaDownloadService,
+  PostgresQuotaDownloadService,
 } from "../modules/downloads/quota-download-service";
 import type { PaymentService } from "../modules/payments/payment-service";
 import { validatePersistedPattern, type PersistedPattern } from "../modules/works/pattern";
-import type { FavoriteListOptions, UpdateWorkInput, WorkService, WorkStatus } from "../modules/works/work-service";
+import type { FavoriteListOptions, PostgresWorkService, UpdateWorkInput, WorkStatus } from "../modules/works/work-service";
 import { AppError, invalidArgument } from "../shared/app-error";
 import { readJsonObject, readRawJsonObject, readSingleUploadedFile } from "./request-body";
 
@@ -72,10 +79,20 @@ export interface HttpApplicationDependencies {
   readonly avatarMaximumBytes: number;
   readonly files: FileAssetService;
   readonly covers: CoverStorage;
-  readonly works: WorkService;
-  readonly quotaDownloads: QuotaDownloadService;
+  readonly aiFiles: AiFileStorage;
+  readonly works: PostgresWorkService;
+  readonly quotaDownloads: PostgresQuotaDownloadService;
   readonly payments: PaymentService;
   readonly coverMaximumBytes: number;
+  readonly aiFileMaximumBytes: number;
+  readonly aiGenerations: PostgresAiGenerationService;
+  readonly capabilities?: {
+    readonly wechatPay: boolean;
+    readonly aiGeneration: boolean;
+    readonly persistentStorage: boolean;
+    readonly httpsPublicUrls: boolean;
+    readonly monitoringAlerts: boolean;
+  };
 }
 
 function validateLoginBody(body: Record<string, unknown>): string {
@@ -179,7 +196,7 @@ function validateDownloadBody(body: Record<string, unknown>): {
     || !keys.every((key) => key === "workId" || key === "fileType")
     || typeof body.workId !== "string"
     || !body.workId.trim()
-    || (body.fileType !== "preview" && body.fileType !== "chart" && body.fileType !== "materials")
+    || (body.fileType !== "preview" && body.fileType !== "chart" && body.fileType !== "materials" && body.fileType !== "palette")
   ) {
     throw invalidArgument("下载请求体只能包含非空 workId 和合法 fileType");
   }
@@ -194,6 +211,32 @@ function validateCreatePaymentBody(body: Record<string, unknown>): string {
   const packageId = body.packageId.trim();
   if (!packageId || packageId.length > 40) throw invalidArgument("packageId 无效");
   return packageId;
+}
+
+function validateCreateAiGenerationBody(body: Record<string, unknown>): {
+  readonly inputFileId: string;
+  readonly style: AiGenerationStyle;
+  readonly detailLevel: AiGenerationDetailLevel;
+  readonly backgroundMode: AiGenerationBackgroundMode;
+} {
+  const keys = Object.keys(body);
+  if (
+    keys.length !== 4
+    || !keys.every((key) => ["inputFileId", "style", "detailLevel", "backgroundMode"].includes(key))
+    || typeof body.inputFileId !== "string"
+    || !body.inputFileId.trim()
+    || (body.style !== "natural" && body.style !== "cartoon" && body.style !== "minimal")
+    || (body.detailLevel !== "low" && body.detailLevel !== "medium" && body.detailLevel !== "high")
+    || (body.backgroundMode !== "keep" && body.backgroundMode !== "simplify" && body.backgroundMode !== "remove")
+  ) {
+    throw invalidArgument("AI 生成请求必须包含合法的 inputFileId、style、detailLevel 和 backgroundMode");
+  }
+  return {
+    inputFileId: body.inputFileId.trim(),
+    style: body.style,
+    detailLevel: body.detailLevel,
+    backgroundMode: body.backgroundMode,
+  };
 }
 
 function wechatPaymentHeaders(request: IncomingMessage): Readonly<Record<string, string | undefined>> {
@@ -243,8 +286,8 @@ function downloadListOptions(url: URL, userId: string): DownloadListOptions {
   const page = positiveQueryInteger(url.searchParams.get("page"), 1, 1_000_000, "page");
   const pageSize = positiveQueryInteger(url.searchParams.get("pageSize"), 20, 50, "pageSize");
   const fileType = url.searchParams.get("fileType");
-  if (fileType !== null && fileType !== "preview" && fileType !== "chart" && fileType !== "materials") {
-    throw invalidArgument("fileType 只能是 preview、chart 或 materials");
+  if (fileType !== null && fileType !== "preview" && fileType !== "chart" && fileType !== "materials" && fileType !== "palette") {
+    throw invalidArgument("fileType 只能是 preview、chart、materials 或 palette");
   }
   const query = url.searchParams.get("query")?.trim() || undefined;
   if (query && Array.from(query).length > 120) throw invalidArgument("query 不能超过 120 个字符");
@@ -275,6 +318,11 @@ function favoriteWorkId(pathname: string): string | null {
   return match?.[1] ?? null;
 }
 
+function aiGenerationId(pathname: string): string | null {
+  const match = pathname.match(/^\/api\/ai\/generations\/([^/]+)$/u);
+  return match?.[1] ?? null;
+}
+
 function sendNoContent(response: ServerResponse): void {
   response.statusCode = 204;
   response.removeHeader("content-type");
@@ -297,6 +345,13 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
             service: SERVICE_NAME,
             timestamp: new Date().toISOString(),
             database: databaseHealth,
+            capabilities: dependencies.capabilities ?? {
+              wechatPay: false,
+              aiGeneration: false,
+              persistentStorage: false,
+              httpsPublicUrls: false,
+              monitoringAlerts: false,
+            },
           });
         } catch {
           sendJson(response, 503, {
@@ -334,22 +389,41 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         return;
       }
 
+      if (request.method === "GET" && url.pathname.startsWith("/api/media/ai/")) {
+        if (url.searchParams.size > 0) throw invalidArgument("AI 文件地址不接受查询参数");
+        const file = await dependencies.aiFiles.read(url.pathname);
+        if (file) {
+          sendImage(response, file);
+          return;
+        }
+      }
+
       if (request.method === "POST" && url.pathname === "/api/files/upload") {
         if (url.searchParams.size > 0) throw invalidArgument("文件上传接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         const upload = await readSingleUploadedFile(
           request,
           "file",
-          dependencies.coverMaximumBytes,
+          Math.max(
+            dependencies.coverMaximumBytes,
+            dependencies.aiFileMaximumBytes ?? dependencies.coverMaximumBytes,
+          ),
           ["type"],
-          "封面文件",
+          "图片文件",
         );
-        if (upload.fields.type !== "cover" || Object.keys(upload.fields).length !== 1) {
-          throw invalidArgument("文件上传的 type 只能是 cover");
+        const type = upload.fields.type;
+        if ((type !== "cover" && type !== "ai_input") || Object.keys(upload.fields).length !== 1) {
+          throw invalidArgument("文件上传的 type 只能是 cover 或 ai_input");
+        }
+        const maximumBytes = type === "cover"
+          ? dependencies.coverMaximumBytes
+          : dependencies.aiFileMaximumBytes;
+        if (upload.buffer.length > maximumBytes) {
+          throw new AppError(413, "PAYLOAD_TOO_LARGE", "图片文件超过大小限制");
         }
         sendJson(response, 201, {
           file: await dependencies.files.upload(currentUser.id, {
-            type: "cover",
+            type,
             buffer: upload.buffer,
             filename: upload.filename,
             declaredContentType: upload.declaredContentType,
@@ -411,6 +485,26 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/ai/generations") {
+        if (url.searchParams.size > 0) throw invalidArgument("AI 生成接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const body = validateCreateAiGenerationBody(await readJsonObject(request));
+        sendJson(response, 201, await dependencies.aiGenerations.create({
+          userId: currentUser.id,
+          idempotencyKey: idempotencyKey(request),
+          ...body,
+        }));
+        return;
+      }
+
+      const requestedAiGenerationId = aiGenerationId(url.pathname);
+      if (requestedAiGenerationId && request.method === "GET") {
+        if (url.searchParams.size > 0) throw invalidArgument("AI 生成任务接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, await dependencies.aiGenerations.get(currentUser.id, requestedAiGenerationId));
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/packages") {
         if (url.searchParams.size > 0) throw invalidArgument("套餐接口不接受查询参数");
         sendJson(response, 200, await dependencies.payments.listPackages());
@@ -440,8 +534,14 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           sendJson(response, 200, { code: "SUCCESS", message: "成功" });
         } catch (error: unknown) {
           if (error instanceof AppError) {
+            console.warn(JSON.stringify({
+              event: "wechat_payment_notification_rejected",
+              requestId: id,
+              errorCode: error.code,
+            }));
             sendJson(response, error.statusCode, { code: "FAIL", message: error.message });
           } else {
+            console.error(JSON.stringify({ event: "wechat_payment_notification_failed", requestId: id }));
             sendJson(response, 500, { code: "FAIL", message: "服务内部错误" });
           }
         }
@@ -536,6 +636,12 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
             errorPayload(error.code, error.message, id, error.details),
           );
         } else {
+          console.error(JSON.stringify({
+            event: "request_failed",
+            requestId: id,
+            method: request.method,
+            pathname: new URL(request.url ?? "/", "http://localhost").pathname,
+          }));
           sendJson(response, 500, errorPayload("INTERNAL_ERROR", "服务内部错误", id));
         }
       } else {

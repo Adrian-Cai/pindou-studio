@@ -1,6 +1,8 @@
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { createIdempotentWorkId } from "../../shared/identity";
 import { AppError, forbidden, idempotencyConflict, notFound } from "../../shared/app-error";
+import { toIso } from "../../shared/date-time";
+import { rollbackTransaction } from "../../shared/transaction";
 import { validatePersistedPattern, type PersistedPattern, type ValidatedPattern } from "./pattern";
 
 export type WorkStatus = "draft" | "completed";
@@ -99,17 +101,7 @@ interface OwnershipRow extends QueryResultRow {
   readonly deleted_at: Date | null;
 }
 
-export interface WorkService {
-  create(input: CreateWorkInput): Promise<WorkSummary>;
-  update(input: UpdateWorkInput): Promise<WorkSummary>;
-  list(options: WorkListOptions): Promise<WorkListResponse>;
-  get(userId: string, workId: string): Promise<WorkDetail>;
-  delete(userId: string, workId: string): Promise<void>;
-  setFavorite(userId: string, workId: string, favorite: boolean): Promise<FavoriteUpdateResponse>;
-  listFavorites(options: FavoriteListOptions): Promise<WorkListResponse>;
-}
-
-export class PostgresWorkService implements WorkService {
+export class PostgresWorkService {
   public constructor(private readonly pool: Pool, private readonly now: () => Date = () => new Date()) {}
 
   public async create(input: CreateWorkInput): Promise<WorkSummary> {
@@ -184,7 +176,7 @@ export class PostgresWorkService implements WorkService {
         updatedAt: currentTime.toISOString(),
       };
     } catch (error: unknown) {
-      await rollback(client);
+      await rollbackTransaction(client);
       throw error;
     } finally {
       client.release();
@@ -195,7 +187,7 @@ export class PostgresWorkService implements WorkService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const existing = await readWorkDetail(client, input.workId, true);
+      const existing = await readWorkSummary(client, input.workId, true);
       if (!existing || existing.deleted_at) throw notFound("作品不存在");
       if (existing.user_id !== input.userId) throw forbidden("作品不属于当前用户");
 
@@ -215,8 +207,8 @@ export class PostgresWorkService implements WorkService {
         coverUrl = coverRow.public_url;
       }
 
-      const validatedPattern = input.validatedPattern ?? validatePersistedPattern(mapPattern(existing));
-      const { pattern, beadCount, colorCount } = validatedPattern;
+      const validatedPattern = input.validatedPattern;
+      const pattern = validatedPattern?.pattern;
       const currentTime = this.now();
       const updated = await client.query<WorkRow>(
         `UPDATE pindou_works
@@ -231,11 +223,11 @@ export class PostgresWorkService implements WorkService {
           input.userId,
           input.title ?? existing.title,
           input.coverFileId ?? existing.cover_file_id,
-          pattern.width,
-          pattern.height,
-          beadCount,
-          colorCount,
-          pattern.settings.brand,
+          pattern?.width ?? existing.width,
+          pattern?.height ?? existing.height,
+          validatedPattern?.beadCount ?? existing.bead_count,
+          validatedPattern?.colorCount ?? existing.color_count,
+          pattern?.settings.brand ?? existing.brand,
           input.status ?? existing.status,
           currentTime,
         ],
@@ -243,7 +235,8 @@ export class PostgresWorkService implements WorkService {
       const updatedRow = updated.rows[0];
       if (!updatedRow) throw notFound("作品不存在");
 
-      if (input.validatedPattern !== undefined) {
+      if (validatedPattern !== undefined) {
+        const { pattern } = validatedPattern;
         await client.query(
           `UPDATE pindou_work_patterns
               SET schema_version = $2, width = $3, height = $4, color_limit = $5,
@@ -267,7 +260,7 @@ export class PostgresWorkService implements WorkService {
       await client.query("COMMIT");
       return mapSummary({ ...updatedRow, cover_url: coverUrl });
     } catch (error: unknown) {
-      await rollback(client);
+      await rollbackTransaction(client);
       throw error;
     } finally {
       client.release();
@@ -309,8 +302,7 @@ export class PostgresWorkService implements WorkService {
         LIMIT $${parameters.length - 1} OFFSET $${parameters.length}`,
       parameters,
     );
-    const total = Number(countResult.rows[0]?.total_count ?? 0);
-    return { total: Number.isSafeInteger(total) ? total : 0, page: options.page, pageSize: options.pageSize, items: result.rows.map(mapSummary) };
+    return mapWorkListResponse(options, countResult.rows[0]?.total_count, result.rows);
   }
 
   public async get(userId: string, workId: string): Promise<WorkDetail> {
@@ -333,7 +325,7 @@ export class PostgresWorkService implements WorkService {
       [userId, workId],
     );
     const row = result.rows[0];
-    if (!row) await throwOwnershipAwareNotFound(this.pool, workId, userId);
+    if (!row) await assertWorkOwner(this.pool, workId, userId);
     return mapDetail(row as WorkRow);
   }
 
@@ -401,13 +393,7 @@ export class PostgresWorkService implements WorkService {
         LIMIT $${parameters.length - 1} OFFSET $${parameters.length}`,
       parameters,
     );
-    const total = Number(countResult.rows[0]?.total_count ?? 0);
-    return {
-      total: Number.isSafeInteger(total) ? total : 0,
-      page: options.page,
-      pageSize: options.pageSize,
-      items: result.rows.map(mapSummary),
-    };
+    return mapWorkListResponse(options, countResult.rows[0]?.total_count, result.rows);
   }
 }
 
@@ -425,6 +411,24 @@ async function readWorkDetail(
             patterns.brand AS pattern_brand, patterns.palette_json, patterns.cells_json
        FROM pindou_works works
        JOIN pindou_work_patterns patterns ON patterns.work_id = works.id
+       LEFT JOIN pindou_file_assets files ON files.id = works.cover_file_id AND files.deleted_at IS NULL
+      WHERE works.id = $1 LIMIT 1${lock ? " FOR UPDATE OF works" : ""}`,
+    [workId],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function readWorkSummary(
+  client: PoolClient,
+  workId: string,
+  lock = false,
+): Promise<WorkRow | null> {
+  const result = await client.query<WorkRow>(
+    `SELECT works.id, works.user_id, works.title, works.cover_file_id,
+            files.public_url AS cover_url, works.width, works.height,
+            works.bead_count, works.color_count, works.brand, works.status,
+            works.created_at, works.updated_at, works.deleted_at
+       FROM pindou_works works
        LEFT JOIN pindou_file_assets files ON files.id = works.cover_file_id AND files.deleted_at IS NULL
       WHERE works.id = $1 LIMIT 1${lock ? " FOR UPDATE OF works" : ""}`,
     [workId],
@@ -481,13 +485,6 @@ function parseJson(value: unknown): unknown {
   }
 }
 
-async function throwOwnershipAwareNotFound(pool: Pool, workId: string, userId: string): Promise<never> {
-  const result = await pool.query<OwnershipRow>("SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1", [workId]);
-  const row = result.rows[0];
-  if (row && !row.deleted_at && row.user_id !== userId) throw forbidden("作品不属于当前用户");
-  throw notFound("作品不存在");
-}
-
 async function assertWorkOwner(pool: Pool, workId: string, userId: string): Promise<void> {
   const result = await pool.query<OwnershipRow>(
     "SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1",
@@ -498,10 +495,16 @@ async function assertWorkOwner(pool: Pool, workId: string, userId: string): Prom
   if (row.user_id !== userId) throw forbidden("作品不属于当前用户");
 }
 
-async function rollback(client: PoolClient): Promise<void> {
-  try { await client.query("ROLLBACK"); } catch { /* 保留原始异常。 */ }
-}
-
-function toIso(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+function mapWorkListResponse(
+  options: Pick<WorkListOptions, "page" | "pageSize">,
+  totalCount: string | number | undefined,
+  rows: readonly WorkRow[],
+): WorkListResponse {
+  const total = Number(totalCount ?? 0);
+  return {
+    total: Number.isSafeInteger(total) ? total : 0,
+    page: options.page,
+    pageSize: options.pageSize,
+    items: rows.map(mapSummary),
+  };
 }

@@ -17,6 +17,9 @@ import { FileSystemAvatarStorage } from "./modules/users/avatar-storage";
 import { PostgresUserProfileService } from "./modules/users/user-profile-service";
 import { FileSystemCoverStorage } from "./modules/files/cover-storage";
 import { PostgresFileAssetService } from "./modules/files/file-asset-service";
+import { FileSystemAiFileStorage } from "./modules/files/ai-file-storage";
+import { QwenImageProvider } from "./modules/ai/qwen-image-provider";
+import { PostgresAiGenerationService } from "./modules/ai/ai-generation-service";
 import { PostgresQuotaDownloadService } from "./modules/downloads/quota-download-service";
 import { PostgresPaymentService } from "./modules/payments/payment-service";
 import { createWeChatPaymentGateway } from "./modules/payments/wechat-pay-client";
@@ -41,6 +44,11 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.covers.publicBaseUrl,
     );
     const paymentGateway = await createWeChatPaymentGateway(config.wechatPay);
+    const aiFiles = new FileSystemAiFileStorage(
+      config.aiFiles.storageDirectory,
+      config.aiFiles.publicBaseUrl,
+    );
+    const qwenImage = new QwenImageProvider(config.qwenImage);
     const http = await startHttpServer(
       createHttpApplication({
         database,
@@ -53,8 +61,9 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         users: new PostgresUserProfileService(pool, config.quota),
         avatars,
         avatarMaximumBytes: config.avatars.maximumBytes,
-        files: new PostgresFileAssetService(pool, covers),
+        files: new PostgresFileAssetService(pool, covers, () => new Date(), aiFiles),
         covers,
+        aiFiles,
         works: new PostgresWorkService(pool),
         quotaDownloads: new PostgresQuotaDownloadService(pool, config.quota),
         payments: new PostgresPaymentService(
@@ -63,6 +72,21 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
           config.auth.openidHashSecret,
         ),
         coverMaximumBytes: config.covers.maximumBytes,
+        aiFileMaximumBytes: config.aiFiles.maximumBytes,
+        aiGenerations: new PostgresAiGenerationService(
+          pool,
+          qwenImage,
+          aiFiles,
+          config.quota,
+        ),
+        capabilities: {
+          wechatPay: paymentGateway.configured,
+          aiGeneration: qwenImage.configured,
+          persistentStorage: config.deployment.persistentStorageMounted,
+          httpsPublicUrls: config.covers.publicBaseUrl.startsWith("https://")
+            && config.aiFiles.publicBaseUrl.startsWith("https://"),
+          monitoringAlerts: config.deployment.monitoringAlertsConfigured,
+        },
       }),
       config.host,
       config.port,

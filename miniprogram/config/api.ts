@@ -2,8 +2,8 @@ export type MiniProgramEnvironment = 'develop' | 'trial' | 'release'
 
 const API_BASE_URLS: Record<MiniProgramEnvironment, string> = {
   develop: 'http://127.0.0.1:4000',
-  trial: '',
-  release: '',
+  trial: 'https://api.pindou.wiac.xyz',
+  release: 'https://api.pindou.wiac.xyz',
 }
 
 export class ApiConfigurationError extends Error {

@@ -62,7 +62,10 @@ Page({
         record,
         record.workId ? state.works.find((work) => work.id === record.workId) : undefined,
       ))
-      const localOnlyRecords = state.downloadRecords.filter((record) => record.fileType === 'palette')
+      const cloudRecordIds = new Set(cloudRecords.map((record) => record.id))
+      const localOnlyRecords = state.downloadRecords.filter((record) => (
+        record.fileType === 'palette' && !cloudRecordIds.has(record.id)
+      ))
       const allRecords = [...cloudRecords, ...localOnlyRecords]
         .sort((a, b) => b.downloadedAt - a.downloadedAt)
         .map(toDownloadView)

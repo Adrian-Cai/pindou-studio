@@ -5,6 +5,7 @@ import {
   createIdempotentOrderId,
   decryptOpenid,
 } from "../../shared/identity";
+import { rollbackTransaction } from "../../shared/transaction";
 import type {
   PaymentNotificationInput,
   PaymentParameters,
@@ -16,6 +17,7 @@ export interface PaymentPackage {
   readonly id: string;
   readonly label: string;
   readonly quotaAmount: number;
+  readonly quotaKind: "ai_generation";
   readonly membershipType: string | null;
   readonly priceFen: number;
   readonly currency: "CNY";
@@ -43,6 +45,7 @@ interface PackageRow extends QueryResultRow {
   readonly id: string;
   readonly label: string;
   readonly quota_amount: number;
+  readonly quota_kind: string;
   readonly membership_type: string | null;
   readonly membership_days: number | null;
   readonly price_fen: number;
@@ -56,6 +59,7 @@ interface OrderRow extends QueryResultRow {
   readonly package_id: string | null;
   readonly package_label_snapshot: string;
   readonly quota_amount_snapshot: number;
+  readonly quota_kind_snapshot: string;
   readonly membership_type_snapshot: string | null;
   readonly price_fen: number;
   readonly status: string;
@@ -72,6 +76,7 @@ function packageResponse(row: PackageRow): PaymentPackage {
   if (
     row.currency !== "CNY"
     || row.enabled !== true
+    || row.quota_kind !== "ai_generation"
     || !Number.isSafeInteger(row.quota_amount)
     || !Number.isSafeInteger(row.price_fen)
   ) {
@@ -81,6 +86,7 @@ function packageResponse(row: PackageRow): PaymentPackage {
     id: row.id,
     label: row.label,
     quotaAmount: row.quota_amount,
+    quotaKind: "ai_generation",
     membershipType: row.membership_type,
     priceFen: row.price_fen,
     currency: "CNY",
@@ -92,14 +98,6 @@ function paymentDescription(label: string): string {
   return Array.from(`拼豆工作室-${label}`).slice(0, 127).join("");
 }
 
-async function rollback(client: PoolClient): Promise<void> {
-  try {
-    await client.query("ROLLBACK");
-  } catch {
-    // 保留触发回滚的原始错误。
-  }
-}
-
 function ensurePayablePackage(row: PackageRow | undefined): PackageRow {
   if (!row) throw notFound("套餐不存在或已下架");
   if (
@@ -108,6 +106,7 @@ function ensurePayablePackage(row: PackageRow | undefined): PackageRow {
     || row.price_fen <= 0
     || !Number.isSafeInteger(row.quota_amount)
     || row.quota_amount <= 0
+    || row.quota_kind !== "ai_generation"
   ) {
     throw new AppError(409, "PACKAGE_NOT_PAYABLE", "套餐当前不能通过微信支付购买");
   }
@@ -149,7 +148,7 @@ export class PostgresPaymentService implements PaymentService {
 
   public async listPackages(): Promise<{ readonly items: readonly PaymentPackage[] }> {
     const result = await this.pool.query<PackageRow>(
-      `SELECT id, label, quota_amount, membership_type, membership_days,
+      `SELECT id, label, quota_amount, quota_kind, membership_type, membership_days,
               price_fen, currency, enabled
          FROM pindou_packages
         WHERE enabled = TRUE
@@ -173,6 +172,7 @@ export class PostgresPaymentService implements PaymentService {
       ]);
       const existingResult = await client.query<OrderRow>(
         `SELECT id, user_id, package_id, package_label_snapshot, quota_amount_snapshot,
+                quota_kind_snapshot,
                 membership_type_snapshot, price_fen, status, wx_prepay_id, wx_transaction_id
            FROM pindou_orders
           WHERE id = $1
@@ -195,7 +195,7 @@ export class PostgresPaymentService implements PaymentService {
       }
 
       const packageResult = await client.query<PackageRow>(
-        `SELECT id, label, quota_amount, membership_type, membership_days,
+        `SELECT id, label, quota_amount, quota_kind, membership_type, membership_days,
                 price_fen, currency, enabled
            FROM pindou_packages
           WHERE id = $1 AND enabled = TRUE
@@ -229,15 +229,17 @@ export class PostgresPaymentService implements PaymentService {
         await client.query(
           `INSERT INTO pindou_orders (
              id, user_id, package_id, package_label_snapshot, quota_amount_snapshot,
+             quota_kind_snapshot,
              membership_type_snapshot, price_fen, status, wx_prepay_id,
              wx_transaction_id, paid_at, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NULL, NULL, NULL, $8, $8)`,
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NULL, NULL, NULL, $9, $9)`,
           [
             orderId,
             input.userId,
             selectedPackage.id,
             selectedPackage.label,
             selectedPackage.quota_amount,
+            selectedPackage.quota_kind,
             selectedPackage.membership_type,
             selectedPackage.price_fen,
             currentTime,
@@ -260,7 +262,7 @@ export class PostgresPaymentService implements PaymentService {
       await client.query("COMMIT");
       return { orderId, payment: created.payment };
     } catch (error: unknown) {
-      await rollback(client);
+      await rollbackTransaction(client);
       throw error;
     } finally {
       client.release();
@@ -275,6 +277,7 @@ export class PostgresPaymentService implements PaymentService {
       const orderResult = await client.query<OrderRow>(
         `SELECT orders.id, orders.user_id, orders.package_id,
                 orders.package_label_snapshot, orders.quota_amount_snapshot,
+                orders.quota_kind_snapshot,
                 orders.membership_type_snapshot, orders.price_fen, orders.status,
                 orders.wx_prepay_id, orders.wx_transaction_id,
                 users.openid_ciphertext
@@ -314,12 +317,14 @@ export class PostgresPaymentService implements PaymentService {
         const grant = await client.query(
           `SELECT id
              FROM pindou_quota_transactions
-            WHERE order_id = $1 AND type = 'purchase_grant'
+             WHERE order_id = $1 AND type = 'purchase_grant'
+               AND quota_kind = $2
             LIMIT 1`,
-          [order.id],
+          [order.id, order.quota_kind_snapshot],
         );
         if (!grant.rows[0]) throw new Error("已支付订单缺少 purchase_grant 额度流水");
         await client.query("COMMIT");
+        console.log(JSON.stringify({ event: "wechat_payment_notification_duplicate", orderId: order.id }));
         return { duplicate: true };
       }
       if (order.status !== "pending") {
@@ -327,6 +332,9 @@ export class PostgresPaymentService implements PaymentService {
       }
       if (order.quota_amount_snapshot <= 0) {
         throw new AppError(409, "ORDER_GRANT_INVALID", "订单额度快照无效");
+      }
+      if (order.quota_kind_snapshot !== "ai_generation") {
+        throw new AppError(409, "ORDER_GRANT_INVALID", "订单额度类型快照无效");
       }
 
       const paidAt = notification.paidAt ?? this.now();
@@ -338,15 +346,16 @@ export class PostgresPaymentService implements PaymentService {
       );
       const inserted = await client.query(
         `INSERT INTO pindou_quota_transactions (
-           id, user_id, type, amount, source, bucket, quota_date, order_id,
+           id, user_id, quota_kind, type, amount, source, bucket, quota_date, order_id,
            download_record_id, idempotency_key, note, created_at
-         ) VALUES ($1, $2, 'purchase_grant', $3, 'payment', 'purchased', NULL,
-                   $4, NULL, $5, $6, $7)
+         ) VALUES ($1, $2, $3, 'purchase_grant', $4, 'payment', 'purchased', NULL,
+                   $5, NULL, $6, $7, $8)
          ON CONFLICT DO NOTHING
          RETURNING id`,
         [
           createEntityId("qt"),
           order.user_id,
+          order.quota_kind_snapshot,
           order.quota_amount_snapshot,
           order.id,
           `payment:${order.id}`,
@@ -356,9 +365,15 @@ export class PostgresPaymentService implements PaymentService {
       );
       if (!inserted.rows[0]) throw new Error("订单 purchase_grant 额度流水幂等冲突");
       await client.query("COMMIT");
+      console.log(JSON.stringify({
+        event: "wechat_payment_granted",
+        orderId: order.id,
+        quotaKind: order.quota_kind_snapshot,
+        quotaAmount: order.quota_amount_snapshot,
+      }));
       return { duplicate: false };
     } catch (error: unknown) {
-      await rollback(client);
+      await rollbackTransaction(client);
       throw error;
     } finally {
       client.release();

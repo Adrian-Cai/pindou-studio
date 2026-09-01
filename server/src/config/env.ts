@@ -32,6 +32,17 @@ export type WeChatPayConfig =
       readonly callbackToleranceSeconds: number;
     };
 
+export type QwenImageConfig =
+  | { readonly enabled: false }
+  | {
+      readonly enabled: true;
+      readonly apiKey: string;
+      readonly baseUrl: string;
+      readonly model: "qwen-image-3.0" | "qwen-image-3.0-pro";
+      readonly timeoutMs: number;
+      readonly maximumOutputBytes: number;
+    };
+
 export interface ServerConfig {
   readonly appEnvironment: AppEnvironment;
   readonly host: string;
@@ -43,12 +54,14 @@ export interface ServerConfig {
     readonly timeoutMs: number;
   };
   readonly wechatPay: WeChatPayConfig;
+  readonly qwenImage: QwenImageConfig;
   readonly auth: {
     readonly openidHashSecret: string;
     readonly tokenTtlDays: number;
   };
   readonly quota: {
-    readonly dailyFree: number;
+    readonly dailyStandardDownloads: number;
+    readonly dailyAiGenerations: number;
   };
   readonly avatars: {
     readonly storageDirectory: string;
@@ -58,6 +71,15 @@ export interface ServerConfig {
     readonly storageDirectory: string;
     readonly publicBaseUrl: string;
     readonly maximumBytes: number;
+  };
+  readonly aiFiles: {
+    readonly storageDirectory: string;
+    readonly publicBaseUrl: string;
+    readonly maximumBytes: number;
+  };
+  readonly deployment: {
+    readonly persistentStorageMounted: boolean;
+    readonly monitoringAlertsConfigured: boolean;
   };
 }
 
@@ -109,6 +131,20 @@ function integer(
     return fallback;
   }
   return parsed;
+}
+
+function booleanValue(
+  env: NodeJS.ProcessEnv,
+  key: string,
+  fallback: boolean,
+  issues: string[],
+): boolean {
+  const raw = env[key]?.trim().toLowerCase();
+  if (!raw) return fallback;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  issues.push(`${key} 必须是 true 或 false`);
+  return fallback;
 }
 
 function appEnvironment(env: NodeJS.ProcessEnv, issues: string[]): AppEnvironment {
@@ -194,6 +230,47 @@ function parseWeChatPayConfig(
   };
 }
 
+function parseQwenImageConfig(env: NodeJS.ProcessEnv, issues: string[]): QwenImageConfig {
+  const apiKey = env.QWEN_IMAGE_API_KEY?.trim();
+  const baseUrl = env.QWEN_IMAGE_BASE_URL?.trim();
+  if (!apiKey && !baseUrl) return { enabled: false };
+  if (!apiKey) issues.push("QWEN_IMAGE_API_KEY 未配置");
+  if (!baseUrl) issues.push("QWEN_IMAGE_BASE_URL 未配置");
+
+  let normalizedBaseUrl = baseUrl ?? "";
+  try {
+    const parsed = new URL(normalizedBaseUrl);
+    if (parsed.protocol !== "https:") issues.push("QWEN_IMAGE_BASE_URL 必须使用 HTTPS");
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+      issues.push("QWEN_IMAGE_BASE_URL 不能包含凭据、查询参数或片段");
+    }
+    normalizedBaseUrl = parsed.href.replace(/\/$/u, "");
+  } catch {
+    issues.push("QWEN_IMAGE_BASE_URL 必须是合法 URL");
+    normalizedBaseUrl = "";
+  }
+
+  const model = env.QWEN_IMAGE_MODEL?.trim() || "qwen-image-3.0";
+  if (model !== "qwen-image-3.0" && model !== "qwen-image-3.0-pro") {
+    issues.push("QWEN_IMAGE_MODEL 必须是 qwen-image-3.0 或 qwen-image-3.0-pro");
+  }
+  return {
+    enabled: true,
+    apiKey: apiKey ?? "",
+    baseUrl: normalizedBaseUrl,
+    model: model === "qwen-image-3.0-pro" ? model : "qwen-image-3.0",
+    timeoutMs: integer(env, "QWEN_IMAGE_TIMEOUT_MS", 30_000, 1_000, 60_000, issues),
+    maximumOutputBytes: integer(
+      env,
+      "QWEN_IMAGE_MAX_OUTPUT_BYTES",
+      10 * 1_024 * 1_024,
+      64 * 1_024,
+      20 * 1_024 * 1_024,
+      issues,
+    ),
+  };
+}
+
 export function loadLocalEnv(): void {
   const envPath = resolve(__dirname, "../../.env");
   try {
@@ -218,12 +295,14 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       timeoutMs: integer(env, "WECHAT_API_TIMEOUT_MS", 8_000, 1_000, 30_000, issues),
     },
     wechatPay: parseWeChatPayConfig(env, wechatAppId, issues),
+    qwenImage: parseQwenImageConfig(env, issues),
     auth: {
       openidHashSecret: requiredSecret(env, "OPENID_HASH_SECRET", 32, issues),
       tokenTtlDays: integer(env, "AUTH_TOKEN_TTL_DAYS", 30, 1, 365, issues),
     },
     quota: {
-      dailyFree: integer(env, "DAILY_FREE_QUOTA", 3, 0, 100, issues),
+      dailyStandardDownloads: integer(env, "STANDARD_DOWNLOAD_DAILY_FREE", 9, 0, 100, issues),
+      dailyAiGenerations: integer(env, "AI_GENERATION_DAILY_FREE", 3, 0, 100, issues),
     },
     avatars: {
       storageDirectory: resolve(
@@ -238,7 +317,45 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       publicBaseUrl: env.COVER_PUBLIC_BASE_URL?.trim() || "http://127.0.0.1:3000/api/media/covers",
       maximumBytes: integer(env, "COVER_MAX_BYTES", 10 * 1_024 * 1_024, 64 * 1_024, 20 * 1_024 * 1_024, issues),
     },
+    aiFiles: {
+      storageDirectory: resolve(
+        env.AI_FILE_STORAGE_DIR?.trim() || resolve(__dirname, "../../data/ai"),
+      ),
+      publicBaseUrl: env.AI_FILE_PUBLIC_BASE_URL?.trim() || "http://127.0.0.1:3000/api/media/ai",
+      maximumBytes: integer(env, "AI_FILE_MAX_BYTES", 10 * 1_024 * 1_024, 64 * 1_024, 20 * 1_024 * 1_024, issues),
+    },
+    deployment: {
+      persistentStorageMounted: booleanValue(
+        env,
+        "PERSISTENT_STORAGE_MOUNTED",
+        false,
+        issues,
+      ),
+      monitoringAlertsConfigured: booleanValue(
+        env,
+        "MONITORING_ALERTS_CONFIGURED",
+        false,
+        issues,
+      ),
+    },
   };
+
+  if (config.appEnvironment === "production") {
+    if (!config.wechatPay.enabled) issues.push("生产环境必须配置微信支付");
+    if (!config.qwenImage.enabled) issues.push("生产环境必须配置千问图像服务");
+    if (!config.covers.publicBaseUrl.startsWith("https://")) {
+      issues.push("生产环境 COVER_PUBLIC_BASE_URL 必须使用 HTTPS");
+    }
+    if (!config.aiFiles.publicBaseUrl.startsWith("https://")) {
+      issues.push("生产环境 AI_FILE_PUBLIC_BASE_URL 必须使用 HTTPS");
+    }
+    if (!config.deployment.persistentStorageMounted) {
+      issues.push("生产环境必须确认 PERSISTENT_STORAGE_MOUNTED=true");
+    }
+    if (!config.deployment.monitoringAlertsConfigured) {
+      issues.push("生产环境必须确认 MONITORING_ALERTS_CONFIGURED=true");
+    }
+  }
 
   if (issues.length > 0) throw new ConfigError(issues);
   return config;

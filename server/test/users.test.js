@@ -23,7 +23,7 @@ test("current user response supports nullable profile and summarizes owned data"
   };
   const service = new PostgresUserProfileService(
     pool,
-    { dailyFree: 3 },
+    { dailyStandardDownloads: 3, dailyAiGenerations: 3 },
     () => new Date("2026-08-26T09:00:00.000Z"),
   );
 
@@ -54,7 +54,7 @@ test("missing current user is unauthorized", async () => {
         : { rows: [{ used_today: "0", purchased: "0" }] };
     },
   };
-  const service = new PostgresUserProfileService(pool, { dailyFree: 3 });
+  const service = new PostgresUserProfileService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 });
   await assert.rejects(() => service.getCurrentUser("usr_missing"), (error) => {
     assert.equal(error.code, "UNAUTHORIZED");
     return true;
@@ -84,7 +84,11 @@ test("profile updates derive ownership from the authenticated user id", async ()
     },
   };
   const now = new Date("2026-08-26T09:00:00.000Z");
-  const service = new PostgresUserProfileService(pool, { dailyFree: 3 }, () => now);
+  const service = new PostgresUserProfileService(
+    pool,
+    { dailyStandardDownloads: 3, dailyAiGenerations: 3 },
+    () => now,
+  );
 
   const nicknameUser = await service.updateNickname("usr_test", "拼豆玩家");
   assert.equal(nicknameUser.nickname, "拼豆玩家");

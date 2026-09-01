@@ -1,4 +1,5 @@
 import type { Pool, PoolClient, QueryResultRow } from "pg";
+import { rollbackTransaction } from "../shared/transaction";
 import {
   EXPECTED_SCHEMA,
   EXPECTED_TABLES,
@@ -237,7 +238,7 @@ export async function inspectDatabaseSchema(pool: Pool, schema: string): Promise
     return report;
   } catch (error: unknown) {
     try {
-      await client.query("ROLLBACK");
+      await rollbackTransaction(client);
     } catch {
       // 原始错误更有诊断价值；连接关闭时回滚失败不覆盖它。
     }

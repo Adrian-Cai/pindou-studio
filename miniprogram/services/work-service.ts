@@ -42,22 +42,7 @@ export async function saveNewCloudWork(
   coverPath: string,
   title = '未命名作品',
 ): Promise<CloudWorkSummary> {
-  const token = requireToken()
-  const coverFileId = await uploadCover(token, coverPath)
-  const response = await apiRequest<unknown>({
-    path: '/api/works',
-    method: 'POST',
-    token,
-    headers: { 'Idempotency-Key': `create-${draft.id}` },
-    data: {
-      title,
-      coverFileId,
-      status: 'completed',
-      pattern: draftToPersistedPattern(draft),
-    },
-    timeoutMs: 30_000,
-  })
-  return parseWorkSummary(response)
+  return persistCloudWork({ draft, coverPath, title })
 }
 
 export async function updateCloudWork(
@@ -66,21 +51,7 @@ export async function updateCloudWork(
   coverPath: string,
   title: string,
 ): Promise<CloudWorkSummary> {
-  const token = requireToken()
-  const coverFileId = await uploadCover(token, coverPath)
-  const response = await apiRequest<unknown>({
-    path: `/api/works/${encodeURIComponent(workId)}`,
-    method: 'PUT',
-    token,
-    data: {
-      title,
-      coverFileId,
-      status: 'completed',
-      pattern: draftToPersistedPattern(draft),
-    },
-    timeoutMs: 30_000,
-  })
-  return parseWorkSummary(response)
+  return persistCloudWork({ workId, draft, coverPath, title })
 }
 
 export async function renameCloudWork(workId: string, title: string): Promise<CloudWorkSummary> {
@@ -203,6 +174,31 @@ async function uploadCover(token: string, filePath: string): Promise<string> {
     throw invalidResponse()
   }
   return response.file.id
+}
+
+async function persistCloudWork(input: {
+  readonly workId?: string
+  readonly draft: PatternDraft
+  readonly coverPath: string
+  readonly title: string
+}): Promise<CloudWorkSummary> {
+  const token = requireToken()
+  const coverFileId = await uploadCover(token, input.coverPath)
+  const isNew = input.workId === undefined
+  const response = await apiRequest<unknown>({
+    path: isNew ? '/api/works' : `/api/works/${encodeURIComponent(input.workId)}`,
+    method: isNew ? 'POST' : 'PUT',
+    token,
+    ...(isNew ? { headers: { 'Idempotency-Key': `create-${input.draft.id}` } } : {}),
+    data: {
+      title: input.title,
+      coverFileId,
+      status: 'completed',
+      pattern: draftToPersistedPattern(input.draft),
+    },
+    timeoutMs: 30_000,
+  })
+  return parseWorkSummary(response)
 }
 
 function requireToken(): string {

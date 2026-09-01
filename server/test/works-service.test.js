@@ -101,6 +101,28 @@ test("update replaces edited pattern and derived summary in one transaction", as
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
 
+test("update without pattern preserves derived summary without loading the pattern", async () => {
+  const calls = [];
+  const existing = row("work_title_only");
+  const client = {
+    async query(sql, parameters) {
+      calls.push({ sql, parameters });
+      if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.includes("FOR UPDATE")) return { rows: [existing] };
+      if (sql.includes("UPDATE pindou_works")) return { rows: [{ ...existing, title: "只改标题" }] };
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    release() {},
+  };
+  const service = new PostgresWorkService({ async connect() { return client; } }, () => new Date("2026-08-27T02:00:00.000Z"));
+  const result = await service.update({ userId: "usr_current", workId: "work_title_only", title: "只改标题" });
+  assert.equal(result.title, "只改标题");
+  assert.equal(result.beadCount, existing.bead_count);
+  assert.equal(result.colorCount, existing.color_count);
+  assert.equal(calls.some((call) => call.sql.includes("pindou_work_patterns")), false);
+  assert.equal(calls.at(-1).sql, "COMMIT");
+});
+
 test("same idempotency key returns the committed work and rejects a changed request", async () => {
   const workId = createIdempotentWorkId("usr_current", "save-retry");
   let committed = false;

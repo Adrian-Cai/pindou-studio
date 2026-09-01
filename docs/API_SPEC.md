@@ -4,7 +4,7 @@
 >
 > 版本：v1.0
 >
-> 适用范围：第一版小程序云端账号、作品、封面文件、收藏、下载额度、下载记录和微信支付。
+> 适用范围：小程序云端账号、作品、文件、收藏、双额度、下载记录、AI 精致生成和微信支付。
 >
 > 本文档以 `docs/拼豆工作室 · 小程序后端 API 需求审计.md` 为输入，并对审计中尚未收敛的部分做出第一版约束。
 
@@ -19,10 +19,10 @@
 | 3 | 收藏 | `PATCH /api/works/:id/favorite`、`GET /api/favorites` |
 | 4 | 额度与下载记录 | `GET /api/quota/me`、`GET /api/downloads`、`POST /api/downloads` |
 | 5 | 套餐与支付 | `GET /api/packages`、`POST /api/payments/create`、`POST /api/payments/notify` |
+| 6 | AI 精致生成 | `POST /api/ai/generations`、`GET /api/ai/generations/:id` |
 
 ### 1.2 明确暂不纳入
 
-- 不开发 `POST /api/generations` 和 `GET /api/generations/:taskId`。
 - 图片量化继续由小程序 `createDraft()` 在客户端完成。
 - 不开发服务端成品图、施工图或材料清单生成。
 - 不开发 `GET /api/files/download/:workId/:type`。
@@ -506,13 +506,20 @@ Authorization: Bearer <token>
 
 ```json
 {
-  "dailyFree": 3,
+  "dailyFree": 9,
   "usedToday": 1,
   "purchased": 0,
-  "remaining": 2,
+  "remaining": 8,
   "membershipType": null,
   "membershipExpiresAt": null,
-  "resetsAt": "2026-08-27T00:00:00+08:00"
+  "resetsAt": "2026-08-27T00:00:00+08:00",
+  "aiGeneration": {
+    "dailyFree": 3,
+    "usedToday": 0,
+    "purchased": 80,
+    "remaining": 83,
+    "resetsAt": "2026-08-27T00:00:00+08:00"
+  }
 }
 ```
 
@@ -570,7 +577,7 @@ Authorization: Bearer <token>
 }
 ```
 
-`fileType`：`preview`、`chart`、`materials`。
+`fileType`：`preview`、`chart`、`materials`、`palette`。
 
 响应 `201`：
 
@@ -614,11 +621,12 @@ Authorization: Bearer <token>
 {
   "items": [
     {
-      "id": "starter",
-      "label": "加购 3 次",
-      "quotaAmount": 3,
+      "id": "ai_generation_80",
+      "label": "AI 精致生成 80 次",
+      "quotaAmount": 80,
+      "quotaKind": "ai_generation",
       "membershipType": null,
-      "priceFen": 990,
+      "priceFen": 1990,
       "currency": "CNY",
       "enabled": true
     }
@@ -635,7 +643,7 @@ Authorization: Bearer <token>
 请求：
 
 ```json
-{ "packageId": "starter" }
+{ "packageId": "ai_generation_80" }
 ```
 
 响应 `201`：
@@ -671,18 +679,39 @@ Authorization: Bearer <token>
 处理要求：
 
 - 验证签名、商户号、应用标识、订单号、金额和支付状态。
-- 只有首次确认支付成功时，订单从 `pending` 变为 `paid`，并写入一笔带 `orderId` 的额度增加流水。
+- 只有首次确认支付成功时，订单从 `pending` 变为 `paid`，并写入一笔带 `orderId`、`quota_kind=ai_generation` 的 `purchase_grant`。
 - 重复回调必须返回成功确认，但不得重复增加额度。
 - 支付失败、关闭或金额不符不得发放额度。
 - 回调处理完成后返回微信要求的成功响应；内部异步任务失败不能造成重复发放。
 
-## 6. 不在第一版 API 中的接口
+## 阶段 6：AI 精致生成
+
+先使用 `POST /api/files/upload` 上传 `type=ai_input` 的 JPG、PNG 或 WEBP，然后创建任务：
+
+```http
+POST /api/ai/generations
+Authorization: Bearer <token>
+Idempotency-Key: <稳定唯一键>
+Content-Type: application/json
+```
+
+```json
+{
+  "inputFileId": "file_xxx",
+  "style": "natural",
+  "detailLevel": "medium",
+  "backgroundMode": "simplify"
+}
+```
+
+服务端固定提示词模板并调用千问图像 3.0 异步接口，不接受客户端 Provider、模型、价格、额度或任意提示词。客户端通过 `GET /api/ai/generations/:id` 轮询 `queued`、`processing`、`succeeded`、`failed`、`canceled` 状态。成功时响应包含 `outputFile`；失败不扣额度。输出文件校验、资产写入、任务成功更新和一笔 `usage_debit` 在受控流程中完成，相同任务不重复扣减。
+
+## 6. 不在当前 API 中的接口
 
 以下接口暂不实现，也不应在前端先伪造调用：
 
 | 接口 | 原因 |
 | --- | --- |
-| `/api/generations` | 图像量化已经在客户端同步完成 |
 | `/api/files/download/:workId/:type` | 第一版由客户端 Canvas 导出并保存相册 |
 | `POST /api/feedbacks` | 反馈属于后续增强阶段 |
 | `PATCH /api/users/me/privacy` | 云同步语义未定义，暂不提供开关 |

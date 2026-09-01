@@ -50,15 +50,19 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
     );
     await pool.query(
       `INSERT INTO pindou_quota_transactions (
-         id, user_id, type, amount, source, bucket, quota_date, order_id,
+         id, user_id, quota_kind, type, amount, source, bucket, quota_date, order_id,
          download_record_id, idempotency_key, note, created_at
        ) VALUES
-         ($1, $3, 'adjustment', 2, 'support', 'purchased', NULL, NULL, NULL, NULL, '测试购买额度', $4),
-         ($2, $3, 'adjustment', -2, 'support', 'daily_free', '2026-08-31', NULL, NULL, NULL, '前一上海自然日流水', $4)`,
+          ($1, $3, 'standard_download', 'adjustment', 2, 'support', 'purchased', NULL, NULL, NULL, NULL, '测试购买额度', $4),
+          ($2, $3, 'standard_download', 'adjustment', -2, 'support', 'daily_free', '2026-08-31', NULL, NULL, NULL, '前一上海自然日流水', $4)`,
       [`qt_buy_${suffix}`, `qt_old_${suffix}`, userA, now],
     );
 
-    const service = new PostgresQuotaDownloadService(pool, { dailyFree: 3 }, () => now);
+    const service = new PostgresQuotaDownloadService(
+      pool,
+      { dailyStandardDownloads: 3, dailyAiGenerations: 3 },
+      () => now,
+    );
     const firstQuota = await service.getQuota(userA);
     const repeatedQuota = await service.getQuota(userA);
     assert.deepEqual(firstQuota, {
@@ -69,10 +73,17 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
       membershipType: null,
       membershipExpiresAt: null,
       resetsAt: "2026-09-02T00:00:00+08:00",
+      aiGeneration: {
+        dailyFree: 3,
+        usedToday: 0,
+        purchased: 0,
+        remaining: 3,
+        resetsAt: "2026-09-02T00:00:00+08:00",
+      },
     });
     assert.deepEqual(repeatedQuota, firstQuota);
     const grantCount = await pool.query(
-      "SELECT COUNT(*)::int AS count FROM pindou_quota_transactions WHERE user_id = $1 AND type = 'daily_grant' AND quota_date = '2026-09-01'",
+      "SELECT COUNT(*)::int AS count FROM pindou_quota_transactions WHERE user_id = $1 AND quota_kind = 'standard_download' AND type = 'daily_grant' AND quota_date = '2026-09-01'",
       [userA],
     );
     assert.equal(grantCount.rows[0].count, 1);
@@ -83,7 +94,7 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
         userId: userA,
         idempotencyKey: `stage4-${suffix}-${index}`,
         workId: workA,
-        fileType: index % 2 === 0 ? "chart" : "preview",
+        fileType: index === 1 ? "palette" : index % 2 === 0 ? "chart" : "preview",
       }));
     }
     assert.equal(successful[2].quota.usedToday, 3);

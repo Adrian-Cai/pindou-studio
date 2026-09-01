@@ -106,11 +106,14 @@ export class PostgresUserProfileService implements UserProfileService {
       this.pool.query<QuotaRow>(
         `SELECT COALESCE(
                   -SUM(amount) FILTER (
-                    WHERE bucket = 'daily_free' AND quota_date = $2::date AND amount < 0
+                    WHERE quota_kind = 'standard_download'
+                      AND bucket = 'daily_free' AND quota_date = $2::date AND amount < 0
                   ),
                   0
                 )::text AS used_today,
-                COALESCE(SUM(amount) FILTER (WHERE bucket = 'purchased'), 0)::text AS purchased
+                  COALESCE(SUM(amount) FILTER (
+                    WHERE quota_kind = 'standard_download' AND bucket = 'purchased'
+                  ), 0)::text AS purchased
            FROM pindou_quota_transactions
           WHERE user_id = $1`,
         [userId, shanghaiDate(currentTime)],
@@ -122,7 +125,7 @@ export class PostgresUserProfileService implements UserProfileService {
     const quota = quotaResult.rows[0];
     const usedToday = nonNegativeInteger(quota?.used_today ?? "0");
     const purchased = nonNegativeInteger(quota?.purchased ?? "0");
-    const dailyRemaining = Math.max(0, this.quotaConfig.dailyFree - usedToday);
+    const dailyRemaining = Math.max(0, this.quotaConfig.dailyStandardDownloads - usedToday);
 
     return {
       user: {
@@ -137,7 +140,7 @@ export class PostgresUserProfileService implements UserProfileService {
         downloadCount: nonNegativeInteger(profile.download_count),
       },
       quota: {
-        dailyFree: this.quotaConfig.dailyFree,
+        dailyFree: this.quotaConfig.dailyStandardDownloads,
         usedToday,
         purchased,
         remaining: dailyRemaining + purchased,

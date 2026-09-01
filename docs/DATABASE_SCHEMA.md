@@ -12,7 +12,7 @@
 
 ## 1. 当前数据库概览
 
-项目当前使用一套 PostgreSQL 业务数据库，核心包含 10 张业务表：
+项目当前使用一套 PostgreSQL 业务数据库，核心包含 11 张业务表：
 
 | 表名 | 用途 |
 | --- | --- |
@@ -26,6 +26,7 @@
 | `pindou_quota_transactions` | 下载/购买等额度流水 |
 | `pindou_packages` | 可购买套餐 |
 | `pindou_orders` | 支付订单 |
+| `pindou_ai_generation_jobs` | AI 精致生成任务与状态机 |
 
 关系概览：
 
@@ -37,7 +38,8 @@ pindou_users
   │      ├── pindou_favorites
   │      └── pindou_download_records ─── pindou_quota_transactions
   ├── pindou_quota_transactions
-  └── pindou_orders ─── pindou_packages
+  ├── pindou_orders ─── pindou_packages
+  └── pindou_ai_generation_jobs ─── pindou_file_assets
 ```
 
 ## 2. `pindou_users`
@@ -84,13 +86,13 @@ pindou_users
 
 ## 4. `pindou_file_assets`
 
-文件资产表，目前主要保存作品封面。
+文件资产表，保存作品封面、AI 输入和 AI 输出。
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
 | `id` | `varchar(32)` | 否 | 文件 ID，主键 |
 | `user_id` | `varchar(32)` | 否 | 所有者 |
-| `file_type` | `varchar(20)` | 否 | 当前支持 `cover` |
+| `file_type` | `varchar(20)` | 否 | `cover` / `ai_input` / `ai_output` |
 | `object_key` | `varchar(512)` | 否 | 对象存储 Key |
 | `public_url` | `text` | 否 | 对外访问地址 |
 | `content_type` | `varchar(100)` | 否 | MIME 类型 |
@@ -105,7 +107,7 @@ pindou_users
 - PK：`id`
 - FK：`user_id -> pindou_users.id`
 - UNIQUE：`object_key`
-- CHECK：`file_type` 当前限定 `cover`
+- CHECK：`file_type` 限定为 `cover`、`ai_input`、`ai_output`
 - CHECK：`byte_size > 0`
 - INDEX：`(user_id, file_type, created_at)`
 
@@ -174,6 +176,7 @@ pindou_users
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
 | `user_id` | `varchar(32)` | 否 | 用户 ID |
+| `quota_kind` | `varchar(30)` | 否 | `standard_download` / `ai_generation` |
 | `work_id` | `varchar(32)` | 否 | 作品 ID |
 | `created_at` | `timestamptz` | 否 | 收藏时间 |
 
@@ -194,7 +197,7 @@ pindou_users
 | `user_id` | `varchar(32)` | 否 | 用户 ID |
 | `work_id` | `varchar(32)` | 是 | 作品 ID；作品删除后可置空 |
 | `work_title_snapshot` | `varchar(120)` | 否 | 下载时作品标题快照 |
-| `file_type` | `varchar(20)` | 否 | `preview` / `chart` / `materials` |
+| `file_type` | `varchar(20)` | 否 | `preview` / `chart` / `materials` / `palette` |
 | `consumed_quota` | `bool` | 否 | 是否消耗额度 |
 | `quota_transaction_id` | `varchar(32)` | 是 | 对应额度扣减流水 |
 | `idempotency_key` | `varchar(128)` | 否 | 下载幂等键 |
@@ -206,7 +209,7 @@ pindou_users
 - FK：`user_id -> pindou_users.id`
 - FK：`work_id -> pindou_works.id`，删除作品时 `SET NULL`
 - FK：`quota_transaction_id -> pindou_quota_transactions.id`
-- CHECK：`file_type in ('preview', 'chart', 'materials')`
+- CHECK：`file_type in ('preview', 'chart', 'materials', 'palette')`
 - UNIQUE：`idempotency_key`
 - INDEX：`(user_id, downloaded_at)`
 - INDEX：`(user_id, file_type, downloaded_at)`
@@ -234,6 +237,7 @@ pindou_users
 
 - `daily_grant`
 - `download_debit`
+- `usage_debit`
 - `purchase_grant`
 - `refund`
 - `adjustment`
@@ -245,9 +249,10 @@ pindou_users
 - FK：`order_id -> pindou_orders.id`
 - FK：`download_record_id -> pindou_download_records.id`
 - CHECK：`amount <> 0`
-- 每日免费发放唯一约束
+- 每日免费发放按 `(user_id, type, quota_kind, quota_date)` 唯一
 - 购买发放按 `order_id` 唯一
 - 下载扣减按 `download_record_id` 唯一
+- AI 使用扣减按 `idempotency_key` 唯一
 - INDEX：`(user_id, created_at)`
 
 ## 10. `pindou_packages`
@@ -259,6 +264,7 @@ pindou_users
 | `id` | `varchar(40)` | 否 | 套餐 ID |
 | `label` | `varchar(80)` | 否 | 套餐名称 |
 | `quota_amount` | `int4` | 否 | 提供额度 |
+| `quota_kind` | `varchar(30)` | 否 | 套餐发放的额度类型 |
 | `membership_type` | `varchar(30)` | 是 | 可选会员类型 |
 | `membership_days` | `int4` | 是 | 会员有效天数 |
 | `price_fen` | `int4` | 否 | 价格，单位分 |
@@ -287,6 +293,7 @@ pindou_users
 | `package_id` | `varchar(40)` | 是 | 套餐 ID；套餐被删除后允许置空 |
 | `package_label_snapshot` | `varchar(80)` | 否 | 下单时套餐名称快照 |
 | `quota_amount_snapshot` | `int4` | 否 | 下单时额度快照 |
+| `quota_kind_snapshot` | `varchar(30)` | 否 | 下单时额度类型快照 |
 | `membership_type_snapshot` | `varchar(30)` | 是 | 会员类型快照 |
 | `price_fen` | `int4` | 否 | 下单金额，单位分 |
 | `status` | `varchar(20)` | 否 | 订单状态 |
@@ -306,9 +313,35 @@ pindou_users
 - CHECK：`price_fen >= 0`
 - `status` 的合法值由当前 Schema Contract 的 CHECK 约束维护
 
-## 12. Schema 的事实来源与验证方式
+## 12. `pindou_ai_generation_jobs`
 
-### 12.1 事实来源优先级
+AI 精致生成任务表。客户端创建任务后轮询状态；只有输出图片落库成功时才写 AI 额度扣减流水。
+
+| 字段 | PostgreSQL 类型 | 可空 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `varchar(32)` | 否 | 任务 ID |
+| `user_id` | `varchar(32)` | 否 | 用户 ID |
+| `input_file_id` | `varchar(32)` | 否 | `ai_input` 文件 ID |
+| `output_file_id` | `varchar(32)` | 是 | 成功后的 `ai_output` 文件 ID |
+| `provider` | `varchar(40)` | 否 | Provider 快照，当前为 `qwen` |
+| `model` | `varchar(80)` | 否 | 模型快照 |
+| `status` | `varchar(20)` | 否 | `queued` / `processing` / `succeeded` / `failed` / `canceled` |
+| `prompt_version` | `varchar(20)` | 否 | 服务端提示词版本 |
+| `style` | `varchar(20)` | 否 | `natural` / `cartoon` / `minimal` |
+| `detail_level` | `varchar(20)` | 否 | `low` / `medium` / `high` |
+| `background_mode` | `varchar(20)` | 否 | `keep` / `simplify` / `remove` |
+| `provider_request_id` | `varchar(128)` | 是 | Provider 异步任务 ID |
+| `idempotency_key` | `varchar(128)` | 否 | 同一用户创建任务的幂等键 |
+| `error_code` | `varchar(80)` | 是 | 稳定失败代码 |
+| `created_at` / `updated_at` | `timestamptz` | 否 | 创建/更新时间 |
+| `started_at` / `completed_at` | `timestamptz` | 是 | 处理/完成时间 |
+| `expires_at` | `timestamptz` | 否 | 任务查询截止时间 |
+
+幂等唯一索引为 `(user_id, idempotency_key)`；活跃状态索引用于额度预留和超时巡检。
+
+## 13. Schema 的事实来源与验证方式
+
+### 13.1 事实来源优先级
 
 以后遇到文档与代码不一致，按以下顺序判断：
 

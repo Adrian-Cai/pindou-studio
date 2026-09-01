@@ -124,7 +124,8 @@ Page({
     wx.showActionSheet({
       itemList: ['全部作品', '最近更新', '仅看草稿', '仅看已完成'],
       success: ({ tapIndex }) => {
-        const tab = ['all', 'recent', 'draft', 'completed'][tapIndex] as ProjectTab
+        const tab = tabs[tapIndex]?.id
+        if (!tab) return
         this.setData({ activeTab: tab }, () => this.applyFilters())
       },
     })

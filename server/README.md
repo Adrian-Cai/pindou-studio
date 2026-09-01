@@ -1,6 +1,6 @@
 # 拼豆工作室后端
 
-当前完成阶段 0 至阶段 4：服务基础、PostgreSQL 结构校验、健康检查、微信登录、Bearer token 鉴权、用户资料、文件与作品、收藏，以及下载额度和下载记录。
+当前完成阶段 0 至阶段 6 的代码：服务基础、PostgreSQL 结构校验、微信登录、用户资料、文件与作品、收藏、双额度、下载记录、套餐支付，以及 AI 精致生成任务状态机。真实支付和生产基础设施验收见 `../docs/PRODUCTION_PAYMENT_AI_ACCEPTANCE.md`。
 
 ## 环境要求
 
@@ -22,7 +22,7 @@
 node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
 ```
 
-服务在监听端口前会开启 `READ ONLY` 事务，检查数据库产品、版本、10 张表、字段、索引、外键、CHECK 约束和注释。发现任何结构差异时会拒绝启动，不会自动修复数据库。
+服务在监听端口前会开启 `READ ONLY` 事务，检查数据库产品、版本、11 张表、字段、索引、外键、CHECK 约束和注释。发现任何结构差异时会拒绝启动，不会自动修复数据库。
 
 健康检查：
 
@@ -100,6 +100,8 @@ type=cover
 
 `GET /api/quota/me` 从额度流水汇总当前用户额度，并按 `Asia/Shanghai` 自然日懒创建每日免费额度流水；数据库中的 `created_at` 仍使用 UTC 时间。`GET /api/downloads` 只返回下载记录和作品标题快照，不返回文件 URL。
 
+标准下载每日免费 9 次；AI 精致生成每日免费 3 次。两者分别使用 `standard_download` 和 `ai_generation`，不会互相消耗。
+
 客户端成功保存 Canvas 导出的图片后调用：
 
 ```http
@@ -131,6 +133,12 @@ Content-Type: application/json
 `POST /api/payments/notify` 仅使用微信支付请求头和原始请求体完成验签，不读取 Bearer token。回调通过平台公钥验签并使用 API v3 密钥解密后，服务端再次校验商户号、AppID、订单号、金额、币种、付款人和支付状态；首次成功在同一事务内把订单改为 `paid` 并写一笔 `purchase_grant`，重复回调只确认成功。
 
 支付环境变量见 `.env.example`。支付配置全部缺省时，套餐读取仍可用，创建支付与回调返回 `PAYMENT_NOT_CONFIGURED`；部分配置会被视为配置错误并阻止启动。已有用户需要重新登录一次，以便服务端在 `openid_ciphertext` 中保存支付所需的加密身份。
+
+## 阶段 6 接口
+
+上传 AI 输入图片时复用 `POST /api/files/upload` 并设置 `type=ai_input`。随后使用 `Idempotency-Key` 调用 `POST /api/ai/generations`，请求体只包含 `inputFileId`、`style`、`detailLevel` 和 `backgroundMode`；用 `GET /api/ai/generations/:id` 轮询状态。
+
+服务端调用千问图像 3.0 异步接口，持久化 Provider 任务 ID，并在输出图片下载、格式校验和文件资产落库成功后才扣除一笔 `ai_generation`。Provider 失败、超时或无效输出不伪造成功，也不扣额度。
 
 ## 可用命令
 

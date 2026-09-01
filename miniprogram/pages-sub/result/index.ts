@@ -11,7 +11,6 @@ import { cloudSummaryToWorkItem, renameCloudWork } from '../../services/work-ser
 import {
   cloudDownloadToLocalRecord,
   createDownload,
-  isServerDownloadFileType,
 } from '../../services/download-service'
 import { appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
@@ -587,7 +586,7 @@ Page({
   async recordCloudDownload(fileType: DownloadFileType) {
     const draft = this.data.draft
     const work = draft ? appStore.getSnapshot().works.find((item) => item.id === draft.id) : undefined
-    if (!draft || !work?.isCloud || !isServerDownloadFileType(fileType)) return null
+    if (!draft || !work?.isCloud) return null
     return createDownload(work.id, fileType, this.data.downloadIdempotencyKey)
   },
 

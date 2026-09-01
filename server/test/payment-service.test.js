@@ -46,6 +46,7 @@ function packageRow(overrides = {}) {
     id: "starter",
     label: "加购 3 次",
     quota_amount: 3,
+    quota_kind: "ai_generation",
     membership_type: null,
     membership_days: null,
     price_fen: 990,
@@ -90,6 +91,7 @@ test("packages returns only the enabled rows selected by the server query", asyn
       id: "starter",
       label: "加购 3 次",
       quotaAmount: 3,
+      quotaKind: "ai_generation",
       membershipType: null,
       priceFen: 990,
       currency: "CNY",
@@ -136,7 +138,8 @@ test("payment creation snapshots server package values and never accepts a clien
   });
   assert.equal(orderInsert[3], "加购 3 次");
   assert.equal(orderInsert[4], 3);
-  assert.equal(orderInsert[6], 990);
+  assert.equal(orderInsert[5], "ai_generation");
+  assert.equal(orderInsert[7], 990);
 });
 
 function notificationHarness(notificationOverrides = {}, options = {}) {
@@ -146,6 +149,7 @@ function notificationHarness(notificationOverrides = {}, options = {}) {
     package_id: "starter",
     package_label_snapshot: "加购 3 次",
     quota_amount_snapshot: 3,
+    quota_kind_snapshot: "ai_generation",
     membership_type_snapshot: null,
     price_fen: 990,
     status: "pending",
@@ -173,7 +177,7 @@ function notificationHarness(notificationOverrides = {}, options = {}) {
       return { rows: [] };
     }
     if (sql.includes("INSERT INTO pindou_quota_transactions")) {
-      grant = { id: parameters[0], amount: parameters[2], orderId: parameters[3] };
+      grant = { id: parameters[0], quotaKind: parameters[2], amount: parameters[3], orderId: parameters[4] };
       return { rows: [{ id: grant.id }] };
     }
     throw new Error(`unexpected SQL: ${sql}`);
@@ -196,8 +200,8 @@ test("successful callback atomically marks paid and duplicate callback does not 
   assert.equal(harness.order.status, "paid");
   assert.equal(harness.orderUpdates, 1);
   assert.deepEqual(
-    { amount: harness.grant.amount, orderId: harness.grant.orderId },
-    { amount: 3, orderId: "order_test" },
+    { quotaKind: harness.grant.quotaKind, amount: harness.grant.amount, orderId: harness.grant.orderId },
+    { quotaKind: "ai_generation", amount: 3, orderId: "order_test" },
   );
   assert.equal(harness.state.calls.filter((call) => call.sql.includes("INSERT INTO pindou_quota_transactions")).length, 1);
 });

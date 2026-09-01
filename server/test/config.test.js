@@ -23,10 +23,14 @@ test("readConfig loads validated server and database settings", () => {
   assert.equal(config.database.schema, "public");
   assert.equal(config.database.sslMode, "disable");
   assert.equal(config.auth.tokenTtlDays, 30);
-  assert.equal(config.quota.dailyFree, 3);
+  assert.equal(config.quota.dailyStandardDownloads, 9);
+  assert.equal(config.quota.dailyAiGenerations, 3);
+  assert.deepEqual(config.qwenImage, { enabled: false });
   assert.deepEqual(config.wechatPay, { enabled: false });
   assert.equal(config.avatars.maximumBytes, 2 * 1024 * 1024);
   assert.match(config.avatars.storageDirectory, /data[\\/]avatars$/);
+  assert.equal(config.deployment.persistentStorageMounted, false);
+  assert.equal(config.deployment.monitoringAlertsConfigured, false);
 });
 
 test("readConfig rejects missing sensitive database configuration without exposing values", () => {
@@ -79,4 +83,17 @@ test("database inspection config does not require WeChat secrets", () => {
   });
   assert.equal(database.port, 5432);
   assert.equal(database.schema, "public");
+});
+
+test("production configuration refuses incomplete payment, AI, HTTPS, storage and monitoring", () => {
+  assert.throws(
+    () => readConfig({ ...validEnvironment, APP_ENV: "production" }),
+    (error) => error instanceof ConfigError
+      && error.issues.includes("生产环境必须配置微信支付")
+      && error.issues.includes("生产环境必须配置千问图像服务")
+      && error.issues.includes("生产环境 COVER_PUBLIC_BASE_URL 必须使用 HTTPS")
+      && error.issues.includes("生产环境 AI_FILE_PUBLIC_BASE_URL 必须使用 HTTPS")
+      && error.issues.includes("生产环境必须确认 PERSISTENT_STORAGE_MOUNTED=true")
+      && error.issues.includes("生产环境必须确认 MONITORING_ALERTS_CONFIGURED=true"),
+  );
 });
