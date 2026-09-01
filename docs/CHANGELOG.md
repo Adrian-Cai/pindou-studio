@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.21.0
+
+- 完成 Standard Pattern Engine V2 Phase 3：最终最近色匹配从 RGB 欧氏距离升级为标准 OKLab 感知距离，Palette 与每个非透明 Cell 均只转换一次，tie 继续保留 Palette 前项。
+- 完成 Standard Pattern Engine V2 Phase 4：Median Cut 改为候选颜色分析，候选色映射到固定版本的 MARD 291 真实色卡并按色号去重，最终作品颜色数不超过 `colorLimit`。
+- 生成结果的 `color` 与 `colorCode` 现在直接使用真实 MARD 屏幕参考色和色号；Pattern Schema、页面、编辑器、作品保存、服务端与数据库接口保持不变。
+- MARD 数据固定到 `maxcleme/beadcolors@f97ff428`，记录 291 个唯一色号、来源 URL、提交版本与 MIT 许可；HEX 仅表示屏幕近似色，实物仍可能受批次、材质和光线影响。
+- 新增 OKLab 标准参考值、距离性质、tie、RGB/OKLab 分歧、MARD 数据完整性、候选色去重、`colorLimit` 与生产链路真实色号输出测试；历史 V1 基线继续由冻结 reference 独立验证。
+- 使用微信开发者工具真实 OffscreenCanvas 记录 6 个 Phase 4 结构化基线，Phase 2 / Phase 4 的尺寸、设置、Cell 数与透明格数保持一致，Matrix/Palette Hash 变化进入持续回归。
+
 ## 0.20.1
 
 - 优化“我的收藏”卡片布局：改为单列全宽，采用左侧正方形预览图、右侧作品信息与底部操作区；收藏状态移至标题右上角，长标题支持省略。

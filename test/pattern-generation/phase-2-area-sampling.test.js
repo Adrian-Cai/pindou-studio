@@ -23,6 +23,9 @@ const {
   linearToSrgbByte,
   srgbByteToLinear,
 } = require(path.join(patternGenerationDirectory, 'color-space.js'))
+const { MARD_PALETTE } = require(
+  path.join(patternGenerationDirectory, 'palette-selector.js'),
+)
 
 function createSampleData(targetWidth, targetHeight, getPixel) {
   const sourceWidth = targetWidth * SAMPLE_SCALE
@@ -125,13 +128,17 @@ test('sampled data size mismatches fail explicitly', () => {
   )
 })
 
-test('Phase 2 generator uses 4x Canvas and applies the existing alpha threshold after sampling', async () => {
+test('current generator keeps Phase 2 4x sampling and alpha threshold', async () => {
+  const green = MARD_PALETTE.find((item) => item.code === 'B4')
+  assert.ok(green)
   const imageData = createSampleData(2, 1, (x, y) => {
     const sampleIndex = y * SAMPLE_SCALE + (x % SAMPLE_SCALE)
     if (x < SAMPLE_SCALE) {
       return sampleIndex === 0 ? [255, 0, 0, 255] : [0, 0, 255, 0]
     }
-    return sampleIndex < 2 ? [0, 255, 0, 255] : [0, 0, 255, 0]
+    return sampleIndex < 2
+      ? [green.rgb.r, green.rgb.g, green.rgb.b, 255]
+      : [0, 0, 255, 0]
   })
   const calls = installWxHarness({
     sourceWidth: 200,
@@ -150,6 +157,6 @@ test('Phase 2 generator uses 4x Canvas and applies the existing alpha threshold 
   assert.deepEqual(calls.drawImage.slice(1), [0, 0, 200, 100, 0, 0, 8, 4])
   assert.deepEqual(draft.cells, [
     { color: 'transparent', colorCode: '' },
-    { color: '#00ff00', colorCode: 'C01' },
+    { color: green.hex, colorCode: green.code },
   ])
 })

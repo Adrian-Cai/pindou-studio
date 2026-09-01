@@ -31,9 +31,13 @@ try {
     '--test',
     path.join(__dirname, 'v1-characterization.test.js'),
     path.join(__dirname, 'phase-2-area-sampling.test.js'),
+    path.join(__dirname, 'phase-3-4-color-matching.test.js'),
   ])
   run(process.execPath, [
     path.join(__dirname, 'compare-wechat-phase-2.js'),
+  ])
+  run(process.execPath, [
+    path.join(__dirname, 'compare-wechat-phase-4.js'),
   ])
 } finally {
   rmSync(buildDirectory, { recursive: true, force: true })

@@ -82,46 +82,6 @@ function installWxHarness({ sourceWidth, sourceHeight, imageData }) {
   return calls
 }
 
-function expandForSampling(data, targetWidth, targetHeight) {
-  const sourceWidth = targetWidth * SAMPLE_SCALE
-  const expanded = new Uint8ClampedArray(
-    sourceWidth * targetHeight * SAMPLE_SCALE * 4,
-  )
-  for (let targetY = 0; targetY < targetHeight; targetY += 1) {
-    for (let targetX = 0; targetX < targetWidth; targetX += 1) {
-      const targetOffset = (targetY * targetWidth + targetX) * 4
-      for (let sampleY = 0; sampleY < SAMPLE_SCALE; sampleY += 1) {
-        for (let sampleX = 0; sampleX < SAMPLE_SCALE; sampleX += 1) {
-          const sourceX = targetX * SAMPLE_SCALE + sampleX
-          const sourceY = targetY * SAMPLE_SCALE + sampleY
-          const sourceOffset = (sourceY * sourceWidth + sourceX) * 4
-          expanded.set(data.subarray(targetOffset, targetOffset + 4), sourceOffset)
-        }
-      }
-    }
-  }
-  return expanded
-}
-
-async function generateWithCurrentPhase2(caseDefinition) {
-  const data = expandPixels(
-    caseDefinition.pixels,
-    caseDefinition.settings.width,
-    caseDefinition.settings.height,
-  )
-  const calls = installWxHarness({
-    sourceWidth: caseDefinition.source.width,
-    sourceHeight: caseDefinition.source.height,
-    imageData: expandForSampling(
-      data,
-      caseDefinition.settings.width,
-      caseDefinition.settings.height,
-    ),
-  })
-  const draft = await createDraft(`fixture://${caseDefinition.id}`, caseDefinition.settings)
-  return { calls, data, draft }
-}
-
 test('frozen V1 reference records empty-pixel fallback and strict tie behavior', () => {
   assert.deepEqual(reference.readOpaquePixels(new Uint8ClampedArray([1, 2, 3, 31])), [])
   assert.deepEqual(reference.createMedianCutPalette([], 16), [{ r: 255, g: 255, b: 255 }])
@@ -210,38 +170,25 @@ test('extracted calculateCenterCrop preserves every V1 geometry case', () => {
 })
 
 for (const caseDefinition of casesFixture.cases) {
-  test(`Phase 2 preserves V1 downstream behavior for uniform sample regions: ${caseDefinition.id}`, async () => {
-    const { calls, data, draft } = await generateWithCurrentPhase2(caseDefinition)
-    const serializedCells = draft.cells.map(serializeCell)
-    const palette = derivePalette(draft.cells)
+  test(`frozen V1 reference preserves characterization case: ${caseDefinition.id}`, () => {
+    const data = expandPixels(
+      caseDefinition.pixels,
+      caseDefinition.settings.width,
+      caseDefinition.settings.height,
+    )
+    const cells = reference.createPatternCells(
+      new Uint8ClampedArray(data),
+      caseDefinition.settings.colorLimit,
+    )
+    const serializedCells = cells.map(serializeCell)
+    const palette = derivePalette(cells)
     const baseline = baselineManifest.characterizationCases.find(
       (item) => item.id === caseDefinition.id,
     )
 
-    assert.deepEqual(draft.settings, caseDefinition.settings)
     assert.deepEqual(serializedCells, caseDefinition.expectedCells)
     assert.deepEqual(palette, caseDefinition.expectedPalette)
-    assert.equal(draft.cells.length, caseDefinition.settings.width * caseDefinition.settings.height)
-    assert.equal(draft.sourceImagePath, `fixture://${caseDefinition.id}`)
-    assert.match(draft.id, /^draft-\d+$/)
-    assert.equal(typeof draft.createdAt, 'number')
-    assert.deepEqual(calls.canvasOptions, {
-      type: '2d',
-      width: caseDefinition.settings.width * SAMPLE_SCALE,
-      height: caseDefinition.settings.height * SAMPLE_SCALE,
-    })
-    assert.deepEqual(calls.getImageData, [
-      0,
-      0,
-      caseDefinition.settings.width * SAMPLE_SCALE,
-      caseDefinition.settings.height * SAMPLE_SCALE,
-    ])
-
-    const referenceCells = reference.createPatternCells(
-      new Uint8ClampedArray(data),
-      caseDefinition.settings.colorLimit,
-    )
-    assert.deepEqual(draft.cells, referenceCells)
+    assert.equal(cells.length, caseDefinition.settings.width * caseDefinition.settings.height)
     assert.ok(baseline, `Missing manifest baseline for ${caseDefinition.id}`)
     assert.equal(createMatrixHash(serializedCells), baseline.matrixHash)
     assert.equal(createPaletteHash(palette), baseline.paletteHash)

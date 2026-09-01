@@ -1,9 +1,10 @@
 import type { PatternCell, PatternSettings } from '../../models/pattern'
 import { SAMPLE_SCALE, sampleCellsLinearRgb } from './cell-sampler'
-import { findNearestColor, rgbToHex } from './color-utils'
 import type { RGB } from './color-utils'
 import { calculateCenterCrop } from './crop'
 import { createMedianCutPalette } from './median-cut'
+import { findNearestColorIndexOklab } from './oklab-matcher'
+import { selectMardPalette } from './palette-selector'
 
 interface Canvas2DContext {
   drawImage(
@@ -58,14 +59,15 @@ export async function generateStandardPatternCells(
   const imageData = context.getImageData(0, 0, sampleWidth, sampleHeight)
   const sampledData = sampleCellsLinearRgb(imageData.data, width, height)
   const pixels = readOpaquePixels(sampledData)
-  const palette = createMedianCutPalette(pixels, Math.max(1, colorLimit))
+  const candidatePalette = createMedianCutPalette(pixels, Math.max(1, colorLimit))
+  const palette = selectMardPalette(candidatePalette, colorLimit)
 
   return Array.from({ length: width * height }, (_, index) => {
     const offset = index * 4
     const alpha = sampledData[offset + 3]
     if (alpha < 32) return { color: 'transparent', colorCode: '' }
 
-    const color = findNearestColor(
+    const paletteIndex = findNearestColorIndexOklab(
       {
         r: sampledData[offset],
         g: sampledData[offset + 1],
@@ -73,10 +75,10 @@ export async function generateStandardPatternCells(
       },
       palette,
     )
-    const paletteIndex = palette.indexOf(color)
+    const beadColor = palette[paletteIndex]
     return {
-      color: rgbToHex(color),
-      colorCode: `C${String(paletteIndex + 1).padStart(2, '0')}`,
+      color: beadColor.hex,
+      colorCode: beadColor.code,
     }
   })
 }

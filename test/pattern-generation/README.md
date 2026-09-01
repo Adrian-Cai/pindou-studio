@@ -1,6 +1,6 @@
 # Standard Pattern Generation Baselines
 
-本目录冻结 Standard V1 行为，并记录 Standard V2 Phase 2 的 4× Area Sampling A/B 结果。
+本目录冻结 Standard V1 行为，记录 Standard V2 Phase 2 的 4× Area Sampling A/B 结果，并验证 Phase 3 OKLab 与 Phase 4 MARD 真实色卡链路。
 
 ## 自动 Characterization
 
@@ -17,8 +17,10 @@ npm run test:pattern
 3. 用可控 `wx.createOffscreenCanvas` 测试替身调用真实 `createDraft()`；
 4. 对比冻结的 Cell、Palette 顺序、ColorCode、Alpha、Crop 和 FNV-1a Hash；
 5. 验证 4× Canvas、Linear RGB Area Average、Alpha 加权与透明阈值；
-6. 比较真实微信 V1 与 Phase 2 的固定字段及 Matrix 变化；
-7. 删除临时编译目录。
+6. 验证标准 OKLab 参考值、感知最近色、Palette 顺序和 tie 行为；
+7. 验证固定版本 MARD 291 色数据、候选色去重、限色和生产真实色号输出；
+8. 比较真实微信 V1 与 Phase 2 的固定字段及 Matrix 变化；
+9. 删除临时编译目录。
 
 测试替身不模拟图片解码或 Canvas 插值。它只让纯算法输入保持稳定，所以不能替代下面的真实微信 Canvas 基线。
 
@@ -128,3 +130,47 @@ node test/pattern-generation/compare-wechat-phase-2.js
 ```
 
 会验证所有业务固定字段，并要求至少一个 Matrix Hash 相比 V1 发生预期变化。当前 6 个案例中 5 个 Matrix 变化，纯色案例保持一致；耗时仅记录，不参与严格相等判断。
+
+## Phase 3 OKLab 与 Phase 4 MARD
+
+Phase 3/4 自动测试位于：
+
+```text
+test/pattern-generation/phase-3-4-color-matching.test.js
+```
+
+覆盖：
+
+- OKLab 黑、白、红标准参考值；
+- Distance identity / symmetry；
+- Prepared Palette 顺序与严格 `<` tie；
+- RGB nearest 与 OKLab nearest 结果分歧的固定案例；
+- MARD 291 色数量、唯一色号、HEX 格式、来源提交和抽样值；
+- 候选色映射后的色号去重与 `colorLimit`；
+- 生产 `createDraft()` 输出真实 MARD HEX 与色号。
+
+MARD 数据位于 `miniprogram/data/bead-palettes/mard.ts`，固定到
+`maxcleme/beadcolors@f97ff4283d03cef5cd7e1071a86f5892e0c0c61b`。数据中的 HEX/RGB
+是屏幕参考值，不承诺与不同批次、材质和光照下的实物完全一致。
+
+Phase 4 runner 位于：
+
+```text
+miniprogram/tests/pattern-generation/wechat-canvas-phase-4.ts
+```
+
+生产 Phase 4 结果已由微信开发者工具 `3.17.1`（桌面工具版本
+`2.02.2607271`）使用同一组 6 张结构化 fixture 记录为
+`fixtures/wechat-phase-4.json`。执行：
+
+```bash
+node test/pattern-generation/compare-wechat-phase-4.js
+```
+
+会严格校验 Phase 2 / Phase 4 的尺寸、设置、Cell 数和透明 Cell 数，并检查限色与
+Matrix/Palette Hash 变化；耗时只记录、不参与严格 equality。当前 6/6 Matrix 和
+Palette 均发生预期变化，最大案例 `128×128 / 64 色` 本次记录为 100 ms。
+
+Phase 3 已被 Phase 4 生产链路取代，因此未伪造独立的 Phase 3 微信 Hash；Phase 3
+使用固定 RGB/OKLab 分歧案例证明生产所用 matcher 的感知距离行为。人物、动漫、宠物、
+高饱和与低饱和图片的主观视觉 A/B 仍属于发布前人工验收项。
