@@ -758,9 +758,11 @@ Page({
           : await saveNewCloudWork(draft, coverPath, existing?.title ?? '未命名作品')
         const savedDraft = { ...draft, id: summary.id, sourceImagePath: '' }
         if (existing && existing.id !== summary.id) appStore.deleteWork(existing.id)
+        appStore.removeLocalDraft(draft.id)
         appStore.setCurrentDraft(savedDraft)
         appStore.saveWork(cloudSummaryToWorkItem(summary))
       } else {
+        appStore.saveLocalDraft(draft)
         appStore.saveWork({
           id: draft.id,
           title: existing?.title ?? '未命名作品',

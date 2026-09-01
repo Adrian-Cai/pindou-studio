@@ -24,6 +24,7 @@ test("readConfig loads validated server and database settings", () => {
   assert.equal(config.database.sslMode, "disable");
   assert.equal(config.auth.tokenTtlDays, 30);
   assert.equal(config.quota.dailyFree, 3);
+  assert.deepEqual(config.wechatPay, { enabled: false });
   assert.equal(config.avatars.maximumBytes, 2 * 1024 * 1024);
   assert.match(config.avatars.storageDirectory, /data[\\/]avatars$/);
 });
@@ -43,6 +44,30 @@ test("readConfig rejects missing sensitive database configuration without exposi
 
 test("readConfig rejects invalid numeric configuration", () => {
   assert.throws(() => readConfig({ ...validEnvironment, PORT: "70000" }), ConfigError);
+});
+
+test("WeChat Pay configuration is all-or-none and validates the API v3 key", () => {
+  assert.throws(
+    () => readConfig({ ...validEnvironment, WECHAT_PAY_MERCHANT_ID: "mch-1" }),
+    (error) => error instanceof ConfigError
+      && error.issues.includes("WECHAT_PAY_API_V3_KEY 未配置")
+      && error.issues.includes("WECHAT_PAY_NOTIFY_URL 未配置"),
+  );
+  assert.throws(
+    () => readConfig({
+      ...validEnvironment,
+      WECHAT_PAY_MERCHANT_ID: "mch-1",
+      WECHAT_PAY_MERCHANT_SERIAL_NUMBER: "merchant-serial",
+      WECHAT_PAY_MERCHANT_PRIVATE_KEY_PATH: "./merchant.pem",
+      WECHAT_PAY_API_V3_KEY: "too-short",
+      WECHAT_PAY_PLATFORM_SERIAL_NUMBER: "platform-serial",
+      WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH: "./platform.pem",
+      WECHAT_PAY_NOTIFY_URL: "http://example.test/notify",
+    }),
+    (error) => error instanceof ConfigError
+      && error.issues.includes("WECHAT_PAY_API_V3_KEY 必须正好是 32 字节")
+      && error.issues.includes("WECHAT_PAY_NOTIFY_URL 必须使用 HTTPS"),
+  );
 });
 
 test("database inspection config does not require WeChat secrets", () => {

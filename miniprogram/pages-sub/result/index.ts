@@ -8,7 +8,13 @@ import {
   saveImageToAlbum,
 } from '../services/result-download-service'
 import { cloudSummaryToWorkItem, renameCloudWork } from '../../services/work-service'
+import {
+  cloudDownloadToLocalRecord,
+  createDownload,
+  isServerDownloadFileType,
+} from '../../services/download-service'
 import { appStore } from '../../store/app-store'
+import { authStore } from '../../store/auth-store'
 import { getCustomNavigationMetrics } from '../../utils/navigation'
 import {
   createDraftRenderKey,
@@ -106,6 +112,7 @@ Page({
     downloadSheetType: '' as DownloadFileType | '',
     currentDownloadConfig: null as DownloadTabConfig | null,
     downloadSheetQuota: 0,
+    downloadIdempotencyKey: '',
     savedDownloadedPath: '',
     savedDownloadType: '' as DownloadFileType | '',
   },
@@ -117,6 +124,7 @@ Page({
   onShow() {
     appStore.refreshDownloadQuota()
     const state = appStore.getSnapshot()
+    const accountQuota = authStore.getSnapshot().profile?.quota.remaining
     const draft = state.currentDraft
     const work = draft ? state.works.find((item) => item.id === draft.id) : undefined
     const materialSummary = draft
@@ -141,7 +149,7 @@ Page({
         palettePreviewMaterials: materials.slice(0, PALETTE_PREVIEW_LIMIT),
         materialListExpanded,
         paletteExpanded,
-        quota: state.downloadQuota,
+        quota: accountQuota ?? state.downloadQuota,
         isFavorite: draft ? state.favoriteIds.includes(draft.id) : false,
         summary: draft
           ? {
@@ -160,6 +168,7 @@ Page({
         if (this.data.canvasReady) this.renderVisibleCanvases()
       },
     )
+    void this.refreshServerQuota()
   },
 
   onReady() {
@@ -177,6 +186,26 @@ Page({
       topBarHeight: metrics.topBarHeight,
       scrollAreaHeight: Math.max(0, metrics.windowHeight - metrics.topBarHeight),
     })
+  },
+
+  async refreshServerQuota() {
+    const quota = await authStore.refreshQuota()
+    if (!quota) return
+    appStore.setDownloadQuota(quota.remaining)
+    this.setData({ quota: quota.remaining })
+  },
+
+  async getCurrentQuota(): Promise<number> {
+    if (authStore.getSnapshot().profile) {
+      const quota = await authStore.refreshQuota()
+      if (quota) {
+        appStore.setDownloadQuota(quota.remaining)
+        return quota.remaining
+      }
+      const cachedQuota = authStore.getSnapshot().profile?.quota.remaining
+      if (cachedQuota !== undefined) return cachedQuota
+    }
+    return appStore.refreshDownloadQuota()
   },
 
   changeTab(event: WechatMiniprogram.TouchEvent) {
@@ -296,11 +325,11 @@ Page({
   /**
    * 4 个 Tab 的下载按钮统一点进事件：打开 DownloadConfirmSheet
    */
-  handleRequestDownload(event: DownloadRequestEvent) {
+  async handleRequestDownload(event: DownloadRequestEvent) {
     if (this.data.downloadLoading) return
 
     const fileType = event.detail.fileType
-    const currentQuota = appStore.refreshDownloadQuota()
+    const currentQuota = await this.getCurrentQuota()
     if (currentQuota <= 0) {
       this.setData({ quota: 0, quotaTipsOpen: false })
       wx.showModal({
@@ -321,6 +350,7 @@ Page({
       downloadSheetType: fileType,
       currentDownloadConfig: config,
       downloadSheetQuota: currentQuota,
+      downloadIdempotencyKey: createDownloadIdempotencyKey(),
       savedDownloadedPath: '',
       savedDownloadType: '',
       quotaTipsOpen: false,
@@ -336,6 +366,7 @@ Page({
       downloadSheetVisible: false,
       downloadSheetState: 'closed',
       downloadSheetType: '',
+      downloadIdempotencyKey: '',
     })
   },
 
@@ -345,6 +376,7 @@ Page({
       downloadSheetVisible: false,
       downloadSheetState: 'closed',
       downloadSheetType: '',
+      downloadIdempotencyKey: '',
     })
   },
 
@@ -357,13 +389,14 @@ Page({
     const fileType = this.data.downloadSheetType
     if (!fileType) return
 
-    const currentQuota = appStore.refreshDownloadQuota()
+    const currentQuota = await this.getCurrentQuota()
     if (currentQuota <= 0) {
       this.setData({
         quota: 0,
         downloadSheetVisible: false,
         downloadSheetState: 'closed',
         downloadSheetType: '',
+        downloadIdempotencyKey: '',
       })
       wx.showModal({
         title: '今日免费次数已用完',
@@ -389,9 +422,13 @@ Page({
       // 2. 保存到用户设备相册
       await saveImageToAlbum(filePath)
 
-      // 3. 只有真实保存成功后，才扣除 1 次下载次数
-      const nextQuota = this.recordSuccessfulDownload(fileType)
+      // 3. 只有真实保存成功后，才记录云端下载或扣除本地次数
+      const cloudResult = await this.recordCloudDownload(fileType)
+      const nextQuota = cloudResult
+        ? this.recordSuccessfulCloudDownload(cloudResult)
+        : this.recordSuccessfulDownload(fileType)
       if (nextQuota === null) throw new Error('下载次数状态已变化，请刷新后重试')
+      if (!cloudResult) authStore.recordLocalDownload(nextQuota)
 
       // 4. 切换至下载成功半屏
       this.setData({
@@ -402,6 +439,7 @@ Page({
         downloadSheetState: 'success',
         downloadLoading: false,
         downloadingType: '',
+        downloadIdempotencyKey: '',
       })
     } catch (error) {
       console.error('保存下载文件失败', error)
@@ -457,6 +495,7 @@ Page({
       downloadSheetVisible: false,
       downloadSheetState: 'closed',
       downloadSheetType: '',
+      downloadIdempotencyKey: '',
       savedDownloadedPath: '',
       savedDownloadType: '',
     })
@@ -543,6 +582,22 @@ Page({
       height: draft.settings.height,
       colorCount: summary.colorCount,
     })
+  },
+
+  async recordCloudDownload(fileType: DownloadFileType) {
+    const draft = this.data.draft
+    const work = draft ? appStore.getSnapshot().works.find((item) => item.id === draft.id) : undefined
+    if (!draft || !work?.isCloud || !isServerDownloadFileType(fileType)) return null
+    return createDownload(work.id, fileType, this.data.downloadIdempotencyKey)
+  },
+
+  recordSuccessfulCloudDownload(result: Awaited<ReturnType<typeof createDownload>>): number {
+    const draft = this.data.draft
+    const work = draft ? appStore.getSnapshot().works.find((item) => item.id === draft.id) : undefined
+    appStore.addDownloadRecord(cloudDownloadToLocalRecord(result.downloadRecord, work))
+    appStore.setDownloadQuota(result.quota.remaining)
+    authStore.recordServerDownload(result.quota)
+    return result.quota.remaining
   },
 
   goCreate() {
@@ -876,3 +931,7 @@ Page({
     }
   },
 })
+
+function createDownloadIdempotencyKey(): string {
+  return `export-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}

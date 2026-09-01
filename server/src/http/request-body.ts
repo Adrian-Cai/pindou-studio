@@ -8,6 +8,18 @@ export async function readJsonObject(
   request: IncomingMessage,
   maximumBytes = MAX_JSON_BYTES,
 ): Promise<Record<string, unknown>> {
+  return (await readRawJsonObject(request, maximumBytes)).value;
+}
+
+export interface RawJsonObject {
+  readonly rawBody: string;
+  readonly value: Record<string, unknown>;
+}
+
+export async function readRawJsonObject(
+  request: IncomingMessage,
+  maximumBytes = MAX_JSON_BYTES,
+): Promise<RawJsonObject> {
   const contentType = request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
   if (contentType !== "application/json") {
     throw new AppError(415, "UNSUPPORTED_MEDIA_TYPE", "请求必须使用 application/json");
@@ -24,16 +36,17 @@ export async function readJsonObject(
     chunks.push(buffer);
   }
 
+  const rawBody = Buffer.concat(chunks).toString("utf8");
   let value: unknown;
   try {
-    value = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+    value = JSON.parse(rawBody) as unknown;
   } catch {
     throw invalidArgument("JSON 请求体格式不正确");
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw invalidArgument("请求体必须是 JSON 对象");
   }
-  return value as Record<string, unknown>;
+  return { rawBody, value: value as Record<string, unknown> };
 }
 
 export interface UploadedFile {

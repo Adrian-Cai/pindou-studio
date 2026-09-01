@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { AppError } = require("../dist/shared/app-error.js");
-const { hashToken } = require("../dist/shared/identity.js");
+const { decryptOpenid, hashToken } = require("../dist/shared/identity.js");
 const { AuthService } = require("../dist/modules/auth/auth-service.js");
 const { BearerTokenAuthenticator } = require("../dist/modules/auth/authenticator.js");
 
@@ -64,6 +64,8 @@ test("same WeChat openid reuses the user and creates independent opaque sessions
   assert.equal(repository.usersByOpenidHash.size, 1);
   assert.equal(repository.sessions.length, 2);
   assert.equal(repository.sessions[0].openidHash.includes("private-openid"), false);
+  assert.equal(repository.sessions[0].openidCiphertext.includes("private-openid"), false);
+  assert.equal(decryptOpenid(repository.sessions[0].openidCiphertext, authConfig.openidHashSecret), "private-openid");
   assert.equal(first.expiresAt, "2026-09-25T09:00:00.000Z");
 });
 

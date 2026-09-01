@@ -1,7 +1,7 @@
 export type MiniProgramEnvironment = 'develop' | 'trial' | 'release'
 
 const API_BASE_URLS: Record<MiniProgramEnvironment, string> = {
-  develop: 'http://127.0.0.1:3000',
+  develop: 'http://127.0.0.1:4000',
   trial: '',
   release: '',
 }

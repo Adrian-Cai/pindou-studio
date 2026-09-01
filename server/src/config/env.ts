@@ -16,6 +16,22 @@ export interface DatabaseConfig {
   readonly poolMax: number;
 }
 
+export type WeChatPayConfig =
+  | { readonly enabled: false }
+  | {
+      readonly enabled: true;
+      readonly appId: string;
+      readonly merchantId: string;
+      readonly merchantSerialNumber: string;
+      readonly merchantPrivateKeyPath: string;
+      readonly apiV3Key: string;
+      readonly platformSerialNumber: string;
+      readonly platformPublicKeyPath: string;
+      readonly notifyUrl: string;
+      readonly timeoutMs: number;
+      readonly callbackToleranceSeconds: number;
+    };
+
 export interface ServerConfig {
   readonly appEnvironment: AppEnvironment;
   readonly host: string;
@@ -26,6 +42,7 @@ export interface ServerConfig {
     readonly appSecret: string;
     readonly timeoutMs: number;
   };
+  readonly wechatPay: WeChatPayConfig;
   readonly auth: {
     readonly openidHashSecret: string;
     readonly tokenTtlDays: number;
@@ -122,6 +139,61 @@ function parseDatabaseConfig(env: NodeJS.ProcessEnv, issues: string[]): Database
   };
 }
 
+function parseWeChatPayConfig(
+  env: NodeJS.ProcessEnv,
+  appId: string,
+  issues: string[],
+): WeChatPayConfig {
+  const requiredKeys = [
+    "WECHAT_PAY_MERCHANT_ID",
+    "WECHAT_PAY_MERCHANT_SERIAL_NUMBER",
+    "WECHAT_PAY_MERCHANT_PRIVATE_KEY_PATH",
+    "WECHAT_PAY_API_V3_KEY",
+    "WECHAT_PAY_PLATFORM_SERIAL_NUMBER",
+    "WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH",
+    "WECHAT_PAY_NOTIFY_URL",
+  ] as const;
+  const configuredKeys = requiredKeys.filter((key) => Boolean(env[key]?.trim()));
+  if (configuredKeys.length === 0) return { enabled: false };
+
+  const values = Object.fromEntries(
+    requiredKeys.map((key) => [key, required(env, key, issues)]),
+  ) as Record<(typeof requiredKeys)[number], string>;
+  if (values.WECHAT_PAY_API_V3_KEY && Buffer.byteLength(values.WECHAT_PAY_API_V3_KEY, "utf8") !== 32) {
+    issues.push("WECHAT_PAY_API_V3_KEY 必须正好是 32 字节");
+  }
+  let notifyUrl = values.WECHAT_PAY_NOTIFY_URL;
+  try {
+    const parsed = new URL(notifyUrl);
+    if (parsed.protocol !== "https:") issues.push("WECHAT_PAY_NOTIFY_URL 必须使用 HTTPS");
+    if (parsed.username || parsed.password || parsed.hash) issues.push("WECHAT_PAY_NOTIFY_URL 不能包含凭据或片段");
+  } catch {
+    issues.push("WECHAT_PAY_NOTIFY_URL 必须是合法 URL");
+    notifyUrl = "";
+  }
+
+  return {
+    enabled: true,
+    appId,
+    merchantId: values.WECHAT_PAY_MERCHANT_ID,
+    merchantSerialNumber: values.WECHAT_PAY_MERCHANT_SERIAL_NUMBER,
+    merchantPrivateKeyPath: resolve(values.WECHAT_PAY_MERCHANT_PRIVATE_KEY_PATH),
+    apiV3Key: values.WECHAT_PAY_API_V3_KEY,
+    platformSerialNumber: values.WECHAT_PAY_PLATFORM_SERIAL_NUMBER,
+    platformPublicKeyPath: resolve(values.WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH),
+    notifyUrl,
+    timeoutMs: integer(env, "WECHAT_PAY_TIMEOUT_MS", 8_000, 1_000, 30_000, issues),
+    callbackToleranceSeconds: integer(
+      env,
+      "WECHAT_PAY_CALLBACK_TOLERANCE_SECONDS",
+      300,
+      60,
+      600,
+      issues,
+    ),
+  };
+}
+
 export function loadLocalEnv(): void {
   const envPath = resolve(__dirname, "../../.env");
   try {
@@ -134,16 +206,18 @@ export function loadLocalEnv(): void {
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const issues: string[] = [];
+  const wechatAppId = required(env, "WECHAT_APP_ID", issues);
   const config: ServerConfig = {
     appEnvironment: appEnvironment(env, issues),
     host: env.HOST?.trim() || "127.0.0.1",
     port: integer(env, "PORT", 3000, 1, 65_535, issues),
     database: parseDatabaseConfig(env, issues),
     wechat: {
-      appId: required(env, "WECHAT_APP_ID", issues),
+      appId: wechatAppId,
       appSecret: required(env, "WECHAT_APP_SECRET", issues),
       timeoutMs: integer(env, "WECHAT_API_TIMEOUT_MS", 8_000, 1_000, 30_000, issues),
     },
+    wechatPay: parseWeChatPayConfig(env, wechatAppId, issues),
     auth: {
       openidHashSecret: requiredSecret(env, "OPENID_HASH_SECRET", 32, issues),
       tokenTtlDays: integer(env, "AUTH_TOKEN_TTL_DAYS", 30, 1, 365, issues),

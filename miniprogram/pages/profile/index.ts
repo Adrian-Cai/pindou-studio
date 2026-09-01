@@ -47,6 +47,7 @@ Page({
   onShow() {
     this.getTabBar()?.setData({ selected: 2 })
     this.applyAuthState(authStore.getSnapshot())
+    void authStore.refreshQuota()
   },
 
   onUnload() {

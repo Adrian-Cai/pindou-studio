@@ -12,10 +12,11 @@ import type {
   DownloadListOptions,
   QuotaDownloadService,
 } from "../modules/downloads/quota-download-service";
+import type { PaymentService } from "../modules/payments/payment-service";
 import { validatePersistedPattern, type PersistedPattern } from "../modules/works/pattern";
 import type { FavoriteListOptions, UpdateWorkInput, WorkService, WorkStatus } from "../modules/works/work-service";
 import { AppError, invalidArgument } from "../shared/app-error";
-import { readJsonObject, readSingleUploadedFile } from "./request-body";
+import { readJsonObject, readRawJsonObject, readSingleUploadedFile } from "./request-body";
 
 const SERVICE_NAME = "pindou-studio-server";
 
@@ -73,6 +74,7 @@ export interface HttpApplicationDependencies {
   readonly covers: CoverStorage;
   readonly works: WorkService;
   readonly quotaDownloads: QuotaDownloadService;
+  readonly payments: PaymentService;
   readonly coverMaximumBytes: number;
 }
 
@@ -182,6 +184,29 @@ function validateDownloadBody(body: Record<string, unknown>): {
     throw invalidArgument("下载请求体只能包含非空 workId 和合法 fileType");
   }
   return { workId: body.workId.trim(), fileType: body.fileType };
+}
+
+function validateCreatePaymentBody(body: Record<string, unknown>): string {
+  const keys = Object.keys(body);
+  if (keys.length !== 1 || keys[0] !== "packageId" || typeof body.packageId !== "string") {
+    throw invalidArgument("支付创建请求体只能包含字符串字段 packageId");
+  }
+  const packageId = body.packageId.trim();
+  if (!packageId || packageId.length > 40) throw invalidArgument("packageId 无效");
+  return packageId;
+}
+
+function wechatPaymentHeaders(request: IncomingMessage): Readonly<Record<string, string | undefined>> {
+  const names = [
+    "wechatpay-timestamp",
+    "wechatpay-nonce",
+    "wechatpay-serial",
+    "wechatpay-signature",
+  ] as const;
+  return Object.fromEntries(names.map((name) => {
+    const value = request.headers[name];
+    return [name, typeof value === "string" ? value : undefined];
+  }));
 }
 
 function listOptions(url: URL, userId: string): { userId: string; status?: WorkStatus; page: number; pageSize: number; query?: string } {
@@ -383,6 +408,43 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           workId: body.workId,
           fileType: body.fileType,
         }));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/packages") {
+        if (url.searchParams.size > 0) throw invalidArgument("套餐接口不接受查询参数");
+        sendJson(response, 200, await dependencies.payments.listPackages());
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/payments/create") {
+        if (url.searchParams.size > 0) throw invalidArgument("支付创建接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const packageId = validateCreatePaymentBody(await readJsonObject(request));
+        sendJson(response, 201, await dependencies.payments.createPayment({
+          userId: currentUser.id,
+          packageId,
+          idempotencyKey: idempotencyKey(request),
+        }));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/payments/notify") {
+        if (url.searchParams.size > 0) throw invalidArgument("微信支付回调接口不接受查询参数");
+        try {
+          const notification = await readRawJsonObject(request);
+          await dependencies.payments.handleNotification({
+            rawBody: notification.rawBody,
+            headers: wechatPaymentHeaders(request),
+          });
+          sendJson(response, 200, { code: "SUCCESS", message: "成功" });
+        } catch (error: unknown) {
+          if (error instanceof AppError) {
+            sendJson(response, error.statusCode, { code: "FAIL", message: error.message });
+          } else {
+            sendJson(response, 500, { code: "FAIL", message: "服务内部错误" });
+          }
+        }
         return;
       }
 

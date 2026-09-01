@@ -1,3 +1,5 @@
+import { ApiError } from '../../services/http-client'
+
 export interface DownloadCanvasContext {
   fillStyle: string
   font: string
@@ -87,6 +89,10 @@ export function saveImageToAlbum(filePath: string): Promise<void> {
 
 export function friendlyDownloadError(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
+  if (error instanceof ApiError && error.code === 'QUOTA_INSUFFICIENT') return '下载额度不足，未创建下载记录'
+  if (error instanceof ApiError && (error.code === 'UNAUTHORIZED' || error.statusCode === 401)) {
+    return '登录状态已失效，请重新登录'
+  }
   if (/cancel/i.test(message)) return '已取消保存，未扣次数'
   if (/auth|authorize|permission|deny|denied/i.test(message)) return '未获得相册权限，未扣次数'
   if (/network|timeout/i.test(message)) return '网络异常，未扣次数'

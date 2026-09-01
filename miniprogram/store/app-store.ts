@@ -7,6 +7,7 @@ import type {
 
 interface AppState {
   currentDraft: PatternDraft | null
+  localDrafts: Record<string, PatternDraft>
   works: WorkItem[]
   favoriteIds: string[]
   downloadQuota: number
@@ -20,6 +21,7 @@ const DAILY_FREE_DOWNLOAD_QUOTA = 3
 
 const initialState: AppState = {
   currentDraft: null,
+  localDrafts: {},
   works: [],
   favoriteIds: [],
   downloadQuota: DAILY_FREE_DOWNLOAD_QUOTA,
@@ -44,9 +46,15 @@ export class AppStore {
       const cached = wx.getStorageSync<AppState>(STORAGE_KEY)
       if (cached) {
         const today = getLocalBusinessDate()
+        const localDrafts = { ...(cached.localDrafts ?? {}) }
+        const currentWork = cached.works?.find((work) => work.id === cached.currentDraft?.id)
+        if (cached.currentDraft && currentWork && !currentWork.isCloud) {
+          localDrafts[cached.currentDraft.id] = cached.currentDraft
+        }
         this.state = {
           ...createInitialState(),
           ...cached,
+          localDrafts,
           downloadQuota: cached.downloadQuotaDate === today
             ? normalizeQuota(cached.downloadQuota)
             : DAILY_FREE_DOWNLOAD_QUOTA,
@@ -76,9 +84,45 @@ export class AppStore {
     this.update({ currentDraft })
   }
 
+  saveLocalDraft(draft: PatternDraft) {
+    this.update({
+      localDrafts: { ...this.state.localDrafts, [draft.id]: draft },
+    })
+  }
+
+  getLocalDraft(workId: string): PatternDraft | null {
+    return this.state.localDrafts[workId] ?? null
+  }
+
+  removeLocalDraft(workId: string) {
+    if (!this.state.localDrafts[workId]) return
+    const localDrafts = { ...this.state.localDrafts }
+    delete localDrafts[workId]
+    this.update({ localDrafts })
+  }
+
   saveWork(work: WorkItem) {
     const works = [work, ...this.state.works.filter((item) => item.id !== work.id)]
     this.update({ works })
+  }
+
+  replaceLocalWorkWithCloud(localWorkId: string, cloudWork: WorkItem) {
+    const works = [
+      cloudWork,
+      ...this.state.works.filter((item) => item.id !== localWorkId && item.id !== cloudWork.id),
+    ]
+    const favoriteIds = [...new Set(this.state.favoriteIds.map((id) => (
+      id === localWorkId ? cloudWork.id : id
+    )))]
+    const downloadRecords = this.state.downloadRecords.map((record) => (
+      record.workId === localWorkId ? { ...record, workId: cloudWork.id } : record
+    ))
+    const currentDraft = this.state.currentDraft?.id === localWorkId
+      ? { ...this.state.currentDraft, id: cloudWork.id, sourceImagePath: '' }
+      : this.state.currentDraft
+    const localDrafts = { ...this.state.localDrafts }
+    delete localDrafts[localWorkId]
+    this.update({ works, favoriteIds, downloadRecords, currentDraft, localDrafts })
   }
 
   replaceCloudWorks(cloudWorks: WorkItem[]) {
@@ -99,7 +143,9 @@ export class AppStore {
     const favoriteIds = this.state.favoriteIds.filter((id) => id !== workId)
     const downloadRecords = this.state.downloadRecords.filter((item) => item.workId !== workId)
     const currentDraft = this.state.currentDraft?.id === workId ? null : this.state.currentDraft
-    this.update({ works, favoriteIds, downloadRecords, currentDraft })
+    const localDrafts = { ...this.state.localDrafts }
+    delete localDrafts[workId]
+    this.update({ works, favoriteIds, downloadRecords, currentDraft, localDrafts })
   }
 
   addDownloadRecord(record: DownloadRecord) {
@@ -108,6 +154,13 @@ export class AppStore {
       ...this.state.downloadRecords.filter((item) => item.id !== record.id),
     ]
     this.update({ downloadRecords })
+  }
+
+  setDownloadQuota(downloadQuota: number) {
+    this.update({
+      downloadQuota: normalizeQuota(downloadQuota),
+      downloadQuotaDate: getLocalBusinessDate(),
+    })
   }
 
   refreshDownloadQuota(): number {
@@ -161,6 +214,7 @@ export const appStore = new AppStore()
 function createInitialState(): AppState {
   return {
     ...initialState,
+    localDrafts: {},
     works: [],
     favoriteIds: [],
     downloadQuotaDate: getLocalBusinessDate(),

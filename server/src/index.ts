@@ -18,6 +18,8 @@ import { PostgresUserProfileService } from "./modules/users/user-profile-service
 import { FileSystemCoverStorage } from "./modules/files/cover-storage";
 import { PostgresFileAssetService } from "./modules/files/file-asset-service";
 import { PostgresQuotaDownloadService } from "./modules/downloads/quota-download-service";
+import { PostgresPaymentService } from "./modules/payments/payment-service";
+import { createWeChatPaymentGateway } from "./modules/payments/wechat-pay-client";
 import { PostgresWorkService } from "./modules/works/work-service";
 
 export interface RunningApplication {
@@ -38,6 +40,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.covers.storageDirectory,
       config.covers.publicBaseUrl,
     );
+    const paymentGateway = await createWeChatPaymentGateway(config.wechatPay);
     const http = await startHttpServer(
       createHttpApplication({
         database,
@@ -54,6 +57,11 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         covers,
         works: new PostgresWorkService(pool),
         quotaDownloads: new PostgresQuotaDownloadService(pool, config.quota),
+        payments: new PostgresPaymentService(
+          pool,
+          paymentGateway,
+          config.auth.openidHashSecret,
+        ),
         coverMaximumBytes: config.covers.maximumBytes,
       }),
       config.host,

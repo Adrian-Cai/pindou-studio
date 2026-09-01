@@ -113,6 +113,25 @@ Content-Type: application/json
 
 服务端在同一事务中校验幂等键和作品归属、锁定当前用户额度、写下载记录并写一笔 `amount = -1` 的额度流水。今日免费额度优先，之后使用购买额度；不足时返回 `402 QUOTA_INSUFFICIENT`，且不留下下载记录或负数流水。
 
+## 阶段 5 接口
+
+`GET /api/packages` 公开返回数据库中已启用的套餐。创建支付订单需要登录和稳定的 `Idempotency-Key`，请求体只允许包含服务端套餐 ID：
+
+```http
+POST /api/payments/create
+Authorization: Bearer <token>
+Idempotency-Key: <一次下单动作的稳定唯一键>
+Content-Type: application/json
+
+{"packageId":"starter"}
+```
+
+服务端从 `pindou_packages` 读取价格和额度、写入订单快照，再调用微信支付 v3 JSAPI/小程序下单。客户端只会收到 `wx.requestPayment` 所需字段，不会收到商户私钥、API v3 密钥、AppSecret 或签名原文。
+
+`POST /api/payments/notify` 仅使用微信支付请求头和原始请求体完成验签，不读取 Bearer token。回调通过平台公钥验签并使用 API v3 密钥解密后，服务端再次校验商户号、AppID、订单号、金额、币种、付款人和支付状态；首次成功在同一事务内把订单改为 `paid` 并写一笔 `purchase_grant`，重复回调只确认成功。
+
+支付环境变量见 `.env.example`。支付配置全部缺省时，套餐读取仍可用，创建支付与回调返回 `PAYMENT_NOT_CONFIGURED`；部分配置会被视为配置错误并阻止启动。已有用户需要重新登录一次，以便服务端在 `openid_ciphertext` 中保存支付所需的加密身份。
+
 ## 可用命令
 
 - `npm run typecheck`：TypeScript 类型检查。

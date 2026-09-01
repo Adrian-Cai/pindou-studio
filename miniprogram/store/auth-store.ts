@@ -4,6 +4,7 @@ import {
   loginWithWechat,
   updateNickname,
 } from '../services/auth-service'
+import { fetchQuota, type QuotaResponse } from '../services/download-service'
 import { ApiError } from '../services/http-client'
 import {
   clearAuthSession,
@@ -11,6 +12,7 @@ import {
   loadAuthSession,
   saveAuthSession,
 } from '../services/token-storage'
+import { syncLocalWorksToCloud } from '../services/local-work-sync'
 
 export type AuthStatus =
   | 'guest'
@@ -106,6 +108,7 @@ export class AuthStore {
         isOffline: false,
         errorMessage: '',
       })
+      await this.syncLocalWorksAndRefreshProfile(session)
     } catch (error) {
       if (isUnauthorized(error)) {
         this.expireSession()
@@ -118,6 +121,39 @@ export class AuthStore {
         isOffline: true,
         errorMessage: friendlyAuthError(error),
       })
+    }
+  }
+
+  async refreshQuota(): Promise<QuotaResponse | null> {
+    const session = loadAuthSession()
+    if (!session || isAuthSessionExpired(session)) return null
+
+    try {
+      const quota = await fetchQuota()
+      const profile = this.state.profile
+      if (profile) {
+        const nextProfile: CurrentUserProfile = {
+          ...profile,
+          quota: {
+            ...profile.quota,
+            dailyFree: quota.dailyFree,
+            usedToday: quota.usedToday,
+            purchased: quota.purchased,
+            remaining: quota.remaining,
+            resetsAt: quota.resetsAt,
+          },
+        }
+        this.persistProfileCache(nextProfile)
+        this.setState({ ...this.state, user: nextProfile.user, profile: nextProfile })
+      }
+      return quota
+    } catch (error) {
+      if (isUnauthorized(error)) {
+        this.expireSession()
+        return null
+      }
+      console.error('刷新下载额度失败', error)
+      return null
     }
   }
 
@@ -170,6 +206,47 @@ export class AuthStore {
     this.setState({ ...initialState })
   }
 
+  recordServerDownload(quota: Pick<QuotaResponse, 'remaining' | 'usedToday' | 'purchased'>): void {
+    const profile = this.state.profile
+    if (!profile) return
+
+    const nextProfile: CurrentUserProfile = {
+      ...profile,
+      stats: {
+        ...profile.stats,
+        downloadCount: profile.stats.downloadCount + 1,
+      },
+      quota: {
+        ...profile.quota,
+        usedToday: quota.usedToday,
+        purchased: quota.purchased,
+        remaining: quota.remaining,
+      },
+    }
+    this.persistProfileCache(nextProfile)
+    this.setState({ ...this.state, user: nextProfile.user, profile: nextProfile })
+  }
+
+  recordLocalDownload(nextFreeQuota: number): void {
+    const profile = this.state.profile
+    if (!profile) return
+
+    const nextProfile: CurrentUserProfile = {
+      ...profile,
+      stats: {
+        ...profile.stats,
+        downloadCount: profile.stats.downloadCount + 1,
+      },
+      quota: {
+        ...profile.quota,
+        usedToday: Math.min(profile.quota.dailyFree, profile.quota.usedToday + 1),
+        remaining: Math.max(0, nextFreeQuota + profile.quota.purchased),
+      },
+    }
+    this.persistProfileCache(nextProfile)
+    this.setState({ ...this.state, user: nextProfile.user, profile: nextProfile })
+  }
+
   acknowledgeExpiry(): void {
     if (this.state.status !== 'expired') return
     this.setState({ ...initialState })
@@ -207,6 +284,7 @@ export class AuthStore {
         isOffline: false,
         errorMessage: '',
       })
+      await this.syncLocalWorksAndRefreshProfile(session)
     } catch (error) {
       if (isUnauthorized(error)) {
         this.expireSession()
@@ -233,6 +311,30 @@ export class AuthStore {
       ...cachedProfile,
       user: { ...user, createdAt: cachedProfile.user.createdAt },
     }
+  }
+
+  private async syncLocalWorksAndRefreshProfile(session: AuthSession): Promise<void> {
+    const result = await syncLocalWorksToCloud()
+    if (result.uploaded === 0) return
+
+    try {
+      const profile = await fetchCurrentUser(session.token)
+      saveAuthSession({ ...session, user: profile.user, profile })
+      this.setState({
+        status: 'authenticated',
+        user: profile.user,
+        profile,
+        isOffline: false,
+        errorMessage: '',
+      })
+    } catch (error) {
+      console.error('刷新本地作品同步后的用户统计失败', error)
+    }
+  }
+
+  private persistProfileCache(profile: CurrentUserProfile): void {
+    const session = loadAuthSession()
+    if (session) saveAuthSession({ ...session, user: profile.user, profile })
   }
 
   private expireSession(): void {

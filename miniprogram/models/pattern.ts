@@ -50,7 +50,7 @@ export type DownloadFileType = 'preview' | 'chart' | 'materials' | 'palette'
 
 export interface DownloadRecord {
   id: string
-  workId: string
+  workId: string | null
   title: string
   coverPath: string
   downloadedAt: number

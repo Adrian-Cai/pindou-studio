@@ -1,5 +1,11 @@
 import type { DownloadFileType, DownloadRecord } from '../../models/pattern'
+import {
+  cloudDownloadToLocalRecord,
+  fetchDownloads,
+} from '../../services/download-service'
+import { hasCloudSession } from '../../services/work-service'
 import { appStore } from '../../store/app-store'
+import { authStore } from '../../store/auth-store'
 
 type DownloadTab = 'all' | DownloadFileType
 type DownloadView = DownloadRecord & {
@@ -7,6 +13,7 @@ type DownloadView = DownloadRecord & {
   typeClass: string
   dateText: string
   dimensions: string
+  colorText: string
 }
 
 const tabs = [
@@ -37,18 +44,48 @@ Page({
   },
 
   onShow() {
+    if (hasCloudSession()) {
+      void this.loadCloudRecords()
+      return
+    }
+    this.loadLocalRecords()
+  },
+
+  async loadCloudRecords() {
+    try {
+      const [quota, response] = await Promise.all([
+        authStore.refreshQuota(),
+        fetchDownloads({ page: 1, pageSize: 50 }),
+      ])
+      const state = appStore.getSnapshot()
+      const cloudRecords = response.items.map((record) => cloudDownloadToLocalRecord(
+        record,
+        record.workId ? state.works.find((work) => work.id === record.workId) : undefined,
+      ))
+      const localOnlyRecords = state.downloadRecords.filter((record) => record.fileType === 'palette')
+      const allRecords = [...cloudRecords, ...localOnlyRecords]
+        .sort((a, b) => b.downloadedAt - a.downloadedAt)
+        .map(toDownloadView)
+      this.setData({
+        allRecords,
+        quota: quota?.remaining ?? authStore.getSnapshot().profile?.quota.remaining ?? 0,
+        monthCount: allRecords.filter((record) => isThisMonth(record.downloadedAt)).length,
+        recentText: allRecords.length ? formatRelative(allRecords[0].downloadedAt) : '暂无',
+      }, () => this.applyFilters())
+    } catch (error) {
+      console.error('读取云端下载记录失败', error)
+      this.loadLocalRecords()
+      wx.showToast({ title: '云端下载记录加载失败，已显示本地缓存', icon: 'none' })
+    }
+  },
+
+  loadLocalRecords() {
     appStore.refreshDownloadQuota()
     const state = appStore.getSnapshot()
-    const allRecords = state.downloadRecords.map((record) => ({
-      ...record,
-      typeLabel: typeLabels[record.fileType],
-      typeClass: `download-type--${record.fileType}`,
-      dateText: formatDateTime(record.downloadedAt),
-      dimensions: record.width && record.height ? `${record.width}×${record.height}` : '尺寸待同步',
-    }))
+    const allRecords = state.downloadRecords.map(toDownloadView)
     this.setData({
       allRecords,
-      quota: state.downloadQuota,
+      quota: authStore.getSnapshot().profile?.quota.remaining ?? state.downloadQuota,
       monthCount: allRecords.filter((record) => isThisMonth(record.downloadedAt)).length,
       recentText: allRecords.length ? formatRelative(allRecords[0].downloadedAt) : '暂无',
     }, () => this.applyFilters())
@@ -116,4 +153,15 @@ function formatDateTime(timestamp: number) {
   const datePart = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
   return `${datePart} ${timePart}`
+}
+
+function toDownloadView(record: DownloadRecord): DownloadView {
+  return {
+    ...record,
+    typeLabel: typeLabels[record.fileType],
+    typeClass: `download-type--${record.fileType}`,
+    dateText: formatDateTime(record.downloadedAt),
+    dimensions: record.width && record.height ? `${record.width}×${record.height}` : '尺寸待同步',
+    colorText: record.colorCount ? `${record.colorCount} 色` : '颜色待同步',
+  }
 }

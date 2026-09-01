@@ -3,6 +3,7 @@ import { AppError, invalidArgument } from "../../shared/app-error";
 import {
   createEntityId,
   createOpaqueToken,
+  encryptOpenid,
   hashOpenid,
   hashToken,
 } from "../../shared/identity";
@@ -38,6 +39,7 @@ export class AuthService implements AuthLoginService {
     const token = createOpaqueToken();
     const user = await this.repository.createLogin({
       openidHash: hashOpenid(wechatSession.openid, this.config.openidHashSecret),
+      openidCiphertext: encryptOpenid(wechatSession.openid, this.config.openidHashSecret),
       proposedUserId: createEntityId("usr"),
       sessionId: createEntityId("ses"),
       tokenHash: hashToken(token),

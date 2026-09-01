@@ -1,16 +1,25 @@
+import { appStore } from '../../store/app-store'
+import { authStore } from '../../store/auth-store'
+
 Page({
   data: {
     packageLabel: '加购 3 次',
     amount: '9.9',
-    quota: 5,
+    quota: 0,
   },
 
-  onLoad(options: Record<string, string | undefined>) {
-    this.setData({
-      packageLabel: options.packageLabel || this.data.packageLabel,
-      amount: options.amount || this.data.amount,
-      quota: Number(options.quota) || this.data.quota,
-    })
+  onLoad() {
+    const cachedQuota = authStore.getSnapshot().profile?.quota.remaining
+      ?? appStore.getSnapshot().downloadQuota
+    this.setData({ quota: cachedQuota })
+    void this.refreshServerQuota()
+  },
+
+  async refreshServerQuota() {
+    const quota = await authStore.refreshQuota()
+    if (!quota) return
+    appStore.setDownloadQuota(quota.remaining)
+    this.setData({ quota: quota.remaining })
   },
 
   returnProfile() {

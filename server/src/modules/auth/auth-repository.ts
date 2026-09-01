@@ -18,6 +18,7 @@ interface SessionRow extends QueryResultRow {
 
 export interface CreateLoginInput {
   readonly openidHash: string;
+  readonly openidCiphertext: string;
   readonly proposedUserId: string;
   readonly sessionId: string;
   readonly tokenHash: string;
@@ -55,33 +56,17 @@ export class PostgresAuthRepository implements AuthRepository {
     try {
       await client.query("BEGIN");
       const users = await client.query<UserRow>(
-        `WITH inserted AS (
-           INSERT INTO pindou_users (
-             id, openid_hash, openid_ciphertext, nickname, avatar_url, created_at, updated_at, deleted_at
-           )
-           VALUES ($1, $2, NULL, NULL, NULL, $3, $3, NULL)
-           ON CONFLICT (openid_hash) DO NOTHING
-           RETURNING id, nickname, avatar_url, deleted_at
+        `INSERT INTO pindou_users (
+           id, openid_hash, openid_ciphertext, nickname, avatar_url, created_at, updated_at, deleted_at
          )
-         SELECT id, nickname, avatar_url, deleted_at FROM inserted
-         UNION ALL
-         SELECT id, nickname, avatar_url, deleted_at
-           FROM pindou_users
-          WHERE openid_hash = $2
-         LIMIT 1`,
-        [input.proposedUserId, input.openidHash, input.now],
+         VALUES ($1, $2, $3, NULL, NULL, $4, $4, NULL)
+         ON CONFLICT (openid_hash) DO UPDATE
+           SET openid_ciphertext = EXCLUDED.openid_ciphertext,
+               updated_at = EXCLUDED.updated_at
+         RETURNING id, nickname, avatar_url, deleted_at`,
+        [input.proposedUserId, input.openidHash, input.openidCiphertext, input.now],
       );
-      let user = users.rows[0];
-      if (!user) {
-        const existingUsers = await client.query<UserRow>(
-          `SELECT id, nickname, avatar_url, deleted_at
-             FROM pindou_users
-            WHERE openid_hash = $1
-            LIMIT 1`,
-          [input.openidHash],
-        );
-        user = existingUsers.rows[0];
-      }
+      const user = users.rows[0];
       if (!user) throw new Error("用户幂等创建后无法读取记录");
       if (user.deleted_at) throw new AppError(403, "ACCOUNT_DISABLED", "账号不可用");
 
