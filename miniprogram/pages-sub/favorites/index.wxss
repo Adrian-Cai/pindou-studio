@@ -12,23 +12,32 @@
 .favorite-summary__badge--yellow { background: #fff8e8; color: #f4b223; }
 .favorite-summary__line { width: 1rpx; height: 80rpx; background: var(--color-border); }
 
-.favorite-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24rpx; margin-top: 24rpx; }
-.favorite-card { min-width: 0; padding: 18rpx; }
-.favorite-card__main { display: grid; grid-template-columns: 52% minmax(0, 1fr); gap: 20rpx; }
-.favorite-card__cover { width: 100%; height: 200rpx; border-radius: var(--radius-media); background: var(--color-surface-muted); }
-.favorite-card__info { min-width: 0; }
-.favorite-card__title { overflow: hidden; font-size: 28rpx; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.favorite-card__meta { margin-top: 18rpx; color: var(--color-text-secondary); font-size: 22rpx; white-space: nowrap; }
-.favorite-card__date { margin-top: 36rpx; color: var(--color-text-tertiary); font-size: 21rpx; line-height: 32rpx; }
-.favorite-card__actions { display: flex; align-items: center; gap: 16rpx; margin-top: 20rpx; }
-.favorite-card__heart { color: var(--color-primary); font-size: 42rpx; }
-.favorite-card__view { height: 58rpx; flex: 1; border: 2rpx solid var(--color-primary); border-radius: var(--radius-control); color: var(--color-primary); font-size: 24rpx; line-height: 58rpx; text-align: center; }
-.favorite-card__more { display: flex; width: 58rpx; height: 58rpx; align-items: center; justify-content: center; border: 1rpx solid var(--color-border); border-radius: 50%; font-size: 18rpx; }
+.favorite-grid { display: flex; width: 100%; flex-direction: column; gap: 24rpx; margin-top: 24rpx; }
+.favorite-card { width: 100%; min-width: 0; padding: 24rpx; }
+.favorite-card__main { display: flex; min-width: 0; align-items: stretch; gap: 20rpx; }
+.favorite-card__cover { width: 192rpx; height: 192rpx; flex: 0 0 192rpx; align-self: flex-start; border-radius: var(--radius-media); background: var(--color-surface-muted); }
+.favorite-card__info { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.favorite-card__title-row { display: flex; min-width: 0; align-items: flex-start; gap: 12rpx; }
+.favorite-card__title { min-width: 0; overflow: hidden; flex: 1; font-size: 28rpx; font-weight: 600; line-height: 40rpx; text-overflow: ellipsis; white-space: nowrap; }
+.favorite-card__status { box-sizing: border-box; width: 136rpx; height: 40rpx; flex: 0 0 136rpx; padding: 0 4rpx; border-radius: var(--radius-full); color: var(--color-success); font-size: 22rpx; line-height: 40rpx; text-align: right; white-space: nowrap; }
+.favorite-card__status:active { background: var(--color-success-soft); }
+.favorite-card__meta { margin-top: 12rpx; color: var(--color-text-secondary); font-size: 22rpx; line-height: 28rpx; white-space: nowrap; }
+.favorite-card__date { margin-top: 4rpx; color: var(--color-text-tertiary); font-size: 21rpx; line-height: 28rpx; white-space: nowrap; }
+.favorite-card__actions { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-top: auto; padding-top: 8rpx; }
+.favorite-card__view { box-sizing: border-box; width: 152rpx; height: 48rpx; border: 2rpx solid var(--color-primary); border-radius: var(--radius-control); color: var(--color-primary); font-size: 24rpx; line-height: 44rpx; text-align: center; }
+.favorite-card__view:active { background: var(--color-primary-soft); }
+.favorite-card__more { display: flex; box-sizing: border-box; width: 48rpx; height: 48rpx; align-items: center; justify-content: center; border: 1rpx solid var(--color-border); border-radius: 50%; color: var(--color-text-secondary); font-size: 18rpx; letter-spacing: 1rpx; }
+.favorite-card__more:active { background: var(--color-surface-muted); }
 
 @media (max-width: 380px) {
   .favorite-tabs { gap: 8rpx; }
   .favorite-tabs__item { padding: 0 6rpx; font-size: 21rpx; }
   .favorite-summary { padding: 28rpx 20rpx; }
   .favorite-summary__badge { width: 68rpx; height: 68rpx; }
-  .favorite-grid { grid-template-columns: 1fr; }
+  .favorite-card { padding: 20rpx; }
+  .favorite-card__main { gap: 16rpx; }
+  .favorite-card__cover { width: 176rpx; height: 176rpx; flex-basis: 176rpx; }
+  .favorite-card__title { font-size: 26rpx; }
+  .favorite-card__status { width: 128rpx; flex-basis: 128rpx; font-size: 20rpx; }
+  .favorite-card__meta { font-size: 21rpx; }
 }
