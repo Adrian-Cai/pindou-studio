@@ -14,10 +14,10 @@
 
 ```ts
 const API_BASE_URLS = {
-  develop: 'http://127.0.0.1:3000',
-  trial: 'https://api.example.com',
-  release: 'https://api.example.com',
-}
+  develop: "http://127.0.0.1:3000",
+  trial: "https://api.example.com",
+  release: "https://api.example.com",
+};
 ```
 
 不要把数据库地址 `120.53.19.24:5432` 当作小程序 API 地址。数据库端口不能直接暴露给小程序。
