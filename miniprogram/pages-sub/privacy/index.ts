@@ -25,7 +25,11 @@ Page({
   },
 
   openDocument(event: WechatMiniprogram.TouchEvent) {
-    wx.showToast({ title: `${String(event.currentTarget.dataset.title)}内容待发布`, icon: 'none' })
+    const title = String(event.currentTarget.dataset.title)
+    const content = title === '第三方信息共享清单'
+      ? '为完成内容安全审核，上传图片和作品名称会发送至微信内容安全服务。原始审核图片仅在服务端临时保存，审核完成或过期后清理。'
+      : `${title}内容待发布`
+    wx.showModal({ title, content, showCancel: false })
   },
 
   cancelAccount() {

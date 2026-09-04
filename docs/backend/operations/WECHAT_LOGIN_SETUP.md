@@ -56,6 +56,10 @@ WECHAT_APP_SECRET=<从微信公众平台获取，不得提交 Git>
 WECHAT_API_TIMEOUT_MS=8000
 OPENID_HASH_SECRET=<至少 32 个随机字符，不得提交 Git>
 AUTH_TOKEN_TTL_DAYS=30
+WECHAT_CONTENT_SECURITY_TOKEN=<微信消息推送校验 Token>
+CONTENT_SECURITY_MEDIA_STORAGE_DIR=./data/content-security
+CONTENT_SECURITY_MEDIA_PUBLIC_BASE_URL=https://api.example.com/api/content-security/media
+CONTENT_SECURITY_MEDIA_MAX_BYTES=10485760
 AVATAR_STORAGE_DIR=./data/avatars
 AVATAR_MAX_BYTES=2097152
 COVER_STORAGE_DIR=./data/covers
@@ -70,6 +74,14 @@ node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'
 ```
 
 AppSecret 只能放在后端运行环境中，禁止写入小程序代码、`project.config.json`、前端 Storage、日志或 Git。
+
+内容安全回调地址为：
+
+```text
+https://<API域名>/api/wechat/content-security/callback
+```
+
+需要在微信公众平台消息推送配置中完成 Token 校验，并确保该地址可接收微信的 `wxa_media_check` 异步审核事件。
 
 `AVATAR_STORAGE_DIR` 必须位于服务端可持久化且不可被任意写入的目录。当前实现通过 `/api/media/avatars/...` 公开读取头像；生产部署需要挂载持久化磁盘，或将服务端 `AvatarStorage` 替换为对象存储实现。头像上传和读取使用与 API 相同的合法 HTTPS 域名。
 

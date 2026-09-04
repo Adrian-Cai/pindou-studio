@@ -77,6 +77,12 @@ export interface ServerConfig {
     readonly publicBaseUrl: string;
     readonly maximumBytes: number;
   };
+  readonly contentSecurity: {
+    readonly messageToken: string;
+    readonly mediaStorageDirectory: string;
+    readonly mediaPublicBaseUrl: string;
+    readonly mediaMaximumBytes: number;
+  };
   readonly deployment: {
     readonly persistentStorageMounted: boolean;
     readonly monitoringAlertsConfigured: boolean;
@@ -324,6 +330,22 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       publicBaseUrl: env.AI_FILE_PUBLIC_BASE_URL?.trim() || "http://127.0.0.1:3000/api/media/ai",
       maximumBytes: integer(env, "AI_FILE_MAX_BYTES", 10 * 1_024 * 1_024, 64 * 1_024, 20 * 1_024 * 1_024, issues),
     },
+    contentSecurity: {
+      messageToken: env.WECHAT_CONTENT_SECURITY_TOKEN?.trim() || "",
+      mediaStorageDirectory: resolve(
+        env.CONTENT_SECURITY_MEDIA_STORAGE_DIR?.trim() || resolve(__dirname, "../../data/content-security"),
+      ),
+      mediaPublicBaseUrl: env.CONTENT_SECURITY_MEDIA_PUBLIC_BASE_URL?.trim()
+        || "http://127.0.0.1:3000/api/content-security/media",
+      mediaMaximumBytes: integer(
+        env,
+        "CONTENT_SECURITY_MEDIA_MAX_BYTES",
+        10 * 1_024 * 1_024,
+        64 * 1_024,
+        10 * 1_024 * 1_024,
+        issues,
+      ),
+    },
     deployment: {
       persistentStorageMounted: booleanValue(
         env,
@@ -354,6 +376,12 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     }
     if (!config.deployment.monitoringAlertsConfigured) {
       issues.push("生产环境必须确认 MONITORING_ALERTS_CONFIGURED=true");
+    }
+    if (!config.contentSecurity.messageToken) {
+      issues.push("生产环境必须配置 WECHAT_CONTENT_SECURITY_TOKEN");
+    }
+    if (!config.contentSecurity.mediaPublicBaseUrl.startsWith("https://")) {
+      issues.push("生产环境 CONTENT_SECURITY_MEDIA_PUBLIC_BASE_URL 必须使用 HTTPS");
     }
   }
 

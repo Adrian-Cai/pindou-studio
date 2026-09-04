@@ -9,6 +9,7 @@ import {
   renameCloudWork,
 } from '../../services/work-service'
 import { appStore } from '../../store/app-store'
+import { checkTextContent } from '../../services/content-security-service'
 
 type ProjectTab = 'all' | 'recent' | 'draft' | 'completed'
 type WorkView = WorkItem & {
@@ -249,6 +250,7 @@ Page({
     }
     this.setData({ renameSaving: true })
     try {
+      await checkTextContent(title)
       if (work.isCloud) {
         const summary = await renameCloudWork(id, title)
         appStore.saveWork(cloudSummaryToWorkItem(summary))

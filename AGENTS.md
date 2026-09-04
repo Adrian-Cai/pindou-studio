@@ -51,7 +51,7 @@
 
 ## 3. 代码规范
 
-详细规范见 docs/CODE_RULES.md。
+详细规范见 docs/development/CODE_RULES.md。
 
 必须遵守：
 
@@ -62,7 +62,7 @@
 
 ## 4. UI 开发规范
 
-所有 UI 相关开发必须阅读 docs/UI_RULES.md。
+所有 UI 相关开发必须阅读 docs/frontend/UI_RULES.md。
 
 要求：
 
@@ -72,7 +72,7 @@
 
 ## 5. 小程序开发规范
 
-所有微信小程序相关开发必须阅读 docs/MINI_PROGRAM_RULES.md，并考虑屏幕适配、安全区域、滚动体验、图片加载和弱网络。
+所有微信小程序相关开发必须阅读 docs/frontend/MINI_PROGRAM_RULES.md，并考虑屏幕适配、安全区域、滚动体验、图片加载和弱网络。
 
 ### 微信小程序页面结构
 
@@ -80,8 +80,8 @@
 
 具体实现规则见：
 
-- docs/UI_RULES.md：页面布局、导航栏、吸顶、滚动区域规范。
-- docs/MINI_PROGRAM_RULES.md：微信状态栏、胶囊、安全区 API 与兼容规范。
+- docs/frontend/UI_RULES.md：页面布局、导航栏、吸顶、滚动区域规范。
+- docs/frontend/MINI_PROGRAM_RULES.md：微信状态栏、胶囊、安全区 API 与兼容规范。
 
 禁止页面自行实现一套新的导航栏高度、状态栏间距或滚动方案。
 
@@ -92,7 +92,7 @@
 
 ## 6. 产品业务规范
 
-业务流程见 docs/PRODUCT_FLOW.md。
+业务流程见 docs/product/PRODUCT_FLOW.md。
 
 禁止：
 
@@ -117,7 +117,7 @@
 
 ## 10. 项目版本管理
 
-- 版本记录统一维护在 docs/CHANGELOG.md。
+- 版本记录统一维护在 docs/releases/CHANGELOG.md。
 - 重大功能修改需要增加版本号，格式为 x.y.z。
 - 完成任务后说明当前版本号、修改内容和影响范围。
 

@@ -211,7 +211,7 @@ ALTER TABLE pindou_users
 每个字段都要有数据库注释。迁移完成后：
 
 - 同步 `server/src/db/schema-contract.ts`；
-- 更新 `docs/DATABASE_SCHEMA.md`；
+- 更新 `docs/backend/database/DATABASE_SCHEMA.md`；
 - 增加 `server/sql/002_privacy_preferences.sql`；
 - 执行 `npm run db:inspect`；
 - 旧用户通过默认值平滑补齐，不允许使用可空字段表达未初始化状态。

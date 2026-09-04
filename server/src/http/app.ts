@@ -8,6 +8,7 @@ import type { UserProfileService } from "../modules/users/user-profile-service";
 import type { FileAssetService } from "../modules/files/file-asset-service";
 import type { CoverStorage } from "../modules/files/cover-storage";
 import type { AiFileStorage } from "../modules/files/ai-file-storage";
+import type { ContentSecurityService } from "../modules/content-security/content-security-service";
 import type {
   AiGenerationBackgroundMode,
   AiGenerationDetailLevel,
@@ -37,7 +38,7 @@ interface ErrorResponse {
 }
 
 function requestId(): string {
-  return `req_${randomUUID().replaceAll("-", "")}`;
+  return `req_${randomUUID().replace(/-/g, "")}`;
 }
 
 function sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {
@@ -86,13 +87,23 @@ export interface HttpApplicationDependencies {
   readonly coverMaximumBytes: number;
   readonly aiFileMaximumBytes: number;
   readonly aiGenerations: PostgresAiGenerationService;
+  readonly contentSecurity?: ContentSecurityService;
+  readonly contentSecurityMediaMaximumBytes?: number;
   readonly capabilities?: {
     readonly wechatPay: boolean;
     readonly aiGeneration: boolean;
     readonly persistentStorage: boolean;
     readonly httpsPublicUrls: boolean;
     readonly monitoringAlerts: boolean;
+    readonly contentSecurity?: boolean;
   };
+}
+
+function sendText(response: ServerResponse, value: string): void {
+  response.statusCode = 200;
+  response.setHeader("content-type", "text/plain; charset=utf-8");
+  response.setHeader("cache-control", "no-store");
+  response.end(value);
 }
 
 function validateLoginBody(body: Record<string, unknown>): string {
@@ -101,6 +112,14 @@ function validateLoginBody(body: Record<string, unknown>): string {
     throw invalidArgument("请求体只能包含字符串字段 code");
   }
   return body.code;
+}
+
+function validateContentSecurityTextBody(body: Record<string, unknown>): string {
+  const keys = Object.keys(body);
+  if (keys.length !== 1 || keys[0] !== "content" || typeof body.content !== "string") {
+    throw invalidArgument("内容安全文本请求体只能包含字符串字段 content");
+  }
+  return body.content;
 }
 
 function validateNicknameBody(body: Record<string, unknown>): string {
@@ -432,10 +451,84 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         return;
       }
 
+      if (url.pathname.startsWith("/api/content-security/media/")) {
+        if (request.method !== "GET" || url.searchParams.size > 0 || !dependencies.contentSecurity) {
+          throw invalidArgument("内容安全媒体地址无效");
+        }
+        const media = await dependencies.contentSecurity.readMedia(url.pathname);
+        if (media) {
+          sendImage(response, media);
+          return;
+        }
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/wechat/content-security/callback") {
+        if (!dependencies.contentSecurity?.verifyCallback(
+          url.searchParams.get("signature") ?? undefined,
+          url.searchParams.get("timestamp") ?? undefined,
+          url.searchParams.get("nonce") ?? undefined,
+        )) {
+          throw new AppError(403, "INVALID_CALLBACK_SIGNATURE", "微信回调校验失败");
+        }
+        sendText(response, url.searchParams.get("echostr") ?? "success");
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/wechat/content-security/callback") {
+        if (!dependencies.contentSecurity?.verifyCallback(
+          url.searchParams.get("signature") ?? undefined,
+          url.searchParams.get("timestamp") ?? undefined,
+          url.searchParams.get("nonce") ?? undefined,
+        )) {
+          throw new AppError(403, "INVALID_CALLBACK_SIGNATURE", "微信回调校验失败");
+        }
+        await dependencies.contentSecurity.handleCallback(await readJsonObject(request));
+        sendText(response, "success");
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/content-security/text") {
+        if (!dependencies.contentSecurity || url.searchParams.size > 0) {
+          throw new AppError(503, "CONTENT_SECURITY_NOT_CONFIGURED", "内容安全服务尚未配置");
+        }
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const trace = await dependencies.contentSecurity.checkText(
+          currentUser.id,
+          validateContentSecurityTextBody(await readJsonObject(request)),
+        );
+        sendJson(response, 200, trace);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/content-security/media") {
+        if (!dependencies.contentSecurity || url.searchParams.size > 0) {
+          throw new AppError(503, "CONTENT_SECURITY_NOT_CONFIGURED", "内容安全服务尚未配置");
+        }
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const upload = await readSingleUploadedFile(
+          request,
+          "file",
+          dependencies.contentSecurityMediaMaximumBytes ?? 10 * 1_024 * 1_024,
+          [],
+          "待审核图片",
+        );
+        sendJson(response, 201, {
+          check: await dependencies.contentSecurity.checkMedia(currentUser.id, {
+            buffer: upload.buffer,
+            filename: upload.filename,
+            contentType: upload.declaredContentType,
+          }),
+        });
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/works") {
         if (url.searchParams.size > 0) throw invalidArgument("作品保存接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         const validated = validateWorkBody(await readJsonObject(request, 2 * 1024 * 1024));
+        if (dependencies.contentSecurity) {
+          await dependencies.contentSecurity.checkText(currentUser.id, validated.title);
+        }
         sendJson(response, 201, await dependencies.works.create({
           userId: currentUser.id,
           idempotencyKey: idempotencyKey(request),
@@ -568,6 +661,9 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           sendNoContent(response);
         } else {
           const update = validateWorkUpdateBody(await readJsonObject(request, 2 * 1024 * 1024));
+          if (dependencies.contentSecurity && update.title !== undefined) {
+            await dependencies.contentSecurity.checkText(currentUser.id, update.title);
+          }
           sendJson(response, 200, await dependencies.works.update({
             userId: currentUser.id,
             workId: requestedWorkId,

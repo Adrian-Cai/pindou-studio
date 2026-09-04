@@ -4,7 +4,7 @@
 >
 > 版本：v1.0
 >
-> 目标：为 `docs/API_SPEC.md` 提供可审计、可恢复、可追溯的数据模型。
+> 目标：为 `docs/backend/API_SPEC.md` 提供可审计、可恢复、可追溯的数据模型。
 
 > 物理表命名规则：所有表名必须以 `pindou_` 开头；本文中的逻辑实体名可以省略前缀，但建库时必须使用带前缀的物理表名。
 
@@ -67,7 +67,8 @@ pindou_users
   │      └── pindou_download_records ─── pindou_quota_transactions
   ├── pindou_file_assets
   ├── pindou_quota_transactions
-  └── pindou_orders ─── pindou_packages
+  ├── pindou_orders ─── pindou_packages
+  └── pindou_content_security_checks
 ```
 
 约束：
@@ -96,8 +97,13 @@ pindou_users
 | `pindou_quota_transactions` | 额度流水表 | 记录免费额度、购买额度、下载扣减、退款和人工调整 |
 | `pindou_packages` | 充值套餐表 | 保存可购买套餐的名称、价格、额度和会员配置 |
 | `pindou_orders` | 支付订单表 | 保存微信支付订单、金额、状态和支付回调信息 |
+| `pindou_content_security_checks` | 内容安全审核表 | 保存微信文本/图片审核任务、异步回调状态和临时媒体引用 |
 
 维护要求：建表 SQL 必须为每张表和每个字段写数据库注释。注释至少说明“这是什么”和“在什么业务场景使用”，不能只重复字段名。
+
+### 3.11 `pindou_content_security_checks`
+
+用于记录作品名称和上传图片的微信内容安全检测。表内不保存明文 OpenID 或原始文本；图片对象只在微信异步审核完成或记录过期前临时保留。
 
 ### 3.1 `pindou_users`
 

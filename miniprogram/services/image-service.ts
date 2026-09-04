@@ -34,6 +34,50 @@ export async function chooseSourceImage(): Promise<string | null> {
   return sourceImagePath
 }
 
+export async function prepareImageForContentSecurity(sourceImagePath: string): Promise<string> {
+  let header: Uint8Array | null = null
+  try {
+    header = await readFileHeader(sourceImagePath)
+  } catch {
+    const imageInfo = await getImageInfo(sourceImagePath)
+    if (String(imageInfo.type).toLowerCase() !== 'webp') return sourceImagePath
+  }
+  if (header && (isJpeg(header) || isPng(header))) return sourceImagePath
+
+  const { width: sourceWidth, height: sourceHeight } = await getImageInfo(sourceImagePath)
+  const maxSide = 2_048
+  const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight))
+  const width = Math.max(1, Math.round(sourceWidth * scale))
+  const height = Math.max(1, Math.round(sourceHeight * scale))
+  const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })
+  const context = canvas.getContext('2d') as { drawImage(image: WechatMiniprogram.Image, x: number, y: number, width: number, height: number): void }
+  const image = canvas.createImage()
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve()
+    image.onerror = () => reject(new Error('图片解码失败'))
+    image.src = sourceImagePath
+  })
+  context.drawImage(image, 0, 0, width, height)
+  return new Promise<string>((resolve, reject) => {
+    wx.canvasToTempFilePath({
+      canvas: canvas as unknown as WechatMiniprogram.IAnyObject,
+      fileType: 'png',
+      width,
+      height,
+      destWidth: width,
+      destHeight: height,
+      success: ({ tempFilePath }) => resolve(tempFilePath),
+      fail: reject,
+    })
+  })
+}
+
+function getImageInfo(imagePath: string): Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult> {
+  return new Promise((resolve, reject) => {
+    wx.getImageInfo({ src: imagePath, success: resolve, fail: reject })
+  })
+}
+
 function isImagePickerCancel(error: unknown): boolean {
   if (error instanceof Error) return error.message.toLowerCase().includes('cancel')
   if (typeof error !== 'object' || error === null || !('errMsg' in error)) return false

@@ -6,7 +6,7 @@ import {
   randomBytes,
 } from "node:crypto";
 
-export function createEntityId(prefix: "usr" | "ses" | "file" | "work" | "dl" | "qt" | "order" | "aijob"): string {
+export function createEntityId(prefix: "usr" | "ses" | "file" | "work" | "dl" | "qt" | "order" | "aijob" | "sec"): string {
   return `${prefix}_${randomBytes(15).toString("base64url")}`;
 }
 

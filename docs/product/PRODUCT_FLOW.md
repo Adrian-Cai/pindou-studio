@@ -5,7 +5,7 @@
 > 适用版本：0.19.x
 >
 > 本文只定义用户流程、页面职责和关键业务约束。
-> 技术架构见 `docs/CURRENT_ARCHITECTURE.md`，UI 规范见 `design.md` / `docs/UI_RULES.md`，接口见 `docs/API_SPEC.md`，未来 AI 方案见 `docs/AI_GENERATION_DESIGN.md`。
+> 技术架构见 `docs/architecture/CURRENT_ARCHITECTURE.md`，UI 规范见 `design.md` / `docs/frontend/UI_RULES.md`，接口见 `docs/backend/API_SPEC.md`，未来 AI 方案见 `docs/backend/AI_GENERATION_DESIGN.md`。
 
 ## 1. 产品定位
 

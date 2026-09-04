@@ -1454,7 +1454,7 @@ feat(pattern): improve bead renderer
 
 ```text
 1. 本次只完成指定 Phase。
-2. 修改前读取 AGENTS.md、docs/CODE_RULES.md 和本方案。
+2. 修改前读取 AGENTS.md、docs/development/CODE_RULES.md 和本方案。
 3. 不提前实现下一 Phase。
 4. 不修改 AI 精致模式。
 5. 不改变页面跳转。

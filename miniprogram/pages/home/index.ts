@@ -1,5 +1,6 @@
 import { DEFAULT_PATTERN_SETTINGS } from '../../config/product'
-import { chooseSourceImage, createDraft } from '../../services/image-service'
+import { chooseSourceImage, createDraft, prepareImageForContentSecurity } from '../../services/image-service'
+import { checkImageContent } from '../../services/content-security-service'
 import { appStore } from '../../store/app-store'
 
 /** 页面内容区左右内边距（rpx），与 .page 的 padding 保持一致 */
@@ -119,6 +120,10 @@ Page({
     try {
       const sourceImagePath = await chooseSourceImage()
       if (sourceImagePath) {
+        wx.showLoading({ title: '正在安全检测', mask: true })
+        const securityImagePath = await prepareImageForContentSecurity(sourceImagePath)
+        await checkImageContent(securityImagePath)
+        wx.hideLoading()
         this.setData({
           sourceImagePath,
           previewWidth: MAX_PREVIEW_WIDTH_RPX,
@@ -133,11 +138,14 @@ Page({
         }
       }
     } catch (error) {
+      wx.hideLoading()
       const message = error instanceof Error ? error.message : String(error)
       if (!message.includes('cancel')) {
         console.error('选择图片失败', error)
         wx.showToast({
-          title: message.includes('仅支持') ? message : '图片无法读取，请换一张重试',
+          title: message.includes('违规') || message.includes('内容安全')
+            ? message
+            : message.includes('仅支持') ? message : '图片无法读取，请换一张重试',
           icon: 'none',
         })
       }

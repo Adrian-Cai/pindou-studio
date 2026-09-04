@@ -59,7 +59,7 @@ export class SchemaMismatchError extends Error {
   public readonly inspection: DatabaseInspection;
 
   public constructor(inspection: DatabaseInspection) {
-    super(`数据库结构与 docs/DATABASE_DESIGN.md 不一致（${inspection.differences.length} 项差异）`);
+    super(`数据库结构与 docs/backend/database/DATABASE_DESIGN.md 不一致（${inspection.differences.length} 项差异）`);
     this.name = "SchemaMismatchError";
     this.inspection = inspection;
   }

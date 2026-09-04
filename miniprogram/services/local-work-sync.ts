@@ -5,6 +5,7 @@ import {
   hasCloudSession,
   saveNewCloudWork,
 } from './work-service'
+import { checkImageContent } from './content-security-service'
 
 export interface LocalWorkSyncResult {
   uploaded: number
@@ -30,6 +31,7 @@ export async function syncLocalWorksToCloud(): Promise<LocalWorkSyncResult> {
     }
 
     try {
+      await checkImageContent(work.coverPath)
       const summary = await saveNewCloudWork(draft, work.coverPath, work.title)
       appStore.replaceLocalWorkWithCloud(work.id, cloudSummaryToWorkItem(summary))
       uploaded += 1

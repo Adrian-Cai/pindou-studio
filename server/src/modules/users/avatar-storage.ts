@@ -32,7 +32,7 @@ export class FileSystemAvatarStorage implements AvatarStorage {
     }
 
     await mkdir(this.directory, { recursive: true });
-    const filename = `avatar_${randomUUID().replaceAll("-", "")}.${format.extension}`;
+    const filename = `avatar_${randomUUID().replace(/-/g, "")}.${format.extension}`;
     await writeFile(join(this.directory, filename), buffer, { flag: "wx" });
     return { publicPath: `${AVATAR_ROUTE_PREFIX}${filename}`, contentType: format.contentType };
   }

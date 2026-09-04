@@ -2,7 +2,7 @@
 
 > 状态：当前 Schema 关系视图
 >
-> 字段、类型与约束的完整清单见 `docs/DATABASE_SCHEMA.md`；可执行契约见 `server/src/db/schema-contract.ts`。
+> 字段、类型与约束的完整清单见 `docs/backend/database/DATABASE_SCHEMA.md`；可执行契约见 `server/src/db/schema-contract.ts`。
 
 ## ER 图
 
@@ -169,6 +169,6 @@ erDiagram
 
 1. PostgreSQL Schema / migration
 2. `server/src/db/schema-contract.ts`
-3. `docs/DATABASE_SCHEMA.md`
+3. `docs/backend/database/DATABASE_SCHEMA.md`
 4. 本 ER 图
-5. `docs/CHANGELOG.md`
+5. `docs/releases/CHANGELOG.md`

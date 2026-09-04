@@ -4,7 +4,7 @@
 >
 > 适用版本：0.19.x
 >
-> 本文描述当前已经落地的系统，不包含尚未接入的 AI 精致模式。未来 AI 架构见 `docs/AI_GENERATION_DESIGN.md`。
+> 本文描述当前已经落地的系统，不包含尚未接入的 AI 精致模式。未来 AI 架构见 `docs/backend/AI_GENERATION_DESIGN.md`。
 
 ## 1. 总体架构
 
@@ -158,7 +158,7 @@ wx.login
 
 1. 当前可运行代码与 PostgreSQL 实际 Schema
 2. `server/src/db/schema-contract.ts`
-3. `docs/DATABASE_SCHEMA.md`
+3. `docs/backend/database/DATABASE_SCHEMA.md`
 4. 本文
 5. 历史架构快照
 

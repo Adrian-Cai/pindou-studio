@@ -6,13 +6,13 @@
 >
 > 事实来源：`server/src/db/schema-contract.ts`
 >
-> 设计背景：`docs/DATABASE_DESIGN.md`
+> 设计背景：`docs/backend/database/DATABASE_DESIGN.md`
 >
 > 维护原则：数据库结构发生变更时，应先同步代码中的 Schema Contract / migration，再同步更新本文档。本文档描述“当前代码期望的真实结构”，不是未来设计稿。
 
 ## 1. 当前数据库概览
 
-项目当前使用一套 PostgreSQL 业务数据库，核心包含 11 张业务表：
+项目当前使用一套 PostgreSQL 业务数据库，核心包含 12 张业务表：
 
 | 表名 | 用途 |
 | --- | --- |
@@ -27,6 +27,7 @@
 | `pindou_packages` | 可购买套餐 |
 | `pindou_orders` | 支付订单 |
 | `pindou_ai_generation_jobs` | AI 精致生成任务与状态机 |
+| `pindou_content_security_checks` | 微信内容安全审核任务与回调状态 |
 
 关系概览：
 
@@ -39,8 +40,26 @@ pindou_users
   │      └── pindou_download_records ─── pindou_quota_transactions
   ├── pindou_quota_transactions
   ├── pindou_orders ─── pindou_packages
-  └── pindou_ai_generation_jobs ─── pindou_file_assets
+  ├── pindou_ai_generation_jobs ─── pindou_file_assets
+  └── pindou_content_security_checks
 ```
+
+## 3.11 `pindou_content_security_checks`
+
+内容安全审核记录表。记录作品名称检测和原图异步检测的状态、微信 `trace_id`、风险标签及临时媒体引用；不保存明文 OpenID 或原始文本。
+
+| 字段 | 类型 | 可空 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `varchar(32)` | 否 | 服务端审核记录 ID |
+| `user_id` | `varchar(32)` | 否 | 发起审核的用户 |
+| `check_type` | `varchar(20)` | 否 | `text` 或 `media` |
+| `trace_id` | `varchar(128)` | 是 | 微信异步审核任务 ID |
+| `status` | `varchar(20)` | 否 | `pending`、`pass`、`review`、`risky` 或 `failed` |
+| `label` | `int4` | 是 | 微信风险标签 |
+| `error_code` | `int4` | 是 | 微信错误码 |
+| `media_object_key` | `varchar(512)` | 是 | 临时审核图片对象键 |
+| `created_at` / `updated_at` | `timestamptz` | 否 | 创建和更新时间 |
+| `expires_at` | `timestamptz` | 是 | 临时记录过期时间 |
 
 ## 2. `pindou_users`
 
@@ -348,8 +367,8 @@ AI 精致生成任务表。客户端创建任务后轮询状态；只有输出�
 1. 实际 PostgreSQL 数据库结构
 2. `server/src/db/schema-contract.ts`
 3. migration / 建表 SQL（如后续引入）
-4. `docs/DATABASE_SCHEMA.md`（本文档）
-5. `docs/DATABASE_DESIGN.md`（设计背景/历史决策）
+4. `docs/backend/database/DATABASE_SCHEMA.md`（本文档）
+5. `docs/backend/database/DATABASE_DESIGN.md`（设计背景/历史决策）
 
 `DATABASE_DESIGN.md` 不应该再被当成唯一的“当前数据库字段清单”。
 

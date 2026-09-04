@@ -4,9 +4,9 @@
 
 当前架构请优先查看：
 
-- `docs/CURRENT_ARCHITECTURE.md`：当前运行时架构
-- `docs/DATABASE_ER.md`：当前数据库 ER 图
-- `docs/DATABASE_SCHEMA.md`：当前数据库表与字段
-- `docs/AI_GENERATION_DESIGN.md`：未来 AI 精致模式接入设计
+- `docs/architecture/CURRENT_ARCHITECTURE.md`：当前运行时架构
+- `docs/backend/database/DATABASE_ER.md`：当前数据库 ER 图
+- `docs/backend/database/DATABASE_SCHEMA.md`：当前数据库表与字段
+- `docs/backend/AI_GENERATION_DESIGN.md`：未来 AI 精致模式接入设计
 
-旧快照暂时保留用于历史对比。后续如果重新生成可视化文件，应以 `docs/CURRENT_ARCHITECTURE.md` 的当前实现为输入，并同步更新本说明。
+旧快照暂时保留用于历史对比。后续如果重新生成可视化文件，应以 `docs/architecture/CURRENT_ARCHITECTURE.md` 的当前实现为输入，并同步更新本说明。

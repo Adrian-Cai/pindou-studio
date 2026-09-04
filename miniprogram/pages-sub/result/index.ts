@@ -14,6 +14,7 @@ import {
 } from '../../services/download-service'
 import { appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
+import { checkTextContent } from '../../services/content-security-service'
 import { getCustomNavigationMetrics } from '../../utils/navigation'
 import {
   createDraftRenderKey,
@@ -281,6 +282,7 @@ Page({
     this.setData({ renamingTitle: true })
     wx.showLoading({ title: '正在保存', mask: true })
     try {
+      await checkTextContent(title)
       let savedTitle = title
       if (work.isCloud) {
         const savedWork = await renameCloudWork(work.id, title)

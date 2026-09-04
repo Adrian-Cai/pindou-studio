@@ -6,7 +6,7 @@
 >
 > 适用范围：小程序云端账号、作品、文件、收藏、双额度、下载记录、AI 精致生成和微信支付。
 >
-> 本文档以 `docs/拼豆工作室 · 小程序后端 API 需求审计.md` 为输入，并对审计中尚未收敛的部分做出第一版约束。
+> 本文档以 `docs/backend/拼豆工作室 · 小程序后端 API 需求审计.md` 为输入，并对审计中尚未收敛的部分做出第一版约束。
 
 ## 1. 第一版结论
 
@@ -20,6 +20,7 @@
 | 4 | 额度与下载记录 | `GET /api/quota/me`、`GET /api/downloads`、`POST /api/downloads` |
 | 5 | 套餐与支付 | `GET /api/packages`、`POST /api/payments/create`、`POST /api/payments/notify` |
 | 6 | AI 精致生成 | `POST /api/ai/generations`、`GET /api/ai/generations/:id` |
+| 7 | 内容安全审核 | `POST /api/content-security/text`、`POST /api/content-security/media`、`GET/POST /api/wechat/content-security/callback` |
 
 ### 1.2 明确暂不纳入
 
@@ -29,6 +30,13 @@
 - 不永久保存原始上传图片；第一版只上传作品封面/预览图。
 - 不开发 `PATCH /api/users/me/privacy`，不把 `cloudSync` 作为第一版业务开关。
 - 不开发反馈、改名、注销账号和公开分享接口。
+
+### 1.3 内容安全审核
+
+- 作品名称保存前调用微信 `msgSecCheck`，服务端使用 `openid` 和 `version=2`。
+- 原图上传先通过同步图片审核，再提交微信 `mediaCheckAsync`；异步结果通过消息推送回调落库。
+- 审核风险只向用户展示“你发布的内容含违规信息，请修改后重试”，不返回微信标签、关键词或原始错误信息。
+- 原始审核图片只存放在短期临时存储中，不作为作品资产永久保存。
 
 ## 2. 关键业务原则
 

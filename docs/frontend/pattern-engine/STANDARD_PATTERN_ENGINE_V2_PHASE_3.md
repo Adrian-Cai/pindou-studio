@@ -1,6 +1,6 @@
 # Standard Pattern Engine V2 — Phase 3 OKLab 感知颜色匹配
 
-> 上位设计：`docs/STANDARD_PATTERN_ENGINE_V2_PLAN.md`
+> 上位设计：`docs/frontend/pattern-engine/STANDARD_PATTERN_ENGINE_V2_PLAN.md`
 >
 > 前置阶段：Phase 0 / Phase 1 / Phase 2 已完成。
 >
@@ -409,7 +409,7 @@ test/pattern-generation/fixtures/wechat-phase-3.json
 ```text
 test/pattern-generation/run-tests.js
 test/pattern-generation/README.md
-docs/CHANGELOG.md
+docs/releases/CHANGELOG.md
 ```
 
 如果 Codex 根据真实代码判断 `oklab-matcher.ts` 与现有模块边界不合理，可以提出更小调整，但不得借机重构整个 Pattern Engine。
@@ -1241,7 +1241,7 @@ Codex 执行 Phase 3 时必须：
 
 ```text
 1. 先阅读 AGENTS.md。
-2. 阅读 docs/CODE_RULES.md。
+2. 阅读 docs/development/CODE_RULES.md。
 3. 阅读 STANDARD_PATTERN_ENGINE_V2_PLAN.md。
 4. 阅读本文档。
 5. 检查当前 Phase 2 真实代码，不从文档猜实现。

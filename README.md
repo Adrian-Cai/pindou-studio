@@ -2,7 +2,7 @@
 
 一个面向拼豆爱好者的微信小程序：上传图片后，将图片转换为可编辑的拼豆图案，并进一步生成成品图、材料清单、施工图和色板参考，帮助用户从「一张图片」完成到「可以实际照着制作的拼豆方案」。
 
-当前项目版本：`0.22.0`
+当前项目版本：`0.23.0`
 
 ## 项目定位
 
@@ -57,7 +57,14 @@
 - 迁移失败时保留本地数据，避免作品丢失。
 - 本地作品迁移后会同步修正收藏和下载记录关联的作品 ID。
 
-### 5. 下载额度与下载记录
+### 5. 内容安全审核
+
+- 首次上传图片或本地作品改名时自动建立微信登录会话。
+- 图片上传经过同步图片安全拦截，并提交微信 `mediaCheckAsync` 接收异步审核结果。
+- 作品名称在客户端和服务端保存前均经过微信文本内容安全检测。
+- 原始审核图片只在服务端临时保存，审核完成或过期后清理。
+
+### 6. 下载额度与下载记录
 
 后端已提供：
 
@@ -167,6 +174,8 @@ pindou-studio/
 └── package.json
 ```
 
+完整文档分类与阅读入口见 [`docs/README.md`](docs/README.md)。
+
 ## 本地开发
 
 ### 小程序
@@ -209,11 +218,11 @@ npm run build
 开始修改代码前必须先阅读：
 
 - `AGENTS.md`：仓库级 Agent 与开发流程规则
-- `docs/CODE_RULES.md`：代码规范
-- `docs/UI_RULES.md`：UI、导航栏、安全区与滚动规范
-- `docs/MINI_PROGRAM_RULES.md`：微信小程序专项规范
-- `docs/PRODUCT_FLOW.md`：产品业务流程
-- `docs/CHANGELOG.md`：版本变更记录
+- `docs/development/CODE_RULES.md`：代码规范
+- `docs/frontend/UI_RULES.md`：UI、导航栏、安全区与滚动规范
+- `docs/frontend/MINI_PROGRAM_RULES.md`：微信小程序专项规范
+- `docs/product/PRODUCT_FLOW.md`：产品业务流程
+- `docs/releases/CHANGELOG.md`：版本变更记录
 
 核心原则：
 
@@ -249,7 +258,7 @@ npm run build
 - 意见反馈服务端提交闭环
 - Standard Pattern Engine 后续算法阶段与质量优化
 
-具体进展以 `docs/CHANGELOG.md` 和实际代码为准。
+具体进展以 `docs/releases/CHANGELOG.md` 和实际代码为准。
 
 ## UI 资源约定
 

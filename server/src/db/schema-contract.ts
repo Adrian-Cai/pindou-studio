@@ -158,6 +158,19 @@ export const EXPECTED_SCHEMA = {
     completed_at: column("timestamptz", true),
     expires_at: column("timestamptz"),
   },
+  pindou_content_security_checks: {
+    id: column("varchar", false, 32),
+    user_id: column("varchar", false, 32),
+    check_type: column("varchar", false, 20),
+    trace_id: column("varchar", true, 128),
+    status: column("varchar", false, 20),
+    label: column("int4", true),
+    error_code: column("int4", true),
+    media_object_key: column("varchar", true, 512),
+    created_at: column("timestamptz"),
+    updated_at: column("timestamptz"),
+    expires_at: column("timestamptz", true),
+  },
 } as const;
 
 export type ExpectedTableName = keyof typeof EXPECTED_SCHEMA;
@@ -185,6 +198,9 @@ export const REQUIRED_INDEXES: readonly RequiredDatabaseObject[] = [
   { table: "pindou_ai_generation_jobs", label: "AI 任务幂等唯一索引", includes: ["unique index", "(user_id, idempotency_key)"] },
   { table: "pindou_ai_generation_jobs", label: "AI 任务列表索引", includes: ["(user_id, created_at desc)"] },
   { table: "pindou_ai_generation_jobs", label: "AI 活跃任务索引", includes: ["(status, updated_at)", "queued", "processing", "where"] },
+  { table: "pindou_content_security_checks", label: "微信审核 trace 唯一索引", includes: ["unique index", "(trace_id)"] },
+  { table: "pindou_content_security_checks", label: "审核过期清理索引", includes: ["(status, expires_at)"] },
+  { table: "pindou_content_security_checks", label: "用户审核记录索引", includes: ["(user_id, created_at"] },
 ];
 
 const primaryKeys: readonly RequiredDatabaseObject[] = [
@@ -199,6 +215,7 @@ const primaryKeys: readonly RequiredDatabaseObject[] = [
   ["pindou_packages", "id"],
   ["pindou_orders", "id"],
   ["pindou_ai_generation_jobs", "id"],
+  ["pindou_content_security_checks", "id"],
 ].map(([table, fields]) => ({
   table: table as ExpectedTableName,
   label: `${table} 主键`,
@@ -225,6 +242,7 @@ const foreignKeys: readonly RequiredDatabaseObject[] = [
   ["pindou_ai_generation_jobs", "user_id", "pindou_users", "restrict"],
   ["pindou_ai_generation_jobs", "input_file_id", "pindou_file_assets", "restrict"],
   ["pindou_ai_generation_jobs", "output_file_id", "pindou_file_assets", "restrict"],
+  ["pindou_content_security_checks", "user_id", "pindou_users", "restrict"],
 ].map(([table, field, target, deleteRule]) => ({
   table: table as ExpectedTableName,
   label: `${table}.${field} 外键`,
@@ -264,4 +282,6 @@ export const REQUIRED_CONSTRAINTS: readonly RequiredDatabaseObject[] = [
   { table: "pindou_ai_generation_jobs", label: "AI 风格 CHECK", type: "c", includes: ["style", "natural", "cartoon", "minimal"] },
   { table: "pindou_ai_generation_jobs", label: "AI 细节 CHECK", type: "c", includes: ["detail_level", "low", "medium", "high"] },
   { table: "pindou_ai_generation_jobs", label: "AI 背景 CHECK", type: "c", includes: ["background_mode", "keep", "simplify", "remove"] },
+  { table: "pindou_content_security_checks", label: "审核类型 CHECK", type: "c", includes: ["check_type", "text", "media"] },
+  { table: "pindou_content_security_checks", label: "审核状态 CHECK", type: "c", includes: ["status", "pending", "pass", "review", "risky", "failed"] },
 ];

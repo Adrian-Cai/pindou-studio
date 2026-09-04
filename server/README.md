@@ -1,12 +1,12 @@
 # 拼豆工作室后端
 
-当前完成阶段 0 至阶段 6 的代码：服务基础、PostgreSQL 结构校验、微信登录、用户资料、文件与作品、收藏、双额度、下载记录、套餐支付，以及 AI 精致生成任务状态机。真实支付和生产基础设施验收见 `../docs/PRODUCTION_PAYMENT_AI_ACCEPTANCE.md`。
+当前完成阶段 0 至阶段 6 的代码：服务基础、PostgreSQL 结构校验、微信登录、用户资料、文件与作品、收藏、双额度、下载记录、套餐支付，以及 AI 精致生成任务状态机。真实支付和生产基础设施验收见 `../docs/backend/operations/PRODUCTION_PAYMENT_AI_ACCEPTANCE.md`。
 
 ## 环境要求
 
 - Node.js 24 或更高版本
 - npm 11 或兼容版本
-- 已按 `../docs/DATABASE_DESIGN.md` 创建好的 PostgreSQL 数据库
+- 已按 `../docs/backend/database/DATABASE_DESIGN.md` 创建好的 PostgreSQL 数据库
 
 ## 本地启动
 
@@ -150,4 +150,4 @@ Content-Type: application/json
 
 项目暂未引入独立 lint 工具，以避免增加无必要依赖；`typecheck` 负责当前静态检查。
 
-小程序 AppID、AppSecret、HTTPS API 地址和微信 request 合法域名配置见 `../docs/WECHAT_LOGIN_SETUP.md`。
+小程序 AppID、AppSecret、HTTPS API 地址和微信 request 合法域名配置见 `../docs/backend/operations/WECHAT_LOGIN_SETUP.md`。

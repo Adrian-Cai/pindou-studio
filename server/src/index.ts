@@ -24,6 +24,9 @@ import { PostgresQuotaDownloadService } from "./modules/downloads/quota-download
 import { PostgresPaymentService } from "./modules/payments/payment-service";
 import { createWeChatPaymentGateway } from "./modules/payments/wechat-pay-client";
 import { PostgresWorkService } from "./modules/works/work-service";
+import { FileSystemContentSecurityMediaStorage } from "./modules/content-security/media-storage";
+import { OfficialWeChatContentSecurityClient } from "./modules/content-security/wechat-client";
+import { PostgresContentSecurityService } from "./modules/content-security/content-security-service";
 
 export interface RunningApplication {
   readonly inspection: DatabaseInspection;
@@ -47,6 +50,21 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
     const aiFiles = new FileSystemAiFileStorage(
       config.aiFiles.storageDirectory,
       config.aiFiles.publicBaseUrl,
+    );
+    const contentSecurity = new PostgresContentSecurityService(
+      pool,
+      new OfficialWeChatContentSecurityClient(
+        config.wechat.appId,
+        config.wechat.appSecret,
+        config.wechat.timeoutMs,
+      ),
+      new FileSystemContentSecurityMediaStorage(
+        config.contentSecurity.mediaStorageDirectory,
+        config.contentSecurity.mediaPublicBaseUrl,
+      ),
+      config.wechat.appId,
+      config.contentSecurity.messageToken,
+      config.auth.openidHashSecret,
     );
     const qwenImage = new QwenImageProvider(config.qwenImage);
     const http = await startHttpServer(
@@ -73,6 +91,8 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         ),
         coverMaximumBytes: config.covers.maximumBytes,
         aiFileMaximumBytes: config.aiFiles.maximumBytes,
+        contentSecurity,
+        contentSecurityMediaMaximumBytes: config.contentSecurity.mediaMaximumBytes,
         aiGenerations: new PostgresAiGenerationService(
           pool,
           qwenImage,
@@ -86,6 +106,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
           httpsPublicUrls: config.covers.publicBaseUrl.startsWith("https://")
             && config.aiFiles.publicBaseUrl.startsWith("https://"),
           monitoringAlerts: config.deployment.monitoringAlertsConfigured,
+          contentSecurity: Boolean(config.contentSecurity.messageToken),
         },
       }),
       config.host,

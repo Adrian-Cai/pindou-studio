@@ -1,6 +1,6 @@
 # Standard Pattern Engine V2 — Phase 0 + Phase 1 实施方案
 
-> 上位设计：`docs/STANDARD_PATTERN_ENGINE_V2_PLAN.md`
+> 上位设计：`docs/frontend/pattern-engine/STANDARD_PATTERN_ENGINE_V2_PLAN.md`
 >
 > 当前里程碑：建立 Standard V1 可复现基线，并完成不改变任何生成结果的代码重构。
 >
@@ -1165,8 +1165,8 @@ package.json
 .gitignore
 
 文档：
-docs/STANDARD_PATTERN_ENGINE_V2_PHASE_0_1.md
-docs/CHANGELOG.md（仅在真正完成 Phase 0/1 代码开发后按项目版本规则记录）
+docs/frontend/pattern-engine/STANDARD_PATTERN_ENGINE_V2_PHASE_0_1.md
+docs/releases/CHANGELOG.md（仅在真正完成 Phase 0/1 代码开发后按项目版本规则记录）
 ```
 
 禁止修改：
@@ -1372,10 +1372,10 @@ Codex 执行过程中遇到以下情况必须停下来报告，不允许自行�
 
 开始前必须阅读：
 - AGENTS.md
-- docs/CODE_RULES.md
-- docs/MINI_PROGRAM_RULES.md
-- docs/STANDARD_PATTERN_ENGINE_V2_PLAN.md
-- docs/STANDARD_PATTERN_ENGINE_V2_PHASE_0_1.md
+- docs/development/CODE_RULES.md
+- docs/frontend/MINI_PROGRAM_RULES.md
+- docs/frontend/pattern-engine/STANDARD_PATTERN_ENGINE_V2_PLAN.md
+- docs/frontend/pattern-engine/STANDARD_PATTERN_ENGINE_V2_PHASE_0_1.md
 
 目标：
 1. 建立 Standard V1 可复现 Characterization Baseline。
