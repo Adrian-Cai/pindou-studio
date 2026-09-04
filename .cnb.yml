@@ -1,0 +1,16 @@
+master:
+  push:
+    - services:
+        - docker
+      stages:
+        - name: 构建 Docker 镜像
+          script: |
+            docker build \
+              -f server/Dockerfile \
+              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${CNB_COMMIT_SHORT} \
+              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest \
+              server
+        - name: 推送镜像到 CNB 制品库
+          script: |
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${CNB_COMMIT_SHORT}
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
