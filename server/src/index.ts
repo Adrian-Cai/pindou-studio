@@ -65,6 +65,8 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.wechat.appId,
       config.contentSecurity.messageToken,
       config.auth.openidHashSecret,
+      () => new Date(),
+      config.contentSecurity.asyncMediaCheckEnabled,
     );
     const qwenImage = new QwenImageProvider(config.qwenImage);
     const http = await startHttpServer(

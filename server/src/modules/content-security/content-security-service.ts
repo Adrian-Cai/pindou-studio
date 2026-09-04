@@ -19,7 +19,7 @@ interface CheckRow extends QueryResultRow {
 
 export interface ContentSecurityService {
   checkText(userId: string, content: string): Promise<{ readonly safe: true; readonly traceId: string | null }>;
-  checkMedia(userId: string, input: { readonly buffer: Buffer; readonly filename: string; readonly contentType: string }): Promise<{ readonly safe: true; readonly checkId: string; readonly traceId: string }>;
+  checkMedia(userId: string, input: { readonly buffer: Buffer; readonly filename: string; readonly contentType: string }): Promise<{ readonly safe: true; readonly checkId: string; readonly traceId: string | null }>;
   readMedia(path: string): Promise<{ readonly buffer: Buffer; readonly contentType: string } | null>;
   verifyCallback(signature: string | undefined, timestamp: string | undefined, nonce: string | undefined): boolean;
   handleCallback(payload: Record<string, unknown>): Promise<void>;
@@ -34,6 +34,7 @@ export class PostgresContentSecurityService implements ContentSecurityService {
     private readonly messageToken: string,
     private readonly openidSecret: string,
     private readonly now: () => Date = () => new Date(),
+    private readonly asyncMediaCheckEnabled = true,
   ) {}
 
   public async checkText(userId: string, content: string): Promise<{ readonly safe: true; readonly traceId: string | null }> {
@@ -45,16 +46,52 @@ export class PostgresContentSecurityService implements ContentSecurityService {
     return { safe: true, traceId: result.traceId };
   }
 
-  public async checkMedia(userId: string, input: { readonly buffer: Buffer; readonly filename: string; readonly contentType: string }): Promise<{ readonly safe: true; readonly checkId: string; readonly traceId: string }> {
+  public async checkMedia(userId: string, input: { readonly buffer: Buffer; readonly filename: string; readonly contentType: string }): Promise<{ readonly safe: true; readonly checkId: string; readonly traceId: string | null }> {
     await this.cleanupExpired();
     const openid = await this.openid(userId);
     const stored = await this.mediaStorage.save(input.buffer, input.filename, input.contentType);
-    let traceId = "";
-    let checkId = "";
+    const checkId = createEntityId("sec");
+    let traceId: string | null = null;
+    let recorded = false;
     try {
+      const synchronous = await this.client.checkImage(input.buffer, input.filename, input.contentType);
+      traceId = synchronous.traceId;
+      if (!synchronous.safe) {
+        await this.record({
+          id: checkId,
+          userId,
+          kind: "media",
+          traceId,
+          status: synchronous.suggest,
+          label: synchronous.label,
+          errorCode: null,
+          mediaObjectKey: stored.objectKey,
+          expiresAt: null,
+        });
+        recorded = true;
+        await this.releaseMedia(checkId, stored.objectKey);
+        throw new AppError(400, "CONTENT_RISKY", RISK_MESSAGE);
+      }
+
+      if (!this.asyncMediaCheckEnabled) {
+        await this.record({
+          id: checkId,
+          userId,
+          kind: "media",
+          traceId,
+          status: "pass",
+          label: synchronous.label,
+          errorCode: null,
+          mediaObjectKey: stored.objectKey,
+          expiresAt: null,
+        });
+        recorded = true;
+        await this.releaseMedia(checkId, stored.objectKey);
+        return { safe: true, checkId, traceId };
+      }
+
       const submitted = await this.client.submitMedia({ openid, mediaUrl: stored.publicUrl, scene: TEXT_SCENE_WORK_TITLE });
       traceId = submitted.traceId;
-      checkId = createEntityId("sec");
       await this.record({
         id: checkId,
         userId,
@@ -66,25 +103,31 @@ export class PostgresContentSecurityService implements ContentSecurityService {
         mediaObjectKey: stored.objectKey,
         expiresAt: new Date(this.now().getTime() + MEDIA_EXPIRY_MS),
       });
-      const synchronous = await this.client.checkImage(input.buffer, input.filename, input.contentType);
-      if (!synchronous.safe) {
-        await this.updateCheck(traceId, synchronous.suggest, synchronous.label, null, false);
-        throw new AppError(400, "CONTENT_RISKY", RISK_MESSAGE);
-      }
+      recorded = true;
       return { safe: true, checkId, traceId };
     } catch (error: unknown) {
       if (error instanceof AppError && error.code === "CONTENT_RISKY") throw error;
-      if (checkId) {
+      if (recorded && traceId) {
         try {
           await this.updateCheck(traceId, "failed", null, null);
         } catch {
-          await this.mediaStorage.remove(stored.objectKey);
+          await this.releaseMedia(checkId, stored.objectKey);
         }
       } else {
         await this.mediaStorage.remove(stored.objectKey);
       }
       throw error;
     }
+  }
+
+  private async releaseMedia(checkId: string, objectKey: string): Promise<void> {
+    await this.mediaStorage.remove(objectKey);
+    await this.pool.query(
+      `UPDATE pindou_content_security_checks
+          SET media_object_key = NULL
+        WHERE id = $1 AND media_object_key = $2`,
+      [checkId, objectKey],
+    );
   }
 
   public readMedia(path: string): Promise<{ readonly buffer: Buffer; readonly contentType: string } | null> {

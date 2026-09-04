@@ -1,6 +1,7 @@
 import { DEFAULT_PATTERN_SETTINGS } from '../../config/product'
 import { chooseSourceImage, createDraft, prepareImageForContentSecurity } from '../../services/image-service'
 import { checkImageContent } from '../../services/content-security-service'
+import { ApiError } from '../../services/http-client'
 import { appStore } from '../../store/app-store'
 
 /** 页面内容区左右内边距（rpx），与 .page 的 padding 保持一致 */
@@ -121,9 +122,18 @@ Page({
       const sourceImagePath = await chooseSourceImage()
       if (sourceImagePath) {
         wx.showLoading({ title: '正在安全检测', mask: true })
-        const securityImagePath = await prepareImageForContentSecurity(sourceImagePath)
-        await checkImageContent(securityImagePath)
-        wx.hideLoading()
+        try {
+          let securityImagePath: string
+          try {
+            securityImagePath = await prepareImageForContentSecurity(sourceImagePath)
+          } catch (error) {
+            logHomeError('image_prepare_failed', error)
+            throw error
+          }
+          await checkImageContent(securityImagePath)
+        } finally {
+          wx.hideLoading()
+        }
         this.setData({
           sourceImagePath,
           previewWidth: MAX_PREVIEW_WIDTH_RPX,
@@ -138,14 +148,11 @@ Page({
         }
       }
     } catch (error) {
-      wx.hideLoading()
       const message = error instanceof Error ? error.message : String(error)
-      if (!message.includes('cancel')) {
-        console.error('选择图片失败', error)
+      if (!message.toLowerCase().includes('cancel')) {
+        logHomeError('choose_image_failed', error)
         wx.showToast({
-          title: message.includes('违规') || message.includes('内容安全')
-            ? message
-            : message.includes('仅支持') ? message : '图片无法读取，请换一张重试',
+          title: imageErrorMessage(error),
           icon: 'none',
         })
       }
@@ -162,7 +169,7 @@ Page({
 
   handlePreviewError() {
     this.clearImage()
-    wx.showToast({ title: '图片无法解码，请选择 JPG、PNG 或 WEBP', icon: 'none' })
+    wx.showToast({ title: '图片无法读取，请换一张重试', icon: 'none' })
   },
 
   /**
@@ -262,4 +269,42 @@ function getImageInfo(imagePath: string): Promise<WechatMiniprogram.GetImageInfo
       fail: reject,
     })
   })
+}
+
+function imageErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) return '上传失败，请稍后重试'
+  if (error.statusCode === 502 || error.statusCode === 503) {
+    return '图片安全检测暂时不可用，请稍后重试'
+  }
+  switch (error.code) {
+    case 'UNSUPPORTED_IMAGE':
+      return '仅支持 JPG、PNG、WEBP 格式'
+    case 'IMAGE_DECODE_ERROR':
+      return '图片无法读取，请换一张重试'
+    case 'NETWORK_ERROR':
+      return '网络连接失败，请检查网络后重试'
+    case 'CONTENT_RISKY':
+      return '你发布的内容含违规信息，请修改后重试'
+    case 'CONTENT_SECURITY_UNAVAILABLE':
+    case 'WECHAT_CONTENT_SECURITY_UNAVAILABLE':
+    case 'WECHAT_CONTENT_SECURITY_ERROR':
+    case 'WECHAT_CONTENT_SECURITY_INVALID_RESPONSE':
+      return '图片安全检测暂时不可用，请稍后重试'
+    case 'API_CONFIGURATION_ERROR':
+      return '当前服务配置异常，请稍后重试'
+    case 'UNAUTHORIZED':
+    case 'TOKEN_EXPIRED':
+    case 'WX_LOGIN_FAILED':
+    case 'CONTENT_SECURITY_IDENTITY_UNAVAILABLE':
+      return '登录状态异常，请重新尝试'
+    default:
+      return '上传失败，请稍后重试'
+  }
+}
+
+function logHomeError(event: string, error: unknown): void {
+  const metadata = error instanceof ApiError
+    ? { name: error.name, code: error.code, statusCode: error.statusCode, requestId: error.requestId }
+    : { name: error instanceof Error ? error.name : 'UnknownError', code: null, statusCode: null, requestId: null }
+  console.error(event, metadata)
 }

@@ -82,6 +82,7 @@ export interface ServerConfig {
     readonly mediaStorageDirectory: string;
     readonly mediaPublicBaseUrl: string;
     readonly mediaMaximumBytes: number;
+    readonly asyncMediaCheckEnabled: boolean;
   };
   readonly deployment: {
     readonly persistentStorageMounted: boolean;
@@ -290,8 +291,9 @@ export function loadLocalEnv(): void {
 export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const issues: string[] = [];
   const wechatAppId = required(env, "WECHAT_APP_ID", issues);
+  const environment = appEnvironment(env, issues);
   const config: ServerConfig = {
-    appEnvironment: appEnvironment(env, issues),
+    appEnvironment: environment,
     host: env.HOST?.trim() || "127.0.0.1",
     port: integer(env, "PORT", 3000, 1, 65_535, issues),
     database: parseDatabaseConfig(env, issues),
@@ -345,6 +347,12 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
         10 * 1_024 * 1_024,
         issues,
       ),
+      asyncMediaCheckEnabled: booleanValue(
+        env,
+        "CONTENT_SECURITY_ASYNC_MEDIA_CHECK_ENABLED",
+        environment === "production",
+        issues,
+      ),
     },
     deployment: {
       persistentStorageMounted: booleanValue(
@@ -363,6 +371,9 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   };
 
   if (config.appEnvironment === "production") {
+    if (!config.contentSecurity.asyncMediaCheckEnabled) {
+      issues.push("生产环境 CONTENT_SECURITY_ASYNC_MEDIA_CHECK_ENABLED 必须为 true");
+    }
     if (!config.wechatPay.enabled) issues.push("生产环境必须配置微信支付");
     if (!config.qwenImage.enabled) issues.push("生产环境必须配置千问图像服务");
     if (!config.covers.publicBaseUrl.startsWith("https://")) {

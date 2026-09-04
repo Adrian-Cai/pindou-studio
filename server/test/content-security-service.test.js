@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { encryptOpenid } = require("../dist/shared/identity.js");
+const { AppError } = require("../dist/shared/app-error.js");
 const { PostgresContentSecurityService } = require("../dist/modules/content-security/content-security-service.js");
 
 const SECRET = "content-security-test-secret";
@@ -21,7 +22,7 @@ function createState({ expired = [] } = {}) {
         return { rows: expired.map((mediaObjectKey) => ({ media_object_key: mediaObjectKey })) };
       }
       if (sql.includes("SET media_object_key = NULL")) {
-        const check = checks.get(values[0]);
+        const check = sql.includes("WHERE id = $1") ? [...checks.values()].find((item) => item.id === values[0]) : checks.get(values[0]);
         if (check && check.mediaObjectKey === values[1]) check.mediaObjectKey = null;
         return { rows: [] };
       }
@@ -29,7 +30,7 @@ function createState({ expired = [] } = {}) {
         return { rows: [{ openid_ciphertext: encryptOpenid(OPENID, SECRET) }] };
       }
       if (sql.includes("INSERT INTO pindou_content_security_checks")) {
-        checks.set(values[3], { mediaObjectKey: values[7], status: values[4] });
+        checks.set(values[3] ?? values[0], { id: values[0], mediaObjectKey: values[7], status: values[4] });
         return { rows: [] };
       }
       if (sql.includes("UPDATE pindou_content_security_checks")) {
@@ -56,12 +57,16 @@ function createState({ expired = [] } = {}) {
   return { pool, storage, checks, queries, removed };
 }
 
-function createClient({ imageResult = { safe: true, suggest: "pass", label: null, traceId: null } } = {}) {
+function createClient({ imageResult = { safe: true, suggest: "pass", label: null, traceId: null }, submitMediaError = null } = {}) {
   const calls = [];
   return {
     calls,
     async checkText(input) { calls.push({ type: "text", input }); return { safe: true, suggest: "pass", label: null, traceId: null }; },
-    async submitMedia(input) { calls.push({ type: "async", input }); return { traceId: "trace-media" }; },
+    async submitMedia(input) {
+      calls.push({ type: "async", input });
+      if (submitMediaError) throw submitMediaError;
+      return { traceId: "trace-media" };
+    },
     async checkImage(buffer, filename, contentType) {
       calls.push({ type: "sync", buffer, filename, contentType });
       return imageResult;
@@ -69,7 +74,7 @@ function createClient({ imageResult = { safe: true, suggest: "pass", label: null
   };
 }
 
-function createService(state, client, now = () => NOW) {
+function createService(state, client, now = () => NOW, asyncMediaCheckEnabled = true) {
   return new PostgresContentSecurityService(
     state.pool,
     client,
@@ -78,10 +83,11 @@ function createService(state, client, now = () => NOW) {
     "message-token",
     SECRET,
     now,
+    asyncMediaCheckEnabled,
   );
 }
 
-test("media check submits async evidence and applies the synchronous gate", async () => {
+test("release media check applies the synchronous gate before submitting async evidence", async () => {
   const state = createState();
   const client = createClient();
   const service = createService(state, client);
@@ -90,8 +96,8 @@ test("media check submits async evidence and applies the synchronous gate", asyn
 
   assert.equal(result.safe, true);
   assert.equal(result.traceId, "trace-media");
-  assert.deepEqual(client.calls.map((call) => call.type), ["async", "sync"]);
-  assert.deepEqual(client.calls[0].input, {
+  assert.deepEqual(client.calls.map((call) => call.type), ["sync", "async"]);
+  assert.deepEqual(client.calls[1].input, {
     openid: OPENID,
     mediaUrl: "https://api.example.com/api/content-security/media/1.png",
     scene: 2,
@@ -99,7 +105,7 @@ test("media check submits async evidence and applies the synchronous gate", asyn
   assert.deepEqual(state.removed, []);
 });
 
-test("risky synchronous image result is blocked and media stays for async evidence", async () => {
+test("risky synchronous image result is blocked and media is cleaned immediately", async () => {
   const state = createState();
   const client = createClient({ imageResult: { safe: false, suggest: "risky", label: 20002, traceId: null } });
   const service = createService(state, client);
@@ -108,11 +114,50 @@ test("risky synchronous image result is blocked and media stays for async eviden
     service.checkMedia(USER_ID, { buffer: PNG, filename: "source.png", contentType: "image/png" }),
     (error) => error.code === "CONTENT_RISKY" && error.message === "你发布的内容含违规信息，请修改后重试",
   );
-  assert.equal(state.removed.length, 0);
-  assert.equal(state.checks.get("trace-media").status, "risky");
-  await service.handleCallback({ appid: "wx-test", Event: "wxa_media_check", trace_id: "trace-media", errcode: 0, result: { suggest: "pass", label: 100 } });
   assert.equal(state.removed.length, 1);
-  assert.equal(state.checks.get("trace-media").status, "risky");
+  assert.equal(state.checks.get([...state.checks.keys()][0]).status, "risky");
+  assert.deepEqual(client.calls.map((call) => call.type), ["sync"]);
+});
+
+test("develop media check skips async evidence and cleans passed media", async () => {
+  const state = createState();
+  const client = createClient();
+  const service = createService(state, client, () => NOW, false);
+
+  const result = await service.checkMedia(USER_ID, { buffer: PNG, filename: "source.png", contentType: "image/png" });
+
+  assert.equal(result.safe, true);
+  assert.equal(result.traceId, null);
+  assert.deepEqual(client.calls.map((call) => call.type), ["sync"]);
+  assert.deepEqual(state.removed, ["content-security/security_00000000000000000000000000000001.png"]);
+  assert.equal([...state.checks.values()][0].status, "pass");
+  assert.equal([...state.checks.values()][0].mediaObjectKey, null);
+});
+
+test("develop risky media check is rejected and cleaned without async submission", async () => {
+  const state = createState();
+  const client = createClient({ imageResult: { safe: false, suggest: "risky", label: 20002, traceId: null } });
+  const service = createService(state, client, () => NOW, false);
+
+  await assert.rejects(
+    service.checkMedia(USER_ID, { buffer: PNG, filename: "source.png", contentType: "image/png" }),
+    (error) => error.code === "CONTENT_RISKY",
+  );
+  assert.deepEqual(client.calls.map((call) => call.type), ["sync"]);
+  assert.equal(state.removed.length, 1);
+});
+
+test("async submission failure returns a security error and cleans media", async () => {
+  const state = createState();
+  const client = createClient({ submitMediaError: new AppError(503, "WECHAT_CONTENT_SECURITY_UNAVAILABLE", "微信图片审核服务暂时不可用") });
+  const service = createService(state, client);
+
+  await assert.rejects(
+    service.checkMedia(USER_ID, { buffer: PNG, filename: "source.png", contentType: "image/png" }),
+    (error) => error.code === "WECHAT_CONTENT_SECURITY_UNAVAILABLE",
+  );
+  assert.deepEqual(client.calls.map((call) => call.type), ["sync", "async"]);
+  assert.equal(state.removed.length, 1);
 });
 
 test("callback is idempotent, ignores unknown traces, and removes expired media", async () => {

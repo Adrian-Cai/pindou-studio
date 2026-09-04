@@ -31,6 +31,7 @@ test("readConfig loads validated server and database settings", () => {
   assert.match(config.avatars.storageDirectory, /data[\\/]avatars$/);
   assert.equal(config.deployment.persistentStorageMounted, false);
   assert.equal(config.deployment.monitoringAlertsConfigured, false);
+  assert.equal(config.contentSecurity.asyncMediaCheckEnabled, false);
 });
 
 test("readConfig rejects missing sensitive database configuration without exposing values", () => {
@@ -95,5 +96,18 @@ test("production configuration refuses incomplete payment, AI, HTTPS, storage an
       && error.issues.includes("生产环境 AI_FILE_PUBLIC_BASE_URL 必须使用 HTTPS")
       && error.issues.includes("生产环境必须确认 PERSISTENT_STORAGE_MOUNTED=true")
       && error.issues.includes("生产环境必须确认 MONITORING_ALERTS_CONFIGURED=true"),
+  );
+});
+
+test("content security async media checking is enabled for production and cannot be disabled", () => {
+  const production = {
+    ...validEnvironment,
+    APP_ENV: "production",
+    CONTENT_SECURITY_ASYNC_MEDIA_CHECK_ENABLED: "true",
+  };
+  assert.throws(
+    () => readConfig({ ...production, CONTENT_SECURITY_ASYNC_MEDIA_CHECK_ENABLED: "false" }),
+    (error) => error instanceof ConfigError
+      && error.issues.includes("生产环境 CONTENT_SECURITY_ASYNC_MEDIA_CHECK_ENABLED 必须为 true"),
   );
 });

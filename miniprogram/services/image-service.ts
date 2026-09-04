@@ -1,11 +1,19 @@
 import { DEFAULT_PATTERN_SETTINGS } from '../config/product'
 import type { PatternDraft, PatternSettings } from '../models/pattern'
+import { ApiError } from './http-client'
 import { generateStandardPatternCells } from './pattern-generation/standard-generator'
 
-export class UnsupportedImageFormatError extends Error {
+export class UnsupportedImageFormatError extends ApiError {
   constructor() {
-    super('仅支持 JPG、PNG、WEBP 格式')
+    super('仅支持 JPG、PNG、WEBP 格式', { code: 'UNSUPPORTED_IMAGE' })
     this.name = 'UnsupportedImageFormatError'
+  }
+}
+
+export class ImageDecodeError extends ApiError {
+  constructor() {
+    super('图片无法读取，请换一张重试', { code: 'IMAGE_DECODE_ERROR' })
+    this.name = 'ImageDecodeError'
   }
 }
 
@@ -39,12 +47,23 @@ export async function prepareImageForContentSecurity(sourceImagePath: string): P
   try {
     header = await readFileHeader(sourceImagePath)
   } catch {
-    const imageInfo = await getImageInfo(sourceImagePath)
+    let imageInfo: WechatMiniprogram.GetImageInfoSuccessCallbackResult
+    try {
+      imageInfo = await getImageInfo(sourceImagePath)
+    } catch {
+      throw new ImageDecodeError()
+    }
     if (String(imageInfo.type).toLowerCase() !== 'webp') return sourceImagePath
   }
   if (header && (isJpeg(header) || isPng(header))) return sourceImagePath
 
-  const { width: sourceWidth, height: sourceHeight } = await getImageInfo(sourceImagePath)
+  let sourceWidth: number
+  let sourceHeight: number
+  try {
+    ({ width: sourceWidth, height: sourceHeight } = await getImageInfo(sourceImagePath))
+  } catch {
+    throw new ImageDecodeError()
+  }
   const maxSide = 2_048
   const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight))
   const width = Math.max(1, Math.round(sourceWidth * scale))
@@ -54,7 +73,7 @@ export async function prepareImageForContentSecurity(sourceImagePath: string): P
   const image = canvas.createImage()
   await new Promise<void>((resolve, reject) => {
     image.onload = () => resolve()
-    image.onerror = () => reject(new Error('图片解码失败'))
+    image.onerror = () => reject(new ImageDecodeError())
     image.src = sourceImagePath
   })
   context.drawImage(image, 0, 0, width, height)
@@ -67,7 +86,7 @@ export async function prepareImageForContentSecurity(sourceImagePath: string): P
       destWidth: width,
       destHeight: height,
       success: ({ tempFilePath }) => resolve(tempFilePath),
-      fail: reject,
+      fail: () => reject(new ImageDecodeError()),
     })
   })
 }
