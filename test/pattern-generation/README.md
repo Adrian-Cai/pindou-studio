@@ -18,9 +18,10 @@ npm run test:pattern
 4. 对比冻结的 Cell、Palette 顺序、ColorCode、Alpha、Crop 和 FNV-1a Hash；
 5. 验证 4× Canvas、Linear RGB Area Average、Alpha 加权与透明阈值；
 6. 验证标准 OKLab 参考值、感知最近色、Palette 顺序和 tie 行为；
-7. 验证固定版本 MARD 291 色源数据、经典 221 色范围、候选权重、加权贪心限色和生产真实色号输出；
-8. 比较真实微信 V1 与 Phase 2 的固定字段及 Matrix 变化；
-9. 删除临时编译目录。
+7. 通过真实 `createDraft()` 验证固定 RGB/OKLab 分歧、Alpha 31/32 和 `colorLimit`；
+8. 验证固定版本 MARD 291 色源数据、经典 221 色范围、候选权重、加权贪心限色和生产真实色号输出；
+9. 比较真实微信 V1 与 Phase 2 的固定字段及 Matrix 变化；
+10. 删除临时编译目录。
 
 测试替身不模拟图片解码或 Canvas 插值。它只让纯算法输入保持稳定，所以不能替代下面的真实微信 Canvas 基线。
 
@@ -136,6 +137,7 @@ node test/pattern-generation/compare-wechat-phase-2.js
 Phase 3/4 自动测试位于：
 
 ```text
+test/pattern-generation/phase-3-oklab.test.js
 test/pattern-generation/phase-3-4-color-matching.test.js
 ```
 
@@ -151,9 +153,42 @@ test/pattern-generation/phase-3-4-color-matching.test.js
 - 加权贪心选择的主色优先、确定性与 `colorLimit`；
 - 生产 `createDraft()` 输出真实 MARD HEX 与色号。
 
+Phase 3 专项测试额外覆盖：
+
+- Black / White / Red / Green / Blue OKLab 参考值；
+- 原始 RGB 引用保持和不同引用对象的严格 tie；
+- 固定 RGB/OKLab 分歧经过真实 `createDraft()` 后仍选择 OKLab 结果；
+- 当前生产链路的 Alpha 31/32 边界和 `colorLimit`。
+
 MARD 数据位于 `miniprogram/data/bead-palettes/mard.ts`，固定到
 `maxcleme/beadcolors@f97ff4283d03cef5cd7e1071a86f5892e0c0c61b`。数据中的 HEX/RGB
 是屏幕参考值，不承诺与不同批次、材质和光照下的实物完全一致。
+
+Phase 3 历史基线 runner 位于：
+
+```text
+miniprogram/tests/pattern-generation/wechat-canvas-phase-3.ts
+```
+
+该 runner 使用不含 MARD/Phase 5 Cleanup 的 Phase 3 历史 pipeline，仅用于在微信开发者工具中记录 Phase 2 → Phase 3 的真实 Canvas 结果。执行后把：
+
+```text
+wx.env.USER_DATA_PATH/standard-v2-phase-3-wechat-canvas-baseline.json
+```
+
+保存为：
+
+```text
+test/pattern-generation/fixtures/wechat-phase-3.json
+```
+
+然后执行：
+
+```bash
+node test/pattern-generation/compare-wechat-phase-3.js
+```
+
+比较器严格校验 Phase 2 / Phase 3 的稳定字段，并记录 Matrix、Palette 和 generation time 变化。禁止用当前 Phase 4/5 `createDraft()` 输出代填该文件。
 
 Phase 4 runner 位于：
 
@@ -174,8 +209,8 @@ Matrix/Palette Hash 变化；耗时只记录、不参与严格 equality。当前
 `standard-v2-phase-4-classic-221-weighted-greedy`，6/6 Matrix 和 Palette 均发生
 预期变化，最大案例 `128×128 / 64 色` 本次记录为 124 ms。
 
-Phase 3 已被 Phase 4 生产链路取代，因此未伪造独立的 Phase 3 微信 Hash；Phase 3
-使用固定 RGB/OKLab 分歧案例证明生产所用 matcher 的感知距离行为。使用同一组 6 张
+Phase 3 的真实微信 fixture 必须通过上述 runner 重新记录后才能宣称 Phase 3 Canvas Gate 通过。当前 Phase 4
+视觉记录不能替代 Phase 3 A/B；Phase 3 的确定性 Production Path 证据来自专项测试中的真实 `createDraft()` 分歧案例。使用同一组 6 张
 人物/动漫图片完成 64×64 / 32 色视觉 A/B，并对高动态案例补充 96×96 / 32 色：经典
 色号合规率 100%，平均实际色数从旧 Phase 4 的 19.9 提升到 29.4；经典色卡色域收窄
 造成平均 OKLab 误差增加 3.3%，属于可施工性优先的已知取舍。

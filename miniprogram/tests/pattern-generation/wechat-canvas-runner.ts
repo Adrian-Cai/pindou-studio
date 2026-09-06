@@ -1,4 +1,4 @@
-import type { PatternCell, PatternSettings } from '../../models/pattern'
+import type { PatternCell, PatternDraft, PatternSettings } from '../../models/pattern'
 import { createDraft } from '../../services/image-service'
 import { SAMPLE_SCALE } from '../../services/pattern-generation/cell-sampler'
 
@@ -44,7 +44,8 @@ const CASES: WechatCanvasCase[] = [
 ]
 
 export async function runWechatCanvasBaseline(
-  phase: 2 | 4,
+  phase: 2 | 3 | 4 | 5,
+  generateDraft: PatternGenerator = generateCurrentDraft,
 ): Promise<WechatCanvasOutput> {
   const records: WechatCanvasRecord[] = []
 
@@ -52,7 +53,7 @@ export async function runWechatCanvasBaseline(
     const sourcePath = `/test-assets/pattern-generation/${baselineCase.fixture}`
     const sourceInfo = await getImageInfo(sourcePath)
     const startedAt = Date.now()
-    const draft = await createDraft(sourcePath, baselineCase.settings)
+    const draft = await generateDraft(sourcePath, baselineCase.settings)
     const generationTimeMs = Date.now() - startedAt
     const serializedCells = draft.cells.map(serializeCell)
     const palette = derivePalette(draft.cells)
@@ -77,10 +78,7 @@ export async function runWechatCanvasBaseline(
 
   const output: WechatCanvasOutput = {
     schemaVersion: 1,
-    algorithm:
-      phase === 4
-        ? 'standard-v2-phase-4-classic-221-weighted-greedy'
-        : 'standard-v2-phase-2',
+    algorithm: getAlgorithmName(phase),
     runtime: 'wechat-offscreen-canvas',
     sampleScale: SAMPLE_SCALE,
     generatedAt: new Date().toISOString(),
@@ -104,6 +102,25 @@ function createCase(
     fixture,
     settings: { width: size, height: size, colorLimit, brand: 'MARD' },
   }
+}
+
+function getAlgorithmName(phase: 2 | 3 | 4 | 5): string {
+  if (phase === 5) return 'standard-v2-phase-5-conservative-cleanup'
+  if (phase === 4) return 'standard-v2-phase-4-classic-221-weighted-greedy'
+  if (phase === 3) return 'standard-v2-phase-3'
+  return 'standard-v2-phase-2'
+}
+
+type PatternGenerator = (
+  sourcePath: string,
+  settings: PatternSettings,
+) => Promise<Pick<PatternDraft, 'settings' | 'cells'>>
+
+function generateCurrentDraft(
+  sourcePath: string,
+  settings: PatternSettings,
+): Promise<Pick<PatternDraft, 'settings' | 'cells'>> {
+  return createDraft(sourcePath, settings)
 }
 
 function getImageInfo(
@@ -140,7 +157,7 @@ function fnv1a32(value: string): string {
 
 function writeBaselineFile(
   serializedOutput: string,
-  phase: 2 | 4,
+  phase: 2 | 3 | 4 | 5,
   label: string,
 ): void {
   const outputPath = `${wx.env.USER_DATA_PATH}/standard-v2-phase-${phase}-wechat-canvas-baseline.json`

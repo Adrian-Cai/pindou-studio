@@ -3,7 +3,8 @@
 .privacy-document-page { padding-top: 24rpx; }
 .privacy-document-state { padding: 160rpx 32rpx; color: var(--color-text-tertiary); font-size: 26rpx; line-height: 42rpx; text-align: center; }
 .privacy-document-state--error { color: var(--color-danger); }
-.privacy-document-retry { width: 180rpx; height: 68rpx; margin: 24rpx auto 0; border: 2rpx solid var(--color-primary); border-radius: var(--radius-control); color: var(--color-primary); line-height: 68rpx; }
+.privacy-document-retry { width: 180rpx; height: 68rpx; margin: 24rpx auto 0; border: 2rpx solid var(--color-primary); border-radius: var(--radius-control); color: var(--color-primary); line-height: 68rpx; transition: var(--transition-press); }
+.privacy-document-retry:active { background: var(--strong-overlay); opacity: 0.72; transform: scale(0.97); }
 .privacy-document-content { padding: 28rpx 32rpx 40rpx; }
 .privacy-document-meta { margin-bottom: 28rpx; color: var(--color-text-tertiary); font-size: 22rpx; line-height: 34rpx; }
 .privacy-document-content rich-text { color: var(--color-text); font-size: 27rpx; line-height: 46rpx; }

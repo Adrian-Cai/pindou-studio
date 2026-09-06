@@ -1,6 +1,7 @@
 import type { PatternCell, PatternSettings } from '../../models/pattern'
 import { SAMPLE_SCALE, sampleCellsLinearRgb } from './cell-sampler'
 import type { RGB } from './color-utils'
+import { cleanupPatternCells } from './cleanup'
 import { calculateCenterCrop } from './crop'
 import { createMedianCutCandidates } from './median-cut'
 import { findNearestColorIndexOklab } from './oklab-matcher'
@@ -69,7 +70,7 @@ export async function generateStandardPatternCells(
   const candidates = createMedianCutCandidates(pixels, candidateLimit)
   const palette = selectMardPalette(candidates, colorLimit)
 
-  return Array.from({ length: width * height }, (_, index) => {
+  const cells = Array.from({ length: width * height }, (_, index) => {
     const offset = index * 4
     const alpha = sampledData[offset + 3]
     if (alpha < 32) return { color: 'transparent', colorCode: '' }
@@ -88,6 +89,8 @@ export async function generateStandardPatternCells(
       colorCode: beadColor.code,
     }
   })
+
+  return cleanupPatternCells(cells, width, height)
 }
 
 function loadCanvasImage(

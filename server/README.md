@@ -16,6 +16,8 @@
 4. 可先执行 `npm run db:inspect` 查看只读结构校验报告。
 5. 执行 `npm start`。
 
+本地开发服务统一监听 `127.0.0.1:4000`；健康检查地址为 `http://127.0.0.1:4000/health`。
+
 可用 Node.js 生成本地 `OPENID_HASH_SECRET`：
 
 ```powershell

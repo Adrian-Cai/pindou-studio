@@ -21,9 +21,9 @@
   box-sizing: border-box;
   width: 100%;
   padding: 20rpx 40rpx calc(32rpx + env(safe-area-inset-bottom));
-  border-radius: 40rpx 40rpx 0 0;
-  background: #ffffff;
-  box-shadow: 0 -8rpx 32rpx rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-card-large) var(--radius-card-large) 0 0;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sheet);
   animation: sheetSlideUp 0.28s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
@@ -32,12 +32,12 @@
   height: 8rpx;
   margin: 0 auto 32rpx;
   border-radius: 4rpx;
-  background: #d6d6d8;
+  background: var(--color-disabled);
 }
 
 /* ── 确认状态样式 ── */
 .download-sheet__title {
-  color: #111111;
+  color: var(--color-text);
   font-size: 36rpx;
   font-weight: 600;
   line-height: 48rpx;
@@ -51,9 +51,10 @@
   gap: 24rpx;
   margin-bottom: 24rpx;
   padding: 24rpx 28rpx;
-  border: 2rpx solid #efeff2;
-  border-radius: 24rpx;
-  background: #ffffff;
+  border: 0;
+  border-radius: var(--radius-card-small);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .download-sheet__file-icon {
@@ -64,7 +65,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 20rpx;
-  background: #6F5BFF;
+  background: var(--color-primary);
 }
 
 .download-sheet__icon-img {
@@ -79,7 +80,7 @@
 }
 
 .download-sheet__file-name {
-  color: #111111;
+  color: var(--color-text);
   font-size: 30rpx;
   font-weight: 600;
   line-height: 42rpx;
@@ -87,7 +88,7 @@
 
 .download-sheet__file-desc {
   margin-top: 6rpx;
-  color: #888888;
+  color: var(--color-text-tertiary);
   font-size: 24rpx;
   line-height: 34rpx;
 }
@@ -100,7 +101,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #6F5BFF;
+  background: var(--color-primary);
 }
 
 .download-sheet__check-symbol {
@@ -113,8 +114,9 @@
 .download-sheet__meta-card {
   margin-bottom: 36rpx;
   padding: 24rpx 32rpx;
-  border-radius: 24rpx;
-  background: #f8f8fa;
+  border-radius: var(--radius-card-small);
+  background: var(--color-surface-muted);
+  box-shadow: var(--shadow-card);
 }
 
 .download-sheet__meta-row {
@@ -125,19 +127,19 @@
 }
 
 .download-sheet__meta-label {
-  color: #666666;
+  color: var(--color-text-secondary);
   font-size: 26rpx;
   line-height: 36rpx;
 }
 
 .download-sheet__meta-value {
-  color: #333333;
+  color: var(--color-text);
   font-size: 26rpx;
   line-height: 36rpx;
 }
 
 .download-sheet__meta-value--purple {
-  color: #6F5BFF;
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -156,7 +158,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #e6f9ee;
+  background: var(--color-success-soft);
 }
 
 .download-sheet__success-circle {
@@ -166,8 +168,8 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #12b466;
-  box-shadow: 0 4rpx 16rpx rgba(18, 180, 102, 0.35);
+  background: var(--color-success);
+  box-shadow: var(--shadow-success);
 }
 
 .download-sheet__success-check {
@@ -178,7 +180,7 @@
 }
 
 .download-sheet__success-title {
-  color: #111111;
+  color: var(--color-text);
   font-size: 38rpx;
   font-weight: 700;
   line-height: 52rpx;
@@ -187,7 +189,7 @@
 
 .download-sheet__success-desc {
   margin-top: 12rpx;
-  color: #333333;
+  color: var(--color-text-secondary);
   font-size: 28rpx;
   line-height: 40rpx;
   text-align: center;
@@ -195,7 +197,7 @@
 
 .download-sheet__success-hint {
   margin-top: 8rpx;
-  color: #888888;
+  color: var(--color-text-tertiary);
   font-size: 24rpx;
   line-height: 34rpx;
   text-align: center;
@@ -210,7 +212,7 @@
   margin: 32rpx 0 36rpx;
   padding: 0 24rpx;
   border-radius: 16rpx;
-  background: #f0fbf4;
+  background: var(--color-primary-soft);
 }
 
 .download-sheet__quota-icon {
@@ -220,14 +222,14 @@
 }
 
 .download-sheet__quota-text {
-  color: #166534;
+  color: var(--color-text-secondary);
   font-size: 26rpx;
   line-height: 36rpx;
 }
 
 .download-sheet__quota-num {
   margin: 0 4rpx;
-  color: #12b466;
+  color: var(--color-primary);
   font-weight: 700;
 }
 
@@ -243,13 +245,14 @@
   margin: 0;
   padding: 0 32rpx;
   border: 0;
-  border-radius: 24rpx;
-  background: linear-gradient(90deg, #6A55F6, #8A63FF);
+  border-radius: var(--radius-card-small);
+  background: var(--download-btn-bg, linear-gradient(90deg, var(--color-primary), var(--color-primary-gradient-end)));
   box-shadow: 0 8rpx 20rpx rgba(106, 85, 246, 0.28);
   color: #ffffff;
   font-size: 32rpx;
   font-weight: 600;
   line-height: 96rpx;
+  transition: var(--transition-press);
 }
 
 .download-sheet__cta-btn::after {
@@ -257,8 +260,8 @@
 }
 
 .download-sheet__cta-btn:active {
-  background: #5B48E0;
-  transform: scale(0.99);
+  background: var(--download-btn-bg-pressed, var(--color-primary-pressed));
+  transform: scale(0.97);
 }
 
 .download-sheet__cta-btn--loading {
@@ -287,13 +290,15 @@
   align-items: center;
   justify-content: center;
   margin-top: 16rpx;
-  color: #666666;
+  color: var(--color-text-secondary);
   font-size: 30rpx;
   text-align: center;
+  transition: var(--transition-press);
 }
 
 .download-sheet__cancel-btn:active {
   opacity: 0.65;
+  transform: scale(0.97);
 }
 
 .download-sheet__cancel-btn--disabled {

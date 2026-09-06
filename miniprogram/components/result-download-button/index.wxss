@@ -21,21 +21,24 @@
   gap: 12rpx;
   margin: 0;
   padding: 0 24rpx;
-  border-radius: 12rpx;
+  border: 0;
+  border-radius: var(--radius-card-small);
   background: var(--download-btn-bg, var(--color-primary));
+  font-family: var(--font-heading);
   color: #ffffff;
   font-size: 28rpx;
   font-weight: 500;
   line-height: 80rpx;
+  transition: var(--transition-press);
 }
 
 .download-button--pressed {
   background: var(--download-btn-bg-pressed, var(--color-primary-pressed));
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 .download-button[aria-disabled="true"] {
-  background: #d8dae2;
+  background: var(--color-disabled);
   color: #ffffff;
 }
 

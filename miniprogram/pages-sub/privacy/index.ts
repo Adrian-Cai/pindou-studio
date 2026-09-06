@@ -1,9 +1,9 @@
 import type { PrivacyPreferences } from '../../models/pattern'
-import { updatePrivacyPreferences, deleteCurrentUser } from '../../services/auth-service'
 import { syncLocalWorksToCloud } from '../../services/local-work-sync'
 import { isAuthSessionExpired, loadAuthSession } from '../../services/token-storage'
 import { appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
+import { navigateBackOrHome } from '../../utils/navigation'
 
 type PreferenceKey = Exclude<keyof PrivacyPreferences, 'updatedAt'>
 
@@ -66,8 +66,7 @@ Page({
 
     this.setData({ savingKey: key })
     try {
-      const privacy = await updatePrivacyPreferences(session!.token, { [key]: value })
-      appStore.setPrivacyPreferences(privacy)
+      await authStore.updatePrivacyPreferences({ [key]: value })
       if (key === 'cloudSync' && value) {
         const syncResult = await syncLocalWorksToCloud()
         wx.showToast({
@@ -125,21 +124,18 @@ Page({
       confirmText: '确认注销',
       confirmColor: '#e5484d',
       success: ({ confirm }) => {
-        if (confirm) void this.performAccountDeletion(session.token)
+        if (confirm) void this.performAccountDeletion()
       },
     })
   },
 
-  async performAccountDeletion(token: string) {
+  async performAccountDeletion() {
     if (this.data.isDeleting) return
     this.setData({ isDeleting: true })
     try {
-      await deleteCurrentUser(token)
-      authStore.logout()
-      wx.navigateBack({
-        delta: 1,
-        complete: () => wx.showToast({ title: '账号已注销', icon: 'success' }),
-      })
+      await authStore.deleteAccount()
+      wx.showToast({ title: '账号已注销', icon: 'success' })
+      navigateBackOrHome()
     } catch (error) {
       this.setData({ isDeleting: false })
       wx.showToast({

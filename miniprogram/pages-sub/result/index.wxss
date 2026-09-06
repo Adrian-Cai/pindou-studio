@@ -15,8 +15,35 @@
   --download-btn-bg-pressed: #5B48E0;
   height: 100vh;
   overflow: hidden;
-  background: #f8f9f8;
+  background: var(--background);
   color: var(--color-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  .result-page {
+    --color-primary: #a99bff;
+    --color-primary-pressed: #8d7dff;
+    --color-primary-soft: #2d2554;
+    --color-primary-surface: #30275a;
+    --background: #101419;
+    --surface: #1a1d26;
+    --color-surface: #1a1d26;
+    --color-surface-muted: #252a35;
+    --color-text: #f5f3ff;
+    --color-text-secondary: #c0c3d0;
+    --color-text-tertiary: #9aa3b3;
+    --color-border: #3a404d;
+    --color-danger-soft: #3a2025;
+    --color-danger: #ff8589;
+    --color-brand: #a99bff;
+    --download-btn-bg: linear-gradient(90deg, #7868ff, #9a87ff);
+    --download-btn-bg-pressed: #8d7dff;
+    --shadow-card: 0 8rpx 24rpx rgba(0, 0, 0, 0.14), 0 2rpx 4rpx rgba(0, 0, 0, 0.24);
+    --shadow-ghost: inset 0 6rpx 12rpx rgba(255, 255, 255, 0.04), var(--shadow-card);
+    --shadow-primary: 0 14rpx 32rpx rgba(169, 155, 255, 0.12);
+    --shadow-sheet: 0 -8rpx 32rpx rgba(0, 0, 0, 0.24);
+    --strong-overlay: rgba(169, 155, 255, 0.05);
+  }
 }
 
 .result-header {
@@ -41,10 +68,10 @@
 
 .work-summary,
 .result-panel {
-  border: 1rpx solid var(--color-border);
-  border-radius: 32rpx;
+  border: 0;
+  border-radius: var(--radius-card-large);
   background: var(--color-surface);
-  box-shadow: 0 4rpx 20rpx rgba(17, 56, 36, 0.04);
+  box-shadow: var(--shadow-card);
 }
 
 .work-summary {
@@ -82,7 +109,7 @@
   height: 176rpx;
   border: 1rpx solid var(--color-border);
   border-radius: 20rpx;
-  background: #f7f7f9;
+  background: var(--color-surface-muted);
   flex: 0 0 176rpx;
 }
 
@@ -175,24 +202,31 @@
   right: var(--card-padding-compact);
   display: flex;
   width: 112rpx;
-  height: 56rpx;
+  height: 88rpx;
   align-items: center;
   justify-content: center;
   gap: 8rpx;
   padding: 0;
-  border: 1rpx solid var(--color-border);
-  border-radius: 12rpx;
-  background: #ffffff;
+  border: 0;
+  border-radius: var(--radius-card-small);
+  background: transparent;
+  box-shadow: var(--shadow-ghost);
   color: var(--color-text-secondary);
   font-size: 22rpx;
   font-weight: 500;
-  line-height: 56rpx;
+  line-height: 1;
+  transition: var(--transition-press);
 }
 
 .favorite--active {
-  border-color: rgba(18, 180, 102, 0.28);
   background: var(--color-primary-soft);
+  box-shadow: 0 0 0 2rpx var(--color-primary), var(--shadow-ghost);
   color: var(--color-primary);
+}
+
+.favorite:active {
+  background: var(--strong-overlay);
+  transform: scale(0.97);
 }
 
 .favorite__heart {
@@ -239,10 +273,10 @@
 .render-error {
   margin-top: 24rpx;
   padding: 20rpx 24rpx;
-  border: 1rpx solid rgba(229, 72, 77, 0.24);
+  border: 1rpx solid var(--color-danger);
   border-radius: 16rpx;
-  background: #fff7f7;
-  color: #b42328;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
   font-size: 23rpx;
   line-height: 34rpx;
 }
@@ -508,8 +542,8 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.14);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .chart-zoom-icon__img {
@@ -593,7 +627,7 @@
   align-items: center;
   justify-content: center;
   border-color: transparent;
-  background: #f5f6f5;
+  background: var(--color-surface-muted);
 }
 
 .palette-preview__more-icon {
@@ -677,9 +711,10 @@
 .result-empty {
   margin: 120rpx 32rpx 0;
   padding: 64rpx 40rpx;
-  border: 1rpx solid var(--color-border);
-  border-radius: 32rpx;
-  background: #ffffff;
+  border: 0;
+  border-radius: var(--radius-card-large);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
   text-align: center;
 }
 
@@ -712,7 +747,7 @@
   height: 104rpx;
   padding-bottom: env(safe-area-inset-bottom);
   border-top: 1rpx solid var(--color-border);
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--color-surface);
 }
 
 .result-nav__item {
@@ -722,7 +757,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #8a908c;
+  color: var(--color-text-tertiary);
   font-size: 20rpx;
   line-height: 28rpx;
 }
@@ -781,4 +816,3 @@
     white-space: nowrap;
   }
 }
-

@@ -5,10 +5,10 @@
 
 .ui-card {
   box-sizing: border-box;
-  border: 1rpx solid var(--color-border);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-  box-shadow: 0 8rpx 32rpx rgba(42, 35, 78, 0.06);
+  border: 0;
+  border-radius: var(--radius-card-large);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 .search-row {
@@ -74,8 +74,17 @@
   justify-content: center;
   gap: 12rpx;
   padding: 0 22rpx;
+  border: 0;
+  background: transparent;
+  box-shadow: var(--shadow-ghost);
   color: var(--color-text);
   font-size: 28rpx;
+  transition: var(--transition-press);
+}
+
+.filter-button:active {
+  background: var(--strong-overlay);
+  transform: scale(0.97);
 }
 
 .filter-button__symbol {

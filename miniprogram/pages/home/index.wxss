@@ -67,10 +67,10 @@ page {
   box-sizing: border-box;
   margin-top: 32rpx;
   padding: 16rpx;
-  border: 1rpx solid var(--color-border);
-  border-radius: 32rpx;
+  border: 0;
+  border-radius: var(--radius-card-large);
   background: var(--color-surface);
-  box-shadow: 0 8rpx 32rpx rgba(42, 35, 78, 0.06);
+  box-shadow: var(--shadow-card);
 }
 
 /* 已上传：去掉背景、边框，容器跟随图片尺寸 */
@@ -226,28 +226,35 @@ page {
   align-items: center;
   gap: 16rpx;
   padding: 20rpx 16rpx;
-  border: 2rpx solid var(--color-border);
-  border-radius: 20rpx;
+  border: 0;
+  border-radius: var(--radius-card-small);
   background: var(--color-surface);
   overflow: hidden;
+  box-shadow: var(--shadow-card);
+  transition: var(--transition-press);
 }
 
 /* 标准模式 — 选中态 */
 .mode-card--active-standard {
-  border-color: var(--color-primary);
   background: var(--color-primary-soft);
+  box-shadow: 0 0 0 2rpx var(--color-primary), var(--shadow-card);
 }
 
 /* AI 模式 — 默认（未选中）浅紫边框 */
 .mode-card:not(.mode-card--active):last-child {
-  border-color: var(--color-ai-border);
   background: var(--color-ai-soft);
+  box-shadow: 0 0 0 2rpx var(--color-ai-border), var(--shadow-card);
 }
 
 /* AI 模式 — 选中态 */
 .mode-card--active-ai {
-  border-color: var(--color-ai);
   background: var(--color-ai-soft);
+  box-shadow: 0 0 0 2rpx var(--color-ai), var(--shadow-card);
+}
+
+.mode-card:active {
+  opacity: 0.84;
+  transform: scale(0.97);
 }
 
 /* 模式图标 */
@@ -368,8 +375,9 @@ page {
   min-width: 0;
   flex: 1 1 0;
   overflow: hidden;
-  border-radius: 20rpx;
+  border-radius: var(--radius-card-small);
   background: var(--color-surface-muted);
+  box-shadow: var(--shadow-card);
 }
 
 .sample-card__media {
@@ -436,23 +444,26 @@ page {
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1rpx solid var(--color-border);
-  border-radius: 16rpx;
+  border: 0;
+  border-radius: var(--radius-card-small);
   background: var(--color-surface);
   color: var(--color-text);
   font-size: 28rpx;
   font-weight: 500;
   line-height: 44rpx;
+  box-shadow: var(--shadow-ghost);
+  transition: var(--transition-press);
 }
 
 .option-button--active {
-  border-color: var(--color-primary);
   background: var(--color-primary-soft);
   color: var(--color-primary);
+  box-shadow: 0 0 0 2rpx var(--color-primary), var(--shadow-ghost);
 }
 
 .option-button:active {
-  background: var(--color-primary-soft);
+  background: var(--strong-overlay);
+  transform: scale(0.97);
 }
 
 .option-row--sizes .option-button {
@@ -472,18 +483,20 @@ page {
   height: 88rpx;
   margin: 32rpx 0 0;
   padding: 0;
-  border-radius: 16rpx;
+  border: 0;
+  border-radius: var(--radius-card-small);
   background: linear-gradient(90deg, var(--color-primary), var(--color-primary-gradient-end));
   color: #fff;
-  box-shadow: 0 12rpx 32rpx rgba(18, 180, 102, 0.18);
+  box-shadow: var(--shadow-primary);
   font-size: 30rpx;
   font-weight: 500;
   line-height: 44rpx;
+  transition: var(--transition-press);
 }
 
 .home__submit:active {
   background: var(--color-primary-pressed);
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 .home__submit[disabled] {
@@ -527,5 +540,29 @@ page {
 
   .mode-card__desc {
     font-size: 20rpx;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  page {
+    --color-primary: #39d98a;
+    --color-primary-pressed: #25bc73;
+    --color-primary-soft: #153827;
+    --color-primary-gradient-end: #45df98;
+    --color-primary-surface: #173b2a;
+    --color-primary-border: rgba(57, 217, 138, 0.62);
+    --color-text: #f3f6fa;
+    --color-text-secondary: #b4bfcc;
+    --color-text-tertiary: #91a0ae;
+    --color-border: #35414d;
+    --color-surface-muted: #232b35;
+    --color-disabled: #465361;
+    --color-bg: #101419;
+    --color-surface: #1a2028;
+    --color-ai: #b09cff;
+    --color-ai-pressed: #927cff;
+    --color-ai-soft: #2d2450;
+    --color-ai-border: rgba(176, 156, 255, 0.62);
+    --color-ai-text: #c2b5ff;
   }
 }

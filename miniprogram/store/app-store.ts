@@ -17,7 +17,7 @@ interface AppState {
 }
 
 const STORAGE_KEY = 'pindou-app-state-v1'
-const DAILY_FREE_DOWNLOAD_QUOTA = 3
+const DAILY_FREE_DOWNLOAD_QUOTA = 9
 
 const initialState: AppState = {
   currentDraft: null,

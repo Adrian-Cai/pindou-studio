@@ -1,15 +1,16 @@
 @import "../../styles/profile-pages.wxss";
 
 .favorite-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16rpx; }
-.favorite-tabs__item { position: relative; display: flex; min-width: 0; height: 72rpx; align-items: center; justify-content: center; padding: 0 12rpx; border: 1rpx solid var(--color-border); border-radius: var(--radius-full); background: #fff; font-size: 25rpx; white-space: nowrap; }
-.favorite-tabs__item--active { border: 2rpx solid var(--color-primary); color: var(--color-primary); font-weight: 600; }
+.favorite-tabs__item { position: relative; display: flex; min-width: 0; height: 88rpx; align-items: center; justify-content: center; padding: 0 12rpx; border: 0; border-radius: var(--radius-full); background: transparent; box-shadow: var(--shadow-ghost); font-size: 25rpx; white-space: nowrap; transition: var(--transition-press); }
+.favorite-tabs__item--active { background: var(--color-primary-soft); box-shadow: 0 0 0 2rpx var(--color-primary), var(--shadow-ghost); color: var(--color-primary); font-weight: 600; }
+.favorite-tabs__item:active { background: var(--strong-overlay); transform: scale(0.97); }
 .favorite-tabs__item--active::after { position: absolute; right: 34%; bottom: -2rpx; left: 34%; height: 6rpx; border-radius: 6rpx; background: var(--color-primary); content: ""; }
 
 .favorite-summary { display: flex; padding: 36rpx 52rpx; }
 .favorite-summary__item { display: flex; flex: 1; align-items: center; justify-content: center; gap: 24rpx; color: var(--color-text-secondary); font-size: 24rpx; }
 .favorite-summary__item text { margin-right: 8rpx; color: var(--color-primary); font-size: 44rpx; font-weight: 600; }
 .favorite-summary__badge { display: flex; width: 88rpx; height: 88rpx; align-items: center; justify-content: center; border-radius: 50%; background: var(--color-primary-soft); color: var(--color-primary); font-size: 42rpx; }
-.favorite-summary__badge--yellow { background: #fff8e8; color: #f4b223; }
+.favorite-summary__badge--yellow { background: var(--color-warning-soft); color: var(--color-warning); }
 .favorite-summary__line { width: 1rpx; height: 80rpx; background: var(--color-border); }
 
 .favorite-grid { display: flex; width: 100%; flex-direction: column; gap: 24rpx; margin-top: 24rpx; }
@@ -24,10 +25,10 @@
 .favorite-card__meta { margin-top: 12rpx; color: var(--color-text-secondary); font-size: 22rpx; line-height: 28rpx; white-space: nowrap; }
 .favorite-card__date { margin-top: 4rpx; color: var(--color-text-tertiary); font-size: 21rpx; line-height: 28rpx; white-space: nowrap; }
 .favorite-card__actions { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-top: auto; padding-top: 8rpx; }
-.favorite-card__view { box-sizing: border-box; width: 152rpx; height: 48rpx; border: 2rpx solid var(--color-primary); border-radius: var(--radius-control); color: var(--color-primary); font-size: 24rpx; line-height: 44rpx; text-align: center; }
-.favorite-card__view:active { background: var(--color-primary-soft); }
-.favorite-card__more { display: flex; box-sizing: border-box; width: 48rpx; height: 48rpx; align-items: center; justify-content: center; border: 1rpx solid var(--color-border); border-radius: 50%; color: var(--color-text-secondary); font-size: 18rpx; letter-spacing: 1rpx; }
-.favorite-card__more:active { background: var(--color-surface-muted); }
+.favorite-card__view { display: flex; box-sizing: border-box; width: 152rpx; height: 88rpx; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); color: var(--color-primary); font-size: 24rpx; line-height: 1; text-align: center; transition: var(--transition-press); }
+.favorite-card__view:active { background: var(--strong-overlay); transform: scale(0.97); }
+.favorite-card__more { display: flex; box-sizing: border-box; width: 88rpx; height: 88rpx; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); color: var(--color-text-secondary); font-size: 18rpx; letter-spacing: 1rpx; transition: var(--transition-press); }
+.favorite-card__more:active { background: var(--strong-overlay); transform: scale(0.97); }
 
 @media (max-width: 380px) {
   .favorite-tabs { gap: 8rpx; }

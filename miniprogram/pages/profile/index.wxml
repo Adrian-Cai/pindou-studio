@@ -14,7 +14,7 @@
       <view class="benefit-card__body">
         <view>
           <view class="benefit-card__caption">今日免费下载</view>
-          <view class="benefit-card__quota"><text>{{downloadQuota}}</text> / 3 次</view>
+          <view class="benefit-card__quota"><text>{{downloadQuota}}</text> / 9 次</view>
           <view class="benefit-card__hint">每日 00:00 自动恢复</view>
         </view>
         <image class="benefit-card__beads" src="/assets/icons/bead-stack.svg" mode="aspectFit" />
@@ -53,7 +53,7 @@
       </view>
     </view>
 
-    <view class="profile-page__version">拼豆制作工具 · Version 0.24.0</view>
+    <view class="profile-page__version">拼豆制作工具 · Version 0.25.0</view>
   </view>
 </page-layout>
 

@@ -295,7 +295,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const config: ServerConfig = {
     appEnvironment: environment,
     host: env.HOST?.trim() || "127.0.0.1",
-    port: integer(env, "PORT", 3000, 1, 65_535, issues),
+    port: integer(env, "PORT", 4000, 1, 65_535, issues),
     database: parseDatabaseConfig(env, issues),
     wechat: {
       appId: wechatAppId,
@@ -322,14 +322,14 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       storageDirectory: resolve(
         env.COVER_STORAGE_DIR?.trim() || resolve(__dirname, "../../data/covers"),
       ),
-      publicBaseUrl: env.COVER_PUBLIC_BASE_URL?.trim() || "http://127.0.0.1:3000/api/media/covers",
+      publicBaseUrl: env.COVER_PUBLIC_BASE_URL?.trim() || "http://127.0.0.1:4000/api/media/covers",
       maximumBytes: integer(env, "COVER_MAX_BYTES", 10 * 1_024 * 1_024, 64 * 1_024, 20 * 1_024 * 1_024, issues),
     },
     aiFiles: {
       storageDirectory: resolve(
         env.AI_FILE_STORAGE_DIR?.trim() || resolve(__dirname, "../../data/ai"),
       ),
-      publicBaseUrl: env.AI_FILE_PUBLIC_BASE_URL?.trim() || "http://127.0.0.1:3000/api/media/ai",
+      publicBaseUrl: env.AI_FILE_PUBLIC_BASE_URL?.trim() || "http://127.0.0.1:4000/api/media/ai",
       maximumBytes: integer(env, "AI_FILE_MAX_BYTES", 10 * 1_024 * 1_024, 64 * 1_024, 20 * 1_024 * 1_024, issues),
     },
     contentSecurity: {
@@ -338,7 +338,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
         env.CONTENT_SECURITY_MEDIA_STORAGE_DIR?.trim() || resolve(__dirname, "../../data/content-security"),
       ),
       mediaPublicBaseUrl: env.CONTENT_SECURITY_MEDIA_PUBLIC_BASE_URL?.trim()
-        || "http://127.0.0.1:3000/api/content-security/media",
+        || "http://127.0.0.1:4000/api/content-security/media",
       mediaMaximumBytes: integer(
         env,
         "CONTENT_SECURITY_MEDIA_MAX_BYTES",

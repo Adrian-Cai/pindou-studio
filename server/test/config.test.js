@@ -34,6 +34,17 @@ test("readConfig loads validated server and database settings", () => {
   assert.equal(config.contentSecurity.asyncMediaCheckEnabled, false);
 });
 
+test("readConfig uses the shared local development port for defaults", () => {
+  const config = readConfig({ ...validEnvironment, PORT: undefined });
+  assert.equal(config.port, 4000);
+  assert.equal(config.covers.publicBaseUrl, "http://127.0.0.1:4000/api/media/covers");
+  assert.equal(config.aiFiles.publicBaseUrl, "http://127.0.0.1:4000/api/media/ai");
+  assert.equal(
+    config.contentSecurity.mediaPublicBaseUrl,
+    "http://127.0.0.1:4000/api/content-security/media",
+  );
+});
+
 test("readConfig rejects missing sensitive database configuration without exposing values", () => {
   assert.throws(
     () => readConfig({ DB_HOST: "localhost" }),

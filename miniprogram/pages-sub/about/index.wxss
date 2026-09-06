@@ -5,7 +5,7 @@
 .about-name { margin-top: 24rpx; font-size: 40rpx; font-weight: 600; }
 .about-version { margin-top: 8rpx; color: var(--color-text-secondary); font-size: 28rpx; }
 
-.about-intro { position: relative; margin-top: 36rpx; overflow: hidden; padding: 28rpx 32rpx; border: 1rpx solid rgba(18, 180, 102, 0.22); border-radius: var(--radius-card); background: linear-gradient(135deg, #f8fffb, #fff); text-align: left; }
+.about-intro { position: relative; margin-top: 36rpx; overflow: hidden; padding: 28rpx 32rpx; border: 0; border-radius: var(--radius-card-large); background: var(--color-primary-surface); box-shadow: var(--shadow-card); text-align: left; }
 .about-intro__title { display: flex; align-items: center; gap: 18rpx; font-size: 30rpx; font-weight: 600; }
 .about-intro__title text { display: flex; width: 40rpx; height: 40rpx; align-items: center; justify-content: center; border-radius: 50%; background: var(--color-primary); color: #fff; font-size: 26rpx; }
 .about-intro__body { max-width: 78%; margin-top: 18rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 44rpx; }

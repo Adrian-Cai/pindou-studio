@@ -4,7 +4,7 @@
 
 小程序 API 地址统一维护在 `miniprogram/config/api.ts`：
 
-- `develop`：默认使用 `http://127.0.0.1:3000`，仅供本机微信开发者工具连接本地后端。
+- `develop`：默认使用 `http://127.0.0.1:4000`，仅供本机微信开发者工具连接本地后端。
 - `trial`：填写体验版 HTTPS API 地址。
 - `release`：填写正式版 HTTPS API 地址。
 
@@ -14,7 +14,7 @@
 
 ```ts
 const API_BASE_URLS = {
-  develop: "http://127.0.0.1:3000",
+  develop: "http://127.0.0.1:4000",
   trial: "https://api.example.com",
   release: "https://api.example.com",
 };
@@ -38,7 +38,7 @@ https://api.example.com
 - 如果域名包含非默认端口，微信后台配置和代码请求必须完全一致。
 - 生产环境关闭“不校验合法域名、TLS 版本及 HTTPS 证书”。
 
-`project.private.config.json` 当前只为本地开发者工具关闭域名校验，以便访问 `127.0.0.1:3000`。真机、体验版和正式版仍必须使用已配置的 HTTPS 域名。
+`project.private.config.json` 当前只为本地开发者工具关闭域名校验，以便访问 `127.0.0.1:4000`。真机、体验版和正式版仍必须使用已配置的 HTTPS 域名。
 
 ## 3. 后端微信配置
 

@@ -17,13 +17,14 @@
 .download-card__content { min-width: 0; flex: 1; margin-left: 28rpx; }
 .download-card__title { overflow: hidden; font-size: 30rpx; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .download-type { display: inline-flex; margin-top: 12rpx; padding: 6rpx 14rpx; border-radius: 10rpx; background: var(--color-primary-soft); color: var(--color-primary); font-size: 22rpx; }
-.download-type--chart { background: #edf4ff; color: #2d73e8; }
-.download-type--materials { background: #fff5df; color: #e28a00; }
-.download-type--palette { background: #f4efff; color: #7651d6; }
+.download-type--chart { background: var(--color-info-soft); color: var(--color-info); }
+.download-type--materials { background: var(--color-warning-soft); color: var(--color-warning); }
+.download-type--palette { background: var(--color-purple-soft); color: var(--color-purple); }
 .download-card__meta, .download-card__date { margin-top: 12rpx; color: var(--color-text-secondary); font-size: 23rpx; }
 .download-card__date { color: var(--color-text-tertiary); }
 .download-card__side { display: flex; align-self: stretch; flex-direction: column; align-items: flex-end; justify-content: space-between; margin-left: 20rpx; }
-.download-card__again { display: flex; min-width: 168rpx; height: 64rpx; align-items: center; justify-content: center; padding: 0 20rpx; border: 2rpx solid var(--color-primary); border-radius: var(--radius-control); color: var(--color-primary); font-size: 24rpx; }
+.download-card__again { display: flex; min-width: 168rpx; height: 88rpx; align-items: center; justify-content: center; padding: 0 20rpx; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); color: var(--color-primary); font-size: 24rpx; transition: var(--transition-press); }
+.download-card__again:active { background: var(--strong-overlay); transform: scale(0.97); }
 .download-retention { padding: 20rpx 0 8rpx; color: var(--color-text-tertiary); font-size: 22rpx; text-align: center; }
 
 @media (max-width: 380px) {

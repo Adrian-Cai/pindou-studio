@@ -14,10 +14,10 @@
   gap: 12rpx;
   margin-top: 24rpx;
   padding: 24rpx 28rpx;
-  border: 1rpx solid var(--color-border);
-  border-radius: 32rpx;
+  border: 0;
+  border-radius: var(--radius-card-large);
   background: var(--color-surface);
-  box-shadow: 0 4rpx 20rpx rgba(17, 56, 36, 0.04);
+  box-shadow: var(--shadow-card);
   color: var(--color-text-secondary);
   font-size: 22rpx;
 }
@@ -80,10 +80,10 @@
   width: calc(100% - 32rpx);
   max-width: 600rpx;
   padding: 30rpx 32rpx 24rpx;
-  border: 1rpx solid var(--color-border);
-  border-radius: 24rpx;
-  background: #ffffff;
-  box-shadow: 0 12rpx 40rpx rgba(21, 21, 26, 0.12);
+  border: 0;
+  border-radius: var(--radius-card-small);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
   color: var(--color-text-secondary);
 }
 
@@ -95,7 +95,7 @@
   height: 20rpx;
   border-right: 1rpx solid var(--color-border);
   border-bottom: 1rpx solid var(--color-border);
-  background: #ffffff;
+  background: var(--color-surface);
   transform: rotate(45deg);
 }
 

@@ -25,7 +25,7 @@
     <view class="quota-tips__arrow"></view>
     <view class="quota-tips__title">免费下载次数说明</view>
     <view class="quota-tips__list">
-      <view>· 每日可免费成功保存 3 个文件</view>
+      <view>· 每日可免费成功保存 9 个文件</view>
       <view>· 每成功保存 1 个文件消耗 1 次</view>
       <view>· 四个 Tab 的文件分别计算下载次数</view>
       <view>· 免费次数每日 00:00 自动恢复</view>

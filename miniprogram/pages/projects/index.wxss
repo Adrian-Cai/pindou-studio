@@ -14,20 +14,20 @@
 .project-card__cover { width: 208rpx; height: 208rpx; flex: 0 0 208rpx; align-self: flex-start; border-radius: var(--radius-media); background: var(--color-surface-muted); }
 .project-card__body { display: flex; min-width: 0; flex: 1; flex-direction: column; }
 .project-card__top { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
-.project-card__more { display: flex; box-sizing: border-box; width: 80rpx; height: 80rpx; flex-shrink: 0; align-items: center; justify-content: center; margin: -8rpx -8rpx 0 0; border: 1rpx solid var(--color-border); border-radius: var(--radius-full); font-size: 18rpx; letter-spacing: 1rpx; }
-.project-card__more:active { background: var(--color-surface-muted); }
+.project-card__more { display: flex; box-sizing: border-box; width: 88rpx; height: 88rpx; flex-shrink: 0; align-items: center; justify-content: center; margin: -8rpx -8rpx 0 0; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); font-size: 18rpx; letter-spacing: 1rpx; transition: var(--transition-press); }
+.project-card__more:active { background: var(--strong-overlay); transform: scale(0.97); }
 .project-card__more text { transform: translateY(-4rpx); }
 .project-card__title { display: -webkit-box; overflow: hidden; margin-top: var(--space-2); font-size: 32rpx; font-weight: 600; line-height: 44rpx; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .project-card__meta, .project-card__date { margin-top: var(--space-2); color: var(--color-text-secondary); font-size: 24rpx; line-height: 32rpx; white-space: nowrap; }
 .project-card__date { color: var(--color-text-tertiary); }
-.project-card__continue { display: flex; box-sizing: border-box; height: 64rpx; align-items: center; align-self: flex-end; justify-content: center; gap: var(--space-1); margin-top: var(--space-2); padding: 0 var(--space-2); border: 2rpx solid var(--color-primary); border-radius: var(--radius-control); color: var(--color-primary); font-size: 24rpx; line-height: 1; }
+.project-card__continue { display: flex; box-sizing: border-box; height: 88rpx; align-items: center; align-self: flex-end; justify-content: center; gap: var(--space-1); margin-top: var(--space-2); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); color: var(--color-primary); font-size: 24rpx; line-height: 1; transition: var(--transition-press); }
 .project-card__continue-icon { width: 28rpx; height: 28rpx; }
-.project-card__continue:active { background: var(--color-primary-soft); }
+.project-card__continue:active { background: var(--strong-overlay); transform: scale(0.97); }
 
 .work-sheet-mask,
 .rename-dialog-mask { position: fixed; z-index: 300; display: flex; inset: 0; background: rgba(0, 0, 0, 0.35); animation: overlay-fade-in 180ms ease-out; }
 .work-sheet-mask { align-items: flex-end; }
-.work-sheet { box-sizing: border-box; width: 100%; padding: 16rpx 32rpx calc(24rpx + env(safe-area-inset-bottom)); border-radius: 40rpx 40rpx 0 0; background: var(--color-surface); animation: sheet-slide-in 220ms ease-out; }
+.work-sheet { box-sizing: border-box; width: 100%; padding: 16rpx 32rpx calc(24rpx + env(safe-area-inset-bottom)); border-radius: var(--radius-card-large) var(--radius-card-large) 0 0; background: var(--color-surface); box-shadow: var(--shadow-card); animation: sheet-slide-in 220ms ease-out; }
 .work-sheet__handle { width: 72rpx; height: 8rpx; margin: 0 auto 20rpx; border-radius: var(--radius-full); background: var(--color-disabled); }
 .work-sheet__header { display: flex; min-width: 0; align-items: center; padding: 8rpx 16rpx 24rpx; }
 .work-sheet__cover { width: 80rpx; height: 80rpx; flex-shrink: 0; border-radius: 16rpx; background: var(--color-surface-muted); }
@@ -35,23 +35,24 @@
 .work-sheet__title { overflow: hidden; font-size: 30rpx; font-weight: 600; line-height: 42rpx; text-overflow: ellipsis; white-space: nowrap; }
 .work-sheet__meta { margin-top: 4rpx; color: var(--color-text-secondary); font-size: 23rpx; line-height: 32rpx; }
 .work-sheet__actions { overflow: hidden; border: 1rpx solid var(--color-border); border-radius: var(--radius-control); }
-.work-sheet__action { display: flex; box-sizing: border-box; height: 104rpx; align-items: center; padding: 0 28rpx; background: var(--color-surface); color: var(--color-text); font-size: 28rpx; }
-.work-sheet__action:active { background: var(--color-surface-muted); }
+.work-sheet__action { display: flex; box-sizing: border-box; height: 104rpx; align-items: center; padding: 0 28rpx; background: var(--color-surface); color: var(--color-text); font-size: 28rpx; transition: var(--transition-press); }
+.work-sheet__action:active { background: var(--strong-overlay); opacity: 0.72; }
 .work-sheet__action-icon { width: 40rpx; height: 40rpx; flex-shrink: 0; margin-right: 22rpx; }
 .work-sheet__divider { height: 12rpx; border-top: 1rpx solid var(--color-border); border-bottom: 1rpx solid var(--color-border); background: var(--color-bg); }
 .work-sheet__action--danger { color: var(--color-danger); }
 
 .rename-dialog-mask { align-items: center; justify-content: center; padding: 40rpx; }
-.rename-dialog { box-sizing: border-box; width: 100%; max-width: 640rpx; padding: 40rpx; border-radius: var(--radius-card); background: var(--color-surface); box-shadow: 0 24rpx 80rpx rgba(0, 0, 0, 0.2); animation: dialog-scale-in 180ms ease-out; }
+.rename-dialog { box-sizing: border-box; width: 100%; max-width: 640rpx; padding: 40rpx; border-radius: var(--radius-card-large); background: var(--color-surface); box-shadow: 0 24rpx 80rpx rgba(0, 0, 0, 0.2), var(--shadow-card); animation: dialog-scale-in 180ms ease-out; }
 .rename-dialog__title { font-size: 34rpx; font-weight: 600; line-height: 48rpx; text-align: center; }
 .rename-dialog__input { box-sizing: border-box; width: 100%; height: 88rpx; margin-top: 32rpx; padding: 0 24rpx; border: 2rpx solid var(--color-border); border-radius: var(--radius-control); background: var(--color-bg); font-size: 28rpx; }
 .rename-dialog__input:focus { border-color: var(--color-primary); background: var(--color-surface); }
 .rename-dialog__feedback { display: flex; min-height: 34rpx; align-items: flex-start; justify-content: space-between; gap: 16rpx; margin-top: 10rpx; color: var(--color-text-tertiary); font-size: 21rpx; line-height: 32rpx; }
 .rename-dialog__error { flex: 1; color: var(--color-danger); }
 .rename-dialog__buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20rpx; margin-top: 28rpx; }
-.rename-dialog__button { display: flex; height: 84rpx; align-items: center; justify-content: center; border-radius: var(--radius-control); font-size: 28rpx; font-weight: 600; line-height: 84rpx; }
-.rename-dialog__button--cancel { border: 1rpx solid var(--color-border); background: var(--color-surface); color: var(--color-text); }
-.rename-dialog__button--save { background: var(--color-primary); color: #fff; }
+.rename-dialog__button { display: flex; height: 88rpx; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-card-small); font-size: 28rpx; font-weight: 600; line-height: 88rpx; transition: var(--transition-press); }
+.rename-dialog__button:active { transform: scale(0.97); opacity: 0.88; }
+.rename-dialog__button--cancel { background: transparent; box-shadow: var(--shadow-ghost); color: var(--color-text); }
+.rename-dialog__button--save { background: var(--color-primary); color: #fff; box-shadow: var(--shadow-primary); }
 .rename-dialog__button--save[disabled] { background: var(--color-disabled); color: #fff; }
 
 @keyframes overlay-fade-in { from { opacity: 0; } to { opacity: 1; } }

@@ -1,8 +1,11 @@
 import type { AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
+import type { PrivacyPreferences } from '../models/pattern'
 import {
+  deleteCurrentUser,
   fetchCurrentUser,
   loginWithWechat,
   updateNickname,
+  updatePrivacyPreferences as updatePrivacyPreferencesApi,
 } from '../services/auth-service'
 import { fetchQuota, type QuotaResponse } from '../services/download-service'
 import { ApiError } from '../services/http-client'
@@ -195,6 +198,54 @@ export class AuthStore {
       const message = friendlyAuthError(error)
       this.setState({ ...previousState, status: 'authenticated', errorMessage: message })
       throw new Error(message)
+    }
+  }
+
+  async updatePrivacyPreferences(
+    patch: Partial<Omit<PrivacyPreferences, 'updatedAt'>>,
+  ): Promise<PrivacyPreferences> {
+    const session = loadAuthSession()
+    if (!session || isAuthSessionExpired(session)) {
+      this.expireSession()
+      throw new Error('登录状态已失效，请重新登录。')
+    }
+
+    try {
+      const privacy = await updatePrivacyPreferencesApi(session.token, patch)
+      const profile = this.state.profile ?? session.profile
+      const nextProfile = profile ? { ...profile, privacy } : undefined
+      saveAuthSession({
+        ...session,
+        ...(nextProfile ? { user: nextProfile.user, profile: nextProfile } : {}),
+      })
+      appStore.setPrivacyPreferences(privacy)
+      this.setState({
+        ...this.state,
+        ...(nextProfile ? { user: nextProfile.user, profile: nextProfile } : {}),
+        isOffline: false,
+        errorMessage: '',
+      })
+      return privacy
+    } catch (error) {
+      if (isUnauthorized(error)) this.expireSession()
+      else this.setState({ ...this.state, isOffline: true, errorMessage: friendlyAuthError(error) })
+      throw error
+    }
+  }
+
+  async deleteAccount(): Promise<void> {
+    const session = loadAuthSession()
+    if (!session || isAuthSessionExpired(session)) {
+      this.expireSession()
+      throw new Error('登录状态已失效，请重新登录。')
+    }
+
+    try {
+      await deleteCurrentUser(session.token)
+      this.logout()
+    } catch (error) {
+      if (isUnauthorized(error)) this.expireSession()
+      throw error
     }
   }
 

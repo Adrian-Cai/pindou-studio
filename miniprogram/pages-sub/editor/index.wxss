@@ -17,6 +17,24 @@ page {
   background: var(--color-bg);
 }
 
+@media (prefers-color-scheme: dark) {
+  page {
+    --color-primary: #39d98a;
+    --color-primary-pressed: #25bc73;
+    --color-primary-soft: #153827;
+    --color-bg: #101419;
+    --color-surface: #1a2028;
+    --color-surface-muted: #232b35;
+    --color-text: #f3f6fa;
+    --color-text-secondary: #b4bfcc;
+    --color-text-tertiary: #91a0ae;
+    --color-border: #35414d;
+    --tool-active-bg: #2d2450;
+    --tool-active-accent: #b09cff;
+    --tool-active-border: #927cff;
+  }
+}
+
 .editor {
   display: flex;
   height: 100vh;
@@ -102,13 +120,15 @@ page {
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1rpx solid var(--color-border);
-  border-radius: 999rpx;
-  background: var(--color-surface);
+  border: 0;
+  border-radius: var(--radius-card-small);
+  background: transparent;
   color: var(--color-text);
   font-size: 36rpx;
   font-weight: 300;
   line-height: 1;
+  box-shadow: var(--shadow-ghost);
+  transition: var(--transition-press);
 }
 
 .zoom-control__button[disabled] {
@@ -116,7 +136,8 @@ page {
 }
 
 .zoom-control__button:active {
-  background: #f5f5f5;
+  background: var(--strong-overlay);
+  transform: scale(0.97);
 }
 
 .zoom-control__value {
@@ -139,12 +160,13 @@ page {
   justify-content: center;
   margin-top: 24rpx;
   padding: 20rpx 28rpx;
-  border: 1rpx solid #f3f3f3;
-  border-radius: 20rpx;
+  border: 0;
+  border-radius: var(--radius-card-small);
   background: var(--color-surface-muted);
   color: var(--color-text);
   font-size: 28rpx;
   line-height: 44rpx;
+  box-shadow: var(--shadow-card);
 }
 
 .info-card__row {
@@ -280,17 +302,17 @@ page {
 }
 
 .editor-actions .button-secondary {
-  border: 1rpx solid var(--color-primary);
-  background: var(--color-surface);
+  border: 0;
+  background: transparent;
   color: var(--color-primary);
-  box-shadow: none;
+  box-shadow: var(--shadow-ghost);
 }
 
 .editor-actions .button-primary {
-  border: 1rpx solid var(--color-primary);
+  border: 0;
   background: var(--color-primary);
   color: #ffffff;
-  box-shadow: 0 8rpx 24rpx rgba(18, 180, 102, 0.16);
+  box-shadow: var(--shadow-primary);
 }
 
 .editor-actions .button-secondary:active {
@@ -299,7 +321,7 @@ page {
 
 .editor-actions .button-primary:active {
   background: var(--color-primary-pressed);
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 
