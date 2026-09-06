@@ -30,7 +30,7 @@
       </view>
 
       <view class="result-tabs" role="tablist">
-        <view wx:for="{{tabs}}" wx:key="id" class="result-tabs__item {{activeTab === item.id ? 'result-tabs__item--active' : ''}}" data-tab="{{item.id}}" bindtap="changeTab" role="tab" aria-selected="{{activeTab === item.id}}">{{item.label}}</view>
+        <view wx:for="{{tabs}}" wx:key="id" class="result-tabs__item {{activeTab === item.id ? 'result-tabs__item--active' : ''}}" data-tab="{{item.id}}" bindtap="changeTab" hover-class="result-tabs__item--pressed" role="tab" aria-selected="{{activeTab === item.id}}">{{item.label}}</view>
       </view>
 
       <view wx:if="{{renderError}}" class="render-error">

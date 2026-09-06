@@ -25,10 +25,12 @@
 }
 
 .top-bar--home .top-bar__title {
+  font-family: var(--font-heading);
   color: var(--text);
-  font-size: 36rpx;
+  font-size: var(--font-size-h2);
   font-weight: 600;
-  line-height: 52rpx;
+  line-height: var(--line-height-h2);
+  letter-spacing: var(--letter-spacing-h2);
 }
 
 .top-bar__inner {
@@ -51,10 +53,12 @@
 }
 
 .top-bar__title {
+  font-family: var(--font-heading);
   color: var(--text);
-  font-size: 34rpx;
+  font-size: var(--font-size-h2);
   font-weight: 600;
-  line-height: 48rpx;
+  line-height: var(--line-height-h2);
+  letter-spacing: var(--letter-spacing-h2);
 }
 
 .top-bar__subtitle {

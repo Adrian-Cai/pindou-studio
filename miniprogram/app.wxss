@@ -83,7 +83,10 @@ page {
   background: var(--background);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 28rpx;
+  font-size: var(--font-size-body);
+  font-weight: 400;
+  line-height: var(--line-height-body);
+  letter-spacing: var(--letter-spacing-body);
 }
 
 button {
@@ -160,8 +163,11 @@ button::after {
 }
 
 .section-title {
-  font-size: 30rpx;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-h2);
   font-weight: 650;
+  line-height: var(--line-height-h2);
+  letter-spacing: var(--letter-spacing-h2);
 }
 
 .muted {

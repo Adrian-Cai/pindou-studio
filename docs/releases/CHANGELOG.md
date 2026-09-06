@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.25.1
+
+- 优化全局正文与标题排版，统一字体、字号、行高和字距 token。
+- 补充首页、顶部栏和结果页 Tab 的交互反馈；开发环境 Canvas 基线采集仅在 develop 环境运行，不影响体验版和正式版启动。
+
 ## 0.25.0
 
 - Standard Pattern Engine V2 补齐 Phase 3 OKLab 专项回归与 Phase 5 保守清理：固定 RGB/OKLab 分歧、Alpha 31/32、严格 tie、`colorLimit`、孤立近色斑点清理和生产 `createDraft()` 链路均有测试覆盖；真实微信 Canvas fixture 缺失时测试脚本会明确跳过，不伪造 Canvas Gate 结果。

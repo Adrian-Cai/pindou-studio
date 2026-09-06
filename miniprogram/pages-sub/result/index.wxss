@@ -252,6 +252,14 @@
   font-weight: 500;
   line-height: 96rpx;
   text-align: center;
+  transition: var(--transition-press);
+}
+
+.result-tabs__item--pressed,
+.result-tabs__item:active {
+  background: var(--strong-overlay);
+  opacity: 0.8;
+  transform: scale(0.97);
 }
 
 .result-tabs__item--active {
