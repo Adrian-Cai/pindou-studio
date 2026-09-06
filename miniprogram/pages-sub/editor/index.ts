@@ -751,7 +751,7 @@ Page({
     try {
       const state = appStore.getSnapshot()
       const existing = state.works.find((item) => item.id === draft.id)
-      if (hasCloudSession()) {
+      if (hasCloudSession() && state.privacyPreferences.cloudSync) {
         const coverPath = await exportPatternCoverImage(draft, this)
         const summary = existing?.isCloud
           ? await updateCloudWork(existing.id, draft, coverPath, existing.title)

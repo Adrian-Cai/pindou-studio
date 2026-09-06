@@ -65,4 +65,5 @@ export interface PrivacyPreferences {
   cloudSync: boolean
   serviceNotices: boolean
   personalizedRecommendations: boolean
+  updatedAt?: string
 }

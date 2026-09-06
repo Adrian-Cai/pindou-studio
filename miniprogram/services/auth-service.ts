@@ -1,5 +1,7 @@
 import type { AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
+import type { PrivacyPreferences } from '../models/pattern'
 import { ApiError, apiRequest } from './http-client'
+import { parsePrivacyPreferences } from '../utils/privacy'
 
 export async function loginWithWechat(): Promise<AuthSession> {
   const code = await getWechatLoginCode()
@@ -17,6 +19,29 @@ export async function fetchCurrentUser(token: string): Promise<CurrentUserProfil
     token,
   })
   return parseCurrentUserResponse(response)
+}
+
+export async function updatePrivacyPreferences(
+  token: string,
+  patch: Partial<Omit<PrivacyPreferences, 'updatedAt'>>,
+): Promise<PrivacyPreferences> {
+  const response = await apiRequest<unknown>({
+    path: '/api/users/me/privacy',
+    method: 'PATCH',
+    token,
+    data: patch,
+  })
+  const privacy = isRecord(response) ? parsePrivacyPreferences(response.privacy) : null
+  if (!privacy) throw invalidResponse()
+  return privacy
+}
+
+export async function deleteCurrentUser(token: string): Promise<void> {
+  await apiRequest<unknown>({
+    path: '/api/users/me',
+    method: 'DELETE',
+    token,
+  })
 }
 
 export async function updateNickname(token: string, nickname: string): Promise<AuthUser> {
@@ -94,6 +119,7 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
     || typeof quota.resetsAt !== 'string'
   ) throw invalidResponse()
 
+  const privacy = parsePrivacyPreferences(value.privacy)
   return {
     user: { ...user, createdAt },
     stats: {
@@ -108,6 +134,7 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
       remaining: quota.remaining,
       resetsAt: quota.resetsAt,
     },
+    ...(privacy ? { privacy } : {}),
   }
 }
 

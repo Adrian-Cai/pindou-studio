@@ -75,11 +75,16 @@ pindou_users
 | `created_at` | `timestamptz` | 否 | 创建时间 |
 | `updated_at` | `timestamptz` | 否 | 更新时间 |
 | `deleted_at` | `timestamptz` | 是 | 软删除时间 |
+| `privacy_local_only` | `bool` | 否 | 仅本地保存作品偏好；默认 true，与 `privacy_cloud_sync` 互斥 |
+| `privacy_cloud_sync` | `bool` | 否 | 同步作品到云端偏好；默认 false，与 `privacy_local_only` 互斥 |
+| `privacy_service_notices` | `bool` | 否 | 服务通知偏好，默认 true |
+| `privacy_personalized_recommendations` | `bool` | 否 | 个性化推荐偏好，默认 false |
 
 主要约束/索引：
 
 - PK：`id`
 - UNIQUE：`openid_hash`
+- CHECK：`privacy_local_only` 与 `privacy_cloud_sync` 不得同时为 `true`
 
 ## 3. `pindou_auth_sessions`
 

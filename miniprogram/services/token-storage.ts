@@ -1,4 +1,5 @@
 import type { AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
+import { parsePrivacyPreferences } from '../utils/privacy'
 
 const AUTH_STORAGE_KEY = 'pindou-auth-session-v1'
 const EXPIRY_SKEW_MS = 30_000
@@ -75,6 +76,7 @@ function parseProfile(value: unknown): CurrentUserProfile | null {
     || typeof quota.resetsAt !== 'string'
   ) return null
 
+  const privacy = parsePrivacyPreferences(value.privacy)
   return {
     user: { ...user, createdAt: value.user.createdAt },
     stats: {
@@ -89,6 +91,7 @@ function parseProfile(value: unknown): CurrentUserProfile | null {
       remaining: quota.remaining,
       resetsAt: quota.resetsAt,
     },
+    ...(privacy ? { privacy } : {}),
   }
 }
 

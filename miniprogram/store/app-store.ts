@@ -60,8 +60,10 @@ export class AppStore {
             : DAILY_FREE_DOWNLOAD_QUOTA,
           downloadQuotaDate: today,
           privacyPreferences: {
-            ...initialState.privacyPreferences,
-            ...cached.privacyPreferences,
+            ...normalizePrivacyPreferences({
+              ...initialState.privacyPreferences,
+              ...cached.privacyPreferences,
+            }),
           },
         }
       }
@@ -188,7 +190,10 @@ export class AppStore {
 
   setPrivacyPreferences(patch: Partial<PrivacyPreferences>) {
     this.update({
-      privacyPreferences: { ...this.state.privacyPreferences, ...patch },
+      privacyPreferences: normalizePrivacyPreferences({
+        ...this.state.privacyPreferences,
+        ...patch,
+      }),
     })
   }
 
@@ -221,6 +226,12 @@ function createInitialState(): AppState {
     downloadRecords: [],
     privacyPreferences: { ...initialState.privacyPreferences },
   }
+}
+
+function normalizePrivacyPreferences(value: PrivacyPreferences): PrivacyPreferences {
+  if (value.cloudSync) return { ...value, localOnly: false }
+  if (value.localOnly) return { ...value, cloudSync: false }
+  return value
 }
 
 function getLocalBusinessDate(): string {

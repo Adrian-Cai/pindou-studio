@@ -21,6 +21,8 @@ import type {
   PostgresQuotaDownloadService,
 } from "../modules/downloads/quota-download-service";
 import type { PaymentService } from "../modules/payments/payment-service";
+import { getLegalDocument } from "../modules/legal/legal-document-service";
+import type { PrivacyPreferencesPatch } from "../modules/users/user-profile-service";
 import { validatePersistedPattern, type PersistedPattern } from "../modules/works/pattern";
 import type { FavoriteListOptions, PostgresWorkService, UpdateWorkInput, WorkStatus } from "../modules/works/work-service";
 import { AppError, invalidArgument } from "../shared/app-error";
@@ -133,6 +135,28 @@ function validateNicknameBody(body: Record<string, unknown>): string {
     throw invalidArgument("昵称长度必须为 1 到 80 个字符，且不能包含控制字符");
   }
   return nickname;
+}
+
+function validatePrivacyPatch(body: Record<string, unknown>): PrivacyPreferencesPatch {
+  const allowed = [
+    "localOnly",
+    "cloudSync",
+    "serviceNotices",
+    "personalizedRecommendations",
+  ] as const;
+  const keys = Object.keys(body);
+  if (keys.length < 1 || !keys.every((key) => allowed.includes(key as typeof allowed[number]))) {
+    throw invalidArgument("隐私偏好只能包含允许的字段，且至少包含一项");
+  }
+  for (const key of keys) {
+    if (typeof body[key] !== "boolean") throw invalidArgument(`隐私偏好字段 ${key} 必须是布尔值`);
+  }
+  return {
+    ...(body.localOnly === undefined ? {} : { localOnly: body.localOnly }),
+    ...(body.cloudSync === undefined ? {} : { cloudSync: body.cloudSync }),
+    ...(body.serviceNotices === undefined ? {} : { serviceNotices: body.serviceNotices }),
+    ...(body.personalizedRecommendations === undefined ? {} : { personalizedRecommendations: body.personalizedRecommendations }),
+  } as PrivacyPreferencesPatch;
 }
 
 function idempotencyKey(request: IncomingMessage): string {
@@ -451,6 +475,15 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         return;
       }
 
+      const legalDocumentMatch = url.pathname.match(/^\/api\/legal-documents\/([^/]+)$/u);
+      if (legalDocumentMatch && request.method === "GET") {
+        if (url.searchParams.size > 0) throw invalidArgument("法律文档接口不接受查询参数");
+        const key = legalDocumentMatch[1];
+        if (!key) throw invalidArgument("法律文档 key 无效");
+        sendJson(response, 200, { document: getLegalDocument(key) });
+        return;
+      }
+
       if (url.pathname.startsWith("/api/content-security/media/")) {
         if (request.method !== "GET" || url.searchParams.size > 0 || !dependencies.contentSecurity) {
           throw invalidArgument("内容安全媒体地址无效");
@@ -679,6 +712,38 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           request.headers.authorization,
         );
         sendJson(response, 200, await dependencies.users.getCurrentUser(currentUser.id));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/users/me/privacy") {
+        if (url.searchParams.size > 0) throw invalidArgument("隐私偏好接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(
+          request.headers.authorization,
+        );
+        sendJson(response, 200, { privacy: await dependencies.users.getPrivacyPreferences(currentUser.id) });
+        return;
+      }
+
+      if (request.method === "PATCH" && url.pathname === "/api/users/me/privacy") {
+        if (url.searchParams.size > 0) throw invalidArgument("隐私偏好接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(
+          request.headers.authorization,
+        );
+        const privacy = await dependencies.users.updatePrivacyPreferences(
+          currentUser.id,
+          validatePrivacyPatch(await readJsonObject(request)),
+        );
+        sendJson(response, 200, { privacy });
+        return;
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/api/users/me") {
+        if (url.searchParams.size > 0) throw invalidArgument("账号注销接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(
+          request.headers.authorization,
+        );
+        await dependencies.users.deleteAccount(currentUser.id);
+        sendNoContent(response);
         return;
       }
 

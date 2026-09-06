@@ -21,6 +21,7 @@
 | 5 | 套餐与支付 | `GET /api/packages`、`POST /api/payments/create`、`POST /api/payments/notify` |
 | 6 | AI 精致生成 | `POST /api/ai/generations`、`GET /api/ai/generations/:id` |
 | 7 | 内容安全审核 | `POST /api/content-security/text`、`POST /api/content-security/media`、`GET/POST /api/wechat/content-security/callback` |
+| 8 | 隐私设置、法律文档和注销 | `GET/PATCH /api/users/me/privacy`、`GET /api/legal-documents/:key`、`DELETE /api/users/me` |
 
 ### 1.2 明确暂不纳入
 
@@ -28,8 +29,7 @@
 - 不开发服务端成品图、施工图或材料清单生成。
 - 不开发 `GET /api/files/download/:workId/:type`。
 - 不永久保存原始上传图片；第一版只上传作品封面/预览图。
-- 不开发 `PATCH /api/users/me/privacy`，不把 `cloudSync` 作为第一版业务开关。
-- 不开发反馈、改名、注销账号和公开分享接口。
+- 不开发反馈和公开分享接口。
 
 ### 1.3 内容安全审核
 
@@ -722,8 +722,6 @@ Content-Type: application/json
 | --- | --- |
 | `/api/files/download/:workId/:type` | 第一版由客户端 Canvas 导出并保存相册 |
 | `POST /api/feedbacks` | 反馈属于后续增强阶段 |
-| `PATCH /api/users/me/privacy` | 云同步语义未定义，暂不提供开关 |
-| `DELETE /api/users/me` | 注销流程和数据保留策略未确定 |
 | 公开作品分享接口 | 当前分享路径仍是首页，不支持他人读取作品 |
 
 ## 7. 前端接入顺序

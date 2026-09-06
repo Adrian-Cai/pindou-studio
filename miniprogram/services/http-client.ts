@@ -1,6 +1,6 @@
 import { ApiConfigurationError, buildApiUrl } from '../config/api'
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 interface ApiRequestOptions {
   path: string
@@ -72,7 +72,7 @@ export function apiRequest<T>(options: ApiRequestOptions): Promise<T> {
 
     wx.request({
       url,
-      method: options.method ?? 'GET',
+      method: options.method as WechatMiniprogram.RequestOption['method'] ?? 'GET',
       data: options.data,
       header,
       timeout: options.timeoutMs ?? 10_000,

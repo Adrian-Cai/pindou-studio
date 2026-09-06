@@ -13,6 +13,7 @@ import {
   saveAuthSession,
 } from '../services/token-storage'
 import { syncLocalWorksToCloud } from '../services/local-work-sync'
+import { appStore } from './app-store'
 
 export type AuthStatus =
   | 'guest'
@@ -108,6 +109,7 @@ export class AuthStore {
         isOffline: false,
         errorMessage: '',
       })
+      applyPrivacyPreferences(profile)
       await this.syncLocalWorksAndRefreshProfile(session)
     } catch (error) {
       if (isUnauthorized(error)) {
@@ -284,6 +286,7 @@ export class AuthStore {
         isOffline: false,
         errorMessage: '',
       })
+      applyPrivacyPreferences(profile)
       await this.syncLocalWorksAndRefreshProfile(session)
     } catch (error) {
       if (isUnauthorized(error)) {
@@ -349,6 +352,10 @@ export class AuthStore {
 }
 
 export const authStore = new AuthStore()
+
+function applyPrivacyPreferences(profile: CurrentUserProfile): void {
+  if (profile.privacy) appStore.setPrivacyPreferences(profile.privacy)
+}
 
 function isUnauthorized(error: unknown): boolean {
   return error instanceof ApiError

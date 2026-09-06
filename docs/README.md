@@ -55,6 +55,7 @@ UI 设计稿、运行截图和对比资料保存在 [`ui/`](ui/) 与 [`ui-compar
 - [CHANGELOG.md](releases/CHANGELOG.md)：统一版本记录。
 - [MINI_PROGRAM_RELEASE_0.19.0.md](releases/MINI_PROGRAM_RELEASE_0.19.0.md)：0.19.0 提交说明。
 - [MINI_PROGRAM_RELEASE_0.22.0.md](releases/MINI_PROGRAM_RELEASE_0.22.0.md)：0.22.0 提交说明。
+- [MINI_PROGRAM_RELEASE_0.24.0.md](releases/MINI_PROGRAM_RELEASE_0.24.0.md)：0.24.0 提交说明。
 
 ### 其他资料目录
 

@@ -118,7 +118,7 @@ pindou_users
 | `avatar_url` | text | NULL | 初始允许为空 |
 | `created_at` | timestamp | NOT NULL | 服务端创建时间 |
 | `updated_at` | timestamp | NOT NULL | 服务端更新时间 |
-| `deleted_at` | timestamp | NULL | 预留注销/软删除；第一版不提供注销 API |
+| `deleted_at` | timestamp | NULL | 账号和作品软删除时间；注销接口保留审计与财务记录 |
 
 说明：`session_key` 不返回前端。如后续需要调用微信需要 session key 的能力，应使用加密字段或独立密钥存储，不以明文保存。
 

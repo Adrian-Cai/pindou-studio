@@ -26,6 +26,10 @@ export const EXPECTED_SCHEMA = {
     created_at: column("timestamptz"),
     updated_at: column("timestamptz"),
     deleted_at: column("timestamptz", true),
+    privacy_local_only: column("bool"),
+    privacy_cloud_sync: column("bool"),
+    privacy_service_notices: column("bool"),
+    privacy_personalized_recommendations: column("bool"),
   },
   pindou_auth_sessions: {
     id: column("varchar", false, 32),
@@ -284,4 +288,5 @@ export const REQUIRED_CONSTRAINTS: readonly RequiredDatabaseObject[] = [
   { table: "pindou_ai_generation_jobs", label: "AI 背景 CHECK", type: "c", includes: ["background_mode", "keep", "simplify", "remove"] },
   { table: "pindou_content_security_checks", label: "审核类型 CHECK", type: "c", includes: ["check_type", "text", "media"] },
   { table: "pindou_content_security_checks", label: "审核状态 CHECK", type: "c", includes: ["status", "pending", "pass", "review", "risky", "failed"] },
+  { table: "pindou_users", label: "隐私存储方式互斥 CHECK", type: "c", includes: ["privacy_local_only", "privacy_cloud_sync", "not"] },
 ];

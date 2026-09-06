@@ -14,7 +14,9 @@ export interface LocalWorkSyncResult {
 }
 
 export async function syncLocalWorksToCloud(): Promise<LocalWorkSyncResult> {
-  if (!hasCloudSession()) return { uploaded: 0, skipped: 0, failed: 0 }
+  if (!hasCloudSession() || !appStore.getSnapshot().privacyPreferences.cloudSync) {
+    return { uploaded: 0, skipped: 0, failed: 0 }
+  }
 
   const state = appStore.getSnapshot()
   const localWorks = state.works.filter((work) => !work.isCloud)
