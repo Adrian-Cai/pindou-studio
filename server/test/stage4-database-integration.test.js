@@ -161,8 +161,8 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
     assert.deepEqual({ usedToday: finalQuota.usedToday, purchased: finalQuota.purchased, remaining: finalQuota.remaining }, { usedToday: 3, purchased: 0, remaining: 0 });
     const rawBalances = await pool.query(
       `SELECT
-         COALESCE(SUM(amount) FILTER (WHERE bucket = 'daily_free' AND quota_date = '2026-09-01'), 0)::int AS daily_balance,
-         COALESCE(SUM(amount) FILTER (WHERE bucket = 'purchased'), 0)::int AS purchased_balance
+         COALESCE(SUM(amount) FILTER (WHERE quota_kind = 'standard_download' AND bucket = 'daily_free' AND quota_date = '2026-09-01'), 0)::int AS daily_balance,
+         COALESCE(SUM(amount) FILTER (WHERE quota_kind = 'standard_download' AND bucket = 'purchased'), 0)::int AS purchased_balance
        FROM pindou_quota_transactions
        WHERE user_id = $1`,
       [userA],

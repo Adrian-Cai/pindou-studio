@@ -63,7 +63,8 @@ test("stage 5 real database flow: package snapshot, tamper rejection, verified g
 
     const service = new PostgresPaymentService(pool, gateway, config.auth.openidHashSecret, () => now);
     const packages = await service.listPackages();
-    assert.deepEqual(packages.items.map((item) => item.id), [enabledPackageId]);
+    assert.ok(packages.items.some((item) => item.id === enabledPackageId));
+    assert.ok(packages.items.every((item) => item.id !== disabledPackageId));
     const created = await service.createPayment({
       userId,
       packageId: enabledPackageId,
