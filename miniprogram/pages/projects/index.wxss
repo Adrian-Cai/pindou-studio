@@ -10,11 +10,12 @@
 .project-summary__line { width: 1rpx; height: 72rpx; align-self: center; background: var(--color-border); }
 
 .project-list { display: flex; width: 100%; flex-direction: column; gap: var(--space-3); margin-top: var(--space-3); }
-.project-card { display: flex; box-sizing: border-box; width: 100%; min-width: 0; align-items: stretch; gap: var(--space-3); padding: var(--space-3); }
-.project-card__cover { width: 208rpx; height: 208rpx; flex: 0 0 208rpx; align-self: flex-start; border-radius: var(--radius-media); background: var(--color-surface-muted); }
-.project-card__body { display: flex; min-width: 0; flex: 1; flex-direction: column; justify-content: center; }
-.project-card__header { display: flex; min-width: 0; align-items: center; gap: 12rpx; }
-.project-card__more { display: flex; box-sizing: border-box; width: 88rpx; height: 88rpx; flex-shrink: 0; align-items: center; justify-content: center; margin: -8rpx -8rpx 0 0; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: none; color: var(--color-text-secondary); font-size: 18rpx; letter-spacing: 1rpx; transition: var(--transition-press); }
+.project-card { display: flex; box-sizing: border-box; width: 100%; min-width: 0; align-items: flex-start; gap: var(--space-3); padding: var(--space-3); }
+.project-card__cover { width: 208rpx; height: 208rpx; flex: 0 0 208rpx; border-radius: var(--radius-media); background: var(--color-surface-muted); }
+.project-card__body { display: flex; min-width: 0; flex: 1; flex-direction: column; align-self: stretch; justify-content: flex-start; }
+.project-card__header { display: flex; min-width: 0; align-items: flex-start; }
+.project-card__header-left { display: flex; min-width: 0; flex: 1; align-items: center; gap: 12rpx; }
+.project-card__more { display: flex; box-sizing: border-box; width: 88rpx; height: 88rpx; flex-shrink: 0; align-items: center; justify-content: center; margin: 0 0 0 8rpx; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: none; color: var(--color-text-secondary); font-size: 18rpx; letter-spacing: 1rpx; transition: var(--transition-press); }
 .project-card__more:active { background: var(--strong-overlay); transform: scale(0.97); }
 .project-card__more text { transform: translateY(-4rpx); }
 .project-card__title { min-width: 0; flex: 1; overflow: hidden; font-size: 32rpx; font-weight: 600; line-height: 44rpx; text-overflow: ellipsis; white-space: nowrap; }

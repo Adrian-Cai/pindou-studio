@@ -48,8 +48,10 @@
         <image class="project-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
         <view class="project-card__body">
           <view class="project-card__header">
-            <text class="project-card__title">{{item.title}}</text>
-            <text class="status-pill {{item.isDraft ? 'status-pill--draft' : ''}}">{{item.statusLabel}}</text>
+            <view class="project-card__header-left">
+              <text class="project-card__title">{{item.title}}</text>
+              <text class="status-pill {{item.isDraft ? 'status-pill--draft' : ''}}">{{item.statusLabel}}</text>
+            </view>
             <view
               class="project-card__more"
               data-id="{{item.id}}"

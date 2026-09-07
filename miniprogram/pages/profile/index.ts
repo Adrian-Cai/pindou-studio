@@ -210,6 +210,11 @@ Page({
     await authStore.login()
   },
 
+  openPrivacyPolicy() {
+    this.hideActiveSheet()
+    wx.navigateTo({ url: '/pages-sub/privacy-document/index?key=privacy-policy' })
+  },
+
   refreshAccountData() {
     if (this.data.accountRefreshing) return
     void authStore.refresh()

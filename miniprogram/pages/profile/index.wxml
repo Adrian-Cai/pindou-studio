@@ -53,7 +53,7 @@
       </view>
     </view>
 
-    <view class="profile-page__version">拼豆制作工具 · Version 0.25.2</view>
+    <view class="profile-page__version">拼豆制作工具 · Version 0.25.4</view>
   </view>
 </page-layout>
 
@@ -125,7 +125,7 @@
       bindtap="startWechatLogin"
     >{{loginUiState === 'loading' ? '登录中…' : loginUiState === 'error' ? '重新登录' : '微信快捷登录'}}</button>
     <view class="login-sheet__later" bindtap="hideActiveSheet">暂不登录</view>
-    <view class="login-sheet__agreement">登录即表示你同意《隐私政策》</view>
+    <view class="login-sheet__agreement">登录即表示你同意<text class="login-sheet__agreement-link" bindtap="openPrivacyPolicy">《隐私政策》</text></view>
     <view class="login-sheet__local-hint">当前本地作品不会自动上传</view>
   </view>
 </view>

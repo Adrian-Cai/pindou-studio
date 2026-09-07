@@ -8,6 +8,7 @@ pipeline {
 
     environment {
         IMAGE_REPO = 'docker.cnb.cool/imacaiy/pindou-studio'
+        CNB_REGISTRY_USER = 'imacaiy'
         DEPLOY_DIR = '/opt/pindou/deploy'
         RUNTIME_ENV_FILE = '/opt/pindou/config/api.env'
     }
@@ -33,16 +34,15 @@ pipeline {
         stage('拉取 CNB 镜像') {
             steps {
                 withCredentials([
-                    usernamePassword(
+                    string(
                         credentialsId: 'cnb-registry',
-                        usernameVariable: 'CNB_USER',
-                        passwordVariable: 'CNB_TOKEN'
+                        variable: 'CNB_TOKEN'
                     ),
                 ]) {
                     sh '''
                         set -eu
                         echo "$CNB_TOKEN" | docker login docker.cnb.cool \
-                          --username "$CNB_USER" \
+                          --username "$CNB_REGISTRY_USER" \
                           --password-stdin
                         docker pull "$IMAGE_REPO:$IMAGE_TAG"
                     '''

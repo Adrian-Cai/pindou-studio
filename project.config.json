@@ -1,6 +1,8 @@
 {
   "miniprogramRoot": "miniprogram/",
   "setting": {
+    "swc": false,
+    "disableSWC": true,
     "es6": true,
     "postcss": true,
     "minified": true,

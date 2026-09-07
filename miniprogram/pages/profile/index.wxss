@@ -79,6 +79,8 @@
 .login-sheet__submit[disabled] { background: var(--color-primary); color: #fff; opacity: 0.62; }
 .login-sheet__later { padding: 28rpx 0 18rpx; color: var(--color-text-secondary); font-size: 26rpx; }
 .login-sheet__agreement, .login-sheet__local-hint { color: var(--color-text-tertiary); font-size: 21rpx; line-height: 32rpx; }
+.login-sheet__agreement-link { color: var(--color-primary); text-decoration: underline; transition: var(--transition-press); }
+.login-sheet__agreement-link:active { opacity: 0.72; }
 
 .profile-editor { text-align: center; }
 .profile-editor__title { margin-top: 4rpx; font-size: 36rpx; font-weight: 600; line-height: 50rpx; }
