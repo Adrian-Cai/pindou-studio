@@ -8,7 +8,7 @@ pipeline {
 
     environment {
         IMAGE_REPO = 'docker.cnb.cool/imacaiy/pindou-studio'
-        CNB_REGISTRY_USER = 'imacaiy'
+        CNB_REGISTRY_USER = 'cnb'
         DEPLOY_DIR = '/opt/pindou/deploy'
         RUNTIME_ENV_FILE = '/opt/pindou/config/api.env'
     }
