@@ -21,6 +21,7 @@ services:
     restart: unless-stopped
     environment:
       HOST: 0.0.0.0
+      PORT: 3000
     env_file:
       - ../config/api.env
     ports:
