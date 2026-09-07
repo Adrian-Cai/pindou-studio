@@ -1,5 +1,5 @@
 import type { PrivacyPreferences } from '../../models/pattern'
-import { syncLocalWorksToCloud } from '../../services/local-work-sync'
+import { syncLocalWorksToCloud } from '../services/local-work-sync'
 import { isAuthSessionExpired, loadAuthSession } from '../../services/token-storage'
 import { appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'

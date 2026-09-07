@@ -191,7 +191,7 @@ PATCH 接口只负责保存偏好，不在服务端隐式触发作品上传。�
 本次已修改两处现有链路：
 
 - `miniprogram/pages-sub/editor/index.ts`：从“登录即云端保存”改为“登录且 `cloudSync=true` 才云端保存”；
-- `miniprogram/services/local-work-sync.ts`：只在用户在隐私设置中确认开启云同步后执行；`auth-store.ts` 登录和恢复链路不得自动调用迁移。
+- `miniprogram/pages-sub/services/local-work-sync.ts`：只在用户在隐私设置中确认开启云同步后执行；`auth-store.ts` 登录和恢复链路不得自动调用迁移。该服务归属隐私设置分包，避免被错误打入主包。
 
 `serviceNotices` 和 `personalizedRecommendations` 第一阶段只保存偏好，不伪造通知或推荐功能；对应功能上线时再读取这两个字段。
 

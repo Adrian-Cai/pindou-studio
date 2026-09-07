@@ -1,11 +1,11 @@
-import type { PatternDraft, WorkItem } from '../models/pattern'
-import { appStore } from '../store/app-store'
+import type { PatternDraft, WorkItem } from '../../models/pattern'
+import { appStore } from '../../store/app-store'
 import {
   cloudSummaryToWorkItem,
   hasCloudSession,
   saveNewCloudWork,
-} from './work-service'
-import { checkImageContent } from './content-security-service'
+} from '../../services/work-service'
+import { checkImageContent } from '../../services/content-security-service'
 
 export interface LocalWorkSyncResult {
   uploaded: number
