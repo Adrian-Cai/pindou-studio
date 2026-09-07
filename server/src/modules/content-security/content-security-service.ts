@@ -8,6 +8,14 @@ import type { WeChatContentSecurityClient } from "./wechat-client";
 const RISK_MESSAGE = "你发布的内容含违规信息，请修改后重试";
 const TEXT_SCENE_WORK_TITLE = 2;
 const MEDIA_EXPIRY_MS = 35 * 60 * 1_000;
+// 微信审核作为主校验；这些高置信度短语用于兜底，避免明显违规标题被第三方误判为通过。
+const LOCAL_RISKY_TEXT_PATTERNS = [
+  /色情|成人视频|淫秽/u,
+  /(?:贩卖|销售|购买|吸食)毒品/u,
+  /(?:赌博|博彩)(?:下注|送彩金)?/u,
+  /(?:制作|制造)(?:爆炸物|炸弹)/u,
+  /诈骗转账|低俗辱骂/u,
+] as const;
 
 interface UserIdentityRow extends QueryResultRow {
   readonly openid_ciphertext: string | null;
@@ -39,6 +47,10 @@ export class PostgresContentSecurityService implements ContentSecurityService {
 
   public async checkText(userId: string, content: string): Promise<{ readonly safe: true; readonly traceId: string | null }> {
     const normalized = normalizeText(content);
+    if (isLocallyRiskyText(normalized)) {
+      await this.record({ userId, kind: "text", traceId: null, status: "risky", label: null, errorCode: null, mediaObjectKey: null, expiresAt: null });
+      throw new AppError(400, "CONTENT_RISKY", RISK_MESSAGE);
+    }
     const openid = await this.openid(userId);
     const result = await this.client.checkText({ openid, content: normalized, scene: TEXT_SCENE_WORK_TITLE });
     await this.record({ userId, kind: "text", traceId: result.traceId, status: result.safe ? "pass" : result.suggest, label: result.label, errorCode: null, mediaObjectKey: null, expiresAt: null });
@@ -232,6 +244,10 @@ function normalizeText(value: string): string {
     throw invalidArgument("待审核文本必须为 1 到 2500 个字符，且不能包含控制字符");
   }
   return normalized;
+}
+
+function isLocallyRiskyText(value: string): boolean {
+  return LOCAL_RISKY_TEXT_PATTERNS.some((pattern) => pattern.test(value));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

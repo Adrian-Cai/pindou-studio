@@ -45,6 +45,7 @@ function dependencies(overrides = {}) {
     coverMaximumBytes: 10 * 1024 * 1024,
     covers: { async read() { return null; }, async save() { throw new Error("unused"); }, async remove() {} },
     files: { async upload() { return { id: "file_test", type: "cover", url: "https://cdn.example/cover.png", contentType: "image/png", size: PNG.length, createdAt: "2026-08-27T01:00:00.000Z" }; } },
+    contentSecurity: { async checkText() {} },
     works: {
       async create() { return summary(); },
       async update() { return summary(); },
@@ -114,6 +115,67 @@ test("work creation rejects client-owned URLs/statistics and requires idempotenc
 
     const missingKey = await fetch(`${baseUrl}/api/works`, { method: "POST", headers: { authorization: "Bearer token", "content-type": "application/json" }, body: JSON.stringify({ coverFileId: "file_test", pattern: pattern() }) });
     assert.equal(missingKey.status, 400);
+  });
+});
+
+test("work title writes fail closed when content security is unavailable", async () => {
+  let writes = 0;
+  await withApplication(dependencies({
+    contentSecurity: undefined,
+    works: {
+      async create() { writes += 1; return summary(); },
+      async update() { writes += 1; return summary(); },
+    },
+  }), async (baseUrl) => {
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    const createResponse = await fetch(`${baseUrl}/api/works`, {
+      method: "POST",
+      headers: { ...headers, "Idempotency-Key": "security-unavailable" },
+      body: JSON.stringify({ title: "作品", coverFileId: "file_test", pattern: pattern() }),
+    });
+    const updateResponse = await fetch(`${baseUrl}/api/works/work_test`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ title: "新名称" }),
+    });
+
+    assert.equal(createResponse.status, 503);
+    assert.equal(updateResponse.status, 503);
+    assert.equal(writes, 0);
+  });
+});
+
+test("risky work titles are rejected before create or update", async () => {
+  let checks = 0;
+  let writes = 0;
+  await withApplication(dependencies({
+    contentSecurity: {
+      async checkText() {
+        checks += 1;
+        throw new AppError(400, "CONTENT_RISKY", "你发布的内容含违规信息，请修改后重试");
+      },
+    },
+    works: {
+      async create() { writes += 1; return summary(); },
+      async update() { writes += 1; return summary(); },
+    },
+  }), async (baseUrl) => {
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    const createResponse = await fetch(`${baseUrl}/api/works`, {
+      method: "POST",
+      headers: { ...headers, "Idempotency-Key": "risky-title-create" },
+      body: JSON.stringify({ title: "违规名称", coverFileId: "file_test", pattern: pattern() }),
+    });
+    const updateResponse = await fetch(`${baseUrl}/api/works/work_test`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ title: "违规改名" }),
+    });
+
+    assert.equal(createResponse.status, 400);
+    assert.equal(updateResponse.status, 400);
+    assert.equal(checks, 2);
+    assert.equal(writes, 0);
   });
 });
 

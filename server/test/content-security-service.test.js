@@ -87,6 +87,22 @@ function createService(state, client, now = () => NOW, asyncMediaCheckEnabled = 
   );
 }
 
+test("high-confidence risky work titles are blocked before the provider check", async () => {
+  const state = createState();
+  const client = createClient();
+  const service = createService(state, client);
+
+  for (const title of ["色情", "贩卖毒品"]) {
+    await assert.rejects(
+      () => service.checkText(USER_ID, title),
+      (error) => error.code === "CONTENT_RISKY",
+    );
+  }
+  assert.equal(client.calls.length, 0);
+  assert.equal(state.checks.size, 2);
+  assert.ok([...state.checks.values()].every((check) => check.status === "risky"));
+});
+
 test("release media check applies the synchronous gate before submitting async evidence", async () => {
   const state = createState();
   const client = createClient();

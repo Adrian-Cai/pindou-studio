@@ -89,7 +89,8 @@ export interface HttpApplicationDependencies {
   readonly coverMaximumBytes: number;
   readonly aiFileMaximumBytes: number;
   readonly aiGenerations: PostgresAiGenerationService;
-  readonly contentSecurity?: ContentSecurityService;
+  /** 作品标题保存前必须经过内容安全校验；缺失时应 fail closed。 */
+  readonly contentSecurity: ContentSecurityService;
   readonly contentSecurityMediaMaximumBytes?: number;
   readonly capabilities?: {
     readonly wechatPay: boolean;
@@ -122,6 +123,13 @@ function validateContentSecurityTextBody(body: Record<string, unknown>): string 
     throw invalidArgument("内容安全文本请求体只能包含字符串字段 content");
   }
   return body.content;
+}
+
+function requireContentSecurity(dependencies: HttpApplicationDependencies): ContentSecurityService {
+  if (!dependencies.contentSecurity) {
+    throw new AppError(503, "CONTENT_SECURITY_NOT_CONFIGURED", "内容安全服务尚未配置");
+  }
+  return dependencies.contentSecurity;
 }
 
 function validateNicknameBody(body: Record<string, unknown>): string {
@@ -521,11 +529,10 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       }
 
       if (request.method === "POST" && url.pathname === "/api/content-security/text") {
-        if (!dependencies.contentSecurity || url.searchParams.size > 0) {
-          throw new AppError(503, "CONTENT_SECURITY_NOT_CONFIGURED", "内容安全服务尚未配置");
-        }
+        if (url.searchParams.size > 0) throw new AppError(503, "CONTENT_SECURITY_NOT_CONFIGURED", "内容安全服务尚未配置");
+        const contentSecurity = requireContentSecurity(dependencies);
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
-        const trace = await dependencies.contentSecurity.checkText(
+        const trace = await contentSecurity.checkText(
           currentUser.id,
           validateContentSecurityTextBody(await readJsonObject(request)),
         );
@@ -559,9 +566,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         if (url.searchParams.size > 0) throw invalidArgument("作品保存接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         const validated = validateWorkBody(await readJsonObject(request, 2 * 1024 * 1024));
-        if (dependencies.contentSecurity) {
-          await dependencies.contentSecurity.checkText(currentUser.id, validated.title);
-        }
+        await requireContentSecurity(dependencies).checkText(currentUser.id, validated.title);
         sendJson(response, 201, await dependencies.works.create({
           userId: currentUser.id,
           idempotencyKey: idempotencyKey(request),
@@ -694,8 +699,8 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           sendNoContent(response);
         } else {
           const update = validateWorkUpdateBody(await readJsonObject(request, 2 * 1024 * 1024));
-          if (dependencies.contentSecurity && update.title !== undefined) {
-            await dependencies.contentSecurity.checkText(currentUser.id, update.title);
+          if (update.title !== undefined) {
+            await requireContentSecurity(dependencies).checkText(currentUser.id, update.title);
           }
           sendJson(response, 200, await dependencies.works.update({
             userId: currentUser.id,
