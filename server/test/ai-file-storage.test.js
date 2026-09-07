@@ -23,6 +23,8 @@ test("AI file storage separates input/output object keys and serves only generat
     assert.equal(await storage.read("/api/media/ai/../../secret"), null);
     await storage.remove(input.objectKey);
     await storage.remove(output.objectKey);
+    assert.equal(await storage.readObject(input.objectKey), null);
+    assert.equal(await storage.readObject(output.objectKey), null);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

@@ -1,8 +1,11 @@
 import type { Pool, QueryResultRow } from "pg";
 import type { ServerConfig } from "../../config/env";
+import type { AiFileStorage } from "../files/ai-file-storage";
+import type { CoverStorage } from "../files/cover-storage";
 import { unauthorized } from "../../shared/app-error";
 import { nextShanghaiMidnight, shanghaiDate } from "../../shared/shanghai-time";
 import { rollbackTransaction } from "../../shared/transaction";
+import type { AvatarStorage } from "./avatar-storage";
 
 interface ProfileRow extends QueryResultRow {
   readonly id: string;
@@ -29,6 +32,17 @@ interface UserRow extends QueryResultRow {
 interface QuotaRow extends QueryResultRow {
   readonly used_today: string;
   readonly purchased: string;
+}
+
+interface DeletedFileAssetRow extends QueryResultRow {
+  readonly file_type: string;
+  readonly object_key: string;
+}
+
+export interface UserAssetCleanupDependencies {
+  readonly avatars: Pick<AvatarStorage, "remove">;
+  readonly covers: Pick<CoverStorage, "remove">;
+  readonly aiFiles: Pick<AiFileStorage, "remove">;
 }
 
 export interface CurrentUserResponse {
@@ -127,6 +141,7 @@ export class PostgresUserProfileService implements UserProfileService {
     private readonly pool: Pool,
     private readonly quotaConfig: ServerConfig["quota"],
     private readonly now: () => Date = () => new Date(),
+    private readonly assetCleanup?: UserAssetCleanupDependencies,
   ) {}
 
   public async getCurrentUser(userId: string): Promise<CurrentUserResponse> {
@@ -278,21 +293,31 @@ export class PostgresUserProfileService implements UserProfileService {
 
   public async deleteAccount(userId: string): Promise<void> {
     const client = await this.pool.connect();
+    let avatarUrl: string | null = null;
+    let deletedAssets: readonly DeletedFileAssetRow[] = [];
     try {
       await client.query("BEGIN");
       const now = this.now();
-      const user = await client.query(
-        `UPDATE pindou_users
+      const user = await client.query<{ readonly id: string; readonly previous_avatar_url: string | null }>(
+        `WITH previous AS (
+           SELECT avatar_url
+             FROM pindou_users
+            WHERE id = $1
+            FOR UPDATE
+         )
+         UPDATE pindou_users
             SET deleted_at = COALESCE(deleted_at, $2),
                 nickname = NULL,
                 avatar_url = NULL,
                 openid_ciphertext = NULL,
                 updated_at = $2
-          WHERE id = $1
-        RETURNING id`,
+           FROM previous
+          WHERE pindou_users.id = $1
+        RETURNING pindou_users.id, previous.avatar_url AS previous_avatar_url`,
         [userId, now],
       );
       if (user.rowCount === 0) throw unauthorized("用户不存在或已失效");
+      avatarUrl = user.rows[0]?.previous_avatar_url ?? null;
       await client.query(
         `UPDATE pindou_auth_sessions
             SET revoked_at = COALESCE(revoked_at, $2)
@@ -306,18 +331,58 @@ export class PostgresUserProfileService implements UserProfileService {
         [userId, now],
       );
       await client.query("DELETE FROM pindou_favorites WHERE user_id = $1", [userId]);
-      await client.query(
+      const files = await client.query<DeletedFileAssetRow>(
         `UPDATE pindou_file_assets
             SET deleted_at = COALESCE(deleted_at, $2)
-          WHERE user_id = $1`,
+          WHERE user_id = $1
+        RETURNING file_type, object_key`,
         [userId, now],
       );
+      deletedAssets = files.rows;
       await client.query("COMMIT");
     } catch (error: unknown) {
       await rollbackTransaction(client);
       throw error;
     } finally {
       client.release();
+    }
+    await this.cleanupDeletedAssets(userId, avatarUrl, deletedAssets);
+  }
+
+  private async cleanupDeletedAssets(
+    userId: string,
+    avatarUrl: string | null,
+    assets: readonly DeletedFileAssetRow[],
+  ): Promise<void> {
+    if (!this.assetCleanup) return;
+    if (avatarUrl) {
+      await this.removeAsset(userId, "avatar", avatarUrl, () => this.assetCleanup!.avatars.remove(avatarUrl));
+    }
+    for (const asset of assets) {
+      if (asset.file_type === "cover") {
+        await this.removeAsset(userId, asset.file_type, asset.object_key, () => this.assetCleanup!.covers.remove(asset.object_key));
+      } else if (asset.file_type === "ai_input" || asset.file_type === "ai_output") {
+        await this.removeAsset(userId, asset.file_type, asset.object_key, () => this.assetCleanup!.aiFiles.remove(asset.object_key));
+      }
+    }
+  }
+
+  private async removeAsset(
+    userId: string,
+    fileType: string,
+    objectKey: string,
+    remove: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      await remove();
+    } catch (error: unknown) {
+      console.error(JSON.stringify({
+        event: "account_asset_cleanup_failed",
+        userId,
+        fileType,
+        objectKey,
+        message: error instanceof Error ? error.message : "unknown_error",
+      }));
     }
   }
 

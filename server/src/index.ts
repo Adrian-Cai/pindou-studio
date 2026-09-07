@@ -51,6 +51,11 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.aiFiles.storageDirectory,
       config.aiFiles.publicBaseUrl,
     );
+    const users = new PostgresUserProfileService(pool, config.quota, () => new Date(), {
+      avatars,
+      covers,
+      aiFiles,
+    });
     const contentSecurity = new PostgresContentSecurityService(
       pool,
       new OfficialWeChatContentSecurityClient(
@@ -78,7 +83,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
           config.auth,
         ),
         authenticator: new BearerTokenAuthenticator(authRepository),
-        users: new PostgresUserProfileService(pool, config.quota),
+        users,
         avatars,
         avatarMaximumBytes: config.avatars.maximumBytes,
         files: new PostgresFileAssetService(pool, covers, () => new Date(), aiFiles),
