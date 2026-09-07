@@ -12,14 +12,15 @@
 .project-list { display: flex; width: 100%; flex-direction: column; gap: var(--space-3); margin-top: var(--space-3); }
 .project-card { display: flex; box-sizing: border-box; width: 100%; min-width: 0; align-items: stretch; gap: var(--space-3); padding: var(--space-3); }
 .project-card__cover { width: 208rpx; height: 208rpx; flex: 0 0 208rpx; align-self: flex-start; border-radius: var(--radius-media); background: var(--color-surface-muted); }
-.project-card__body { display: flex; min-width: 0; flex: 1; flex-direction: column; }
-.project-card__top { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
-.project-card__more { display: flex; box-sizing: border-box; width: 88rpx; height: 88rpx; flex-shrink: 0; align-items: center; justify-content: center; margin: -8rpx -8rpx 0 0; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); font-size: 18rpx; letter-spacing: 1rpx; transition: var(--transition-press); }
+.project-card__body { display: flex; min-width: 0; flex: 1; flex-direction: column; justify-content: center; }
+.project-card__header { display: flex; min-width: 0; align-items: center; gap: 12rpx; }
+.project-card__more { display: flex; box-sizing: border-box; width: 88rpx; height: 88rpx; flex-shrink: 0; align-items: center; justify-content: center; margin: -8rpx -8rpx 0 0; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: none; color: var(--color-text-secondary); font-size: 18rpx; letter-spacing: 1rpx; transition: var(--transition-press); }
 .project-card__more:active { background: var(--strong-overlay); transform: scale(0.97); }
 .project-card__more text { transform: translateY(-4rpx); }
-.project-card__title { display: -webkit-box; overflow: hidden; margin-top: var(--space-2); font-size: 32rpx; font-weight: 600; line-height: 44rpx; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.project-card__meta, .project-card__date { margin-top: var(--space-2); color: var(--color-text-secondary); font-size: 24rpx; line-height: 32rpx; white-space: nowrap; }
-.project-card__date { color: var(--color-text-tertiary); }
+.project-card__title { min-width: 0; flex: 1; overflow: hidden; font-size: 32rpx; font-weight: 600; line-height: 44rpx; text-overflow: ellipsis; white-space: nowrap; }
+.project-card .status-pill { box-sizing: border-box; height: 36rpx; flex-shrink: 0; padding: 0 12rpx; font-size: 20rpx; line-height: 36rpx; }
+.project-card__meta { margin-top: 12rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 32rpx; white-space: nowrap; }
+.project-card__date { margin-top: 8rpx; color: var(--color-text-tertiary); font-size: 24rpx; line-height: 32rpx; white-space: nowrap; }
 .project-card__continue { display: flex; box-sizing: border-box; height: 88rpx; align-items: center; align-self: flex-end; justify-content: center; gap: var(--space-1); margin-top: var(--space-2); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); color: var(--color-primary); font-size: 24rpx; line-height: 1; transition: var(--transition-press); }
 .project-card__continue-icon { width: 28rpx; height: 28rpx; }
 .project-card__continue:active { background: var(--strong-overlay); transform: scale(0.97); }
@@ -48,12 +49,13 @@
 .rename-dialog__input:focus { border-color: var(--color-primary); background: var(--color-surface); }
 .rename-dialog__feedback { display: flex; min-height: 34rpx; align-items: flex-start; justify-content: space-between; gap: 16rpx; margin-top: 10rpx; color: var(--color-text-tertiary); font-size: 21rpx; line-height: 32rpx; }
 .rename-dialog__error { flex: 1; color: var(--color-danger); }
-.rename-dialog__buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20rpx; margin-top: 28rpx; }
-.rename-dialog__button { display: flex; height: 88rpx; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-card-small); font-size: 28rpx; font-weight: 600; line-height: 88rpx; transition: var(--transition-press); }
+.rename-dialog__buttons { display: flex; box-sizing: border-box; width: 100%; align-items: center; gap: 16rpx; margin-top: 24rpx; }
+.rename-dialog__button { display: flex; box-sizing: border-box; width: auto; min-width: 0; flex: 1 1 0; height: 88rpx; align-items: center; justify-content: center; margin: 0; padding: 0; border: 0; border-radius: var(--radius-card-small); font-size: 28rpx; font-weight: 600; line-height: 1; box-shadow: none; transition: var(--transition-press); }
+.rename-dialog__button::after { border: 0; }
 .rename-dialog__button:active { transform: scale(0.97); opacity: 0.88; }
-.rename-dialog__button--cancel { background: transparent; box-shadow: var(--shadow-ghost); color: var(--color-text); }
-.rename-dialog__button--save { background: var(--color-primary); color: #fff; box-shadow: var(--shadow-primary); }
-.rename-dialog__button--save[disabled] { background: var(--color-disabled); color: #fff; }
+.rename-dialog__button--cancel { background: var(--color-surface); color: var(--color-text); box-shadow: inset 0 0 0 1rpx var(--color-border); }
+.rename-dialog__button--save { background: var(--color-primary); color: #fff; }
+.rename-dialog__button--save[disabled] { background: var(--color-primary-soft); color: var(--color-text-tertiary); }
 
 @keyframes overlay-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sheet-slide-in { from { transform: translateY(100%); } to { transform: translateY(0); } }

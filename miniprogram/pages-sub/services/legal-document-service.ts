@@ -1,4 +1,4 @@
-import { ApiError, apiRequest } from './http-client'
+import { ApiError, apiRequest } from '../../services/http-client'
 
 export type LegalDocumentKey = 'privacy-policy' | 'personal-information' | 'third-party-sharing'
 

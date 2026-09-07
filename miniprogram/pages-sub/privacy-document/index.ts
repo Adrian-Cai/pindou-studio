@@ -1,4 +1,4 @@
-import { fetchLegalDocument, type LegalDocumentKey } from '../../services/legal-document-service'
+import { fetchLegalDocument, type LegalDocumentKey } from '../services/legal-document-service'
 
 const TITLES: Record<LegalDocumentKey, string> = {
   'privacy-policy': '隐私政策',
