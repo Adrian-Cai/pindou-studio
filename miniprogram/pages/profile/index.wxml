@@ -53,7 +53,7 @@
       </view>
     </view>
 
-    <view class="profile-page__version">拼豆制作工具 · Version 0.25.1</view>
+    <view class="profile-page__version">拼豆制作工具 · Version 0.25.2</view>
   </view>
 </page-layout>
 

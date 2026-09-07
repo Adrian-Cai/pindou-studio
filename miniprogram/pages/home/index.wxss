@@ -49,7 +49,7 @@ page {
   font-size: var(--font-size-h1);
   font-weight: 600;
   line-height: var(--line-height-h1);
-  letter-spacing: var(--letter-spacing-h1);
+  letter-spacing: 1.2rpx;
 }
 
 .hero__subtitle {
