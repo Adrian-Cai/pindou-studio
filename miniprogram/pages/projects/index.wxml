@@ -52,16 +52,23 @@
               <text class="project-card__title">{{item.title}}</text>
               <text class="status-pill {{item.isDraft ? 'status-pill--draft' : ''}}">{{item.statusLabel}}</text>
             </view>
-            <view
-              class="project-card__more"
-              data-id="{{item.id}}"
-              catchtap="openWorkMenu"
-              aria-role="button"
-              aria-label="打开 {{item.title}} 的更多操作"
-            ><text>•••</text></view>
           </view>
           <view class="project-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>
           <view class="project-card__date">{{item.updatedText}}</view>
+          <view class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
+            <button class="project-action" data-id="{{item.id}}" catchtap="startRename" aria-label="重命名作品 {{item.title}}">
+              <image class="project-action__icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
+              <text>重命名</text>
+            </button>
+            <button class="project-action" data-id="{{item.id}}" catchtap="downloadWork" aria-label="下载作品 {{item.title}}">
+              <image class="project-action__icon" src="/assets/icons/profile-menu-download.svg" mode="aspectFit" />
+              <text>下载</text>
+            </button>
+            <button class="project-action project-action--danger" data-id="{{item.id}}" catchtap="deleteWork" aria-label="删除作品 {{item.title}}">
+              <image class="project-action__icon" src="/assets/icons/work-delete.svg" mode="aspectFit" />
+              <text>删除</text>
+            </button>
+          </view>
           <view
             wx:if="{{item.isDraft}}"
             class="project-card__continue"
@@ -84,34 +91,6 @@
       <button wx:if="{{!loading && !allWorks.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
     </view>
   </view>
-
-<view wx:if="{{activeWork}}" class="work-sheet-mask" catchtap="closeWorkMenu" catchtouchmove="stopPropagation">
-  <view class="work-sheet" catchtap="stopPropagation">
-    <view class="work-sheet__handle"></view>
-    <view class="work-sheet__header">
-      <image class="work-sheet__cover" src="{{activeWork.coverPath}}" mode="aspectFill" />
-      <view class="work-sheet__info">
-        <view class="work-sheet__title">{{activeWork.title}}</view>
-        <view class="work-sheet__meta">{{activeWork.dimensions}} · {{activeWork.colorCount}}色</view>
-      </view>
-    </view>
-    <view class="work-sheet__actions">
-      <view class="work-sheet__action" catchtap="startRename" aria-role="button" aria-label="重命名作品">
-        <image class="work-sheet__action-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
-        <text>重命名</text>
-      </view>
-      <view class="work-sheet__action" catchtap="downloadWork" aria-role="button" aria-label="下载作品">
-        <image class="work-sheet__action-icon" src="/assets/icons/profile-menu-download.svg" mode="aspectFit" />
-        <text>下载作品</text>
-      </view>
-      <view class="work-sheet__divider"></view>
-      <view class="work-sheet__action work-sheet__action--danger" catchtap="deleteWork" aria-role="button" aria-label="删除作品">
-        <image class="work-sheet__action-icon" src="/assets/icons/work-delete.svg" mode="aspectFit" />
-        <text>删除作品</text>
-      </view>
-    </view>
-  </view>
-</view>
 
 <view wx:if="{{renameWorkId}}" class="rename-dialog-mask" catchtap="closeRenameDialog" catchtouchmove="stopPropagation">
   <view class="rename-dialog" catchtap="stopPropagation" aria-role="dialog" aria-label="重命名作品">

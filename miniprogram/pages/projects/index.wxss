@@ -15,9 +15,6 @@
 .project-card__body { display: flex; min-width: 0; flex: 1; flex-direction: column; align-self: stretch; justify-content: flex-start; }
 .project-card__header { display: flex; min-width: 0; align-items: flex-start; }
 .project-card__header-left { display: flex; min-width: 0; flex: 1; align-items: center; gap: 12rpx; }
-.project-card__more { display: flex; box-sizing: border-box; width: 88rpx; height: 88rpx; flex-shrink: 0; align-items: center; justify-content: center; margin: 0 0 0 8rpx; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: none; color: var(--color-text-secondary); font-size: 18rpx; letter-spacing: 1rpx; transition: var(--transition-press); }
-.project-card__more:active { background: var(--strong-overlay); transform: scale(0.97); }
-.project-card__more text { transform: translateY(-4rpx); }
 .project-card__title { min-width: 0; flex: 1; overflow: hidden; font-size: 32rpx; font-weight: 600; line-height: 44rpx; text-overflow: ellipsis; white-space: nowrap; }
 .project-card .status-pill { box-sizing: border-box; height: 36rpx; flex-shrink: 0; padding: 0 12rpx; font-size: 20rpx; line-height: 36rpx; }
 .project-card__meta { margin-top: 12rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 32rpx; white-space: nowrap; }
@@ -26,24 +23,16 @@
 .project-card__continue-icon { width: 28rpx; height: 28rpx; }
 .project-card__continue:active { background: var(--strong-overlay); transform: scale(0.97); }
 
-.work-sheet-mask,
-.rename-dialog-mask { position: fixed; z-index: 300; display: flex; inset: 0; background: rgba(0, 0, 0, 0.35); animation: overlay-fade-in 180ms ease-out; }
-.work-sheet-mask { align-items: flex-end; }
-.work-sheet { box-sizing: border-box; width: 100%; padding: 16rpx 32rpx calc(24rpx + env(safe-area-inset-bottom)); border-radius: var(--radius-card-large) var(--radius-card-large) 0 0; background: var(--color-surface); box-shadow: var(--shadow-card); animation: sheet-slide-in 220ms ease-out; }
-.work-sheet__handle { width: 72rpx; height: 8rpx; margin: 0 auto 20rpx; border-radius: var(--radius-full); background: var(--color-disabled); }
-.work-sheet__header { display: flex; min-width: 0; align-items: center; padding: 8rpx 16rpx 24rpx; }
-.work-sheet__cover { width: 80rpx; height: 80rpx; flex-shrink: 0; border-radius: 16rpx; background: var(--color-surface-muted); }
-.work-sheet__info { min-width: 0; margin-left: 20rpx; }
-.work-sheet__title { overflow: hidden; font-size: 30rpx; font-weight: 600; line-height: 42rpx; text-overflow: ellipsis; white-space: nowrap; }
-.work-sheet__meta { margin-top: 4rpx; color: var(--color-text-secondary); font-size: 23rpx; line-height: 32rpx; }
-.work-sheet__actions { overflow: hidden; border: 1rpx solid var(--color-border); border-radius: var(--radius-control); }
-.work-sheet__action { display: flex; box-sizing: border-box; height: 104rpx; align-items: center; padding: 0 28rpx; background: var(--color-surface); color: var(--color-text); font-size: 28rpx; transition: var(--transition-press); }
-.work-sheet__action:active { background: var(--strong-overlay); opacity: 0.72; }
-.work-sheet__action-icon { width: 40rpx; height: 40rpx; flex-shrink: 0; margin-right: 22rpx; }
-.work-sheet__divider { height: 12rpx; border-top: 1rpx solid var(--color-border); border-bottom: 1rpx solid var(--color-border); background: var(--color-bg); }
-.work-sheet__action--danger { color: var(--color-danger); }
+.project-card__actions-inline { display: flex; box-sizing: border-box; width: 100%; min-width: 0; flex-wrap: wrap; align-items: center; gap: 16rpx 20rpx; margin-top: 16rpx; }
+.project-action { display: flex; box-sizing: border-box; width: auto; min-width: 0; height: 48rpx; flex: 0 0 auto; align-items: center; justify-content: flex-start; gap: var(--space-1); margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--color-text-secondary); font-size: 22rpx; line-height: 1; white-space: nowrap; transition: var(--transition-press); }
+.project-action::after { border: 0; }
+.project-action__icon { width: 24rpx; height: 24rpx; flex-shrink: 0; }
+.project-action:active { background: var(--strong-overlay); transform: scale(0.97); }
+.project-action--danger { color: var(--color-danger); }
+.project-action--danger:active { background: var(--color-danger-soft); }
 
-.rename-dialog-mask { align-items: center; justify-content: center; padding: 40rpx; }
+.rename-dialog-mask { position: fixed; z-index: 300; display: flex; inset: 0; align-items: center; justify-content: center; padding: 40rpx; background: rgba(0, 0, 0, 0.35); animation: overlay-fade-in 180ms ease-out; }
+
 .rename-dialog { box-sizing: border-box; width: 100%; max-width: 640rpx; padding: 40rpx; border-radius: var(--radius-card-large); background: var(--color-surface); box-shadow: 0 24rpx 80rpx rgba(0, 0, 0, 0.2), var(--shadow-card); animation: dialog-scale-in 180ms ease-out; }
 .rename-dialog__title { font-size: 34rpx; font-weight: 600; line-height: 48rpx; text-align: center; }
 .rename-dialog__input { box-sizing: border-box; width: 100%; height: 88rpx; margin-top: 32rpx; padding: 0 24rpx; border: 2rpx solid var(--color-border); border-radius: var(--radius-control); background: var(--color-bg); font-size: 28rpx; }
@@ -59,7 +48,6 @@
 .rename-dialog__button--save[disabled] { background: var(--color-primary-soft); color: var(--color-text-tertiary); }
 
 @keyframes overlay-fade-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes sheet-slide-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes dialog-scale-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
 
 @media (max-width: 380px) {

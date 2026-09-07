@@ -18,15 +18,6 @@ type WorkView = WorkItem & {
   statusLabel: string
   isDraft: boolean
 }
-type ActiveWork = {
-  id: string
-  title: string
-  coverPath: string
-  dimensions: string
-  colorCount: number
-  isCloud: boolean
-}
-
 const tabs = [
   { id: 'all', label: '全部' },
   { id: 'recent', label: '最近' },
@@ -45,7 +36,6 @@ Page({
     draftCount: 0,
     loading: false,
     showPageNav: true,
-    activeWork: null as ActiveWork | null,
     renameWorkId: '',
     renameOriginalTitle: '',
     renameDraft: '',
@@ -56,7 +46,7 @@ Page({
   },
 
   onShow() {
-    this.getTabBar()?.setData({ selected: 1, hidden: Boolean(this.data.activeWork || this.data.renameWorkId) })
+    this.getTabBar()?.setData({ selected: 1, hidden: Boolean(this.data.renameWorkId) })
     void this.refreshWorks()
   },
 
@@ -175,36 +165,14 @@ Page({
     wx.showToast({ title: '这份本地作品缺少可恢复的网格数据', icon: 'none' })
   },
 
-  openWorkMenu(event: WechatMiniprogram.TouchEvent) {
+  stopPropagation() {},
+
+  startRename(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
     const work = this.data.allWorks.find((item) => item.id === id)
     if (!work) return
     this.getTabBar()?.setData({ hidden: true })
     this.setData({
-      showPageNav: false,
-      activeWork: {
-        id: work.id,
-        title: work.title,
-        coverPath: work.coverPath,
-        dimensions: work.dimensions,
-        colorCount: work.colorCount,
-        isCloud: Boolean(work.isCloud),
-      },
-    })
-  },
-
-  closeWorkMenu() {
-    this.getTabBar()?.setData({ hidden: false })
-    this.setData({ activeWork: null, showPageNav: true })
-  },
-
-  stopPropagation() {},
-
-  startRename() {
-    const work = this.data.activeWork
-    if (!work) return
-    this.setData({
-      activeWork: null,
       showPageNav: false,
       renameWorkId: work.id,
       renameOriginalTitle: work.title,
@@ -283,20 +251,22 @@ Page({
     })
   },
 
-  downloadWork() {
-    if (!this.data.activeWork) return
+  downloadWork(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id)
+    if (!this.data.allWorks.some((work) => work.id === id)) return
     this.getTabBar()?.setData({ hidden: false })
-    this.setData({ activeWork: null, showPageNav: true }, () => {
+    this.setData({ showPageNav: true }, () => {
       wx.navigateTo({ url: '/pages-sub/downloads/index' })
     })
   },
 
-  deleteWork() {
-    const work = this.data.activeWork
+  deleteWork(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id)
+    const work = this.data.allWorks.find((item) => item.id === id)
     if (!work) return
     this.getTabBar()?.setData({ hidden: false })
-    this.setData({ activeWork: null, showPageNav: true }, () => {
-      this.confirmDelete(work.id, work.title, work.isCloud)
+    this.setData({ showPageNav: true }, () => {
+      this.confirmDelete(work.id, work.title, Boolean(work.isCloud))
     })
   },
 
