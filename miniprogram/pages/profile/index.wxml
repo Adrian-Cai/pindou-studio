@@ -3,7 +3,7 @@
     <view class="user-card ui-card" bindtap="openUserPanel">
       <image class="user-card__avatar" src="{{avatarPath}}" mode="aspectFill" />
       <view class="user-card__content">
-        <view class="user-card__name">{{isLoggedIn ? accountName : '登录拼豆工作室'}}</view>
+        <view class="user-card__name">{{isLoggedIn ? accountName : '登录小露拼豆'}}</view>
         <view class="user-card__desc">{{isLoggedIn ? accountStatusText : '登录后可保存云端作品和同步账号数据'}}</view>
       </view>
       <view class="user-card__arrow">›</view>
@@ -53,7 +53,7 @@
       </view>
     </view>
 
-    <view class="profile-page__version">拼豆制作工具 · Version 0.25.4</view>
+    <view class="profile-page__version">拼豆制作工具 · Version 0.25.5</view>
   </view>
 </page-layout>
 
@@ -95,7 +95,7 @@
     <view class="profile-sheet__handle"></view>
     <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭登录弹层">×</view>
     <image class="login-sheet__avatar" src="/assets/icons/brand-avatar.webp" mode="aspectFit" />
-    <view class="login-sheet__title">登录拼豆工作室</view>
+    <view class="login-sheet__title">登录小露拼豆</view>
     <view class="login-sheet__subtitle">保存云端作品，跨设备查看账号数据</view>
 
     <view class="login-benefits">
@@ -125,7 +125,7 @@
       bindtap="startWechatLogin"
     >{{loginUiState === 'loading' ? '登录中…' : loginUiState === 'error' ? '重新登录' : '微信快捷登录'}}</button>
     <view class="login-sheet__later" bindtap="hideActiveSheet">暂不登录</view>
-    <view class="login-sheet__agreement">登录即表示你同意<text class="login-sheet__agreement-link" bindtap="openPrivacyPolicy">《隐私政策》</text></view>
+    <view class="login-sheet__agreement">登录前请阅读<text class="login-sheet__agreement-link" bindtap="openPrivacyPolicy">《隐私政策》</text></view>
     <view class="login-sheet__local-hint">当前本地作品不会自动上传</view>
   </view>
 </view>

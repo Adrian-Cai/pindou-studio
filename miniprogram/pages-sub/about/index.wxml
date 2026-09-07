@@ -2,7 +2,7 @@
   <view class="subpage about-page">
     <image class="about-logo" src="/assets/icons/brand-avatar.svg" mode="aspectFit" />
     <view class="about-name">拼豆制作工具</view>
-    <view class="about-version">Version 0.25.4</view>
+    <view class="about-version">Version 0.25.5</view>
 
     <view class="about-intro">
       <view class="about-intro__title"><text>i</text> 产品介绍</view>
@@ -23,7 +23,7 @@
 
     <view class="about-footer">
       <view>© 2026 拼豆制作工具</view>
-      <view>由 拼豆工作室 用心打造</view>
+      <view>由 小露拼豆 用心打造</view>
       <view>让创意，拼出美好时光 <text>♥</text></view>
     </view>
   </view>

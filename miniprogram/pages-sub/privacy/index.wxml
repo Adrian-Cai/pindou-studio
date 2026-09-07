@@ -28,7 +28,7 @@
 
     <view class="privacy-card ui-card privacy-documents">
       <view class="privacy-card__title"><text>◇</text> 隐私与协议</view>
-      <view class="privacy-document" data-key="privacy-policy" bindtap="openDocument"><text>▤</text><view>隐私政策</view><text>›</text></view>
+      <view class="privacy-document" data-key="privacy-policy" bindtap="openDocument"><text>▤</text><view>小露拼豆隐私政策</view><text>›</text></view>
       <view class="privacy-document" data-key="personal-information" bindtap="openDocument"><text>▤</text><view>个人信息收集清单</view><text>›</text></view>
       <view class="privacy-document" data-key="third-party-sharing" bindtap="openDocument"><text>▤</text><view>第三方信息共享清单</view><text>›</text></view>
     </view>

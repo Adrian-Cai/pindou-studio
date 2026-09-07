@@ -131,7 +131,7 @@ test("payment creation snapshots server package values and never accepts a clien
   assert.match(result.orderId, /^order_[a-f0-9]{26}$/);
   assert.deepEqual(gatewayInput, {
     orderId: result.orderId,
-    description: "拼豆工作室-加购 3 次",
+    description: "小露拼豆-加购 3 次",
     amountFen: 990,
     currency: "CNY",
     payerOpenid: OPENID,

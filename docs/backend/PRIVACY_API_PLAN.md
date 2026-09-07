@@ -1,6 +1,6 @@
 # 隐私相关子页面 API 方案与开发计划
 
-> 文档状态：后端与小程序第一版已实现，待产品确认注销后的重新注册策略和正式法律文本
+> 文档状态：后端与小程序第一版已实现，正式法律文本版本为 2026-09-07；仍待产品确认注销后的重新注册策略和上线配置
 >
 > 适用范围：隐私设置、隐私政策、个人信息收集清单、第三方信息共享清单、账号注销
 >
@@ -20,7 +20,7 @@
 - 三个文档入口由服务端受控静态内容提供，小程序已接入展示；
 - 注销账号后端接口和小程序确认、退出流程均已实现；
 - 后端已通过 Bearer 鉴权、用户服务、用户软删除和会话撤销实现本阶段最小闭环；
-- 当前作品保存和登录后的本地作品迁移受 `cloudSync` 控制，开启云同步时会先确认是否迁移本地作品。
+- 当前作品保存受 `cloudSync` 控制；已有本地作品只在隐私页开启云同步并明确确认后迁移。
 
 因此，隐私功能应拆成“文档读取、偏好同步、账号注销”三条链路，不能只新增一个 PATCH 接口。
 
@@ -64,8 +64,8 @@ GET /api/legal-documents/privacy-policy
   "document": {
     "key": "privacy-policy",
     "title": "隐私政策",
-    "version": "2026-09-01",
-    "effectiveAt": "2026-09-01T00:00:00+08:00",
+    "version": "2026-09-07",
+    "effectiveAt": "2026-09-07T00:00:00+08:00",
     "contentType": "rich-text",
     "content": "<p>……经服务端清洗后的可信内容……</p>"
   }
@@ -104,7 +104,7 @@ pindou_user_consents
     "cloudSync": false,
     "serviceNotices": true,
     "personalizedRecommendations": false,
-    "updatedAt": "2026-09-01T12:00:00.000Z"
+    "updatedAt": "2026-09-07T12:00:00.000Z"
   }
 }
 ```
@@ -151,7 +151,7 @@ personalizedRecommendations
     "cloudSync": true,
     "serviceNotices": true,
     "personalizedRecommendations": false,
-    "updatedAt": "2026-09-01T12:00:00.000Z"
+    "updatedAt": "2026-09-07T12:00:00.000Z"
   }
 }
 ```
@@ -188,10 +188,10 @@ PATCH 接口只负责保存偏好，不在服务端隐式触发作品上传。�
 - 不自动把云端作品下载回本地；
 - 如需删除云端数据，必须提供单独且明确的删除操作。
 
-还必须修改两处现有链路：
+本次已修改两处现有链路：
 
 - `miniprogram/pages-sub/editor/index.ts`：从“登录即云端保存”改为“登录且 `cloudSync=true` 才云端保存”；
-- `miniprogram/services/local-work-sync.ts` 和 `auth-store.ts`：登录后不得无确认静默迁移本地作品，应在 `cloudSync=true` 且用户确认后执行。
+- `miniprogram/services/local-work-sync.ts`：只在用户在隐私设置中确认开启云同步后执行；`auth-store.ts` 登录和恢复链路不得自动调用迁移。
 
 `serviceNotices` 和 `personalizedRecommendations` 第一阶段只保存偏好，不伪造通知或推荐功能；对应功能上线时再读取这两个字段。
 
@@ -320,7 +320,7 @@ Authorization: Bearer <token>
 1. 登录恢复时把服务端 `privacy` 写入本地缓存。
 2. 隐私页面开关采用“请求成功提交，失败回滚”的状态机。
 3. 开启云同步前增加确认弹窗，确认后才迁移已有本地作品。
-4. 保存作品和登录迁移链路读取 `cloudSync`。
+4. 保存作品读取 `cloudSync`；登录和恢复链路不再自动迁移本地作品。
 5. 离线时保留最后一次服务端状态，并明确提示本次修改未同步。
 
 ### 阶段 E：账号注销（主链路已完成，文件清理与策略待补充）

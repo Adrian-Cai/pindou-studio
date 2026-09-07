@@ -1,7 +1,7 @@
 import { fetchLegalDocument, type LegalDocumentKey } from '../services/legal-document-service'
 
 const TITLES: Record<LegalDocumentKey, string> = {
-  'privacy-policy': '隐私政策',
+  'privacy-policy': '小露拼豆隐私政策',
   'personal-information': '个人信息收集清单',
   'third-party-sharing': '第三方信息共享清单',
 }

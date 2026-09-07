@@ -95,7 +95,7 @@ function packageResponse(row: PackageRow): PaymentPackage {
 }
 
 function paymentDescription(label: string): string {
-  return Array.from(`拼豆工作室-${label}`).slice(0, 127).join("");
+  return Array.from(`小露拼豆-${label}`).slice(0, 127).join("");
 }
 
 function ensurePayablePackage(row: PackageRow | undefined): PackageRow {

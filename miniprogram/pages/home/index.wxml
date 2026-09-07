@@ -1,4 +1,4 @@
-<page-layout title="一起拼豆吧" home show-main-nav compact-bottom-padding selected-tab="{{0}}">
+<page-layout title="小露拼豆" home show-main-nav compact-bottom-padding selected-tab="{{0}}">
 <view class="page">
 
   <!-- ① 主标题 -->

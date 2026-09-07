@@ -15,7 +15,6 @@ import {
   loadAuthSession,
   saveAuthSession,
 } from '../services/token-storage'
-import { syncLocalWorksToCloud } from '../services/local-work-sync'
 import { appStore } from './app-store'
 
 export type AuthStatus =
@@ -113,7 +112,6 @@ export class AuthStore {
         errorMessage: '',
       })
       applyPrivacyPreferences(profile)
-      await this.syncLocalWorksAndRefreshProfile(session)
     } catch (error) {
       if (isUnauthorized(error)) {
         this.expireSession()
@@ -338,7 +336,6 @@ export class AuthStore {
         errorMessage: '',
       })
       applyPrivacyPreferences(profile)
-      await this.syncLocalWorksAndRefreshProfile(session)
     } catch (error) {
       if (isUnauthorized(error)) {
         this.expireSession()
@@ -364,25 +361,6 @@ export class AuthStore {
     return {
       ...cachedProfile,
       user: { ...user, createdAt: cachedProfile.user.createdAt },
-    }
-  }
-
-  private async syncLocalWorksAndRefreshProfile(session: AuthSession): Promise<void> {
-    const result = await syncLocalWorksToCloud()
-    if (result.uploaded === 0) return
-
-    try {
-      const profile = await fetchCurrentUser(session.token)
-      saveAuthSession({ ...session, user: profile.user, profile })
-      this.setState({
-        status: 'authenticated',
-        user: profile.user,
-        profile,
-        isOffline: false,
-        errorMessage: '',
-      })
-    } catch (error) {
-      console.error('刷新本地作品同步后的用户统计失败', error)
     }
   }
 

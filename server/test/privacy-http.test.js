@@ -9,7 +9,7 @@ const defaults = {
   cloudSync: false,
   serviceNotices: true,
   personalizedRecommendations: false,
-  updatedAt: "2026-09-01T00:00:00.000Z",
+  updatedAt: "2026-09-07T00:00:00.000Z",
 };
 
 function dependencies(overrides = {}) {
@@ -131,6 +131,11 @@ test("legal documents expose only controlled keys", async () => {
       assert.equal(response.status, 200);
       assert.equal(body.document.key, key);
       assert.equal(body.document.contentType, "rich-text");
+      assert.equal(body.document.version, "2026-09-07");
+      assert.equal(body.document.effectiveAt, "2026-09-07T00:00:00+08:00");
+      assert.equal(typeof body.document.content, "string");
+      assert.ok(body.document.content.length > 100);
+      assert.equal(/<script\b/i.test(body.document.content), false);
     }
     const missing = await fetch(`${baseUrl}/api/legal-documents/not-supported`);
     const missingBody = await missing.json();
