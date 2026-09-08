@@ -53,7 +53,7 @@
       </view>
     </view>
 
-    <view class="profile-page__version">拼豆制作工具 · Version 0.25.9</view>
+    <view class="profile-page__version">拼豆制作工具 · Version 0.25.12</view>
   </view>
 </page-layout>
 
@@ -105,15 +105,15 @@
 
     <view class="login-benefits">
       <view class="login-benefit">
-        <view class="login-benefit__icon"><image src="/assets/icons/login/cloud-upload.svg" mode="aspectFit" aria-hidden="true" /></view>
+        <view class="login-benefit__icon"><image src="/assets/icons/login/cloud-plus.svg" mode="aspectFit" aria-hidden="true" /></view>
         <text>云端保存作品</text>
       </view>
       <view class="login-benefit">
-        <view class="login-benefit__icon"><image src="/assets/icons/login/refresh-cw.svg" mode="aspectFit" aria-hidden="true" /></view>
+        <view class="login-benefit__icon"><image src="/assets/icons/login/refresh-square.svg" mode="aspectFit" aria-hidden="true" /></view>
         <text>多设备同步</text>
       </view>
       <view class="login-benefit">
-        <view class="login-benefit__icon"><image src="/assets/icons/login/gem.svg" mode="aspectFit" aria-hidden="true" /></view>
+        <view class="login-benefit__icon"><image src="/assets/icons/login/gift.svg" mode="aspectFit" aria-hidden="true" /></view>
         <text>解锁更多功能</text>
       </view>
     </view>

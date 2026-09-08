@@ -47,7 +47,7 @@
 
 .login-sheet__message { margin-top: 32rpx; color: #6b7280; font-size: 13px; line-height: 20px; }
 .login-sheet__message--error { color: #b42318; }
-.login-sheet__submit { display: flex; width: 100%; height: 108rpx; align-items: center; justify-content: center; gap: 16rpx; margin: 56rpx 0 0; padding: 0; border: 0; border-radius: 28rpx; background: #07c160; box-shadow: 0 16rpx 40rpx rgba(7, 193, 96, 0.16); color: #fff; font-family: var(--font-heading); font-size: 17px; font-weight: 600; line-height: 1; transition: opacity 150ms ease; }
+.login-sheet__submit { display: flex; box-sizing: border-box; width: 100%; min-width: 100%; align-self: stretch; height: 108rpx; align-items: center; justify-content: center; gap: 16rpx; margin: 56rpx 0 0; padding: 0; border: 0; border-radius: 28rpx; background: #07c160; box-shadow: 0 16rpx 40rpx rgba(7, 193, 96, 0.16); color: #fff; font-family: var(--font-heading); font-size: 17px; font-weight: 600; line-height: 1; transition: opacity 150ms ease; }
 .login-sheet__submit::after { border: 0; }
 .login-sheet__submit[disabled] { background: #07c160; color: #fff; opacity: 0.62; }
 .login-sheet__wechat { width: 48rpx; height: 48rpx; flex-shrink: 0; }
