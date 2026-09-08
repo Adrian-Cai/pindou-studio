@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { AppError } = require("../dist/shared/app-error.js");
-const { decryptOpenid, hashToken } = require("../dist/shared/identity.js");
+const { decryptOpenid, hashOpenid, hashToken } = require("../dist/shared/identity.js");
 const { AuthService } = require("../dist/modules/auth/auth-service.js");
 const { BearerTokenAuthenticator } = require("../dist/modules/auth/authenticator.js");
 
@@ -36,6 +36,12 @@ class InMemoryAuthRepository {
       userDeletedAt: null,
     };
   }
+
+  deleteAccount(openidHash) {
+    const user = this.usersByOpenidHash.get(openidHash);
+    if (user) user.deletedAt = new Date();
+    this.usersByOpenidHash.delete(openidHash);
+  }
 }
 
 const authConfig = {
@@ -67,6 +73,23 @@ test("same WeChat openid reuses the user and creates independent opaque sessions
   assert.equal(repository.sessions[0].openidCiphertext.includes("private-openid"), false);
   assert.equal(decryptOpenid(repository.sessions[0].openidCiphertext, authConfig.openidHashSecret), "private-openid");
   assert.equal(first.expiresAt, "2026-09-25T09:00:00.000Z");
+});
+
+test("a deleted WeChat account registers as a fresh user", async () => {
+  const repository = new InMemoryAuthRepository();
+  const service = new AuthService(
+    repository,
+    { async exchangeCode() { return { openid: "private-openid" }; } },
+    authConfig,
+    () => fixedNow,
+  );
+
+  const first = await service.login("wx-code-1");
+  repository.deleteAccount(hashOpenid("private-openid", authConfig.openidHashSecret));
+  const second = await service.login("wx-code-2");
+
+  assert.notEqual(first.user.id, second.user.id);
+  assert.notEqual(repository.sessions[0].userId, repository.sessions[1].userId);
 });
 
 test("invalid login code is rejected before calling WeChat", async () => {

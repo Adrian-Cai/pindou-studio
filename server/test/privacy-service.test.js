@@ -84,7 +84,10 @@ test("account deletion marks assets and physically removes avatar, covers and AI
 
   await service.deleteAccount("usr_test");
   assert.equal(statements[0], "BEGIN");
-  assert.match(statements.find((sql) => sql.includes("WITH previous AS")), /UPDATE pindou_users/);
+  const deleteUserStatement = statements.find((sql) => sql.includes("WITH previous AS"));
+  assert.match(deleteUserStatement, /UPDATE pindou_users/);
+  assert.match(deleteUserStatement, /openid_hash = NULL/);
+  assert.match(deleteUserStatement, /openid_ciphertext = NULL/);
   assert.match(statements.find((sql) => sql.includes("UPDATE pindou_auth_sessions")), /UPDATE pindou_auth_sessions/);
   assert.match(statements.find((sql) => sql.includes("UPDATE pindou_works")), /UPDATE pindou_works/);
   assert.match(statements.find((sql) => sql.includes("DELETE FROM pindou_favorites")), /DELETE FROM pindou_favorites/);

@@ -26,6 +26,14 @@ node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'
 
 服务在监听端口前会开启 `READ ONLY` 事务，检查数据库产品、版本、11 张表、字段、索引、外键、CHECK 约束和注释发现任何结构差异时会拒绝启动，不会自动修复数据库
 
+已有数据库部署本版本前，先由 `pindou_*` 表 owner 执行以下迁移，再执行 `npm run db:inspect`：
+
+```powershell
+psql "<由运维安全提供的迁移连接>" -v ON_ERROR_STOP=1 -f sql/005_release_deleted_account_openid.sql
+```
+
+该迁移会释放已注销账号的微信标识；同一微信后续登录将创建全新的账号，而不会恢复旧数据。
+
 健康检查：
 
 ```http

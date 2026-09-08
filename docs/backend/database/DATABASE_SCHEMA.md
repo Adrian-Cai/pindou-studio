@@ -68,7 +68,7 @@ pindou_users
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
 | `id` | `varchar(32)` | 否 | 用户 ID，主键 |
-| `openid_hash` | `varchar(128)` | 否 | 微信 OpenID 摘要，唯一索引 |
+| `openid_hash` | `varchar(128)` | 是 | 当前有效账号的微信 OpenID 摘要，唯一索引；账号注销后清空，使同一微信可重新注册新账号 |
 | `openid_ciphertext` | `text` | 是 | OpenID 加密值（如启用） |
 | `nickname` | `varchar(80)` | 是 | 用户昵称 |
 | `avatar_url` | `text` | 是 | 用户头像 |

@@ -19,7 +19,7 @@ const column = (type: string, nullable = false, length?: number): ExpectedColumn
 export const EXPECTED_SCHEMA = {
   pindou_users: {
     id: column("varchar", false, 32),
-    openid_hash: column("varchar", false, 128),
+    openid_hash: column("varchar", true, 128),
     openid_ciphertext: column("text", true),
     nickname: column("varchar", true, 80),
     avatar_url: column("text", true),

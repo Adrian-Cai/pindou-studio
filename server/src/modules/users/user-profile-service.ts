@@ -309,6 +309,7 @@ export class PostgresUserProfileService implements UserProfileService {
             SET deleted_at = COALESCE(deleted_at, $2),
                 nickname = NULL,
                 avatar_url = NULL,
+                openid_hash = NULL,
                 openid_ciphertext = NULL,
                 updated_at = $2
            FROM previous

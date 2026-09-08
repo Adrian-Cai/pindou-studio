@@ -112,7 +112,7 @@ pindou_users
 | 字段 | 类型建议 | 约束 | 说明 |
 | --- | --- | --- | --- |
 | `id` | varchar(32) | PK | `usr_` 前缀的服务端 ID |
-| `openid_hash` | varchar(128) | UNIQUE, NOT NULL | 微信 `openid` 的不可逆检索摘要 |
+| `openid_hash` | varchar(128) | UNIQUE, NULL | 当前有效账号的微信 `openid` 不可逆检索摘要；账号注销后清空，使同一微信可重新注册新账号 |
 | `openid_ciphertext` | text | NULL | 如业务需要，保存加密后的原值；密钥不入库 |
 | `nickname` | varchar(80) | NULL | 初始允许为空 |
 | `avatar_url` | text | NULL | 初始允许为空 |
@@ -406,7 +406,7 @@ pindou_users
 
 | 对象 | 约束/索引 | 目的 |
 | --- | --- | --- |
-| `pindou_users` | `openid_hash UNIQUE` | 登录幂等建用户 |
+| `pindou_users` | `openid_hash UNIQUE` | 当前有效账号登录幂等建用户；注销后清空标识以支持重新注册 |
 | `pindou_auth_sessions` | `token_hash UNIQUE`、`expires_at` | 快速鉴权与过期清理 |
 | `pindou_works` | `(user_id, updated_at)` | 作品列表 |
 | `pindou_work_patterns` | `work_id PK/FK` | 一对一图案恢复 |
