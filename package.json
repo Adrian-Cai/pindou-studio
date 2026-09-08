@@ -1,6 +1,6 @@
 {
   "name": "pindou_studio",
-  "version": "0.25.7",
+  "version": "0.25.8",
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
