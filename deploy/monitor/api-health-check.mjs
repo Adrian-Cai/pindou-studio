@@ -1,20 +1,16 @@
 #!/usr/bin/env node
 
 import { readFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
+const directory = path.dirname(fileURLToPath(import.meta.url))
 const configPath = process.argv[2]
   ? path.resolve(process.argv[2])
-  : path.join(scriptDirectory, 'endpoints.json')
+  : path.join(directory, 'endpoints.json')
 
-function getValue(object, keyPath) {
-  return keyPath.split('.').reduce((value, key) => value?.[key], object)
-}
-
-function formatError(error) {
-  return error instanceof Error ? error.message : String(error)
+function readPath(value, keyPath) {
+  return keyPath.split('.').reduce((current, key) => current?.[key], value)
 }
 
 async function checkEndpoint(baseUrl, endpoint, defaultTimeoutMs) {
@@ -47,17 +43,11 @@ async function checkEndpoint(baseUrl, endpoint, defaultTimeoutMs) {
       try {
         json = JSON.parse(body)
       } catch {
-        return {
-          name: endpoint.name,
-          ok: false,
-          status: response.status,
-          elapsedMs,
-          error: 'response is not valid JSON',
-        }
+        return { name: endpoint.name, ok: false, status: response.status, elapsedMs, error: 'response is not valid JSON' }
       }
 
       for (const [keyPath, expectedValue] of Object.entries(endpoint.expectedJson)) {
-        if (getValue(json, keyPath) !== expectedValue) {
+        if (readPath(json, keyPath) !== expectedValue) {
           return {
             name: endpoint.name,
             ok: false,
@@ -69,32 +59,27 @@ async function checkEndpoint(baseUrl, endpoint, defaultTimeoutMs) {
       }
     }
 
-    return {
-      name: endpoint.name,
-      ok: true,
-      status: response.status,
-      elapsedMs,
-    }
+    return { name: endpoint.name, ok: true, status: response.status, elapsedMs }
   } catch (error) {
     return {
       name: endpoint.name,
       ok: false,
       elapsedMs: Math.round(performance.now() - startedAt),
-      error: formatError(error),
+      error: error instanceof Error ? error.message : String(error),
     }
   }
 }
 
 const config = JSON.parse(await readFile(configPath, 'utf8'))
-const baseUrl = (process.env.API_HEALTH_BASE_URL ?? config.baseUrl).replace(/\/$/u, '')
-const defaultTimeoutMs = Number(process.env.API_HEALTH_TIMEOUT_MS ?? config.timeoutMs ?? 10000)
+const baseUrl = (process.env.API_HEALTH_BASE_URL ?? config.baseUrl ?? '').replace(/\/$/u, '')
+const timeoutMs = Number(process.env.API_HEALTH_TIMEOUT_MS ?? config.timeoutMs ?? 10000)
 
 if (!baseUrl || !Array.isArray(config.endpoints) || config.endpoints.length === 0) {
   throw new Error('监控配置必须包含 baseUrl 和至少一个 endpoints 项')
 }
 
 const results = await Promise.all(
-  config.endpoints.map((endpoint) => checkEndpoint(baseUrl, endpoint, defaultTimeoutMs)),
+  config.endpoints.map((endpoint) => checkEndpoint(baseUrl, endpoint, timeoutMs)),
 )
 
 for (const result of results) {
