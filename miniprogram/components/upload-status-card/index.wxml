@@ -70,7 +70,7 @@
         bindtap="handleChooseImage"
         disabled="{{choosing}}"
       >
-        <image src="/assets/icons/image-upload.svg" mode="aspectFit" />
+        <image src="/assets/icons/image-reselect.svg" mode="aspectFit" />
         <text>重新选择图片</text>
       </button>
     </view>

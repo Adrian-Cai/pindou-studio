@@ -69,6 +69,8 @@ UI 设计稿、运行截图和对比资料保存在 [`ui/`](ui/) 与 [`ui-compar
 - [MINI_PROGRAM_RELEASE_0.25.10.md](releases/MINI_PROGRAM_RELEASE_0.25.10.md)：0.25.10 提交说明
 - [MINI_PROGRAM_RELEASE_0.25.13.md](releases/MINI_PROGRAM_RELEASE_0.25.13.md)：0.25.13 提交说明
 - [MINI_PROGRAM_RELEASE_0.25.14.md](releases/MINI_PROGRAM_RELEASE_0.25.14.md)：0.25.14 提交说明
+- [MINI_PROGRAM_RELEASE_0.25.15.md](releases/MINI_PROGRAM_RELEASE_0.25.15.md)：0.25.15 提交说明
+- [MINI_PROGRAM_RELEASE_0.25.16.md](releases/MINI_PROGRAM_RELEASE_0.25.16.md)：0.25.16 提交说明
 
 ### 其他资料目录
 

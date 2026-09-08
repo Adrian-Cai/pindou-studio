@@ -41,22 +41,30 @@ Page({
   },
 
   authUnsubscribe: undefined as (() => void) | undefined,
+  appUnsubscribe: undefined as (() => void) | undefined,
   loginCloseTimer: 0,
 
   onLoad() {
     this.authUnsubscribe = authStore.subscribe((state) => this.applyAuthState(state))
+    this.appUnsubscribe = appStore.subscribe(() => this.applyAuthState(authStore.getSnapshot()))
   },
 
   onShow() {
     this.getTabBar()?.setData({ selected: 2 })
     this.applyAuthState(authStore.getSnapshot())
-    void authStore.refreshQuota()
+    if (this.data.isLoggedIn) {
+      void authStore.refresh()
+    } else {
+      void authStore.refreshQuota()
+    }
   },
 
   onUnload() {
     clearTimeout(this.loginCloseTimer)
     this.authUnsubscribe?.()
     this.authUnsubscribe = undefined
+    this.appUnsubscribe?.()
+    this.appUnsubscribe = undefined
   },
 
   applyAuthState(authState: Readonly<AuthState>) {
@@ -76,11 +84,18 @@ Page({
       ? shouldCompleteProfile ? 'profile' : 'none'
       : this.data.activeSheet
 
+    const localOnlyWorksCount = state.works.filter((work) => !work.isCloud).length
+    const cloudWorksCount = profile?.stats.workCount ?? state.works.filter((work) => work.isCloud).length
+    const workCount = Math.max(state.works.length, cloudWorksCount + localOnlyWorksCount)
+    const favoriteCount = Math.max(state.favoriteIds.length, profile?.stats.favoriteCount ?? 0)
+    const downloadCount = Math.max(state.downloadRecords.length, profile?.stats.downloadCount ?? 0)
+    const downloadQuota = profile?.quota.remaining ?? state.downloadQuota
+
     this.setData({
-      workCount: profile?.stats.workCount ?? state.works.length,
-      favoriteCount: profile?.stats.favoriteCount ?? state.favoriteIds.length,
-      downloadCount: profile?.stats.downloadCount ?? state.downloadRecords.length,
-      downloadQuota: profile?.quota.remaining ?? state.downloadQuota,
+      workCount,
+      favoriteCount,
+      downloadCount,
+      downloadQuota,
       avatarPath: DEFAULT_AVATAR_PATH,
       isLoggedIn: hasAuthenticatedUser,
       accountName: user?.nickname?.trim() || '拼豆用户',

@@ -23,6 +23,19 @@ export async function checkImageContent(
   try {
     const token = (await ensureLoggedInSession()).token
     stage = 'upload'
+    await uploadWithRetry(filePath, token, onUploadProgress)
+  } catch (error) {
+    logContentSecurityError(stage === 'login' ? 'login_failed' : 'content_security_upload_failed', error)
+    throw normalizeContentSecurityError(error)
+  }
+}
+
+async function uploadWithRetry(
+  filePath: string,
+  token: string,
+  onUploadProgress?: (progress: number) => void,
+): Promise<void> {
+  try {
     await apiUploadFile({
       path: '/api/content-security/media',
       filePath,
@@ -32,14 +45,29 @@ export async function checkImageContent(
       onProgress: onUploadProgress,
     })
   } catch (error) {
-    logContentSecurityError(stage === 'login' ? 'login_failed' : 'content_security_upload_failed', error)
-    throw normalizeContentSecurityError(error)
+    if (error instanceof ApiError && error.code === 'NETWORK_ERROR') {
+      await delay(500)
+      await apiUploadFile({
+        path: '/api/content-security/media',
+        filePath,
+        name: 'file',
+        token,
+        timeoutMs: 30_000,
+        onProgress: onUploadProgress,
+      })
+      return
+    }
+    throw error
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function logContentSecurityError(event: string, error: unknown): void {
   const metadata = error instanceof ApiError
-    ? { name: error.name, code: error.code, statusCode: error.statusCode, requestId: error.requestId }
+    ? { name: error.name, code: error.code, statusCode: error.statusCode, requestId: error.requestId, details: error.details }
     : { name: error instanceof Error ? error.name : 'UnknownError', code: null, statusCode: null, requestId: null }
   console.error(event, metadata)
 }

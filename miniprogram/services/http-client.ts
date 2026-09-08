@@ -127,8 +127,12 @@ export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
         }
         reject(createApiError(response.statusCode, body))
       },
-      fail: () => {
-        reject(new ApiError('图片上传失败，请检查网络后重试', { code: 'NETWORK_ERROR' }))
+      fail: (error) => {
+        const rawMessage = typeof error?.errMsg === 'string' ? error.errMsg : ''
+        reject(new ApiError('图片上传失败，请检查网络后重试', {
+          code: 'NETWORK_ERROR',
+          details: rawMessage ? { rawMessage } : {},
+        }))
       },
     })
     if (options.onProgress) {

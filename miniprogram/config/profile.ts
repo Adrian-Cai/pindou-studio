@@ -2,7 +2,7 @@ export const PROFILE_MENU_ITEMS = [
   { id: 'downloads', icon: '/assets/icons/profile-menu-download.svg', title: '下载记录', url: '/pages-sub/downloads/index' },
   { id: 'help', icon: '/assets/icons/profile-menu-help.svg', title: '使用帮助', url: '/pages-sub/help/index' },
   { id: 'feedback', icon: '/assets/icons/profile-menu-feedback.svg', title: '意见反馈', url: '/pages-sub/feedback/index' },
-  { id: 'privacy', icon: '/assets/icons/profile-menu-shield.svg', title: '隐私设置', url: '/pages-sub/privacy/index' },
+  { id: 'privacy', icon: '/assets/icons/profile-menu-settings.svg', title: '隐私设置', url: '/pages-sub/privacy/index' },
   { id: 'about', icon: '/assets/icons/profile-menu-info.svg', title: '关于我们', url: '/pages-sub/about/index' },
 ] as const
 

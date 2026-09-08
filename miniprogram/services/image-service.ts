@@ -46,16 +46,11 @@ export async function prepareImageForContentSecurity(sourceImagePath: string): P
   let header: Uint8Array | null = null
   try {
     header = await readFileHeader(sourceImagePath)
-  } catch {
-    let imageInfo: WechatMiniprogram.GetImageInfoSuccessCallbackResult
-    try {
-      imageInfo = await getImageInfo(sourceImagePath)
-    } catch {
-      throw new ImageDecodeError()
-    }
-    if (String(imageInfo.type).toLowerCase() !== 'webp') return sourceImagePath
+    if (!isSupportedImageHeader(header)) throw new UnsupportedImageFormatError()
+  } catch (error) {
+    if (error instanceof UnsupportedImageFormatError) throw error
+    // 部分环境无法直接读取文件头时继续尝试解码
   }
-  if (header && (isJpeg(header) || isPng(header))) return sourceImagePath
 
   let sourceWidth: number
   let sourceHeight: number
@@ -64,29 +59,77 @@ export async function prepareImageForContentSecurity(sourceImagePath: string): P
   } catch {
     throw new ImageDecodeError()
   }
-  const maxSide = 2_048
-  const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight))
-  const width = Math.max(1, Math.round(sourceWidth * scale))
-  const height = Math.max(1, Math.round(sourceHeight * scale))
-  const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })
-  const context = canvas.getContext('2d') as { drawImage(image: WechatMiniprogram.Image, x: number, y: number, width: number, height: number): void }
-  const image = canvas.createImage()
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve()
-    image.onerror = () => reject(new ImageDecodeError())
-    image.src = sourceImagePath
+
+  const maxSide = 1_024
+  const currentMaxSide = Math.max(sourceWidth, sourceHeight)
+
+  // 如果原图已经是小体积的 JPEG，可直接复用
+  if (header && isJpeg(header) && currentMaxSide <= maxSide) {
+    const size = await getFileSize(sourceImagePath)
+    if (size !== null && size <= 300 * 1024) {
+      return sourceImagePath
+    }
+  }
+
+  try {
+    const scale = Math.min(1, maxSide / currentMaxSide)
+    const width = Math.max(1, Math.round(sourceWidth * scale))
+    const height = Math.max(1, Math.round(sourceHeight * scale))
+    const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })
+    const context = canvas.getContext('2d') as {
+      drawImage(image: WechatMiniprogram.Image, x: number, y: number, width: number, height: number): void
+    }
+    const image = canvas.createImage()
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve()
+      image.onerror = () => reject(new ImageDecodeError())
+      image.src = sourceImagePath
+    })
+    context.drawImage(image, 0, 0, width, height)
+
+    return await new Promise<string>((resolve, reject) => {
+      wx.canvasToTempFilePath({
+        canvas: canvas as unknown as WechatMiniprogram.IAnyObject,
+        fileType: 'jpg',
+        quality: 0.8,
+        width,
+        height,
+        destWidth: width,
+        destHeight: height,
+        success: ({ tempFilePath }) => resolve(tempFilePath),
+        fail: reject,
+      })
+    })
+  } catch {
+    return compressImageFallback(sourceImagePath)
+  }
+}
+
+function getFileSize(filePath: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    try {
+      wx.getFileSystemManager().getFileInfo({
+        filePath,
+        success: ({ size }) => resolve(size),
+        fail: () => resolve(null),
+      })
+    } catch {
+      resolve(null)
+    }
   })
-  context.drawImage(image, 0, 0, width, height)
-  return new Promise<string>((resolve, reject) => {
-    wx.canvasToTempFilePath({
-      canvas: canvas as unknown as WechatMiniprogram.IAnyObject,
-      fileType: 'png',
-      width,
-      height,
-      destWidth: width,
-      destHeight: height,
+}
+
+function compressImageFallback(src: string): Promise<string> {
+  return new Promise((resolve) => {
+    if (typeof wx.compressImage !== 'function') {
+      resolve(src)
+      return
+    }
+    wx.compressImage({
+      src,
+      quality: 80,
       success: ({ tempFilePath }) => resolve(tempFilePath),
-      fail: () => reject(new ImageDecodeError()),
+      fail: () => resolve(src),
     })
   })
 }
