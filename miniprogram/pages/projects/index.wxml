@@ -56,18 +56,18 @@
             <text class="status-pill {{item.isDraft ? 'status-pill--draft' : ''}}">{{item.statusLabel}}</text>
           </view>
           <view class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
-            <button class="project-card__action-inline" data-id="{{item.id}}" catchtap="startRename" aria-label="重命名作品 {{item.title}}">
+            <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="startRename" aria-role="button" aria-label="重命名作品 {{item.title}}">
               <image class="project-card__action-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
               <text>重命名</text>
-            </button>
-            <button class="project-card__action-inline" data-id="{{item.id}}" catchtap="downloadWork" aria-label="下载作品 {{item.title}}">
+            </view>
+            <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="downloadWork" aria-role="button" aria-label="下载作品 {{item.title}}">
               <image class="project-card__action-icon" src="/assets/icons/profile-menu-download.svg" mode="aspectFit" />
               <text>下载</text>
-            </button>
-            <button class="project-card__action-inline project-card__action-inline--danger" data-id="{{item.id}}" catchtap="deleteWork" aria-label="删除作品 {{item.title}}">
+            </view>
+            <view class="project-card__action-inline project-card__action-inline--danger" data-id="{{item.id}}" catchtap="deleteWork" aria-role="button" aria-label="删除作品 {{item.title}}">
               <image class="project-card__action-icon" src="/assets/icons/work-delete.svg" mode="aspectFit" />
               <text>删除</text>
-            </button>
+            </view>
           </view>
           <view
             wx:if="{{item.isDraft}}"
