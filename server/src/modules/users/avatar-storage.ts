@@ -61,7 +61,7 @@ export class FileSystemAvatarStorage implements AvatarStorage {
       await unlink(join(this.directory, file.filename));
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        // 资料已经更新成功，旧头像清理失败不应回滚用户操作。
+        // 资料已经更新成功，旧头像清理失败不应回滚用户操作
       }
     }
   }

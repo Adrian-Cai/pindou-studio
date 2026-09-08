@@ -240,7 +240,7 @@ export async function inspectDatabaseSchema(pool: Pool, schema: string): Promise
     try {
       await rollbackTransaction(client);
     } catch {
-      // 原始错误更有诊断价值；连接关闭时回滚失败不覆盖它。
+      // 原始错误更有诊断价值；连接关闭时回滚失败不覆盖它
     }
     throw error;
   } finally {

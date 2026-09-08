@@ -2,7 +2,7 @@
 
 > 状态：当前 Schema 关系视图
 >
-> 字段、类型与约束的完整清单见 `docs/backend/database/DATABASE_SCHEMA.md`；可执行契约见 `server/src/db/schema-contract.ts`。
+> 字段、类型与约束的完整清单见 `docs/backend/database/DATABASE_SCHEMA.md`；可执行契约见 `server/src/db/schema-contract.ts`
 
 ## ER 图
 
@@ -155,13 +155,13 @@ erDiagram
 
 ## 关系说明
 
-- 用户是一切用户数据的归属根节点。
-- 一份作品对应一份 `pindou_work_patterns`，作品列表与完整图案分开存储。
-- 收藏是用户与作品之间的关系表。
-- 下载记录可以在作品被删除后保留，因此 `work_id` 允许为空并保留标题快照。
-- 额度余额不直接存在用户表，以 `pindou_quota_transactions` 流水汇总为准。
-- 下载扣减通过 `download_record_id` 与额度流水关联。
-- 购买额度通过订单与额度流水关联。
+- 用户是一切用户数据的归属根节点
+- 一份作品对应一份 `pindou_work_patterns`，作品列表与完整图案分开存储
+- 收藏是用户与作品之间的关系表
+- 下载记录可以在作品被删除后保留，因此 `work_id` 允许为空并保留标题快照
+- 额度余额不直接存在用户表，以 `pindou_quota_transactions` 流水汇总为准
+- 下载扣减通过 `download_record_id` 与额度流水关联
+- 购买额度通过订单与额度流水关联
 
 ## 维护规则
 

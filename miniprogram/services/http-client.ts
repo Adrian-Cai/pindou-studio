@@ -84,7 +84,7 @@ export function apiRequest<T>(options: ApiRequestOptions): Promise<T> {
         reject(createApiError(response.statusCode, response.data))
       },
       fail: () => {
-        reject(new ApiError('网络连接失败，请检查网络后重试。', { code: 'NETWORK_ERROR' }))
+        reject(new ApiError('网络连接失败，请检查网络后重试', { code: 'NETWORK_ERROR' }))
       },
     })
   })
@@ -114,7 +114,7 @@ export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
         try {
           body = response.data ? JSON.parse(response.data) as unknown : {}
         } catch {
-          reject(new ApiError('服务返回了无法识别的数据，请稍后重试。', {
+          reject(new ApiError('服务返回了无法识别的数据，请稍后重试', {
             statusCode: response.statusCode,
             code: 'INVALID_RESPONSE',
           }))
@@ -127,7 +127,7 @@ export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
         reject(createApiError(response.statusCode, body))
       },
       fail: () => {
-        reject(new ApiError('图片上传失败，请检查网络后重试。', { code: 'NETWORK_ERROR' }))
+        reject(new ApiError('图片上传失败，请检查网络后重试', { code: 'NETWORK_ERROR' }))
       },
     })
   })
@@ -137,7 +137,7 @@ function createApiError(statusCode: number, value: unknown): ApiError {
   const body = isRecord(value) ? value as ApiErrorBody : {}
   const error = body.error
   const code = typeof error?.code === 'string' ? error.code : `HTTP_${statusCode}`
-  const message = typeof error?.message === 'string' ? error.message : '服务请求失败，请稍后重试。'
+  const message = typeof error?.message === 'string' ? error.message : '服务请求失败，请稍后重试'
   const requestId = typeof error?.requestId === 'string' ? error.requestId : null
   const details = isRecord(error?.details) ? error.details : {}
   return new ApiError(message, { statusCode, code, requestId, details })

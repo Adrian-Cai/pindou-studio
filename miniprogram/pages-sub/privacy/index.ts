@@ -95,7 +95,7 @@ Page({
     return new Promise((resolve) => {
       wx.showModal({
         title: '开启云同步',
-        content: '开启后，新保存的作品会同步到云端。是否同时上传当前设备上的本地作品？',
+        content: '开启后，新保存的作品会同步到云端是否同时上传当前设备上的本地作品？',
         confirmText: '开启并同步',
         success: ({ confirm }) => resolve(confirm),
         fail: () => resolve(false),
@@ -120,7 +120,7 @@ Page({
     }
     wx.showModal({
       title: '确认注销账号？',
-      content: '注销后账号、云端作品和账号数据将无法恢复，请确认你已了解相关后果。',
+      content: '注销后账号、云端作品和账号数据将无法恢复，请确认你已了解相关后果',
       confirmText: '确认注销',
       confirmColor: '#e5484d',
       success: ({ confirm }) => {

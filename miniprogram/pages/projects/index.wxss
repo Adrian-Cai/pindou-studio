@@ -23,13 +23,13 @@
 .project-card__continue-icon { width: 28rpx; height: 28rpx; }
 .project-card__continue:active { background: var(--strong-overlay); transform: scale(0.97); }
 
-.project-card__actions-inline { display: flex; box-sizing: border-box; width: 100%; min-width: 0; flex-wrap: wrap; align-items: center; gap: 16rpx 20rpx; margin-top: 16rpx; }
-.project-action { display: flex; box-sizing: border-box; width: auto; min-width: 0; height: 48rpx; flex: 0 0 auto; align-items: center; justify-content: flex-start; gap: var(--space-1); margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--color-text-secondary); font-size: 22rpx; line-height: 1; white-space: nowrap; transition: var(--transition-press); }
-.project-action::after { border: 0; }
-.project-action__icon { width: 24rpx; height: 24rpx; flex-shrink: 0; }
-.project-action:active { background: var(--strong-overlay); transform: scale(0.97); }
-.project-action--danger { color: var(--color-danger); }
-.project-action--danger:active { background: var(--color-danger-soft); }
+.project-card__actions-inline { display: flex; box-sizing: border-box; width: 100%; min-width: 0; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 16rpx; margin-top: auto; }
+.project-card__action-inline { display: inline-flex; box-sizing: border-box; width: auto; min-width: 0; height: 48rpx; flex: 0 0 auto; align-items: center; justify-content: flex-start; gap: 4rpx; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--color-text-secondary); font-size: 22rpx; line-height: 1; white-space: nowrap; transition: var(--transition-press); }
+.project-card__action-inline::after { border: 0; }
+.project-card__action-icon { width: 24rpx; height: 24rpx; flex-shrink: 0; }
+.project-card__action-inline:active { background: var(--strong-overlay); transform: scale(0.97); }
+.project-card__action-inline--danger { color: var(--color-danger); }
+.project-card__action-inline--danger:active { background: var(--color-danger-soft); }
 
 .rename-dialog-mask { position: fixed; z-index: 300; display: flex; inset: 0; align-items: center; justify-content: center; padding: 40rpx; background: rgba(0, 0, 0, 0.35); animation: overlay-fade-in 180ms ease-out; }
 
@@ -60,4 +60,5 @@
   .project-card__cover { width: 192rpx; height: 192rpx; flex-basis: 192rpx; }
   .project-card__title { font-size: 30rpx; line-height: 40rpx; }
   .project-card__meta, .project-card__date { font-size: 22rpx; line-height: 30rpx; }
+  .project-card__actions-inline { gap: 8rpx; }
 }

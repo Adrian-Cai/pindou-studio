@@ -28,6 +28,8 @@ Page({
     accountRefreshing: false,
     activeSheet: 'none' as ProfileSheet,
     loginUiState: 'idle' as LoginUiState,
+    loginAgreementAccepted: false,
+    loginClosing: false,
     loginMessage: '',
     loginMessageTone: 'info' as LoginMessageTone,
     profileDraftAvatarPath: DEFAULT_AVATAR_PATH,
@@ -39,6 +41,7 @@ Page({
   },
 
   authUnsubscribe: undefined as (() => void) | undefined,
+  loginCloseTimer: 0,
 
   onLoad() {
     this.authUnsubscribe = authStore.subscribe((state) => this.applyAuthState(state))
@@ -51,6 +54,7 @@ Page({
   },
 
   onUnload() {
+    clearTimeout(this.loginCloseTimer)
     this.authUnsubscribe?.()
     this.authUnsubscribe = undefined
   },
@@ -138,10 +142,13 @@ Page({
   },
 
   showProfileSheet(sheet: Exclude<ProfileSheet, 'none'>) {
+    clearTimeout(this.loginCloseTimer)
     wx.hideTabBar({ animation: false })
     this.getTabBar()?.setData({ hidden: true })
     this.setData({
       activeSheet: sheet,
+      loginClosing: false,
+      loginAgreementAccepted: sheet === 'login' ? false : this.data.loginAgreementAccepted,
       loginUiState: sheet === 'login' ? 'idle' : this.data.loginUiState,
       loginMessage: sheet === 'login' ? '' : this.data.loginMessage,
     })
@@ -164,8 +171,10 @@ Page({
   },
 
   hideActiveSheet() {
+    clearTimeout(this.loginCloseTimer)
     this.setData({
       activeSheet: 'none',
+      loginClosing: false,
       loginUiState: 'idle',
       loginMessage: '',
       profileSaving: false,
@@ -175,6 +184,7 @@ Page({
   },
 
   onHide() {
+    clearTimeout(this.loginCloseTimer)
     if (this.data.activeSheet !== 'none') {
       this.setData({
         activeSheet: 'none',
@@ -199,15 +209,37 @@ Page({
   purchase() {
     wx.showModal({
       title: '支付能力尚未接入',
-      content: '下载套餐界面已经完成，待商户号、定价和付费服务协议确认后再接入微信支付。',
+      content: '下载套餐界面已经完成，待商户号、定价和付费服务协议确认后再接入微信支付',
       showCancel: false,
     })
   },
 
   async startWechatLogin() {
-    if (this.data.loginUiState === 'loading') return
+    if (this.data.loginUiState === 'loading' || this.data.loginClosing) return
+    if (!this.data.loginAgreementAccepted) {
+      wx.showToast({ title: '请先阅读并同意用户协议和隐私政策', icon: 'none' })
+      return
+    }
     this.setData({ loginUiState: 'loading', loginMessage: '' })
     await authStore.login()
+  },
+
+  toggleLoginAgreement() {
+    if (this.data.loginUiState === 'loading' || this.data.loginClosing) return
+    this.setData({ loginAgreementAccepted: !this.data.loginAgreementAccepted })
+  },
+
+  closeLoginSheet() {
+    if (this.data.loginClosing) return
+    this.setData({ loginClosing: true })
+    this.loginCloseTimer = setTimeout(() => {
+      if (this.data.activeSheet === 'login') this.hideActiveSheet()
+    }, 280)
+  },
+
+  openUserAgreement() {
+    this.hideActiveSheet()
+    wx.navigateTo({ url: '/pages-sub/privacy-document/index?key=user-agreement' })
   },
 
   openPrivacyPolicy() {
@@ -234,7 +266,7 @@ Page({
     const nickname = this.data.profileDraftNickname.trim()
     const length = Array.from(nickname).length
     if (length < 1 || length > 80) {
-      this.setData({ profileMessage: '昵称长度需要在 1 到 80 个字符之间。' })
+      this.setData({ profileMessage: '昵称长度需要在 1 到 80 个字符之间' })
       return
     }
 
@@ -246,7 +278,7 @@ Page({
     } catch (error) {
       this.setData({
         profileSaving: false,
-        profileMessage: error instanceof Error ? error.message : '个人资料保存失败，请稍后重试。',
+        profileMessage: error instanceof Error ? error.message : '个人资料保存失败，请稍后重试',
       })
     }
   },
@@ -254,7 +286,7 @@ Page({
   confirmLogout() {
     wx.showModal({
       title: '确认退出登录？',
-      content: '退出后将停止访问云端作品和下载记录，本机草稿不会被删除。再次登录后可以恢复云端数据。',
+      content: '退出后将停止访问云端作品和下载记录，本机草稿不会被删除再次登录后可以恢复云端数据',
       confirmText: '确认退出',
       confirmColor: '#e5484d',
       success: ({ confirm }) => {

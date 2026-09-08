@@ -2,8 +2,8 @@
   "disableScroll": true,
   "usingComponents": {
     "top-bar": "/components/top-bar/index",
-    "result-download-button": "/components/result-download-button/index",
-    "download-quota-bar": "/components/download-quota-bar/index",
-    "download-bottom-sheet": "/components/download-bottom-sheet/index"
+    "result-download-button": "/pages-sub/components/result-download-button/index",
+    "download-quota-bar": "/pages-sub/components/download-quota-bar/index",
+    "download-bottom-sheet": "/pages-sub/components/download-bottom-sheet/index"
   }
 }

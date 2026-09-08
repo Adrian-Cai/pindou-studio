@@ -78,6 +78,7 @@ Page({
     paletteExpanded: false,
     activeTab: 'preview' as ResultTab,
     isFavorite: false,
+    favoriteUpdating: false,
     canvasReady: false,
     renderError: false,
     quota: 0,
@@ -233,9 +234,21 @@ Page({
 
   toggleFavorite() {
     const draft = this.data.draft
-    if (!draft) return
-    appStore.toggleFavorite(draft.id)
-    this.setData({ isFavorite: !this.data.isFavorite })
+    if (!draft || this.data.favoriteUpdating) return
+    const previousIsFavorite = this.data.isFavorite
+    const isFavorite = !this.data.isFavorite
+
+    this.setData({ favoriteUpdating: true })
+    try {
+      appStore.toggleFavorite(draft.id)
+      this.setData({ isFavorite })
+      wx.showToast({ title: isFavorite ? '已收藏' : '已取消收藏', icon: 'none', duration: 1500 })
+      wx.nextTick(() => this.setData({ favoriteUpdating: false }))
+    } catch (error) {
+      console.error('切换收藏状态失败', error)
+      this.setData({ isFavorite: previousIsFavorite, favoriteUpdating: false })
+      wx.showToast({ title: isFavorite ? '收藏失败，请重试' : '取消收藏失败，请重试', icon: 'none' })
+    }
   },
 
   editTitle() {
@@ -335,7 +348,7 @@ Page({
       this.setData({ quota: 0, quotaTipsOpen: false })
       wx.showModal({
         title: '今日免费次数已用完',
-        content: '开通会员后可享无限下载。',
+        content: '开通会员后可享无限下载',
         confirmText: '去开通',
         success: ({ confirm }) => {
           if (confirm) this.openMembership()
@@ -401,7 +414,7 @@ Page({
       })
       wx.showModal({
         title: '今日免费次数已用完',
-        content: '开通会员后可享无限下载。',
+        content: '开通会员后可享无限下载',
         confirmText: '去开通',
         success: ({ confirm }) => {
           if (confirm) this.openMembership()

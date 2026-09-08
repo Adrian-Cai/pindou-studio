@@ -63,10 +63,10 @@ function getWechatLoginCode(): Promise<string> {
           resolve(code)
           return
         }
-        reject(new ApiError('微信登录未返回有效凭证，请重新尝试。', { code: 'WX_LOGIN_FAILED' }))
+        reject(new ApiError('微信登录未返回有效凭证，请重新尝试', { code: 'WX_LOGIN_FAILED' }))
       },
       fail: () => {
-        reject(new ApiError('微信登录未完成，请检查网络后重新尝试。', { code: 'WX_LOGIN_FAILED' }))
+        reject(new ApiError('微信登录未完成，请检查网络后重新尝试', { code: 'WX_LOGIN_FAILED' }))
       },
     })
   })
@@ -145,7 +145,7 @@ function parseUser(value: unknown): AuthUser | null {
 }
 
 function invalidResponse(): ApiError {
-  return new ApiError('服务返回了无法识别的数据，请稍后重试。', { code: 'INVALID_RESPONSE' })
+  return new ApiError('服务返回了无法识别的数据，请稍后重试', { code: 'INVALID_RESPONSE' })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

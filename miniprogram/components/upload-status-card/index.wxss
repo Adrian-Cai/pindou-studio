@@ -1,0 +1,311 @@
+.upload-status-card {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 20rpx;
+  border-radius: 28rpx;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.upload-status-card--empty {
+  padding: 16rpx;
+}
+
+.upload-status-card__layout {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.upload-status-card__preview-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 20rpx;
+  background: var(--color-primary-surface);
+}
+
+.upload-status-card__preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.upload-status-card__preview-wrap--blocked .upload-status-card__preview {
+  opacity: 0.42;
+}
+
+.upload-status-card__preview-mask {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  background: rgba(75, 65, 65, 0.25);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 22rpx;
+  text-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.18);
+}
+
+.upload-status-card__blocked-icon {
+  position: relative;
+  box-sizing: border-box;
+  width: 52rpx;
+  height: 52rpx;
+  border: 4rpx solid rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+}
+
+.upload-status-card__blocked-icon::after {
+  position: absolute;
+  top: 21rpx;
+  left: 5rpx;
+  width: 34rpx;
+  height: 4rpx;
+  border-radius: 2rpx;
+  background: rgba(255, 255, 255, 0.82);
+  content: '';
+  transform: rotate(-45deg);
+}
+
+.upload-status-card__remove {
+  position: absolute;
+  z-index: 2;
+  top: 10rpx;
+  right: 10rpx;
+  display: flex;
+  width: 52rpx;
+  height: 52rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(24, 27, 24, 0.72);
+  color: #fff;
+  font-size: 28rpx;
+  line-height: 1;
+}
+
+.upload-status-card__status {
+  box-sizing: border-box;
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  opacity: 1;
+  transition: opacity 200ms ease;
+}
+
+.upload-status-card__status--pending {
+  visibility: hidden;
+}
+
+.upload-status-card__status--passed {
+  color: var(--color-primary);
+}
+
+.upload-status-card__status--rejected {
+  color: #b74747;
+}
+
+.upload-status-card__status--error {
+  color: #b85b3e;
+}
+
+.upload-status-card__status-icon {
+  display: flex;
+  flex: 0 0 40rpx;
+  width: 40rpx;
+  height: 40rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.upload-status-card__status-icon--spinner {
+  box-sizing: border-box;
+  border: 4rpx solid rgba(18, 180, 102, 0.2);
+  border-top-color: var(--color-primary);
+  animation: upload-status-spin 900ms linear infinite;
+}
+
+.upload-status-card__status-icon--passed {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.upload-status-card__status-icon--rejected {
+  background: #ed6a6a;
+  color: #fff;
+}
+
+.upload-status-card__status-icon--error {
+  background: #d97732;
+  color: #fff;
+}
+
+.upload-status-card__copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.upload-status-card__title {
+  color: var(--color-text);
+  font-size: 29rpx;
+  font-weight: 600;
+  line-height: 42rpx;
+}
+
+.upload-status-card__description {
+  margin-top: 4rpx;
+  color: var(--color-text-secondary);
+  font-size: 23rpx;
+  line-height: 36rpx;
+}
+
+.upload-status-card__primary-action,
+.upload-status-card__secondary-action {
+  box-sizing: border-box;
+  width: 100%;
+  height: 72rpx;
+  margin: 18rpx 0 0;
+  border: 0;
+  border-radius: 18rpx;
+  font-size: 26rpx;
+  font-weight: 500;
+  line-height: 72rpx;
+}
+
+.upload-status-card__primary-action {
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: var(--shadow-primary);
+}
+
+.upload-status-card__secondary-action {
+  height: 60rpx;
+  margin-top: 16rpx;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  line-height: 60rpx;
+}
+
+.upload-status-card__primary-action:active,
+.upload-status-card__secondary-action:active {
+  opacity: 0.84;
+  transform: scale(0.98);
+}
+
+.upload-status-card__help {
+  display: flex;
+  height: 48rpx;
+  align-items: center;
+  justify-content: center;
+  margin-top: 8rpx;
+  color: var(--color-primary);
+  font-size: 23rpx;
+  line-height: 48rpx;
+}
+
+.upload-status-card__help text {
+  margin-left: 6rpx;
+  font-size: 32rpx;
+  line-height: 1;
+}
+
+.upload-status-card__empty {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 272rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 32rpx 24rpx;
+  border: 2rpx dashed var(--color-primary);
+  border-radius: 24rpx;
+  background: transparent;
+  color: inherit;
+  line-height: normal;
+  text-align: center;
+}
+
+.upload-status-card__empty::after {
+  border: 0;
+}
+
+.upload-status-card__empty:active {
+  background: var(--color-primary-soft);
+}
+
+.upload-status-card__empty[disabled] {
+  opacity: 0.72;
+}
+
+.upload-status-card__empty-icon {
+  width: 80rpx;
+  height: 80rpx;
+}
+
+.upload-status-card__empty-title {
+  margin-top: 8rpx;
+  color: var(--color-text);
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 48rpx;
+}
+
+.upload-status-card__empty-hint,
+.upload-status-card__empty-description {
+  color: var(--color-text-secondary);
+  font-size: 24rpx;
+  line-height: 36rpx;
+}
+
+.upload-status-card__empty-description {
+  margin-top: 4rpx;
+  color: var(--color-text-tertiary);
+}
+
+@keyframes upload-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 340px) {
+  .upload-status-card__layout {
+    gap: 16rpx;
+  }
+
+  .upload-status-card__title {
+    font-size: 26rpx;
+  }
+
+  .upload-status-card__description {
+    font-size: 21rpx;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .upload-status-card__status--rejected {
+    color: #ff9c9c;
+  }
+
+  .upload-status-card__status--error {
+    color: #f0a47d;
+  }
+
+  .upload-status-card__primary-action {
+    color: #102017;
+  }
+}

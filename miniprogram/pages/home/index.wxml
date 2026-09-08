@@ -1,41 +1,46 @@
 <page-layout title="小露拼豆" home show-main-nav compact-bottom-padding selected-tab="{{0}}">
 <view class="page">
 
-  <!-- ① 主标题 -->
+  <!-- ① Hero 主视觉 -->
   <view class="hero">
-    <text class="hero__title">把图片变成拼豆图</text>
-    <text class="hero__subtitle">上传图片，自动生成拼豆图案</text>
+    <view class="hero-copy">
+      <view class="hero-slogan">
+        <text>把喜欢的画面</text>
+        <text>变成一颗颗小豆子 ♥</text>
+      </view>
+      <view class="hero-title">上传图片，生成你的拼豆图</view>
+      <view class="hero-desc">选择图片后，可继续调整生成方式和尺寸</view>
+    </view>
+    <image class="hero-mascot" src="/assets/images/hero-mascot.png" mode="widthFix" aria-label="小露拼豆角色插画" />
+    <view class="steps" role="list" aria-label="生成流程">
+      <block wx:for="{{generationSteps}}" wx:key="id">
+        <view
+          class="step {{currentStep === item.id ? 'step--active' : ''}} {{currentStep > item.id ? 'step--complete' : ''}}"
+          role="listitem"
+        >
+          <view class="step-number">{{currentStep > item.id ? '✓' : item.id}}</view>
+          <text>{{item.label}}</text>
+        </view>
+        <view wx:if="{{index < generationSteps.length - 1}}" class="step-line" aria-hidden="true"></view>
+      </block>
+    </view>
   </view>
 
-  <!-- ② 上传图片 -->
-  <view class="upload {{sourceImagePath ? 'upload--selected' : ''}}">
-    <view
-      wx:if="{{sourceImagePath}}"
-      class="upload__preview-wrap"
-      style="width:{{previewWidth}}rpx;height:{{previewHeight}}rpx;"
-      bindtap="chooseImage"
-    >
-      <image class="upload__preview" src="{{sourceImagePath}}" mode="aspectFit" bindload="handlePreviewLoad" binderror="handlePreviewError" />
-      <view
-        class="upload__remove"
-        catchtap="clearImage"
-        role="button"
-        aria-label="移除图片"
-      >×</view>
-    </view>
-    <button
-      wx:else
-      class="upload__empty"
-      bindtap="chooseImage"
-      disabled="{{choosing}}"
-      aria-label="选择一张图片"
-    >
-      <image class="upload__icon" src="/assets/icons/upload-cloud.svg" mode="aspectFit" />
-      <view class="upload__title">上传图片</view>
-      <view class="upload__hint">支持 JPG / PNG / WEBP 格式</view>
-      <view class="upload__description">建议图片清晰，效果更佳</view>
-    </button>
-  </view>
+  <!-- ② 统一上传状态卡 -->
+  <upload-status-card
+    sourceImagePath="{{sourceImagePath}}"
+    previewWidth="{{previewWidth}}"
+    previewHeight="{{previewHeight}}"
+    choosing="{{choosing}}"
+    securityStatus="{{securityStatus}}"
+    securityLoadingVisible="{{securityLoadingVisible}}"
+    securityLongWait="{{securityLongWait}}"
+    bind:chooseimage="chooseImage"
+    bind:clearimage="clearImage"
+    bind:previewload="handlePreviewLoad"
+    bind:previewerror="handlePreviewError"
+    bind:securityhelp="showSecurityHelp"
+  />
 
   <!-- ③ 生成方式 -->
   <view class="section-block">
@@ -76,7 +81,7 @@
 
   </view>
 
-  <!-- ⑤ 示例图片 -->
+  <!-- ④ 示例图片 -->
   <view class="section-block">
     <view class="section-label">示例图片</view>
     <view class="samples__grid">
@@ -98,7 +103,7 @@
     </view>
   </view>
 
-  <!-- ⑥ 尺寸选择 & 颜色数量 -->
+  <!-- ⑤ 尺寸选择 & 颜色数量 -->
   <view class="setting-options">
     <view class="option-group">
       <view class="section-label">尺寸选择</view>
@@ -127,10 +132,15 @@
     </view>
   </view>
 
-  <!-- ⑦ 开始生成 -->
-  <view class="button-primary home__submit" role="button" bindtap="startCreating">
+  <!-- ⑥ 开始生成 -->
+  <button
+    class="button-primary home__submit"
+    bindtap="startCreating"
+    disabled="{{generating || securityStatus === 'checking' || securityStatus === 'rejected' || securityStatus === 'error'}}"
+    aria-label="开始生成"
+  >
     开始生成
-  </view>
+  </button>
 
 </view>
 </page-layout>

@@ -4,9 +4,9 @@
 >
 > 版本：v1.0
 >
-> 目标：为 `docs/backend/API_SPEC.md` 提供可审计、可恢复、可追溯的数据模型。
+> 目标：为 `docs/backend/API_SPEC.md` 提供可审计、可恢复、可追溯的数据模型
 
-> 物理表命名规则：所有表名必须以 `pindou_` 开头；本文中的逻辑实体名可以省略前缀，但建库时必须使用带前缀的物理表名。
+> 物理表命名规则：所有表名必须以 `pindou_` 开头；本文中的逻辑实体名可以省略前缀，但建库时必须使用带前缀的物理表名
 
 ## 1. 设计决策
 
@@ -18,7 +18,7 @@
 { "color": "#f4d7bf", "colorCode": "C01" }
 ```
 
-服务端不按这个结构保存。持久化图案只保存一次颜色定义，以及每个格子的颜色索引：
+服务端不按这个结构保存持久化图案只保存一次颜色定义，以及每个格子的颜色索引：
 
 ```json
 {
@@ -34,28 +34,28 @@
 }
 ```
 
-其中 `-1` 表示透明格，其他整数指向 `palette` 的下标。数组按行优先排列，长度必须等于 `width * height`。
+其中 `-1` 表示透明格，其他整数指向 `palette` 的下标数组按行优先排列，长度必须等于 `width * height`
 
 ### 1.2 第一版将压缩图案存为数据库 JSON 文档
 
-最大尺寸为 `128 × 128 = 16384` 格。改为整数数组后，图案是一个单独的 JSON 文档，适合放在独立的 `pindou_work_patterns` 表中：
+最大尺寸为 `128 × 128 = 16384` 格改为整数数组后，图案是一个单独的 JSON 文档，适合放在独立的 `pindou_work_patterns` 表中：
 
-- `pindou_works` 保持轻量，只负责列表、归属、封面和统计字段。
-- `pindou_work_patterns` 一对一保存完整图案，历史恢复只需一次读取。
-- 数据库使用 JSON/JSONB 类型时，不把每个格子拆成行。
-- 如果实际数据库的单行限制或备份成本不合适，可以把同一份 JSON 文档迁移到对象存储；API 结构不变，迁移时只需替换 `pindou_work_patterns` 的存取层。
+- `pindou_works` 保持轻量，只负责列表、归属、封面和统计字段
+- `pindou_work_patterns` 一对一保存完整图案，历史恢复只需一次读取
+- 数据库使用 JSON/JSONB 类型时，不把每个格子拆成行
+- 如果实际数据库的单行限制或备份成本不合适，可以把同一份 JSON 文档迁移到对象存储；API 结构不变，迁移时只需替换 `pindou_work_patterns` 的存取层
 
-第一版不为 `cells` 单独建立对象存储 URL，也不把 16384 个格子展开成关系表。
+第一版不为 `cells` 单独建立对象存储 URL，也不把 16384 个格子展开成关系表
 
 ### 1.3 额度以流水为准，用户表不保存唯一余额
 
-`pindou_users` 不保存 `purchasedQuota` 作为唯一事实。所有免费发放、购买、下载扣减、退款和人工调整都写入 `pindou_quota_transactions`。
+`pindou_users` 不保存 `purchasedQuota` 作为唯一事实所有免费发放、购买、下载扣减、退款和人工调整都写入 `pindou_quota_transactions`
 
-当前余额由流水汇总得到；为了性能可以增加缓存，但缓存只能是可重建的派生数据，不能替代流水。
+当前余额由流水汇总得到；为了性能可以增加缓存，但缓存只能是可重建的派生数据，不能替代流水
 
 ### 1.4 图片只存对象存储元数据
 
-数据库不保存图片二进制。第一版只保存客户端导出的作品封面/预览图，不永久保存原始上传图，不保存服务端成品图或施工图。
+数据库不保存图片二进制第一版只保存客户端导出的作品封面/预览图，不永久保存原始上传图，不保存服务端成品图或施工图
 
 ## 2. 实体关系
 
@@ -73,15 +73,15 @@ pindou_users
 
 约束：
 
-- 所有用户数据通过 `user_id` 归属。
-- `pindou_work_patterns.work_id` 与 `pindou_works.id` 一对一。
-- `pindou_favorites` 的 `(user_id, work_id)` 唯一。
-- 下载扣减与下载记录必须在同一数据库事务中完成。
-- 支付回调发放额度必须以 `order_id` 做幂等约束。
+- 所有用户数据通过 `user_id` 归属
+- `pindou_work_patterns.work_id` 与 `pindou_works.id` 一对一
+- `pindou_favorites` 的 `(user_id, work_id)` 唯一
+- 下载扣减与下载记录必须在同一数据库事务中完成
+- 支付回调发放额度必须以 `order_id` 做幂等约束
 
 ## 3. 表设计
 
-以下字段使用逻辑名称；具体 SQL 类型根据选用的数据库映射。时间字段建议使用带时区的时间类型或统一存 UTC。
+以下字段使用逻辑名称；具体 SQL 类型根据选用的数据库映射时间字段建议使用带时区的时间类型或统一存 UTC
 
 ### 3.0 物理表用途总览
 
@@ -99,15 +99,15 @@ pindou_users
 | `pindou_orders` | 支付订单表 | 保存微信支付订单、金额、状态和支付回调信息 |
 | `pindou_content_security_checks` | 内容安全审核表 | 保存微信文本/图片审核任务、异步回调状态和临时媒体引用 |
 
-维护要求：建表 SQL 必须为每张表和每个字段写数据库注释。注释至少说明“这是什么”和“在什么业务场景使用”，不能只重复字段名。
+维护要求：建表 SQL 必须为每张表和每个字段写数据库注释注释至少说明“这是什么”和“在什么业务场景使用”，不能只重复字段名
 
 ### 3.11 `pindou_content_security_checks`
 
-用于记录作品名称和上传图片的微信内容安全检测。表内不保存明文 OpenID 或原始文本；图片对象只在微信异步审核完成或记录过期前临时保留。
+用于记录作品名称和上传图片的微信内容安全检测表内不保存明文 OpenID 或原始文本；图片对象只在微信异步审核完成或记录过期前临时保留
 
 ### 3.1 `pindou_users`
 
-用户主表：一个微信用户对应一条本系统用户记录。用于登录后识别数据归属，不保存可变额度余额。
+用户主表：一个微信用户对应一条本系统用户记录用于登录后识别数据归属，不保存可变额度余额
 
 | 字段 | 类型建议 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -120,13 +120,13 @@ pindou_users
 | `updated_at` | timestamp | NOT NULL | 服务端更新时间 |
 | `deleted_at` | timestamp | NULL | 账号和作品软删除时间；注销接口保留审计与财务记录 |
 
-说明：`session_key` 不返回前端。如后续需要调用微信需要 session key 的能力，应使用加密字段或独立密钥存储，不以明文保存。
+说明：`session_key` 不返回前端如后续需要调用微信需要 session key 的能力，应使用加密字段或独立密钥存储，不以明文保存
 
-索引：`openid_hash` 唯一索引，`created_at` 普通索引可选。
+索引：`openid_hash` 唯一索引，`created_at` 普通索引可选
 
 ### 3.2 `pindou_auth_sessions`
 
-登录会话表：保存本系统 token 会话。推荐使用随机 opaque token，数据库只保存摘要。
+登录会话表：保存本系统 token 会话推荐使用随机 opaque token，数据库只保存摘要
 
 | 字段 | 类型建议 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -138,11 +138,11 @@ pindou_users
 | `created_at` | timestamp | NOT NULL | 创建时间 |
 | `last_used_at` | timestamp | NULL | 最近使用时间，可选 |
 
-索引：`user_id`、`expires_at`。
+索引：`user_id`、`expires_at`
 
 ### 3.3 `pindou_file_assets`
 
-文件资产表：保存对象存储文件的元数据。第一版只允许 `cover`，用于作品封面/预览图。
+文件资产表：保存对象存储文件的元数据第一版只允许 `cover`，用于作品封面/预览图
 
 | 字段 | 类型建议 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -160,15 +160,15 @@ pindou_users
 
 规则：
 
-- 只有上传成功并完成真实格式校验后，才写入可绑定的 `pindou_file_assets`。
-- `pindou_works.cover_file_id` 只能引用当前用户拥有的 `cover` 文件。
-- 原始图片不作为第一版 `file_type`；客户端应上传作品封面/预览图。
+- 只有上传成功并完成真实格式校验后，才写入可绑定的 `pindou_file_assets`
+- `pindou_works.cover_file_id` 只能引用当前用户拥有的 `cover` 文件
+- 原始图片不作为第一版 `file_type`；客户端应上传作品封面/预览图
 
-索引：`(user_id, file_type, created_at)`。
+索引：`(user_id, file_type, created_at)`
 
 ### 3.4 `pindou_works`
 
-作品主表：保存作品摘要与归属。完整图案放在 `pindou_work_patterns`，列表接口主要读取本表。
+作品主表：保存作品摘要与归属完整图案放在 `pindou_work_patterns`，列表接口主要读取本表
 
 | 字段 | 类型建议 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -186,13 +186,13 @@ pindou_users
 | `updated_at` | timestamp | NOT NULL | 服务端更新时间 |
 | `deleted_at` | timestamp | NULL | 推荐软删除，第一版 API 表现为删除成功 |
 
-不保存：前端草稿 id、前端时间戳、`sourceImagePath`、`fileUrl`、对象数组形式的 `cells`。
+不保存：前端草稿 id、前端时间戳、`sourceImagePath`、`fileUrl`、对象数组形式的 `cells`
 
-索引：`(user_id, updated_at DESC)`、`(user_id, status, updated_at DESC)`；标题搜索按数据库能力增加全文或前缀索引。
+索引：`(user_id, updated_at DESC)`、`(user_id, status, updated_at DESC)`；标题搜索按数据库能力增加全文或前缀索引
 
 ### 3.5 `pindou_work_patterns`
 
-作品图案表：一份作品一份完整图案，用于历史作品详情和重新恢复编辑器网格。
+作品图案表：一份作品一份完整图案，用于历史作品详情和重新恢复编辑器网格
 
 | 字段 | 类型建议 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -220,19 +220,19 @@ pindou_users
 }
 ```
 
-数据库落盘时可将 `settings` 拆成列、将 `palette` 和 `cells` 分别放入 JSON 字段；API 层仍组装成上面的稳定结构。
+数据库落盘时可将 `settings` 拆成列、将 `palette` 和 `cells` 分别放入 JSON 字段；API 层仍组装成上面的稳定结构
 
 校验：
 
-- `width * height` 不得超过产品上限 `128 * 128`。
-- `cells_json` 长度必须等于 `width * height`。
-- 每个非 `-1` 值必须是有效 palette 下标。
-- `palette_json` 的颜色必须是合法 6 位 hex；`code` 不得为空且在同一图案内唯一。
-- `pindou_works.bead_count` 等统计字段必须由同一份图案计算，禁止客户端绕过校验。
+- `width * height` 不得超过产品上限 `128 * 128`
+- `cells_json` 长度必须等于 `width * height`
+- 每个非 `-1` 值必须是有效 palette 下标
+- `palette_json` 的颜色必须是合法 6 位 hex；`code` 不得为空且在同一图案内唯一
+- `pindou_works.bead_count` 等统计字段必须由同一份图案计算，禁止客户端绕过校验
 
 ### 3.6 `pindou_favorites`
 
-收藏关系表：记录当前用户对作品的收藏关系。第一版只允许收藏自己的云端作品。
+收藏关系表：记录当前用户对作品的收藏关系第一版只允许收藏自己的云端作品
 
 | 字段 | 类型建议 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -240,15 +240,15 @@ pindou_users
 | `work_id` | varchar(32) | PK 组合, FK | 被收藏作品 |
 | `created_at` | timestamp | NOT NULL | 收藏时间 |
 
-主键/唯一约束：`(user_id, work_id)`。
+主键/唯一约束：`(user_id, work_id)`
 
-第一版不支持收藏他人的非公开作品；作品分享能力后续另行建模。
+第一版不支持收藏他人的非公开作品；作品分享能力后续另行建模
 
-索引：`(user_id, created_at DESC)`。
+索引：`(user_id, created_at DESC)`
 
 ### 3.7 `pindou_download_records`
 
-下载记录表：记录客户端实际完成的导出，不保存服务端文件 URL；它是用户下载历史和额度扣减的业务记录。
+下载记录表：记录客户端实际完成的导出，不保存服务端文件 URL；它是用户下载历史和额度扣减的业务记录
 
 | 字段 | 类型建议 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -264,16 +264,16 @@ pindou_users
 
 规则：
 
-- `consumed_quota = true` 时必须有对应的负数额度流水。
-- `consumed_quota = false` 只允许未来的赠送、会员或退款等明确业务，不由客户端自行设置。
-- 当前 MVP 的 `POST /api/downloads` 固定按一次成功导出扣 1 次，因此客户端不提交 `consumedQuota`。
-- 不保存 `file_url`；历史下载记录只能展示记录，不能通过服务端重新下载。
+- `consumed_quota = true` 时必须有对应的负数额度流水
+- `consumed_quota = false` 只允许未来的赠送、会员或退款等明确业务，不由客户端自行设置
+- 当前 MVP 的 `POST /api/downloads` 固定按一次成功导出扣 1 次，因此客户端不提交 `consumedQuota`
+- 不保存 `file_url`；历史下载记录只能展示记录，不能通过服务端重新下载
 
-索引：`(user_id, downloaded_at DESC)`、`(user_id, file_type, downloaded_at DESC)`。
+索引：`(user_id, downloaded_at DESC)`、`(user_id, file_type, downloaded_at DESC)`
 
 ### 3.8 `pindou_quota_transactions`
 
-额度流水表：保存额度变化的每一笔原因和数量，是额度追溯的唯一事实来源。
+额度流水表：保存额度变化的每一笔原因和数量，是额度追溯的唯一事实来源
 
 | 字段 | 类型建议 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -301,10 +301,10 @@ pindou_users
 
 约束：
 
-- `(user_id, type, quota_date)` 对 `daily_grant` 做唯一约束，避免同一天重复发放免费次数。
-- `purchase_grant` 必须关联已支付订单，且同一个订单只能成功发放一次；退款或人工调整流水可以关联同一订单。
-- `download_debit` 必须关联一个下载记录。
-- 不允许删除或覆盖已生效流水；修正使用反向 `refund` 或 `adjustment` 新增流水。
+- `(user_id, type, quota_date)` 对 `daily_grant` 做唯一约束，避免同一天重复发放免费次数
+- `purchase_grant` 必须关联已支付订单，且同一个订单只能成功发放一次；退款或人工调整流水可以关联同一订单
+- `download_debit` 必须关联一个下载记录
+- 不允许删除或覆盖已生效流水；修正使用反向 `refund` 或 `adjustment` 新增流水
 
 余额计算：
 
@@ -314,11 +314,11 @@ pindou_users
 总剩余 = max(0, 今日免费剩余) + max(0, 购买额度剩余)
 ```
 
-实际实现可以缓存汇总，但必须能够从流水重建 `usedToday`、`purchased` 和 `remaining`。
+实际实现可以缓存汇总，但必须能够从流水重建 `usedToday`、`purchased` 和 `remaining`
 
 ### 3.9 `pindou_packages`
 
-充值套餐表：保存服务端可售套餐配置。即使套餐来自配置文件，支付订单也必须保存下单时的套餐快照。
+充值套餐表：保存服务端可售套餐配置即使套餐来自配置文件，支付订单也必须保存下单时的套餐快照
 
 | 字段 | 类型建议 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -336,7 +336,7 @@ pindou_users
 
 ### 3.10 `pindou_orders`
 
-支付订单表：保存微信支付订单、套餐快照、金额和支付状态，用于支付回调验签、对账和额度发放。
+支付订单表：保存微信支付订单、套餐快照、金额和支付状态，用于支付回调验签、对账和额度发放
 
 | 字段 | 类型建议 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -356,9 +356,9 @@ pindou_users
 
 约束：
 
-- 订单金额以 `price_fen` 为准，客户端不得提交或覆盖。
-- 回调确认的金额、商户、订单号必须与订单快照一致。
-- `paid` 订单只能产生一次 `purchase_grant` 流水。
+- 订单金额以 `price_fen` 为准，客户端不得提交或覆盖
+- 回调确认的金额、商户、订单号必须与订单快照一致
+- `paid` 订单只能产生一次 `purchase_grant` 流水
 
 ## 4. 事务与一致性
 
@@ -374,7 +374,7 @@ pindou_users
 提交事务
 ```
 
-如果任一步失败，不产生只有摘要没有图案，或只有图案没有摘要的半成品记录。
+如果任一步失败，不产生只有摘要没有图案，或只有图案没有摘要的半成品记录
 
 ### 4.2 下载扣额度
 
@@ -389,7 +389,7 @@ pindou_users
 提交事务
 ```
 
-服务端可在事务中加用户额度账户锁，避免并发下载把额度扣成负数。
+服务端可在事务中加用户额度账户锁，避免并发下载把额度扣成负数
 
 ### 4.3 支付回调
 
@@ -415,17 +415,17 @@ pindou_users
 | `pindou_quota_transactions` | 每日免费发放唯一 | 防止重复发放 |
 | `pindou_orders` | `wx_transaction_id UNIQUE` | 支付回调幂等 |
 
-所有外键都要配合用户归属校验；不能因为存在外键就省略 `user_id` 条件。
+所有外键都要配合用户归属校验；不能因为存在外键就省略 `user_id` 条件
 
 ## 6. 删除、保留与隐私边界
 
-- 作品删除后，推荐软删除 `pindou_works`，避免下载记录因外键级联而失去审计上下文。
-- `pindou_download_records` 保留标题快照和文件类型；第一版不能重新下载已导出文件。
-- `pindou_quota_transactions` 和已支付 `pindou_orders` 不删除，用于支付和额度追溯。
-- 原始图片不上传，因此没有原始图片保留周期问题。
-- 封面对象存储可以在作品删除后异步清理；清理失败应进入重试队列或人工清理清单。
-- `openid`、session key、token 等敏感信息不进入 API 响应或普通日志。
-- 第一版不实现云同步开关；不要在数据库中把 `privacy_cloud_sync` 作为影响作品写入的条件。
+- 作品删除后，推荐软删除 `pindou_works`，避免下载记录因外键级联而失去审计上下文
+- `pindou_download_records` 保留标题快照和文件类型；第一版不能重新下载已导出文件
+- `pindou_quota_transactions` 和已支付 `pindou_orders` 不删除，用于支付和额度追溯
+- 原始图片不上传，因此没有原始图片保留周期问题
+- 封面对象存储可以在作品删除后异步清理；清理失败应进入重试队列或人工清理清单
+- `openid`、session key、token 等敏感信息不进入 API 响应或普通日志
+- 第一版不实现云同步开关；不要在数据库中把 `privacy_cloud_sync` 作为影响作品写入的条件
 
 ## 7. 历史作品恢复流程
 
@@ -440,15 +440,15 @@ GET /api/works/:id
 
 恢复保证：
 
-- 不依赖客户端原来的 `draft-时间戳` id。
-- 不依赖已过期的 `wx` 临时文件路径。
-- 不需要重新上传原始图片。
-- `cells` 仍能精确恢复每一个颜色和透明格。
-- 材料清单由恢复后的图案重新聚合，避免重复存储。
+- 不依赖客户端原来的 `draft-时间戳` id
+- 不依赖已过期的 `wx` 临时文件路径
+- 不需要重新上传原始图片
+- `cells` 仍能精确恢复每一个颜色和透明格
+- 材料清单由恢复后的图案重新聚合，避免重复存储
 
 ## 8. 从当前本地 Storage 到云端的边界
 
-当前 `pindou-app-state-v1` 包含 `currentDraft`、本地 `works`、`favoriteIds`、`downloadQuota` 和 `downloadRecords`。接入本设计后：
+当前 `pindou-app-state-v1` 包含 `currentDraft`、本地 `works`、`favoriteIds`、`downloadQuota` 和 `downloadRecords`接入本设计后：
 
 | 当前本地字段 | 第一版处理 |
 | --- | --- |
@@ -459,25 +459,25 @@ GET /api/works/:id
 | `downloadRecords` | 从 `/api/downloads` 获取；本地仅可做短暂缓存 |
 | `privacyPreferences` | 第一版不通过 API 同步 `cloudSync`；保留本地 UI 设置但不改变服务端保存规则 |
 
-匿名用户已有的本地作品不自动静默上传。若产品决定支持迁移，应由客户端展示确认后，逐个上传封面并调用 `POST /api/works`，这不改变本数据库设计。
+匿名用户已有的本地作品不自动静默上传若产品决定支持迁移，应由客户端展示确认后，逐个上传封面并调用 `POST /api/works`，这不改变本数据库设计
 
 ## 9. 暂不建模的对象
 
 以下对象不属于第一版数据库：
 
-- `generation_tasks`：没有服务端图片量化任务。
-- `download_files`：没有服务器生成或托管下载文件。
-- `feedbacks`：反馈接口后置。
-- `public_work_shares`：未开放他人查看作品。
-- `privacy_preferences`：云同步开关语义未收敛。
+- `generation_tasks`：没有服务端图片量化任务
+- `download_files`：没有服务器生成或托管下载文件
+- `feedbacks`：反馈接口后置
+- `public_work_shares`：未开放他人查看作品
+- `privacy_preferences`：云同步开关语义未收敛
 
 ## 10. 建库前验收清单
 
-- 使用 128×128 图案时，`cells_json` 是 16384 个整数，而不是 16384 个对象。
-- `palette_json` 与 `cells_json` 能完整还原颜色、颜色编号和透明格。
-- `pindou_works` 列表查询不会加载完整图案 JSON。
-- `GET /api/works/:id` 能只依赖数据库记录恢复历史作品，不依赖原图。
-- 服务端能从 `pindou_quota_transactions` 重建今日免费剩余和购买额度。
-- 同一支付订单重复回调不会重复增加额度。
-- 同一下载幂等键重试不会重复写扣减流水。
-- 作品、收藏、下载记录、额度和订单都能通过 `user_id` 做归属审计。
+- 使用 128×128 图案时，`cells_json` 是 16384 个整数，而不是 16384 个对象
+- `palette_json` 与 `cells_json` 能完整还原颜色、颜色编号和透明格
+- `pindou_works` 列表查询不会加载完整图案 JSON
+- `GET /api/works/:id` 能只依赖数据库记录恢复历史作品，不依赖原图
+- 服务端能从 `pindou_quota_transactions` 重建今日免费剩余和购买额度
+- 同一支付订单重复回调不会重复增加额度
+- 同一下载幂等键重试不会重复写扣减流水
+- 作品、收藏、下载记录、额度和订单都能通过 `user_id` 做归属审计

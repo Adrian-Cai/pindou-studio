@@ -35,9 +35,9 @@ ALTER TABLE pindou_users
   ADD CONSTRAINT ck_pindou_users_privacy_storage_mode
     CHECK (NOT (privacy_local_only AND privacy_cloud_sync));
 
-COMMENT ON COLUMN pindou_users.privacy_local_only IS '仅在本地保存作品，不上传到云端。';
-COMMENT ON COLUMN pindou_users.privacy_cloud_sync IS '允许作品同步到云端。';
-COMMENT ON COLUMN pindou_users.privacy_service_notices IS '允许接收服务通知。';
-COMMENT ON COLUMN pindou_users.privacy_personalized_recommendations IS '允许基于使用偏好进行个性化推荐。';
+COMMENT ON COLUMN pindou_users.privacy_local_only IS '仅在本地保存作品，不上传到云端';
+COMMENT ON COLUMN pindou_users.privacy_cloud_sync IS '允许作品同步到云端';
+COMMENT ON COLUMN pindou_users.privacy_service_notices IS '允许接收服务通知';
+COMMENT ON COLUMN pindou_users.privacy_personalized_recommendations IS '允许基于使用偏好进行个性化推荐';
 
 COMMIT;

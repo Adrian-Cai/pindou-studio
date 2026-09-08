@@ -176,13 +176,13 @@ function isDownloadFileTypeValue(value: unknown): value is DownloadFileType {
 function requireToken(): string {
   const session = loadAuthSession()
   if (!session || isAuthSessionExpired(session)) {
-    throw new ApiError('请先登录后再使用云端下载服务。', { statusCode: 401, code: 'UNAUTHORIZED' })
+    throw new ApiError('请先登录后再使用云端下载服务', { statusCode: 401, code: 'UNAUTHORIZED' })
   }
   return session.token
 }
 
 function invalidResponse(): ApiError {
-  return new ApiError('服务返回了无法识别的下载数据，请稍后重试。', { code: 'INVALID_RESPONSE' })
+  return new ApiError('服务返回了无法识别的下载数据，请稍后重试', { code: 'INVALID_RESPONSE' })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

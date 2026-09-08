@@ -263,7 +263,7 @@ Page({
   },
 
   /**
-   * 确保固定 viewport 的 rect 已缓存。scale/translate 不改变该 rect。
+   * 确保固定 viewport 的 rect 已缓存scale/translate 不改变该 rect
    */
   ensureViewportRect(): Promise<CanvasRect> {
     if (this._viewportRect) {
@@ -509,8 +509,8 @@ Page({
   },
 
   /**
-   * 计算合法的 pan 范围，确保图片四角都可以移动到 viewport 中心附近。
-   * translateX/Y 表示 canvas-stage 相对于 workspace 中心的偏移（CSS px）。
+   * 计算合法的 pan 范围，确保图片四角都可以移动到 viewport 中心附近
+   * translateX/Y 表示 canvas-stage 相对于 workspace 中心的偏移（CSS px）
    */
   _clampTranslation(translateX: number, translateY: number, scale: number) {
     const viewport = this._viewportRect

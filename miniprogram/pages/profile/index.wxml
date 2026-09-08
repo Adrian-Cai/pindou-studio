@@ -90,26 +90,31 @@
   </view>
 </view>
 
-<view wx:if="{{activeSheet === 'login'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
-  <view class="profile-sheet login-sheet" catchtap="stopPropagation">
-    <view class="profile-sheet__handle"></view>
-    <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭登录弹层">×</view>
+<view wx:if="{{activeSheet === 'login'}}" class="login-mask {{loginClosing ? 'login-mask--closing' : ''}}" catchtap="closeLoginSheet" catchtouchmove="stopPropagation">
+  <view class="login-sheet" catchtap="stopPropagation" aria-role="dialog" aria-label="登录小露拼豆">
+    <view class="login-sheet__handle"></view>
+    <view class="login-sheet__close" bindtap="closeLoginSheet" aria-role="button" aria-label="关闭登录弹层" hover-class="login-sheet__pressed">
+      <image src="/assets/icons/login/close.svg" mode="aspectFit" aria-hidden="true" />
+    </view>
     <image class="login-sheet__avatar" src="/assets/icons/brand-avatar.webp" mode="aspectFit" />
     <view class="login-sheet__title">登录小露拼豆</view>
-    <view class="login-sheet__subtitle">保存云端作品，跨设备查看账号数据</view>
+    <view class="login-sheet__subtitle">
+      <view>登录后即可保存作品，跨设备同步</view>
+      <view>享受完整的创作体验</view>
+    </view>
 
     <view class="login-benefits">
       <view class="login-benefit">
-        <image src="/assets/icons/profile-stat-gallery.svg" mode="aspectFit" />
+        <view class="login-benefit__icon"><image src="/assets/icons/login/cloud-upload.svg" mode="aspectFit" aria-hidden="true" /></view>
         <text>云端保存作品</text>
       </view>
       <view class="login-benefit">
-        <image src="/assets/icons/profile-stat-download.svg" mode="aspectFit" />
-        <text>同步下载记录</text>
+        <view class="login-benefit__icon"><image src="/assets/icons/login/refresh-cw.svg" mode="aspectFit" aria-hidden="true" /></view>
+        <text>多设备同步</text>
       </view>
       <view class="login-benefit">
-        <image src="/assets/icons/profile-benefit-badge.svg" mode="aspectFit" />
-        <text>查看账号权益</text>
+        <view class="login-benefit__icon"><image src="/assets/icons/login/gem.svg" mode="aspectFit" aria-hidden="true" /></view>
+        <text>解锁更多功能</text>
       </view>
     </view>
 
@@ -121,12 +126,23 @@
     <button
       class="login-sheet__submit"
       loading="{{loginUiState === 'loading'}}"
-      disabled="{{loginUiState === 'loading'}}"
+      disabled="{{loginUiState === 'loading' || loginClosing}}"
       bindtap="startWechatLogin"
-    >{{loginUiState === 'loading' ? '登录中…' : loginUiState === 'error' ? '重新登录' : '微信快捷登录'}}</button>
-    <view class="login-sheet__later" bindtap="hideActiveSheet">暂不登录</view>
-    <view class="login-sheet__agreement">登录前请阅读<text class="login-sheet__agreement-link" bindtap="openPrivacyPolicy">《隐私政策》</text></view>
-    <view class="login-sheet__local-hint">当前本地作品不会自动上传</view>
+    >
+      <image wx:if="{{loginUiState !== 'loading'}}" class="login-sheet__wechat" src="/assets/icons/login/wechat.svg" mode="aspectFit" aria-hidden="true" />
+      <text>{{loginUiState === 'loading' ? '登录中…' : loginUiState === 'error' ? '重新登录' : '微信一键登录'}}</text>
+    </button>
+    <view class="login-sheet__agreement">
+      <view class="login-sheet__consent" bindtap="toggleLoginAgreement" aria-role="checkbox" aria-checked="{{loginAgreementAccepted}}" aria-label="我已阅读并同意用户协议和隐私政策" hover-class="login-sheet__pressed">
+        <view class="login-sheet__checkbox {{loginAgreementAccepted ? 'login-sheet__checkbox--checked' : ''}}">
+          <image wx:if="{{loginAgreementAccepted}}" src="/assets/icons/login/check.svg" mode="aspectFit" aria-hidden="true" />
+        </view>
+        <text>我已阅读并同意</text>
+      </view>
+      <text class="login-sheet__agreement-link" catchtap="openUserAgreement" aria-role="link">《用户协议》</text>
+      <text>和</text>
+      <text class="login-sheet__agreement-link" catchtap="openPrivacyPolicy" aria-role="link">《隐私政策》</text>
+    </view>
   </view>
 </view>
 

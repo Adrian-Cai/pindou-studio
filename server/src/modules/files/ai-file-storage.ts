@@ -83,7 +83,7 @@ export class FileSystemAiFileStorage implements AiFileStorage {
       await unlink(join(this.directory, filename));
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        // 已提交的数据库元数据不因异步清理失败而回滚。
+        // 已提交的数据库元数据不因异步清理失败而回滚
       }
     }
   }

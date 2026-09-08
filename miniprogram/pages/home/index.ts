@@ -4,15 +4,18 @@ import { checkImageContent } from '../../services/content-security-service'
 import { ApiError } from '../../services/http-client'
 import { appStore } from '../../store/app-store'
 
-/** 页面内容区左右内边距（rpx），与 .page 的 padding 保持一致 */
-const PAGE_HORIZONTAL_PADDING_RPX = 40
-/** 预览区域最大宽度（rpx），不超过页面内容区 */
-const MAX_PREVIEW_WIDTH_RPX = 750 - PAGE_HORIZONTAL_PADDING_RPX * 2
-/** 预览区域最大高度（rpx） */
-const MAX_PREVIEW_HEIGHT_RPX = 480
+/** 上传状态卡缩略图最大宽度（rpx） */
+const MAX_PREVIEW_WIDTH_RPX = 240
+/** 上传状态卡缩略图最大高度（rpx） */
+const MAX_PREVIEW_HEIGHT_RPX = 240
 
 /** 生成模式 */
 type GenerationMode = 'standard' | 'ai'
+type SecurityStatus = 'idle' | 'checking' | 'passed' | 'rejected' | 'error'
+
+let activeSecurityCheckId = 0
+let securityLoadingTimer: ReturnType<typeof setTimeout> | null = null
+let securitySlowTimer: ReturnType<typeof setTimeout> | null = null
 
 interface GenerationModeOption {
   id: GenerationMode
@@ -85,6 +88,12 @@ const SAMPLE_IMAGES: SampleImage[] = [
   },
 ]
 
+const GENERATION_STEPS = [
+  { id: 1, label: '上传图片' },
+  { id: 2, label: '选择模式' },
+  { id: 3, label: '生成图纸' },
+]
+
 Page({
   data: {
     sourceImagePath: '',
@@ -97,6 +106,11 @@ Page({
     colorOptions: [16, 32, 64, 96],
     choosing: false,
     generating: false,
+    securityStatus: 'idle' as SecurityStatus,
+    securityLoadingVisible: false,
+    securityLongWait: false,
+    currentStep: 1,
+    generationSteps: GENERATION_STEPS,
     /** 当前选中的生成方式 */
     generationMode: 'standard' as GenerationMode,
     /** 生成方式选项列表（数据驱动渲染，避免 UI 写死） */
@@ -109,6 +123,11 @@ Page({
     // tab 高亮由 page-layout selected-tab 属性管理
   },
 
+  onUnload() {
+    activeSecurityCheckId += 1
+    clearSecurityTimers()
+  },
+
   selectMode(event: WechatMiniprogram.TouchEvent) {
     const mode = event.currentTarget.dataset.mode as GenerationMode
     if (mode === this.data.generationMode) return
@@ -118,35 +137,10 @@ Page({
   async chooseImage() {
     if (this.data.choosing) return
     this.setData({ choosing: true })
+
+    let sourceImagePath: string | null = null
     try {
-      const sourceImagePath = await chooseSourceImage()
-      if (sourceImagePath) {
-        wx.showLoading({ title: '正在安全检测', mask: true })
-        try {
-          let securityImagePath: string
-          try {
-            securityImagePath = await prepareImageForContentSecurity(sourceImagePath)
-          } catch (error) {
-            logHomeError('image_prepare_failed', error)
-            throw error
-          }
-          await checkImageContent(securityImagePath)
-        } finally {
-          wx.hideLoading()
-        }
-        this.setData({
-          sourceImagePath,
-          previewWidth: MAX_PREVIEW_WIDTH_RPX,
-          previewHeight: MAX_PREVIEW_HEIGHT_RPX,
-        })
-        try {
-          const { previewWidth, previewHeight } = await this._calcPreviewSize(sourceImagePath)
-          this.setData({ previewWidth, previewHeight })
-        } catch (error) {
-          // 部分开发者工具临时路径无法调用 getImageInfo，等待 <image> bindload 返回真实尺寸。
-          console.warn('图片尺寸接口不可用，改用图片加载事件计算预览', error)
-        }
-      }
+      sourceImagePath = await chooseSourceImage()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (!message.toLowerCase().includes('cancel')) {
@@ -156,8 +150,71 @@ Page({
           icon: 'none',
         })
       }
-    } finally {
       this.setData({ choosing: false })
+      return
+    }
+
+    this.setData({ choosing: false })
+    if (!sourceImagePath) return
+
+    const checkId = ++activeSecurityCheckId
+    clearSecurityTimers()
+    this.setData({
+      sourceImagePath,
+      previewWidth: MAX_PREVIEW_WIDTH_RPX,
+      previewHeight: MAX_PREVIEW_HEIGHT_RPX,
+      securityStatus: 'checking',
+      securityLoadingVisible: false,
+      securityLongWait: false,
+      currentStep: 1,
+    })
+
+    securityLoadingTimer = setTimeout(() => {
+      if (checkId !== activeSecurityCheckId) return
+      this.setData({ securityLoadingVisible: true })
+    }, 400)
+    securitySlowTimer = setTimeout(() => {
+      if (checkId !== activeSecurityCheckId) return
+      this.setData({ securityLongWait: true })
+    }, 3000)
+
+    this._calcPreviewSize(sourceImagePath)
+      .then((size) => {
+        if (checkId === activeSecurityCheckId) this.setData(size)
+      })
+      .catch((error) => {
+        // 部分开发者工具临时路径无法调用 getImageInfo，等待 <image> bindload 返回真实尺寸
+        console.warn('图片尺寸接口不可用，改用图片加载事件计算预览', error)
+      })
+
+    try {
+      let securityImagePath: string
+      try {
+        securityImagePath = await prepareImageForContentSecurity(sourceImagePath)
+      } catch (error) {
+        logHomeError('image_prepare_failed', error)
+        throw error
+      }
+      await checkImageContent(securityImagePath)
+      if (checkId !== activeSecurityCheckId) return
+      this.setData({
+        securityStatus: 'passed',
+        securityLoadingVisible: false,
+        securityLongWait: false,
+        currentStep: 2,
+      })
+    } catch (error) {
+      if (checkId !== activeSecurityCheckId) return
+      const rejected = error instanceof ApiError && error.code === 'CONTENT_RISKY'
+      logHomeError('image_security_check_failed', error)
+      this.setData({
+        securityStatus: rejected ? 'rejected' : 'error',
+        securityLoadingVisible: true,
+        securityLongWait: false,
+        currentStep: 1,
+      })
+    } finally {
+      if (checkId === activeSecurityCheckId) clearSecurityTimers()
     }
   },
 
@@ -167,14 +224,22 @@ Page({
     if (size) this.setData(size)
   },
 
+  showSecurityHelp() {
+    wx.showToast({
+      title: '图片未通过内容安全检查，请更换其他图片后重试',
+      icon: 'none',
+      duration: 2400,
+    })
+  },
+
   handlePreviewError() {
     this.clearImage()
     wx.showToast({ title: '图片无法读取，请换一张重试', icon: 'none' })
   },
 
   /**
-   * 根据原图尺寸计算受最大宽高约束的预览尺寸（rpx）。
-   * 优先读取原图尺寸；开发者工具不支持临时路径时由图片加载事件补充真实尺寸。
+   * 根据原图尺寸计算受最大宽高约束的预览尺寸（rpx）
+   * 优先读取原图尺寸；开发者工具不支持临时路径时由图片加载事件补充真实尺寸
    */
   async _calcPreviewSize(
     imagePath: string,
@@ -199,7 +264,7 @@ Page({
       return null
     }
 
-    // 将图片像素换算为 rpx，再按最大宽度和最大高度等比缩放。
+    // 将图片像素换算为 rpx，再按最大宽度和最大高度等比缩放
     const imageWidthRpx = imageWidth * (750 / windowWidth)
     const imageHeightRpx = imageHeight * (750 / windowWidth)
     const scale = Math.min(
@@ -215,7 +280,17 @@ Page({
   },
 
   clearImage() {
-    this.setData({ sourceImagePath: '', previewWidth: 0, previewHeight: 0 })
+    activeSecurityCheckId += 1
+    clearSecurityTimers()
+    this.setData({
+      sourceImagePath: '',
+      previewWidth: 0,
+      previewHeight: 0,
+      securityStatus: 'idle',
+      securityLoadingVisible: false,
+      securityLongWait: false,
+      currentStep: 1,
+    })
   },
 
   selectSize(event: WechatMiniprogram.TouchEvent) {
@@ -236,6 +311,13 @@ Page({
       wx.showToast({ title: '请先上传图片', icon: 'none' })
       return
     }
+    if (this.data.securityStatus !== 'passed') {
+      wx.showToast({
+        title: this.data.securityStatus === 'checking' ? '图片正在检测，请稍候' : '请先通过图片安全检测',
+        icon: 'none',
+      })
+      return
+    }
 
     // AI 精致模式暂未上线，明确提示用户，不伪执行标准流程
     if (this.data.generationMode === 'ai') {
@@ -244,7 +326,7 @@ Page({
     }
 
     // 标准模式：保持现有完整生成流程
-    this.setData({ generating: true })
+    this.setData({ generating: true, currentStep: 3 })
     wx.showLoading({ title: '正在生成', mask: true })
 
     try {
@@ -254,12 +336,24 @@ Page({
     } catch (error) {
       console.error('生成拼豆图失败', error)
       wx.showToast({ title: '生成失败，请重试', icon: 'none' })
+      this.setData({ currentStep: 2 })
     } finally {
       wx.hideLoading()
       this.setData({ generating: false })
     }
   },
 })
+
+function clearSecurityTimers(): void {
+  if (securityLoadingTimer !== null) {
+    clearTimeout(securityLoadingTimer)
+    securityLoadingTimer = null
+  }
+  if (securitySlowTimer !== null) {
+    clearTimeout(securitySlowTimer)
+    securitySlowTimer = null
+  }
+}
 
 function getImageInfo(imagePath: string): Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult> {
   return new Promise((resolve, reject) => {

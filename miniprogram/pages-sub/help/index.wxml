@@ -16,7 +16,7 @@
         <view wx:if="{{openIndex === index}}" class="faq-item__answer">{{item.answer}}</view>
       </view>
     </view>
-    <view wx:else class="help-empty">没有找到相关问题，换个关键词试试。</view>
+    <view wx:else class="help-empty">没有找到相关问题，换个关键词试试</view>
 
     <view class="help-section-title">快速帮助</view>
     <view class="quick-grid">

@@ -1,7 +1,7 @@
 export type MiniProgramEnvironment = 'develop' | 'trial' | 'release'
 
 const API_BASE_URLS: Record<MiniProgramEnvironment, string> = {
-  develop: 'http://127.0.0.1:4000',
+  develop: 'https://api.pindou.wiac.xyz',
   trial: 'https://api.pindou.wiac.xyz',
   release: 'https://api.pindou.wiac.xyz',
 }
@@ -34,7 +34,7 @@ function getMiniProgramEnvironment(): MiniProgramEnvironment {
     const environment = wx.getAccountInfoSync().miniProgram.envVersion
     if (environment === 'trial' || environment === 'release') return environment
   } catch {
-    // 开发者工具或较旧运行环境无法读取时使用本地开发配置。
+    // 开发者工具或较旧运行环境无法读取时使用本地开发配置
   }
   return 'develop'
 }

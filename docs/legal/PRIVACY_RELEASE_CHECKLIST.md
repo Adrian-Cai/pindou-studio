@@ -21,6 +21,7 @@
 - [ ] 本地作品迁移存在用户确认
 - [ ] 注销功能真实可用
 - [ ] 注销后 Session 会失效
+- [ ] 注销事务提交后会物理删除头像、封面、AI 输入和 AI 输出文件；代码测试已覆盖，生产实际存储仍需验收
 - [ ] 注销后的数据删除/匿名化行为已验证
 - [ ] 法律文档在未登录状态下可访问
 - [ ] 三份法律文档页面正常展示
@@ -33,15 +34,16 @@
 - [ ] 支付生产环境是否已经启用，套餐与付费服务协议是否完成
 - [ ] 注销后同一微信账号是否允许重新注册
 - [ ] 订单、支付流水、下载流水和必要安全日志的保存期限
-- [ ] AI 输入/输出文件的清理任务和保存期限；当前代码只明确任务 `expires_at` 为 24 小时，未发现独立文件清理任务
+- [ ] AI 输入/输出文件的常规保存期限和过期清理任务；注销时物理删除已接入，当前仍只明确任务 `expires_at` 为 24 小时，未发现独立文件过期清理任务
 - [ ] 是否需要记录用户接受的协议版本、同意时间和来源；当前 `privacy_local_only`、`privacy_cloud_sync`、`privacy_service_notices`、`privacy_personalized_recommendations` 只是隐私偏好，不能替代协议同意记录
 - [ ] 生产部署是否使用腾讯云、CloudBase、COS 或其他外部对象存储
 
 ## 代码核对记录
 
-- 标准模式图案生成：小程序本地 `standard-generator`。
-- 图片选择：`wx.chooseImage`；反馈页面另外调用 `wx.chooseMedia`，均由用户主动触发。
-- 相册保存：`wx.saveImageToPhotosAlbum`，仅在用户主动下载时触发。
-- 内容安全图片：`/api/content-security/media` 临时存储，异步审核配置为 35 分钟过期。
-- 云同步：编辑器保存受 `privacy.cloudSync` 控制；已有本地作品只应在隐私页确认后迁移。
-- 协议同意：当前未发现 `pindou_user_consents` 或等价表。
+- 标准模式图案生成：小程序本地 `standard-generator`
+- 图片选择：`wx.chooseImage`；反馈页面另外调用 `wx.chooseMedia`，均由用户主动触发
+- 相册保存：`wx.saveImageToPhotosAlbum`，仅在用户主动下载时触发
+- 内容安全图片：`/api/content-security/media` 临时存储，异步审核配置为 35 分钟过期
+- 云同步：编辑器保存受 `privacy.cloudSync` 控制；已有本地作品只应在隐私页确认后迁移
+- 注销清理：事务提交后按类型调用头像、封面和 AI 文件存储的 `remove()`；服务测试已验证删除后文件不可读
+- 协议同意：当前未发现 `pindou_user_consents` 或等价表

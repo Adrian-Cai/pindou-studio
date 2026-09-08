@@ -37,7 +37,7 @@ export async function chooseSourceImage(): Promise<string | null> {
     if (!isSupportedImageHeader(header)) throw new UnsupportedImageFormatError()
   } catch (error) {
     if (error instanceof UnsupportedImageFormatError) throw error
-    // 部分真机和 Windows 开发者工具不允许直接读取选择器临时路径，交给 <image> 解码。
+    // 部分真机和 Windows 开发者工具不允许直接读取选择器临时路径，交给 <image> 解码
   }
   return sourceImagePath
 }

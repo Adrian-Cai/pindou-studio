@@ -1,7 +1,7 @@
 import { AppError } from "../../shared/app-error";
 import { LEGAL_DOCUMENT_CONTENT } from "./legal-document-content";
 
-export type LegalDocumentKey = "privacy-policy" | "personal-information" | "third-party-sharing";
+export type LegalDocumentKey = "user-agreement" | "privacy-policy" | "personal-information" | "third-party-sharing";
 
 export interface LegalDocument {
   readonly key: LegalDocumentKey;
@@ -13,6 +13,14 @@ export interface LegalDocument {
 }
 
 const DOCUMENTS: Readonly<Record<LegalDocumentKey, LegalDocument>> = {
+  "user-agreement": {
+    key: "user-agreement",
+    title: "小露拼豆用户协议",
+    version: "2026-09-07",
+    effectiveAt: "2026-09-07T00:00:00+08:00",
+    contentType: "rich-text",
+    content: LEGAL_DOCUMENT_CONTENT["user-agreement"],
+  },
   "privacy-policy": {
     key: "privacy-policy",
     title: "小露拼豆隐私政策",

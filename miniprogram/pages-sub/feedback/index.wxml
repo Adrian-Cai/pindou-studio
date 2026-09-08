@@ -2,7 +2,7 @@
   <view class="subpage feedback-page">
     <view class="feedback-hero">
       <view class="feedback-hero__icon">◖</view>
-      <view><view>感谢你的反馈</view><text>你可以提交产品建议或问题反馈，帮助我们做得更好。</text></view>
+      <view><view>感谢你的反馈</view><text>你可以提交产品建议或问题反馈，帮助我们做得更好</text></view>
     </view>
 
     <view class="feedback-label">反馈类型</view>

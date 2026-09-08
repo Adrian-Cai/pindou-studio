@@ -2,9 +2,9 @@
 
 > 上位设计：`docs/frontend/pattern-engine/STANDARD_PATTERN_ENGINE_V2_PLAN.md`
 >
-> 当前里程碑：建立 Standard V1 可复现基线，并完成不改变任何生成结果的代码重构。
+> 当前里程碑：建立 Standard V1 可复现基线，并完成不改变任何生成结果的代码重构
 >
-> 本文档是 Phase 0 + Phase 1 的实施与验收基线。后续 Codex 执行本阶段时必须严格以本文档为范围边界，不得提前进入 Area Sampling、OKLab、MARD 真实色卡、Cleanup、Edge Protection 等后续阶段。
+> 本文档是 Phase 0 + Phase 1 的实施与验收基线后续 Codex 执行本阶段时必须严格以本文档为范围边界，不得提前进入 Area Sampling、OKLab、MARD 真实色卡、Cleanup、Edge Protection 等后续阶段
 
 ---
 
@@ -23,7 +23,7 @@ Palette 来源
 如果没有稳定的 V1 基线，也没有把现有算法职责从 `image-service.ts` 中拆出来，后续会出现两个问题：
 
 1. 无法判断某次效果变化到底来自哪个算法；
-2. 一旦效果退化，很难定位和局部回滚。
+2. 一旦效果退化，很难定位和局部回滚
 
 因此正式优化效果之前，先完成：
 
@@ -33,11 +33,11 @@ Phase 0：知道 V1 现在准确做了什么，并能够重复验证
 Phase 1：把同一套 V1 算法安全拆到独立模块，但输出一颗豆都不能变化
 ```
 
-本阶段的成功标准不是“图片变好看”。
+本阶段的成功标准不是“图片变好看”
 
 本阶段的成功标准是：
 
-> **重构前和重构后，Standard V1 的可观察行为完全一致，同时建立足够可靠的测试和基线，为 Phase 2 之后的算法变化提供参照。**
+> **重构前和重构后，Standard V1 的可观察行为完全一致，同时建立足够可靠的测试和基线，为 Phase 2 之后的算法变化提供参照**
 
 ---
 
@@ -67,7 +67,7 @@ createPatternCells()
 组装 PatternDraft
 ```
 
-本阶段必须保持 `createDraft()` 的公开调用方式不变。
+本阶段必须保持 `createDraft()` 的公开调用方式不变
 
 ---
 
@@ -92,7 +92,7 @@ PatternCell 生成
 PatternDraft 生成
 ```
 
-这已经明显超出单一 service 的合理职责。
+这已经明显超出单一 service 的合理职责
 
 Phase 1 的核心不是“重新设计算法”，而是把：
 
@@ -106,7 +106,7 @@ Phase 1 的核心不是“重新设计算法”，而是把：
 Pattern Generation 职责
 ```
 
-分开。
+分开
 
 ---
 
@@ -133,7 +133,7 @@ sourceRatio === targetRatio
 Canvas drawImage(..., targetWidth, targetHeight)
 ```
 
-直接由微信 Canvas 将裁剪区域缩放到最终网格尺寸。
+直接由微信 Canvas 将裁剪区域缩放到最终网格尺寸
 
 ### Alpha
 
@@ -150,7 +150,7 @@ alpha < 32
 
 ### Palette
 
-从所有 `alpha >= 32` 的目标网格像素中执行 Median Cut。
+从所有 `alpha >= 32` 的目标网格像素中执行 Median Cut
 
 ### Median Cut
 
@@ -160,9 +160,9 @@ alpha < 32
 score = 最大 RGB channel range × bucket.length
 ```
 
-选择 Bucket 最宽的 RGB channel 排序后从中间切分。
+选择 Bucket 最宽的 RGB channel 排序后从中间切分
 
-最终每个 Bucket 使用算术平均 RGB 作为 Palette Color。
+最终每个 Bucket 使用算术平均 RGB 作为 Palette Color
 
 ### Nearest Color
 
@@ -183,7 +183,7 @@ C03
 ...
 ```
 
-这些行为在 Phase 1 均不得改变。
+这些行为在 Phase 1 均不得改变
 
 ---
 
@@ -240,7 +240,7 @@ Pattern Schema 升级
 页面 UI 重构
 ```
 
-如果执行过程中发现上述问题，只记录为后续事项，不实现。
+如果执行过程中发现上述问题，只记录为后续事项，不实现
 
 ---
 
@@ -255,7 +255,7 @@ A. 纯算法 Characterization Baseline
 B. 微信 Canvas 真实图片 Baseline
 ```
 
-两层缺一不可。
+两层缺一不可
 
 原因：
 
@@ -276,7 +276,7 @@ Canvas drawImage 缩放
 getImageData
 ```
 
-Node 环境不能可靠模拟微信 Canvas 的真实插值行为，因此不应该为了“自动化率”引入一个假的 Canvas 实现，然后把假的行为当成生产基线。
+Node 环境不能可靠模拟微信 Canvas 的真实插值行为，因此不应该为了“自动化率”引入一个假的 Canvas 实现，然后把假的行为当成生产基线
 
 ---
 
@@ -284,13 +284,13 @@ Node 环境不能可靠模拟微信 Canvas 的真实插值行为，因此不应�
 
 ## 5.1 测试目的
 
-Characterization Test 不验证“这个算法是否科学”。
+Characterization Test 不验证“这个算法是否科学”
 
 它只验证：
 
-> **当前 V1 实际行为是什么。**
+> **当前 V1 实际行为是什么**
 
-因此即使某个 V1 行为未来准备修改，Phase 0 仍然要先把它锁住。
+因此即使某个 V1 行为未来准备修改，Phase 0 仍然要先把它锁住
 
 ---
 
@@ -313,7 +313,7 @@ test/
 test/pattern-generation/tsconfig.json
 ```
 
-但不得引入第三方测试依赖。
+但不得引入第三方测试依赖
 
 优先使用：
 
@@ -323,7 +323,7 @@ Node.js 内置 assert
 现有 TypeScript compiler
 ```
 
-如当前执行环境的 Node 版本无法稳定支持该方案，允许退化为一个普通 Node assertion script，但必须明确记录执行命令。
+如当前执行环境的 Node 版本无法稳定支持该方案，允许退化为一个普通 Node assertion script，但必须明确记录执行命令
 
 ---
 
@@ -347,13 +347,13 @@ npm run test:pattern
 2. Windows/macOS/Linux 尽量均可执行；
 3. 不依赖微信开发者工具才能完成纯算法 Characterization Test；
 4. 不修改现有 `typecheck` 语义；
-5. 测试产生的临时编译目录不得提交仓库。
+5. 测试产生的临时编译目录不得提交仓库
 
 ---
 
 # 6. Phase 0A 必须覆盖的 Characterization Cases
 
-最低覆盖以下 Case。
+最低覆盖以下 Case
 
 ## Case 1：单色图片
 
@@ -399,9 +399,9 @@ Cell 映射
 
 这里非常重要：
 
-> Phase 1 不仅颜色集合不能变化，Palette 顺序也不能变化。
+> Phase 1 不仅颜色集合不能变化，Palette 顺序也不能变化
 
-否则颜色看起来相同，但 `colorCode` 会变化。
+否则颜色看起来相同，但 `colorCode` 会变化
 
 ---
 
@@ -431,7 +431,7 @@ alpha = 32
 32 → opaque
 ```
 
-这个边界在 Phase 1 不得发生 `<=` / `<` 改写错误。
+这个边界在 Phase 1 不得发生 `<=` / `<` 改写错误
 
 ---
 
@@ -445,13 +445,13 @@ createMedianCutPalette([], ...) → white fallback
 最终所有 Cell 仍为 transparent
 ```
 
-不能因为 Palette fallback 是白色就生成白色豆。
+不能因为 Palette fallback 是白色就生成白色豆
 
 ---
 
 ## Case 6：Palette 色距离 Tie
 
-人为构造一个 Pixel 与两个 Palette Color 距离相同的 Case。
+人为构造一个 Pixel 与两个 Palette Color 距离相同的 Case
 
 当前 `findNearestColor` 只在：
 
@@ -459,9 +459,9 @@ createMedianCutPalette([], ...) → white fallback
 distance < nearestDistance
 ```
 
-时更新，因此 Tie 时保留前面的 Palette Color。
+时更新，因此 Tie 时保留前面的 Palette Color
 
-Phase 1 必须保持这一顺序语义。
+Phase 1 必须保持这一顺序语义
 
 ---
 
@@ -487,7 +487,7 @@ G range >= B range
 B
 ```
 
-Phase 1 不得因为“代码更优雅”改变 tie-break 顺序。
+Phase 1 不得因为“代码更优雅”改变 tie-break 顺序
 
 ---
 
@@ -499,9 +499,9 @@ Phase 1 不得因为“代码更优雅”改变 tie-break 顺序。
 if (score > selectedScore)
 ```
 
-意味着相同 score 时保留前面 Bucket。
+意味着相同 score 时保留前面 Bucket
 
-必须 Characterize。
+必须 Characterize
 
 ---
 
@@ -534,13 +534,13 @@ trunc
 255 → ff
 ```
 
-继续保持当前小写 HEX 输出。
+继续保持当前小写 HEX 输出
 
 ---
 
 # 7. Phase 0A：Crop Geometry 基线
 
-中心裁剪计算必须从 Canvas 操作中抽象为纯计算函数后进行 Characterization。
+中心裁剪计算必须从 Canvas 操作中抽象为纯计算函数后进行 Characterization
 
 建议目标接口：
 
@@ -562,7 +562,7 @@ export function calculateCenterCrop(
 
 注意：
 
-> 这个函数只是把当前 `image-service.ts` 中已有数学计算原样搬出，不允许顺便优化 Crop 行为。
+> 这个函数只是把当前 `image-service.ts` 中已有数学计算原样搬出，不允许顺便优化 Crop 行为
 
 必须覆盖：
 
@@ -583,7 +583,7 @@ sourceWidth
 sourceHeight
 ```
 
-完全符合 V1 当前公式。
+完全符合 V1 当前公式
 
 ---
 
@@ -597,11 +597,11 @@ Characterization Test 无法证明：
 微信 Canvas drawImage
 ```
 
-在重构前后是否收到完全相同的参数。
+在重构前后是否收到完全相同的参数
 
-也无法替代真实设备/开发者工具图片解码和插值行为。
+也无法替代真实设备/开发者工具图片解码和插值行为
 
-因此必须建立真实图片基线。
+因此必须建立真实图片基线
 
 ---
 
@@ -622,11 +622,11 @@ Characterization Test 无法证明：
 
 1. 自己程序生成的几何测试图；
 2. 项目团队自制图片；
-3. 明确允许用于测试的素材。
+3. 明确允许用于测试的素材
 
-不要为了测试把来源不清晰的人像、动漫图直接提交仓库。
+不要为了测试把来源不清晰的人像、动漫图直接提交仓库
 
-真实审美 A/B 图片可以保留在本地，不必进入 Git。
+真实审美 A/B 图片可以保留在本地，不必进入 Git
 
 ---
 
@@ -644,7 +644,7 @@ Phase 0 的主要目标是“判断行为是否变化”，因此应优先使用
 细线
 ```
 
-这些图片一旦发生一个 Cell 的变化，比复杂照片更容易定位根因。
+这些图片一旦发生一个 Cell 的变化，比复杂照片更容易定位根因
 
 ---
 
@@ -659,7 +659,7 @@ Phase 0 的主要目标是“判断行为是否变化”，因此应优先使用
 128 × 128 / 64 colors
 ```
 
-不是每张图都必须跑全部组合，但测试矩阵必须包含全部支持尺寸边界。
+不是每张图都必须跑全部组合，但测试矩阵必须包含全部支持尺寸边界
 
 ---
 
@@ -693,7 +693,7 @@ matrixHash
 cell.color + ':' + cell.colorCode
 ```
 
-按 Cell 顺序计算稳定 Hash。
+按 Cell 顺序计算稳定 Hash
 
 Hash 算法不要求密码学安全，只要求：
 
@@ -703,7 +703,7 @@ Hash 算法不要求密码学安全，只要求：
 跨运行一致
 ```
 
-可以复用项目中已有 FNV-1a 思路，但不要为了测试引入 crypto 依赖。
+可以复用项目中已有 FNV-1a 思路，但不要为了测试引入 crypto 依赖
 
 ---
 
@@ -746,7 +746,7 @@ Draft ID
 临时文件路径
 ```
 
-因为这些字段本身不确定，不能成为算法基线。
+因为这些字段本身不确定，不能成为算法基线
 
 ---
 
@@ -773,7 +773,7 @@ PatternDraft.createdAt
 sourceImagePath 的临时路径
 ```
 
-原因：这些不是生成算法输出，天然会变化。
+原因：这些不是生成算法输出，天然会变化
 
 ---
 
@@ -792,7 +792,7 @@ sourceImagePath 的临时路径
 [ ] npm run typecheck 仍然通过
 ```
 
-如果 Phase 0 不能生成稳定基线，不进入 Phase 1。
+如果 Phase 0 不能生成稳定基线，不进入 Phase 1
 
 ---
 
@@ -826,7 +826,7 @@ V1 before refactor
 V1 after refactor
 ```
 
-一颗 Cell 都不能变化。
+一颗 Cell 都不能变化
 
 ---
 
@@ -879,7 +879,7 @@ JPG / PNG / WEBP 校验
 createDraft() 外部入口
 ```
 
-`createDraft()` 内部调用 Standard Generator。
+`createDraft()` 内部调用 Standard Generator
 
 目标：
 
@@ -896,7 +896,7 @@ export async function createDraft(
 
 注意：
 
-当前 `Date.now()` 行为保持不变。
+当前 `Date.now()` 行为保持不变
 
 ---
 
@@ -925,9 +925,9 @@ export async function generateStandardPatternCells(
 ): Promise<PatternCell[]>
 ```
 
-不要返回新的自定义 Pattern Result。
+不要返回新的自定义 Pattern Result
 
-因为 Phase 1 不修改现有 `createDraft()` 数据模型。
+因为 Phase 1 不修改现有 `createDraft()` 数据模型
 
 ---
 
@@ -952,7 +952,7 @@ export function createMedianCutPalette(
 ): RGB[]
 ```
 
-内部辅助函数不必全部 export。
+内部辅助函数不必全部 export
 
 ---
 
@@ -971,7 +971,7 @@ export function findNearestColor(...)
 export function rgbToHex(...)
 ```
 
-如果 `readOpaquePixels()` 更适合 `standard-generator.ts`，保留在那里即可。
+如果 `readOpaquePixels()` 更适合 `standard-generator.ts`，保留在那里即可
 
 不要在 Phase 1 增加：
 
@@ -981,7 +981,7 @@ OKLab
 ΔE
 ```
 
-这些属于 Phase 2 / Phase 3。
+这些属于 Phase 2 / Phase 3
 
 ---
 
@@ -1024,7 +1024,7 @@ context.drawImage(
 改变 Alpha 阈值
 ```
 
-这些都会导致 Phase 1 失去“无行为变化”性质。
+这些都会导致 Phase 1 失去“无行为变化”性质
 
 ---
 
@@ -1049,9 +1049,9 @@ Palette 顺序
 bucket.sort(...)
 ```
 
-改成一个理论上“更稳定”但实际排序结果可能变化的新实现。
+改成一个理论上“更稳定”但实际排序结果可能变化的新实现
 
-Phase 1 的目标不是修算法。
+Phase 1 的目标不是修算法
 
 ---
 
@@ -1086,11 +1086,11 @@ OKLab
 
 # 18. Phase 1 测试策略
 
-重构完成后运行两类验证。
+重构完成后运行两类验证
 
 ## A. Characterization Test
 
-所有 Phase 0A Case 必须通过。
+所有 Phase 0A Case 必须通过
 
 ## B. Baseline Manifest Comparison
 
@@ -1113,9 +1113,9 @@ colorCount 100% 相同
 
 任何一个 Case 不一致：
 
-> Phase 1 验收失败。
+> Phase 1 验收失败
 
-不要以肉眼“看起来一样”替代 Hash Comparison。
+不要以肉眼“看起来一样”替代 Hash Comparison
 
 ---
 
@@ -1137,7 +1137,7 @@ colorCount 100% 相同
 云端保存路径不报结构错误
 ```
 
-本阶段没有修改这些业务，但由于 `createDraft()` 调用链发生重构，仍需验证主要调用方。
+本阶段没有修改这些业务，但由于 `createDraft()` 调用链发生重构，仍需验证主要调用方
 
 ---
 
@@ -1221,7 +1221,7 @@ cp
 sed
 ```
 
-优先使用 Node 自身能力，避免 Windows 环境失效。
+优先使用 Node 自身能力，避免 Windows 环境失效
 
 ---
 
@@ -1252,13 +1252,13 @@ any
 扩大 skip 检查范围
 ```
 
-绕过真实类型问题。
+绕过真实类型问题
 
 ---
 
 # 23. Commit 拆分
 
-即使 Phase 0 + Phase 1 在同一个开发周期完成，也必须分 Commit。
+即使 Phase 0 + Phase 1 在同一个开发周期完成，也必须分 Commit
 
 建议：
 
@@ -1277,7 +1277,7 @@ Fixture/Manifest
 必要的测试配置
 ```
 
-如果为了测试必须增加极小的 testing seam，必须确保生产行为不变，并在 Commit 说明中明确。
+如果为了测试必须增加极小的 testing seam，必须确保生产行为不变，并在 Commit 说明中明确
 
 ---
 
@@ -1295,7 +1295,7 @@ image-service.ts 减负
 无行为变化验证
 ```
 
-不要和 Phase 2 合并。
+不要和 Phase 2 合并
 
 ---
 
@@ -1345,21 +1345,21 @@ image-service.ts 减负
 Codex 执行过程中遇到以下情况必须停下来报告，不允许自行扩大范围：
 
 ```text
-1. 为了测试必须引入第三方依赖。
-2. 微信 OffscreenCanvas 行为无法在当前方式下稳定基线化。
-3. 重构后某些 Fixture Hash 无法保持一致。
-4. 当前源码与本文档描述存在关键差异。
-5. createDraft() 无法在不修改页面调用的情况下完成拆分。
-6. 必须修改 PersistedPattern Schema 才能继续。
-7. 必须修改 server API 才能继续。
-8. 发现 V1 本身存在 Bug，但修复 Bug 会改变 Pattern 输出。
+1. 为了测试必须引入第三方依赖
+2. 微信 OffscreenCanvas 行为无法在当前方式下稳定基线化
+3. 重构后某些 Fixture Hash 无法保持一致
+4. 当前源码与本文档描述存在关键差异
+5. createDraft() 无法在不修改页面调用的情况下完成拆分
+6. 必须修改 PersistedPattern Schema 才能继续
+7. 必须修改 server API 才能继续
+8. 发现 V1 本身存在 Bug，但修复 Bug 会改变 Pattern 输出
 ```
 
 对于第 8 条：
 
-> Phase 1 仍然先保持 Bug-compatible；Bug 修复单独立项。
+> Phase 1 仍然先保持 Bug-compatible；Bug 修复单独立项
 
-因为本阶段目标是建立可比较基线，而不是顺便修正算法。
+因为本阶段目标是建立可比较基线，而不是顺便修正算法
 
 ---
 
@@ -1368,7 +1368,7 @@ Codex 执行过程中遇到以下情况必须停下来报告，不允许自行�
 后续可以直接把下面任务交给 Codex：
 
 ```text
-任务：完成 Standard Pattern Engine V2 的 Phase 0 + Phase 1。
+任务：完成 Standard Pattern Engine V2 的 Phase 0 + Phase 1
 
 开始前必须阅读：
 - AGENTS.md
@@ -1378,35 +1378,35 @@ Codex 执行过程中遇到以下情况必须停下来报告，不允许自行�
 - docs/frontend/pattern-engine/STANDARD_PATTERN_ENGINE_V2_PHASE_0_1.md
 
 目标：
-1. 建立 Standard V1 可复现 Characterization Baseline。
-2. 建立真实微信 Canvas Baseline 的测试/记录机制。
-3. 在基线锁定后，把当前 image-service.ts 中的 Standard V1 Pattern Generation 逻辑拆到独立模块。
-4. 重构前后 Standard V1 的 Pattern 输出必须 100% 一致。
+1. 建立 Standard V1 可复现 Characterization Baseline
+2. 建立真实微信 Canvas Baseline 的测试/记录机制
+3. 在基线锁定后，把当前 image-service.ts 中的 Standard V1 Pattern Generation 逻辑拆到独立模块
+4. 重构前后 Standard V1 的 Pattern 输出必须 100% 一致
 
 强约束：
-- 本次不优化任何生成效果。
-- 不做 Area Sampling。
-- 不做 Linear RGB。
-- 不做 OKLab/LAB。
-- 不接入真实 MARD 色卡。
-- 不做 Cleanup。
-- 不做 Edge Detection。
-- 不做 Dithering。
-- 不修改 AI 精致模式。
-- 不修改 Pattern Schema。
-- 不修改后端 API/数据库。
-- 不改变 createDraft() 的页面调用方式。
-- 不安装新的 npm dependency。
-- 不修改无关页面。
+- 本次不优化任何生成效果
+- 不做 Area Sampling
+- 不做 Linear RGB
+- 不做 OKLab/LAB
+- 不接入真实 MARD 色卡
+- 不做 Cleanup
+- 不做 Edge Detection
+- 不做 Dithering
+- 不修改 AI 精致模式
+- 不修改 Pattern Schema
+- 不修改后端 API/数据库
+- 不改变 createDraft() 的页面调用方式
+- 不安装新的 npm dependency
+- 不修改无关页面
 
 实施顺序：
-A. 先检查当前实现并列出 V1 精确行为。
-B. 完成 Phase 0 基线和 Characterization Tests。
-C. 运行基线，确认可复现。
-D. 单独完成 Phase 1 代码拆分。
-E. 再运行全部基线，确认 matrixHash / paletteHash 完全一致。
-F. 执行 npm run typecheck 和可运行测试。
-G. 手工回归标准模式关键流程。
+A. 先检查当前实现并列出 V1 精确行为
+B. 完成 Phase 0 基线和 Characterization Tests
+C. 运行基线，确认可复现
+D. 单独完成 Phase 1 代码拆分
+E. 再运行全部基线，确认 matrixHash / paletteHash 完全一致
+F. 执行 npm run typecheck 和可运行测试
+G. 手工回归标准模式关键流程
 
 完成后必须输出：
 - 修改文件清单；
@@ -1416,9 +1416,9 @@ G. 手工回归标准模式关键流程。
 - typecheck/test 结果；
 - 手工回归结果；
 - 未解决问题；
-- 是否可以进入 Phase 2。
+- 是否可以进入 Phase 2
 
-如果任何 Baseline Hash 不一致，不得宣布 Phase 1 完成，也不得进入 Phase 2。
+如果任何 Baseline Hash 不一致，不得宣布 Phase 1 完成，也不得进入 Phase 2
 ```
 
 ---
@@ -1457,7 +1457,7 @@ pattern-generation/standard-generator.ts
 standard-generator / 新增 sampling module
 ```
 
-而不用再触碰图片选择、文件校验、首页交互等外围代码。
+而不用再触碰图片选择、文件校验、首页交互等外围代码
 
 ---
 
@@ -1485,7 +1485,7 @@ Canvas 一步缩放
 4× Intermediate + Area Sampling
 ```
 
-届时任何 Hash 变化都属于“预期变化”，并通过 Phase 0 建立的同一套 Fixture 做正式 A/B。
+届时任何 Hash 变化都属于“预期变化”，并通过 Phase 0 建立的同一套 Fixture 做正式 A/B
 
 ---
 

@@ -7,6 +7,7 @@ const MIN_DOMINANT_NEIGHBORS = 5
 const MIN_DOMINANT_RATIO = 0.75
 const MAX_CENTER_SUPPORT = 1
 const MAX_COLOR_DISTANCE_SQUARED = 0.05 * 0.05
+const EDGE_PROTECTION_THRESHOLD = 0.02
 
 const colorsByCode = new Map(
   MARD_CLASSIC_PALETTE.map((color) => [color.code, color]),
@@ -16,6 +17,7 @@ export function cleanupPatternCells(
   cells: readonly PatternCell[],
   width: number,
   height: number,
+  edgeStrengths?: ArrayLike<number>,
 ): PatternCell[] {
   const cleaned = cells.map((cell) => ({ ...cell }))
   if (width <= 0 || height <= 0 || cells.length !== width * height) {
@@ -24,6 +26,7 @@ export function cleanupPatternCells(
 
   cells.forEach((cell, index) => {
     if (!cell.colorCode) return
+    if (isEdgeProtected(edgeStrengths, width, height, index)) return
 
     const x = index % width
     const y = Math.floor(index / width)
@@ -71,6 +74,27 @@ export function cleanupPatternCells(
   })
 
   return cleaned
+}
+
+function isEdgeProtected(
+  edgeStrengths: ArrayLike<number> | undefined,
+  width: number,
+  height: number,
+  centerIndex: number,
+): boolean {
+  if (!edgeStrengths || edgeStrengths.length !== width * height) return false
+
+  const centerX = centerIndex % width
+  const centerY = Math.floor(centerIndex / width)
+  for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      const x = centerX + offsetX
+      const y = centerY + offsetY
+      if (x < 0 || x >= width || y < 0 || y >= height) continue
+      if (edgeStrengths[y * width + x] >= EDGE_PROTECTION_THRESHOLD) return true
+    }
+  }
+  return false
 }
 
 function readOpaqueNeighbors(

@@ -8,7 +8,7 @@
 >
 > 设计背景：`docs/backend/database/DATABASE_DESIGN.md`
 >
-> 维护原则：数据库结构发生变更时，应先同步代码中的 Schema Contract / migration，再同步更新本文档。本文档描述“当前代码期望的真实结构”，不是未来设计稿。
+> 维护原则：数据库结构发生变更时，应先同步代码中的 Schema Contract / migration，再同步更新本文档本文档描述“当前代码期望的真实结构”，不是未来设计稿
 
 ## 1. 当前数据库概览
 
@@ -46,7 +46,7 @@ pindou_users
 
 ## 3.11 `pindou_content_security_checks`
 
-内容安全审核记录表。记录作品名称检测和原图异步检测的状态、微信 `trace_id`、风险标签及临时媒体引用；不保存明文 OpenID 或原始文本。
+内容安全审核记录表记录作品名称检测和原图异步检测的状态、微信 `trace_id`、风险标签及临时媒体引用；不保存明文 OpenID 或原始文本
 
 | 字段 | 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -63,7 +63,7 @@ pindou_users
 
 ## 2. `pindou_users`
 
-用户主表。
+用户主表
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -88,7 +88,7 @@ pindou_users
 
 ## 3. `pindou_auth_sessions`
 
-登录会话表。
+登录会话表
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -110,7 +110,7 @@ pindou_users
 
 ## 4. `pindou_file_assets`
 
-文件资产表，保存作品封面、AI 输入和 AI 输出。
+文件资产表，保存作品封面、AI 输入和 AI 输出
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -137,7 +137,7 @@ pindou_users
 
 ## 5. `pindou_works`
 
-作品摘要表。列表页主要读取这张表，完整图案不直接存这里。
+作品摘要表列表页主要读取这张表，完整图案不直接存这里
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -169,7 +169,7 @@ pindou_users
 
 ## 6. `pindou_work_patterns`
 
-作品完整图案表，与 `pindou_works` 一对一。
+作品完整图案表，与 `pindou_works` 一对一
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -191,11 +191,11 @@ pindou_users
 - CHECK：宽高不得超过 128
 - CHECK：`color_limit > 0`
 
-`palette_json` 与 `cells_json` 的业务结构由服务端 Pattern Validator 继续校验。
+`palette_json` 与 `cells_json` 的业务结构由服务端 Pattern Validator 继续校验
 
 ## 7. `pindou_favorites`
 
-收藏关系表。
+收藏关系表
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -213,7 +213,7 @@ pindou_users
 
 ## 8. `pindou_download_records`
 
-下载记录表。
+下载记录表
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -240,7 +240,7 @@ pindou_users
 
 ## 9. `pindou_quota_transactions`
 
-额度流水表。当前余额以流水汇总为准。
+额度流水表当前余额以流水汇总为准
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -281,7 +281,7 @@ pindou_users
 
 ## 10. `pindou_packages`
 
-可购买套餐表。
+可购买套餐表
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -308,7 +308,7 @@ pindou_users
 
 ## 11. `pindou_orders`
 
-支付订单表。
+支付订单表
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -339,7 +339,7 @@ pindou_users
 
 ## 12. `pindou_ai_generation_jobs`
 
-AI 精致生成任务表。客户端创建任务后轮询状态；只有输出图片落库成功时才写 AI 额度扣减流水。
+AI 精致生成任务表客户端创建任务后轮询状态；只有输出图片落库成功时才写 AI 额度扣减流水
 
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
@@ -361,7 +361,7 @@ AI 精致生成任务表。客户端创建任务后轮询状态；只有输出�
 | `started_at` / `completed_at` | `timestamptz` | 是 | 处理/完成时间 |
 | `expires_at` | `timestamptz` | 否 | 任务查询截止时间 |
 
-幂等唯一索引为 `(user_id, idempotency_key)`；活跃状态索引用于额度预留和超时巡检。
+幂等唯一索引为 `(user_id, idempotency_key)`；活跃状态索引用于额度预留和超时巡检
 
 ## 13. Schema 的事实来源与验证方式
 
@@ -375,7 +375,7 @@ AI 精致生成任务表。客户端创建任务后轮询状态；只有输出�
 4. `docs/backend/database/DATABASE_SCHEMA.md`（本文档）
 5. `docs/backend/database/DATABASE_DESIGN.md`（设计背景/历史决策）
 
-`DATABASE_DESIGN.md` 不应该再被当成唯一的“当前数据库字段清单”。
+`DATABASE_DESIGN.md` 不应该再被当成唯一的“当前数据库字段清单”
 
 ### 12.2 仓库已有 Schema 检查能力
 
@@ -392,7 +392,7 @@ AI 精致生成任务表。客户端创建任务后轮询状态；只有输出�
 npm run db:inspect
 ```
 
-用于检查当前 PostgreSQL 数据库与仓库 Schema Contract 是否一致。
+用于检查当前 PostgreSQL 数据库与仓库 Schema Contract 是否一致
 
 ## 13. 后续维护规则
 

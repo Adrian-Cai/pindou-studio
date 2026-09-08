@@ -159,7 +159,7 @@ export class QwenImageProvider implements AiGenerationProvider {
     try {
       body = object(await response.json());
     } catch {
-      // 非 JSON 响应统一映射为稳定的上游错误。
+      // 非 JSON 响应统一映射为稳定的上游错误
     }
     if (!response.ok || !body) throw providerFailure(body, response.status);
     return body;

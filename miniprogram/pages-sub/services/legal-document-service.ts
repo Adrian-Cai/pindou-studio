@@ -1,6 +1,6 @@
 import { ApiError, apiRequest } from '../../services/http-client'
 
-export type LegalDocumentKey = 'privacy-policy' | 'personal-information' | 'third-party-sharing'
+export type LegalDocumentKey = 'user-agreement' | 'privacy-policy' | 'personal-information' | 'third-party-sharing'
 
 export interface LegalDocument {
   key: LegalDocumentKey
@@ -17,7 +17,7 @@ export async function fetchLegalDocument(key: LegalDocumentKey): Promise<LegalDo
   })
   const document = isRecord(response) ? parseDocument(response.document) : null
   if (!document) {
-    throw new ApiError('服务返回了无法识别的文档内容，请稍后重试。', { code: 'INVALID_RESPONSE' })
+    throw new ApiError('服务返回了无法识别的文档内容，请稍后重试', { code: 'INVALID_RESPONSE' })
   }
   return document
 }
@@ -44,6 +44,7 @@ function parseDocument(value: unknown): LegalDocument | null {
 
 function isLegalDocumentKey(value: unknown): value is LegalDocumentKey {
   return value === 'privacy-policy'
+    || value === 'user-agreement'
     || value === 'personal-information'
     || value === 'third-party-sharing'
 }

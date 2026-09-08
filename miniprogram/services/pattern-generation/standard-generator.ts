@@ -3,6 +3,7 @@ import { SAMPLE_SCALE, sampleCellsLinearRgb } from './cell-sampler'
 import type { RGB } from './color-utils'
 import { cleanupPatternCells } from './cleanup'
 import { calculateCenterCrop } from './crop'
+import { calculateEdgeStrengths } from './edge-detector'
 import { createMedianCutCandidates } from './median-cut'
 import { findNearestColorIndexOklab } from './oklab-matcher'
 import { selectMardPalette } from './palette-selector'
@@ -62,6 +63,7 @@ export async function generateStandardPatternCells(
 
   const imageData = context.getImageData(0, 0, sampleWidth, sampleHeight)
   const sampledData = sampleCellsLinearRgb(imageData.data, width, height)
+  const edgeStrengths = calculateEdgeStrengths(sampledData, width, height)
   const pixels = readOpaquePixels(sampledData)
   const candidateLimit = Math.min(
     MAX_CANDIDATE_COLORS,
@@ -90,7 +92,7 @@ export async function generateStandardPatternCells(
     }
   })
 
-  return cleanupPatternCells(cells, width, height)
+  return cleanupPatternCells(cells, width, height, edgeStrengths)
 }
 
 function loadCanvasImage(

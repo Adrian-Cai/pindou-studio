@@ -77,7 +77,7 @@
 .work-summary {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-3);
   padding: var(--card-padding-compact);
 }
@@ -124,11 +124,12 @@
 .work-summary__title-row {
   position: relative;
   display: flex;
-  width: calc(100% - 120rpx);
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
   align-items: center;
   justify-content: flex-start;
-  gap: var(--space-1);
+  padding-right: 72rpx;
   color: var(--color-text);
   font-size: 32rpx;
   font-weight: 600;
@@ -149,10 +150,18 @@
   opacity: 0.58;
 }
 
+.work-summary__title-group {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 1;
+}
+
 .work-summary__title {
   min-width: 0;
   overflow: hidden;
-  flex: 0 1 auto;
+  flex: 1;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -201,36 +210,36 @@
   top: var(--card-padding-compact);
   right: var(--card-padding-compact);
   display: flex;
-  width: 112rpx;
-  height: 88rpx;
+  width: 64rpx;
+  height: 64rpx;
   align-items: center;
   justify-content: center;
-  gap: 8rpx;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-card-small);
+  border-radius: 50%;
   background: transparent;
-  box-shadow: var(--shadow-ghost);
   color: var(--color-text-secondary);
-  font-size: 22rpx;
-  font-weight: 500;
   line-height: 1;
-  transition: var(--transition-press);
+  transition: transform 150ms ease, opacity 150ms ease, color 150ms ease;
 }
 
 .favorite--active {
-  background: var(--color-primary-soft);
-  box-shadow: 0 0 0 2rpx var(--color-primary), var(--shadow-ghost);
   color: var(--color-primary);
 }
 
+.favorite--pressed,
 .favorite:active {
-  background: var(--strong-overlay);
+  opacity: 0.62;
   transform: scale(0.97);
 }
 
+.favorite--updating {
+  pointer-events: none;
+}
+
 .favorite__heart {
-  font-size: 28rpx;
+  font-size: 32rpx;
+  line-height: 1;
 }
 
 .result-tabs {
@@ -789,11 +798,8 @@
   .work-summary {
     gap: var(--space-2);
   }
-  .favorite {
-    width: 100rpx;
-  }
   .work-summary__title-row {
-    width: calc(100% - 108rpx);
+    padding-right: 72rpx;
   }
   .result-tabs__item {
     font-size: 24rpx;

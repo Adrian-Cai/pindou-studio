@@ -44,7 +44,7 @@ page {
   --color-bg: var(--background);
   --color-surface-muted: #f5f6f8;
   --color-preview-bg: #f4fcf8;
-  /* 兼容别名：页面迁移完成后再删除旧命名。 */
+  /* 兼容别名：页面迁移完成后再删除旧命名 */
   --color-text: var(--text);
   --color-text-secondary: var(--muted);
   --color-text-tertiary: #9699a8;

@@ -138,7 +138,7 @@ export function cloudDetailToDraft(detail: CloudWorkDetail): PatternDraft {
 
 export function draftToPersistedPattern(draft: PatternDraft): PersistedPattern {
   if (draft.cells.length !== draft.settings.width * draft.settings.height) {
-    throw new ApiError('当前作品网格数据不完整，请重新生成。', { code: 'INVALID_PATTERN' })
+    throw new ApiError('当前作品网格数据不完整，请重新生成', { code: 'INVALID_PATTERN' })
   }
   const palette: PersistedPattern['palette'] = []
   const paletteIndexes = new Map<string, number>()
@@ -204,7 +204,7 @@ async function persistCloudWork(input: {
 function requireToken(): string {
   const session = loadAuthSession()
   if (!session || isAuthSessionExpired(session)) {
-    throw new ApiError('请先登录后再同步云端作品。', { statusCode: 401, code: 'UNAUTHORIZED' })
+    throw new ApiError('请先登录后再同步云端作品', { statusCode: 401, code: 'UNAUTHORIZED' })
   }
   return session.token
 }
@@ -292,7 +292,7 @@ function parsePersistedPattern(value: Record<string, unknown>): PersistedPattern
 }
 
 function invalidResponse(): ApiError {
-  return new ApiError('服务返回了无法识别的作品数据，请稍后重试。', { code: 'INVALID_RESPONSE' })
+  return new ApiError('服务返回了无法识别的作品数据，请稍后重试', { code: 'INVALID_RESPONSE' })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

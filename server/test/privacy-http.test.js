@@ -125,7 +125,7 @@ test("GET /api/users/me/privacy returns the authenticated user's preferences", a
 
 test("legal documents expose only controlled keys", async () => {
   await withApplication(dependencies(), async (baseUrl) => {
-    for (const key of ["privacy-policy", "personal-information", "third-party-sharing"]) {
+    for (const key of ["user-agreement", "privacy-policy", "personal-information", "third-party-sharing"]) {
       const response = await fetch(`${baseUrl}/api/legal-documents/${key}`);
       const body = await response.json();
       assert.equal(response.status, 200);

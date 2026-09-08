@@ -35,9 +35,9 @@
 
 禁止：
 
-- 固定死高度。
-- 大量absolute布局。
-- 依赖单一设备尺寸。
+- 固定死高度
+- 大量absolute布局
+- 依赖单一设备尺寸
 
 
 ---
@@ -61,9 +61,9 @@
 
 必须考虑：
 
-- Tab遮挡。
-- 页面返回。
-- 状态保持。
+- Tab遮挡
+- 页面返回
+- 状态保持
 
 # 微信自定义导航栏规范
 
@@ -76,7 +76,7 @@
 - screenWidth
 - windowWidth
 
-不得自行猜测状态栏高度。
+不得自行猜测状态栏高度
 
 ---
 
@@ -95,7 +95,7 @@ wx.getMenuButtonBoundingClientRect()
 - width
 - height
 
-自定义导航栏必须基于真实胶囊位置计算。
+自定义导航栏必须基于真实胶囊位置计算
 
 ---
 
@@ -107,7 +107,7 @@ statusBarHeight
 +
 customNavigationBarHeight
 
-不得在不同页面分别实现计算逻辑。
+不得在不同页面分别实现计算逻辑
 
 ---
 
@@ -120,11 +120,11 @@ customNavigationBarHeight
 - SafeArea
 - ScrollPage
 
-必须优先复用。
+必须优先复用
 
-禁止新页面复制一份导航栏实现。
+禁止新页面复制一份导航栏实现
 
-如果当前项目还没有统一组件，应优先抽取统一组件，再迁移相关页面。
+如果当前项目还没有统一组件，应优先抽取统一组件，再迁移相关页面
 
 ---
 
@@ -142,7 +142,7 @@ navigationStyle: "custom"
 - Android
 - 不同微信胶囊高度
 
-不得只按照开发者工具某一个模拟器调样式。
+不得只按照开发者工具某一个模拟器调样式
 ---
 
 ## 6. 统一页面布局架构
@@ -165,10 +165,10 @@ navigationStyle: "custom"
 
 组件职责：
 
-- PageLayout：统一组织固定导航栏和独立滚动区域。
-- CustomNavbar：统一处理状态栏、微信胶囊、标题和返回区域。
-- ScrollArea：承载页面业务内容并处理安全区和滚动边界。
-- StickyTabs：仅在页面存在 Tab 且设计要求吸顶时启用，吸顶位置必须避开 CustomNavbar。
+- PageLayout：统一组织固定导航栏和独立滚动区域
+- CustomNavbar：统一处理状态栏、微信胶囊、标题和返回区域
+- ScrollArea：承载页面业务内容并处理安全区和滚动边界
+- StickyTabs：仅在页面存在 Tab 且设计要求吸顶时启用，吸顶位置必须避开 CustomNavbar
 
 以下页面后续新增或重构时必须迁移到该结构：
 
@@ -181,4 +181,4 @@ navigationStyle: "custom"
 - 隐私设置
 - 关于我们
 
-禁止为上述页面创建 PageLayout、CustomNavbar、ScrollArea 或 StickyTabs 的页面专属替代实现。
+禁止为上述页面创建 PageLayout、CustomNavbar、ScrollArea 或 StickyTabs 的页面专属替代实现

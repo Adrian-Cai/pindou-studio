@@ -14,8 +14,10 @@
         <image class="work-summary__thumb" src="{{thumbnailSrc}}" mode="aspectFit"></image>
         <view class="work-summary__info">
           <view class="work-summary__title-row {{renamingTitle ? 'work-summary__title-row--disabled' : ''}}" hover-class="work-summary__title-row--pressed" bindtap="editTitle" role="button" aria-label="编辑作品名称，当前名称 {{summary.title}}" aria-disabled="{{renamingTitle}}">
-            <text class="work-summary__title">{{summary.title}}</text>
-            <image class="work-summary__edit-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
+            <view class="work-summary__title-group">
+              <text class="work-summary__title">{{summary.title}}</text>
+              <image class="work-summary__edit-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
+            </view>
           </view>
           <view class="work-summary__meta">
             {{draft.settings.width}}×{{draft.settings.height}} · {{summary.colorCount}}色
@@ -23,9 +25,8 @@
           <view class="work-summary__count">共 {{summary.beadCount}} 颗</view>
           <view class="work-summary__date">创建于 {{summary.createdText}}</view>
         </view>
-        <view class="favorite {{isFavorite ? 'favorite--active' : ''}}" catchtap="toggleFavorite" aria-label="{{isFavorite ? '取消收藏' : '收藏作品'}}">
+        <view class="favorite {{isFavorite ? 'favorite--active' : ''}} {{favoriteUpdating ? 'favorite--updating' : ''}}" catchtap="toggleFavorite" hover-class="favorite--pressed" role="button" aria-label="{{isFavorite ? '取消收藏' : '收藏作品'}}" aria-pressed="{{isFavorite}}" aria-disabled="{{favoriteUpdating}}">
           <text class="favorite__heart">{{isFavorite ? '♥' : '♡'}}</text>
-          <text>{{isFavorite ? '已收藏' : '收藏'}}</text>
         </view>
       </view>
 
@@ -34,7 +35,7 @@
       </view>
 
       <view wx:if="{{renderError}}" class="render-error">
-        图像加载失败，请切换页签后重试。
+        图像加载失败，请切换页签后重试
       </view>
 
       <view wx:if="{{activeTab === 'preview'}}" class="result-panel">
@@ -86,7 +87,7 @@
             <view class="material-row__percentage">{{item.percentage}}</view>
           </view>
         </view>
-        <view wx:else class="panel-empty">这幅作品没有可统计的颜色。</view>
+        <view wx:else class="panel-empty">这幅作品没有可统计的颜色</view>
         <button wx:if="{{materials.length > 5}}" class="material-list__toggle" bindtap="toggleMaterialList" aria-expanded="{{materialListExpanded}}" aria-label="{{materialListExpanded ? '收起颜色列表' : '展开全部颜色'}}">
           <text wx:if="{{materialListExpanded}}">收起颜色列表</text>
           <text wx:else>展开全部 {{materials.length}} 种颜色</text>
@@ -156,7 +157,7 @@
             </view>
           </block>
         </block>
-        <view wx:else class="panel-empty">当前没有可参考的颜色。</view>
+        <view wx:else class="panel-empty">当前没有可参考的颜色</view>
         <view wx:if="{{materials.length}}" class="download-format">PNG 格式 · 高清图</view>
         <view wx:if="{{materials.length}}" class="download-action">
           <result-download-button text="下载色板参考" fileType="palette" loading="{{downloadLoading && downloadingType === 'palette'}}" disabled="{{downloadLoading}}" bind:download="handleRequestDownload" />
@@ -169,7 +170,7 @@
     <view wx:else class="result-empty">
       <view class="result-empty__mark">◇</view>
       <view class="result-empty__title">当前没有可查看的作品</view>
-      <view class="result-empty__hint">先上传图片并保存作品，这里会生成完整的制作资料。</view>
+      <view class="result-empty__hint">先上传图片并保存作品，这里会生成完整的制作资料</view>
       <button class="start-btn" bindtap="goCreate">开始制作</button>
     </view>
 

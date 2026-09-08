@@ -53,7 +53,7 @@
     <view wx:else class="empty-state">
       <view class="empty-state__icon">♡</view>
       <view class="empty-state__title">{{allWorks.length ? '没有匹配的收藏' : '还没有收藏'}}</view>
-      <view class="empty-state__desc">{{allWorks.length ? '换个关键词或分类试试。' : '在作品结果页点一下爱心，喜欢的图纸就会留在这里。'}}</view>
+      <view class="empty-state__desc">{{allWorks.length ? '换个关键词或分类试试' : '在作品结果页点一下爱心，喜欢的图纸就会留在这里'}}</view>
     </view>
   </view>
 </page-layout>

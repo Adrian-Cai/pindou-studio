@@ -21,7 +21,7 @@ export function clearAuthSession(): void {
   try {
     wx.removeStorageSync(AUTH_STORAGE_KEY)
   } catch {
-    // 本地存储不可用时，内存中的 AuthStore 仍会立即退出登录。
+    // 本地存储不可用时，内存中的 AuthStore 仍会立即退出登录
   }
 }
 

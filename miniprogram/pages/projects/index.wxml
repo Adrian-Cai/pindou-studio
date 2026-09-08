@@ -56,16 +56,16 @@
           <view class="project-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>
           <view class="project-card__date">{{item.updatedText}}</view>
           <view class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
-            <button class="project-action" data-id="{{item.id}}" catchtap="startRename" aria-label="重命名作品 {{item.title}}">
-              <image class="project-action__icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
+            <button class="project-card__action-inline" data-id="{{item.id}}" catchtap="startRename" aria-label="重命名作品 {{item.title}}">
+              <image class="project-card__action-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
               <text>重命名</text>
             </button>
-            <button class="project-action" data-id="{{item.id}}" catchtap="downloadWork" aria-label="下载作品 {{item.title}}">
-              <image class="project-action__icon" src="/assets/icons/profile-menu-download.svg" mode="aspectFit" />
+            <button class="project-card__action-inline" data-id="{{item.id}}" catchtap="downloadWork" aria-label="下载作品 {{item.title}}">
+              <image class="project-card__action-icon" src="/assets/icons/profile-menu-download.svg" mode="aspectFit" />
               <text>下载</text>
             </button>
-            <button class="project-action project-action--danger" data-id="{{item.id}}" catchtap="deleteWork" aria-label="删除作品 {{item.title}}">
-              <image class="project-action__icon" src="/assets/icons/work-delete.svg" mode="aspectFit" />
+            <button class="project-card__action-inline project-card__action-inline--danger" data-id="{{item.id}}" catchtap="deleteWork" aria-label="删除作品 {{item.title}}">
+              <image class="project-card__action-icon" src="/assets/icons/work-delete.svg" mode="aspectFit" />
               <text>删除</text>
             </button>
           </view>
@@ -87,7 +87,7 @@
     <view wx:else class="empty-state">
       <view class="empty-state__icon">▧</view>
       <view class="empty-state__title">{{loading ? '正在读取作品' : (allWorks.length ? '没有匹配的作品' : '还没有作品')}}</view>
-      <view class="empty-state__desc">{{loading ? '正在同步云端数据，请稍候。' : (allWorks.length ? '换个关键词或筛选条件试试。' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸。')}}</view>
+      <view class="empty-state__desc">{{loading ? '正在同步云端数据，请稍候' : (allWorks.length ? '换个关键词或筛选条件试试' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸')}}</view>
       <button wx:if="{{!loading && !allWorks.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
     </view>
   </view>

@@ -8,7 +8,7 @@ import type { WeChatContentSecurityClient } from "./wechat-client";
 const RISK_MESSAGE = "你发布的内容含违规信息，请修改后重试";
 const TEXT_SCENE_WORK_TITLE = 2;
 const MEDIA_EXPIRY_MS = 35 * 60 * 1_000;
-// 微信审核作为主校验；这些高置信度短语用于兜底，避免明显违规标题被第三方误判为通过。
+// 微信审核作为主校验；这些高置信度短语用于兜底，避免明显违规标题被第三方误判为通过
 const LOCAL_RISKY_TEXT_PATTERNS = [
   /色情|成人视频|淫秽/u,
   /(?:贩卖|销售|购买|吸食)毒品/u,

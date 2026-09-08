@@ -73,7 +73,7 @@ export class FileSystemContentSecurityMediaStorage implements ContentSecurityMed
       await unlink(join(this.directory, filename));
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        // 审核记录已经落库时，清理失败交给后续过期清理任务。
+        // 审核记录已经落库时，清理失败交给后续过期清理任务
       }
     }
   }

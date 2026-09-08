@@ -1,0 +1,24 @@
+{
+  "baseUrl": "https://api.pindou.wiac.xyz",
+  "timeoutMs": 10000,
+  "endpoints": [
+    {
+      "name": "API health and database",
+      "path": "/health",
+      "expectedStatus": 200,
+      "expectedJson": {
+        "status": "ok"
+      }
+    },
+    {
+      "name": "Public packages API",
+      "path": "/api/packages",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Privacy policy API",
+      "path": "/api/legal-documents/privacy-policy",
+      "expectedStatus": 200
+    }
+  ]
+}

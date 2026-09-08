@@ -89,7 +89,7 @@ export interface HttpApplicationDependencies {
   readonly coverMaximumBytes: number;
   readonly aiFileMaximumBytes: number;
   readonly aiGenerations: PostgresAiGenerationService;
-  /** 作品标题保存前必须经过内容安全校验；缺失时应 fail closed。 */
+  /** 作品标题保存前必须经过内容安全校验；缺失时应 fail closed */
   readonly contentSecurity: ContentSecurityService;
   readonly contentSecurityMediaMaximumBytes?: number;
   readonly capabilities?: {

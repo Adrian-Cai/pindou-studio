@@ -164,7 +164,7 @@ export class AuthStore {
     const session = loadAuthSession()
     if (!session || isAuthSessionExpired(session)) {
       this.expireSession()
-      throw new Error('登录状态已失效，请重新登录。')
+      throw new Error('登录状态已失效，请重新登录')
     }
 
     const previousState = this.state
@@ -191,7 +191,7 @@ export class AuthStore {
     } catch (error) {
       if (isUnauthorized(error)) {
         this.expireSession()
-        throw new Error('登录状态已失效，请重新登录。')
+        throw new Error('登录状态已失效，请重新登录')
       }
       const message = friendlyAuthError(error)
       this.setState({ ...previousState, status: 'authenticated', errorMessage: message })
@@ -205,7 +205,7 @@ export class AuthStore {
     const session = loadAuthSession()
     if (!session || isAuthSessionExpired(session)) {
       this.expireSession()
-      throw new Error('登录状态已失效，请重新登录。')
+      throw new Error('登录状态已失效，请重新登录')
     }
 
     try {
@@ -235,7 +235,7 @@ export class AuthStore {
     const session = loadAuthSession()
     if (!session || isAuthSessionExpired(session)) {
       this.expireSession()
-      throw new Error('登录状态已失效，请重新登录。')
+      throw new Error('登录状态已失效，请重新登录')
     }
 
     try {
@@ -392,12 +392,12 @@ function isUnauthorized(error: unknown): boolean {
 }
 
 function friendlyAuthError(error: unknown): string {
-  if (!(error instanceof ApiError)) return '登录服务暂时不可用，请稍后重试。'
-  if (error.code === 'NETWORK_ERROR') return '网络连接失败，请检查网络后重试。'
+  if (!(error instanceof ApiError)) return '登录服务暂时不可用，请稍后重试'
+  if (error.code === 'NETWORK_ERROR') return '网络连接失败，请检查网络后重试'
   if (error.code === 'API_CONFIGURATION_ERROR') return error.message
   if (error.code === 'WX_LOGIN_FAILED') return error.message
-  if (error.code === 'INVALID_ARGUMENT') return '微信登录凭证无效，请重新登录。'
-  if (error.statusCode === 404) return '登录接口尚未部署，请检查并重启后端服务。'
-  if (error.statusCode >= 500) return '登录服务暂时不可用，请稍后重试。'
-  return error.message || '登录失败，请重新尝试。'
+  if (error.code === 'INVALID_ARGUMENT') return '微信登录凭证无效，请重新登录'
+  if (error.statusCode === 404) return '登录接口尚未部署，请检查并重启后端服务'
+  if (error.statusCode >= 500) return '登录服务暂时不可用，请稍后重试'
+  return error.message || '登录失败，请重新尝试'
 }

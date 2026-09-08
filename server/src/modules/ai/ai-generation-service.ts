@@ -151,7 +151,7 @@ function prompt(input: Pick<CreateAiGenerationInput, "style" | "detailLevel" | "
     simplify: "简化背景，只保留有助于识别场景的主要元素",
     remove: "移除背景，使用干净的纯色浅背景",
   } as const;
-  return `${styles[input.style]}；${details[input.detailLevel]}；${backgrounds[input.backgroundMode]}。输出一张完整 PNG，不添加文字、水印、边框或拼豆网格。`;
+  return `${styles[input.style]}；${details[input.detailLevel]}；${backgrounds[input.backgroundMode]}输出一张完整 PNG，不添加文字、水印、边框或拼豆网格`;
 }
 
 function failureCode(error: unknown): string {

@@ -6,7 +6,7 @@
 
 ## 1. 执行摘要
 
-拼豆工作室是一款将图片转换为拼豆图纸的微信小程序。前端已基本完成，**全部业务数据目前通过单个 `wx.Storage` key（`pindou-app-state-v1`）存储在客户端本地**，不存在任何真实后端请求。
+拼豆工作室是一款将图片转换为拼豆图纸的微信小程序前端已基本完成，**全部业务数据目前通过单个 `wx.Storage` key（`pindou-app-state-v1`）存储在客户端本地**，不存在任何真实后端请求
 
 核心业务流：**上传图片 → 客户端量化像素 → 编辑 → 保存作品 → 查看结果 / 材料清单 / 施工图 → 下载（待实现）**
 
@@ -51,7 +51,7 @@ PatternDraft
   - privacyPreferences
 ```
 
-**没有任何网络请求发生。**
+**没有任何网络请求发生**
 
 ---
 
@@ -317,7 +317,7 @@ URL 参数：`packageLabel`、`amount`、`quota`（**前端直接传递，无验
 
 ### User（用户）
 
-> 目前代码中尚未存在真实 User 字段，但以下位置暗示用户体系的存在。
+> 目前代码中尚未存在真实 User 字段，但以下位置暗示用户体系的存在
 
 **代码证据：**
 - `profile/index.wxml` "登录后可同步作品与下载记录"
@@ -491,7 +491,7 @@ Feedback:
 
 ### POST `/api/auth/login`
 
-微信登录。前端通过 `wx.login()` 获取临时 code，发送到服务端换取 session。
+微信登录前端通过 `wx.login()` 获取临时 code，发送到服务端换取 session
 
 ```json
 Request:
@@ -517,7 +517,7 @@ Response:
 
 ### GET `/api/users/me`
 
-获取当前登录用户信息（包含额度摘要）。
+获取当前登录用户信息（包含额度摘要）
 
 ```json
 Response:
@@ -541,7 +541,7 @@ Response:
 
 ### POST `/api/works`
 
-保存作品。cells 数据量较大（最大 16384 条），需评估是否存数据库或对象存储 JSON 文件。
+保存作品cells 数据量较大（最大 16384 条），需评估是否存数据库或对象存储 JSON 文件
 
 ```json
 Request:
@@ -575,7 +575,7 @@ Response:
 
 ### GET `/api/works`
 
-获取当前用户作品列表（通过登录态识别用户，**不接受任意 userId 参数**）。
+获取当前用户作品列表（通过登录态识别用户，**不接受任意 userId 参数**）
 
 ```json
 Query params: ?status=completed&page=1&pageSize=20
@@ -605,7 +605,7 @@ Response:
 
 ### GET `/api/works/:id`
 
-获取作品详情（含 cells 和 materials，用于历史作品打开）。
+获取作品详情（含 cells 和 materials，用于历史作品打开）
 
 ```json
 Response:
@@ -633,7 +633,7 @@ Response:
 
 ### DELETE `/api/works/:id`
 
-删除当前用户指定作品（需鉴权确认归属）。
+删除当前用户指定作品（需鉴权确认归属）
 
 ```json
 Response: 204 No Content
@@ -643,7 +643,7 @@ Response: 204 No Content
 
 ### POST `/api/files/upload`
 
-上传文件。可用于：
+上传文件可用于：
 - 作品封面图（editor 保存时上传 sourceImagePath → 获取云端 URL）
 - 反馈截图
 
@@ -662,7 +662,7 @@ Response:
 
 ### GET `/api/quota/me`
 
-获取当前用户下载额度（result 页显示"今日剩余免费下载次数"）。
+获取当前用户下载额度（result 页显示"今日剩余免费下载次数"）
 
 ```json
 Response:
@@ -703,7 +703,7 @@ Response: { total, quota, items: DownloadRecord[] }
 
 ### POST `/api/downloads`
 
-创建下载记录并扣除额度。
+创建下载记录并扣除额度
 
 ```json
 Request:
@@ -719,7 +719,7 @@ Response:
 }
 ```
 
-若额度不足，返回 `402 Payment Required`，前端跳转充值页。
+若额度不足，返回 `402 Payment Required`，前端跳转充值页
 
 ### POST `/api/payments/create`
 
@@ -756,23 +756,23 @@ Response: { "id": "fb_xxx" }
 
 ### PATCH `/api/works/:id`
 
-更新作品标题等信息（当前作品名固定为"未命名作品"，需支持重命名）。
+更新作品标题等信息（当前作品名固定为"未命名作品"，需支持重命名）
 
 ### GET `/api/files/download/:workId/:type`
 
-生成可下载文件的有效期临时 URL（成品图/施工图的实际下载）。
+生成可下载文件的有效期临时 URL（成品图/施工图的实际下载）
 
 ### GET `/api/packages`
 
-套餐列表后端下发（当前硬编码在 `config/profile.ts`）。
+套餐列表后端下发（当前硬编码在 `config/profile.ts`）
 
 ### PATCH `/api/users/me/privacy`
 
-同步隐私偏好（`cloudSync` 开关目前 toast"待接入"）。
+同步隐私偏好（`cloudSync` 开关目前 toast"待接入"）
 
 ### DELETE `/api/users/me`
 
-注销账号（`privacy/index.ts` `cancelAccount()` 当前 toast"尚未接入"）。
+注销账号（`privacy/index.ts` `cancelAccount()` 当前 toast"尚未接入"）
 
 ---
 
@@ -890,7 +890,7 @@ Response: { "id": "fb_xxx" }
 
 ## 13. 登录与数据归属
 
-**当前状态：** 代码中没有任何 `wx.login`、`openid`、`token` 调用，所有数据不区分用户。
+**当前状态：** 代码中没有任何 `wx.login`、`openid`、`token` 调用，所有数据不区分用户
 
 **需要绑定登录态的 API（不能接受任意 userId 参数，必须从 token 识别当前用户）：**
 
@@ -919,11 +919,11 @@ appStore.hydrate() → 先读本地 token，再从服务端同步数据
 
 ## 14. 图片处理是否需要异步任务
 
-**当前：** `image-service.ts` `createDraft()` 完全在客户端执行（中位切分色彩量化），同步完成后跳转编辑页。
+**当前：** `image-service.ts` `createDraft()` 完全在客户端执行（中位切分色彩量化），同步完成后跳转编辑页
 
 **评估：**
 
-客户端量化属于 CPU 密集操作，小程序 JS 单线程下，128×128 大图量化可能导致 UI 卡顿。
+客户端量化属于 CPU 密集操作，小程序 JS 单线程下，128×128 大图量化可能导致 UI 卡顿
 
 目前**不建议**立即引入服务端异步任务（YAGNI），但如果未来评估后迁移服务端，模式应为：
 
@@ -932,7 +932,7 @@ POST /api/generations          → 创建生成任务，返回 taskId
 GET  /api/generations/:taskId  → 轮询任务状态和结果
 ```
 
-**当前阶段：保持客户端量化，后续根据实测性能决定是否迁移。**
+**当前阶段：保持客户端量化，后续根据实测性能决定是否迁移**
 
 ---
 
@@ -981,26 +981,26 @@ GET  /api/generations/:taskId  → 轮询任务状态和结果
 
 ## 17. 风险与待确认问题
 
-1. **图片量化是否迁移服务端？**  
-   当前完全客户端实现（`image-service.ts` 中位切分），在大尺寸图 + 多颜色场景下性能未知。需要实测后评估是否需要服务端计算（如果迁移，将新增异步任务 API）。
+1. **图片量化是否迁移服务端？**
+   当前完全客户端实现（`image-service.ts` 中位切分），在大尺寸图 + 多颜色场景下性能未知需要实测后评估是否需要服务端计算（如果迁移，将新增异步任务 API）
 
-2. **cells 数据的存储策略未确定。**  
-   最大 128×128=16384 个格子的 JSON 数组，直接存数据库 TEXT 字段或存对象存储 JSON 文件均可，需结合历史作品"打开编辑"的频率决定读取方式。
+2. **cells 数据的存储策略未确定**
+   最大 128×128=16384 个格子的 JSON 数组，直接存数据库 TEXT 字段或存对象存储 JSON 文件均可，需结合历史作品"打开编辑"的频率决定读取方式
 
 3. **历史作品是否支持再次编辑？**  
-   代码中 `projects/index.ts` L98-100 仅支持当前 draft 重新进编辑器。"历史作品详情服务待接入"的描述仅对应查看结果，还是也包含再次编辑？两者 cells 数据传输量差异较大。
+   代码中 `projects/index.ts` L98-100 仅支持当前 draft 重新进编辑器"历史作品详情服务待接入"的描述仅对应查看结果，还是也包含再次编辑？两者 cells 数据传输量差异较大
 
 4. **下载的实际文件如何生成？**  
-   `downloads/index.ts` `redownload()` toast"文件导出服务待接入"。目前只有前端 Canvas 绘制逻辑，实际下载到相册需要调用 `wx.saveImageToPhotosAlbum`（代码中未实现），还是生成云端图片文件供用户下载？两种方案 API 设计不同。
+   `downloads/index.ts` `redownload()` toast"文件导出服务待接入"目前只有前端 Canvas 绘制逻辑，实际下载到相册需要调用 `wx.saveImageToPhotosAlbum`（代码中未实现），还是生成云端图片文件供用户下载？两种方案 API 设计不同
 
 5. **作品分享是否支持他人查看？**  
-   `result/index.ts` `onShareAppMessage` 固定分享链接为 `/pages/home/index`，未传递 workId。未来若支持分享并让他人查看作品，需要新增公开作品详情 API（可能不需要登录）。
+   `result/index.ts` `onShareAppMessage` 固定分享链接为 `/pages/home/index`，未传递 workId未来若支持分享并让他人查看作品，需要新增公开作品详情 API（可能不需要登录）
 
-6. **下载额度的"今日免费"重置逻辑。**  
-   `profile/index.wxml` 显示"每日 00:00 自动恢复"，但当前没有重置逻辑（`downloadQuota: 3` 为初始值，不会自动恢复）。服务端需要按北京时间每日 00:00 重置 `usedToday`。
+6. **下载额度的"今日免费"重置逻辑**
+   `profile/index.wxml` 显示"每日 00:00 自动恢复"，但当前没有重置逻辑（`downloadQuota: 3` 为初始值，不会自动恢复）服务端需要按北京时间每日 00:00 重置 `usedToday`
 
 7. **作品名称修改功能是否纳入 MVP？**  
-   当前保存时固定`title: '未命名作品'`（`editor/index.ts` L183），没有重命名入口。如果产品要求支持改名，需要 `PATCH /api/works/:id` API。
+   当前保存时固定`title: '未命名作品'`（`editor/index.ts` L183），没有重命名入口如果产品要求支持改名，需要 `PATCH /api/works/:id` API
 
 ---
 
@@ -1013,7 +1013,7 @@ POST /api/auth/login       — wx.login code → session
 GET  /api/users/me         — 获取当前用户信息 + 额度摘要
 ```
 
-前端改动：`app.ts` 启动时调用登录，token 存 Storage，注入 HTTP 请求头。
+前端改动：`app.ts` 启动时调用登录，token 存 Storage，注入 HTTP 请求头
 
 ---
 
@@ -1034,8 +1034,8 @@ GET    /api/works/:id      — 作品详情（含 cells）
 DELETE /api/works/:id      — 删除作品
 ```
 
-前端改动：`editor/index.ts` saveAndView() 上传封面图 → 调用保存 API。  
-`projects/index.ts` 从 API 读取列表，解锁"历史作品详情"功能。
+前端改动：`editor/index.ts` saveAndView() 上传封面图 → 调用保存 API
+`projects/index.ts` 从 API 读取列表，解锁"历史作品详情"功能
 
 ---
 

@@ -1,6 +1,7 @@
 import { fetchLegalDocument, type LegalDocumentKey } from '../services/legal-document-service'
 
 const TITLES: Record<LegalDocumentKey, string> = {
+  'user-agreement': '小露拼豆用户协议',
   'privacy-policy': '小露拼豆隐私政策',
   'personal-information': '个人信息收集清单',
   'third-party-sharing': '第三方信息共享清单',
@@ -21,7 +22,7 @@ Page({
   onLoad(options: Record<string, string | undefined>) {
     const key = parseKey(options.key)
     if (!key) {
-      this.setData({ loading: false, errorMessage: '文档地址无效，请返回后重试。' })
+      this.setData({ loading: false, errorMessage: '文档地址无效，请返回后重试' })
       return
     }
     this.setData({ key, title: TITLES[key] })
@@ -44,7 +45,7 @@ Page({
     } catch (error) {
       this.setData({
         loading: false,
-        errorMessage: error instanceof Error ? error.message : '文档加载失败，请稍后重试。',
+        errorMessage: error instanceof Error ? error.message : '文档加载失败，请稍后重试',
       })
     }
   },
@@ -56,7 +57,7 @@ Page({
 })
 
 function parseKey(value: string | undefined): LegalDocumentKey | null {
-  if (value === 'privacy-policy' || value === 'personal-information' || value === 'third-party-sharing') {
+  if (value === 'user-agreement' || value === 'privacy-policy' || value === 'personal-information' || value === 'third-party-sharing') {
     return value
   }
   return null

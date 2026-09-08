@@ -55,7 +55,7 @@ Page({
     this.setData({ submitting: true })
     wx.showModal({
       title: '反馈内容已保存',
-      content: '反馈接口尚未配置，当前内容仅保留在页面中，接入服务后即可正式提交。',
+      content: '反馈接口尚未配置，当前内容仅保留在页面中，接入服务后即可正式提交',
       showCancel: false,
       complete: () => this.setData({ submitting: false }),
     })

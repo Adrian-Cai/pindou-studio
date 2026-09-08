@@ -2,7 +2,7 @@
 
 > 来源：`.agents/skills/ponytail-review/SKILL.md`
 >
-> 目标：减少不必要复杂度、重复代码、单实现抽象和可直接删除的冗余内容。在不改变当前业务行为的前提下，让代码更短、更直接、更容易维护。
+> 目标：减少不必要复杂度、重复代码、单实现抽象和可直接删除的冗余内容在不改变当前业务行为的前提下，让代码更短、更直接、更容易维护
 
 ## 1. 本次扫描范围
 
@@ -25,7 +25,7 @@ Ponytail Review 只检查：
 - YAGNI
 - 可以明显缩短的实现
 
-不用于判断正确性、安全性和性能问题。
+不用于判断正确性、安全性和性能问题
 
 ---
 
@@ -39,17 +39,17 @@ Ponytail Review 只检查：
 
 问题：
 
-当前文件为空，没有配置、规则或执行价值。
+当前文件为空，没有配置、规则或执行价值
 
 处理：
 
-- 直接删除。
+- 直接删除
 
 预期收益：
 
-- 减少仓库噪音。
+- 减少仓库噪音
 
-风险：低。
+风险：低
 
 ---
 
@@ -67,20 +67,20 @@ Ponytail Review 只检查：
 
 问题：
 
-当前没有第二种存储实现，也没有明确的多实现需求，接口层只是增加类型和跳转成本。
+当前没有第二种存储实现，也没有明确的多实现需求，接口层只是增加类型和跳转成本
 
 处理建议：
 
-- 删除 `WorkService` interface。
-- 删除 `QuotaDownloadService` interface。
-- 调用方直接依赖当前 concrete service。
-- 等真正出现第二种实现后再抽象。
+- 删除 `WorkService` interface
+- 删除 `QuotaDownloadService` interface
+- 调用方直接依赖当前 concrete service
+- 等真正出现第二种实现后再抽象
 
 原则：
 
-不要额外引入 Repository、BaseService 或 DI 框架替代当前接口，否则会从一种过度设计变成另一种过度设计。
+不要额外引入 Repository、BaseService 或 DI 框架替代当前接口，否则会从一种过度设计变成另一种过度设计
 
-风险：低到中。
+风险：低到中
 
 验证：
 
@@ -115,16 +115,16 @@ SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1
 
 处理建议：
 
-保留一个最小的 ownership helper，返回 ownership row 或直接按业务约束抛错。
+保留一个最小的 ownership helper，返回 ownership row 或直接按业务约束抛错
 
-不要建立 OwnershipService / Repository。
+不要建立 OwnershipService / Repository
 
 预期收益：
 
-- 删除一份重复 SQL 和判断流程。
-- 后续权限语义只维护一个地方。
+- 删除一份重复 SQL 和判断流程
+- 后续权限语义只维护一个地方
 
-风险：低。
+风险：低
 
 ---
 
@@ -153,7 +153,7 @@ SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1
 
 处理建议：
 
-只提取一个非常小的内部 helper，用于共享分页参数或公共结果转换。
+只提取一个非常小的内部 helper，用于共享分页参数或公共结果转换
 
 不要创建：
 
@@ -162,9 +162,9 @@ SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1
 - GenericPaginationService
 - SQL DSL
 
-如果抽取后的 helper 比重复代码本身更难读，则宁可只消除最明显的重复部分。
+如果抽取后的 helper 比重复代码本身更难读，则宁可只消除最明显的重复部分
 
-风险：中。
+风险：中
 
 验证：
 
@@ -204,11 +204,11 @@ SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1
 - request data 组装
 - summary parse
 
-保留 create / update 两个公开函数作为清晰业务入口。
+保留 create / update 两个公开函数作为清晰业务入口
 
-不要额外创建 CloudWorkRepository 或 CloudWorkClient class。
+不要额外创建 CloudWorkRepository 或 CloudWorkClient class
 
-风险：低。
+风险：低
 
 ---
 
@@ -245,9 +245,9 @@ const tabs = [
 const tab = tabs[tapIndex]?.id
 ```
 
-避免同一映射两处维护。
+避免同一映射两处维护
 
-风险：低。
+风险：低
 
 ---
 
@@ -268,19 +268,19 @@ const tab = tabs[tapIndex]?.id
 
 问题：
 
-客户端与自建后端之间维护了接近一套完整 runtime schema，代码量较大。
+客户端与自建后端之间维护了接近一套完整 runtime schema，代码量较大
 
-但这部分承担真实 API 边界保护，因此不能为了减少行数直接删除。
+但这部分承担真实 API 边界保护，因此不能为了减少行数直接删除
 
-明天只做评估，不建议第一轮立即修改。
+明天只做评估，不建议第一轮立即修改
 
 可选方向：
 
-1. 保留关键边界字段校验，删除重复或低价值校验。
-2. 如果未来 API schema 能自动生成，再统一处理。
-3. 不要为了减少手写代码引入大型 schema validation 依赖。
+1. 保留关键边界字段校验，删除重复或低价值校验
+2. 如果未来 API schema 能自动生成，再统一处理
+3. 不要为了减少手写代码引入大型 schema validation 依赖
 
-风险：中到高。
+风险：中到高
 
 ---
 
@@ -294,22 +294,22 @@ const tab = tabs[tapIndex]?.id
 
 `mapPattern(existing) -> validatePersistedPattern()`
 
-并继续重新写 width / height / beadCount / colorCount / brand。
+并继续重新写 width / height / beadCount / colorCount / brand
 
 优化方向：
 
 如果本次请求没有修改 pattern：
 
-- 保持已有 pattern 派生字段不变。
-- 不重新构造和校验整份图案。
+- 保持已有 pattern 派生字段不变
+- 不重新构造和校验整份图案
 
 如果修改 pattern：
 
-- 继续执行完整 validation 和派生字段更新。
+- 继续执行完整 validation 和派生字段更新
 
-这项修改涉及 SQL update 语义，需单独做，不与其他重构混在同一次提交里。
+这项修改涉及 SQL update 语义，需单独做，不与其他重构混在同一次提交里
 
-风险：中。
+风险：中
 
 ---
 
@@ -327,7 +327,7 @@ const tab = tabs[tapIndex]?.id
 4. insert 未成功时再次 readWorkDetail
 5. 再比较 sameRequest
 
-该流程完整但偏重。
+该流程完整但偏重
 
 优化前必须先检查现有：
 
@@ -339,9 +339,9 @@ const tab = tabs[tapIndex]?.id
 
 `INSERT / RETURNING -> 冲突时读取 existing -> 验证请求是否一致`
 
-这项不是明天第一批必改项。
+这项不是明天第一批必改项
 
-风险：中到高。
+风险：中到高
 
 ---
 
@@ -353,13 +353,13 @@ const tab = tabs[tapIndex]?.id
 
 - `miniprogram/pages/projects/index.ts`
 
-当前 `formatDateTime()` 手动拼接日期时间。
+当前 `formatDateTime()` 手动拼接日期时间
 
-只有在确认目标微信基础库可靠支持 `Intl.DateTimeFormat` 后，才考虑使用原生能力替代。
+只有在确认目标微信基础库可靠支持 `Intl.DateTimeFormat` 后，才考虑使用原生能力替代
 
-如果兼容性不明确，保持现状。
+如果兼容性不明确，保持现状
 
-不要为了这一点引入日期库。
+不要为了这一点引入日期库
 
 ---
 
@@ -370,14 +370,14 @@ const tab = tabs[tapIndex]?.id
 - rollback transaction
 - Date/String -> ISO
 
-可以考虑放入已有 `server/src/shared/`。
+可以考虑放入已有 `server/src/shared/`
 
 约束：
 
-- 只移动明显重复的小函数。
-- 不创建 BaseService。
-- 不创建 UtilsManager。
-- 不建立复杂共享基础设施。
+- 只移动明显重复的小函数
+- 不创建 BaseService
+- 不创建 UtilsManager
+- 不建立复杂共享基础设施
 
 ---
 
@@ -398,9 +398,9 @@ const tab = tabs[tapIndex]?.id
 - `median-cut.ts`
 - `standard-generator.ts`
 
-这些文件虽然数量较多，但每个文件都较小，而且直接对应算法职责，不属于无意义抽象。
+这些文件虽然数量较多，但每个文件都较小，而且直接对应算法职责，不属于无意义抽象
 
-不要为了减少文件数量重新合成大文件。
+不要为了减少文件数量重新合成大文件
 
 ---
 
@@ -414,9 +414,9 @@ const tab = tabs[tapIndex]?.id
 - users
 - works
 
-这些是真实业务边界，不属于 Ponytail 所说的 speculative abstraction。
+这些是真实业务边界，不属于 Ponytail 所说的 speculative abstraction
 
-不要合并成单个大 service。
+不要合并成单个大 service
 
 ---
 
@@ -449,7 +449,7 @@ const tab = tabs[tapIndex]?.id
 - 合并 ownership helper
 - 收缩 list/listFavorites 重复代码
 
-执行完整 works 相关测试。
+执行完整 works 相关测试
 
 ### Stage 4：客户端 work-service
 
@@ -483,7 +483,7 @@ const tab = tabs[tapIndex]?.id
 
 Ponytail 的判断标准：
 
-> 优化后代码应该更少、更直接，而不是只是把复杂度换了一个地方。
+> 优化后代码应该更少、更直接，而不是只是把复杂度换了一个地方
 
 ---
 
@@ -491,10 +491,10 @@ Ponytail 的判断标准：
 
 第一轮保守目标：
 
-- 预计减少约 150～250 行代码。
-- 删除无实际用途的接口和重复流程。
-- 保持所有现有业务行为不变。
-- 不新增第三方依赖。
-- 不新增基础框架或通用抽象层。
+- 预计减少约 150～250 行代码
+- 删除无实际用途的接口和重复流程
+- 保持所有现有业务行为不变
+- 不新增第三方依赖
+- 不新增基础框架或通用抽象层
 
-重点不是追求行数，而是确保每一层代码都有当前真实需求支撑。
+重点不是追求行数，而是确保每一层代码都有当前真实需求支撑
