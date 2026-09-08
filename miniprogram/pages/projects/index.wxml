@@ -48,13 +48,13 @@
         <image class="project-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
         <view class="project-card__body">
           <view class="project-card__header">
-            <view class="project-card__header-left">
-              <text class="project-card__title">{{item.title}}</text>
-              <text class="status-pill {{item.isDraft ? 'status-pill--draft' : ''}}">{{item.statusLabel}}</text>
+            <view class="project-card__info">
+              <view class="project-card__title">{{item.title}}</view>
+              <view class="project-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>
+              <view class="project-card__date">{{item.updatedText}}</view>
             </view>
+            <text class="status-pill {{item.isDraft ? 'status-pill--draft' : ''}}">{{item.statusLabel}}</text>
           </view>
-          <view class="project-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>
-          <view class="project-card__date">{{item.updatedText}}</view>
           <view class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
             <button class="project-card__action-inline" data-id="{{item.id}}" catchtap="startRename" aria-label="重命名作品 {{item.title}}">
               <image class="project-card__action-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />

@@ -13,9 +13,9 @@
         <canvas id="paletteDownloadCanvas" class="download-render-canvas" style="width: {{downloadCanvasWidth}}px; height: {{paletteCanvasHeight}}px;" type="2d"></canvas>
         <image class="work-summary__thumb" src="{{thumbnailSrc}}" mode="aspectFit"></image>
         <view class="work-summary__info">
-          <view class="work-summary__title-row {{renamingTitle ? 'work-summary__title-row--disabled' : ''}}" hover-class="work-summary__title-row--pressed" bindtap="editTitle" role="button" aria-label="编辑作品名称，当前名称 {{summary.title}}" aria-disabled="{{renamingTitle}}">
-            <view class="work-summary__title-group">
-              <text class="work-summary__title">{{summary.title}}</text>
+          <view class="work-summary__title-row {{renamingTitle ? 'work-summary__title-row--disabled' : ''}}" bindtap="editTitle" role="button" aria-label="编辑作品名称，当前名称 {{summary.title}}" aria-disabled="{{renamingTitle}}">
+            <text class="work-summary__title">{{summary.title}}</text>
+            <view class="work-summary__edit-btn" hover-class="work-summary__edit-btn--hover" aria-hidden="true">
               <image class="work-summary__edit-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
             </view>
           </view>

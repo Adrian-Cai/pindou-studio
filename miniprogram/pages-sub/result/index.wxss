@@ -44,6 +44,12 @@
     --shadow-sheet: 0 -8rpx 32rpx rgba(0, 0, 0, 0.24);
     --strong-overlay: rgba(169, 155, 255, 0.05);
   }
+
+  .work-summary__edit-btn--hover,
+  .work-summary__edit-btn:hover,
+  .work-summary__edit-btn:active {
+    background: rgba(255, 255, 255, 0.1);
+  }
 }
 
 .result-header {
@@ -122,55 +128,58 @@
 }
 
 .work-summary__title-row {
-  position: relative;
   display: flex;
   box-sizing: border-box;
-  width: 100%;
+  max-width: calc(100% - 72rpx);
   min-width: 0;
   align-items: center;
-  justify-content: flex-start;
-  padding-right: 72rpx;
+  gap: 6px;
   color: var(--color-text);
   font-size: 32rpx;
   font-weight: 600;
   line-height: 44rpx;
+  cursor: pointer;
 }
 
-.work-summary__title-row::before {
-  position: absolute;
-  top: -16rpx;
-  right: -8rpx;
-  bottom: -16rpx;
-  left: -8rpx;
-  content: "";
-}
-
-.work-summary__title-row--pressed,
 .work-summary__title-row--disabled {
   opacity: 0.58;
-}
-
-.work-summary__title-group {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-1);
-  flex: 1;
+  cursor: not-allowed;
 }
 
 .work-summary__title {
   min-width: 0;
   overflow: hidden;
-  flex: 1;
+  flex: 0 1 auto;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.work-summary__edit-btn {
+  display: flex;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  transition: background-color 150ms ease;
+}
+
+.work-summary__edit-btn--hover,
+.work-summary__edit-btn:hover,
+.work-summary__edit-btn:active {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 .work-summary__edit-icon {
-  width: 28rpx;
-  height: 28rpx;
-  flex: 0 0 28rpx;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
 }
 
 .work-summary__meta,
@@ -797,9 +806,6 @@
   }
   .work-summary {
     gap: var(--space-2);
-  }
-  .work-summary__title-row {
-    padding-right: 72rpx;
   }
   .result-tabs__item {
     font-size: 24rpx;
