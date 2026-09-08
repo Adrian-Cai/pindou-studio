@@ -95,20 +95,11 @@ Page({
     wx.showToast({ title: '已取消收藏', icon: 'none' })
   },
 
-  openMenu(event: WechatMiniprogram.TouchEvent) {
-    const id = String(event.currentTarget.dataset.id)
-    wx.showActionSheet({
-      itemList: ['查看作品', '取消收藏', '下载'],
-      success: ({ tapIndex }) => {
-        if (tapIndex === 0) this.openWork(event)
-        if (tapIndex === 1) {
-          appStore.toggleFavorite(id)
-          this.refreshFavorites()
-        }
-        if (tapIndex === 2) wx.navigateTo({ url: '/pages-sub/downloads/index' })
-      },
-    })
+  downloadWork() {
+    wx.navigateTo({ url: '/pages-sub/downloads/index' })
   },
+
+  stopPropagation() {},
 })
 
 function isRecent(timestamp: number) {

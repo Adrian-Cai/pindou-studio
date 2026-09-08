@@ -29,21 +29,22 @@
         <view class="favorite-card__main" data-id="{{item.id}}" bindtap="openWork">
           <image class="favorite-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
           <view class="favorite-card__info">
-            <view class="favorite-card__title-row">
-              <view class="favorite-card__title">{{item.title}}</view>
-              <view
-                class="favorite-card__status"
-                data-id="{{item.id}}"
-                catchtap="removeFavorite"
-                aria-role="button"
-                aria-label="取消收藏 {{item.title}}"
-              >♥ 已收藏</view>
-            </view>
+            <view class="favorite-card__title">{{item.title}}</view>
             <view class="favorite-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>
             <view class="favorite-card__date">收藏于 {{item.dateText}}</view>
-            <view class="favorite-card__actions">
-              <view class="favorite-card__view" data-id="{{item.id}}" catchtap="openWork" aria-role="button" aria-label="查看作品 {{item.title}}">查看作品</view>
-              <view class="favorite-card__more" data-id="{{item.id}}" catchtap="openMenu" aria-role="button" aria-label="打开 {{item.title}} 的更多操作">•••</view>
+            <view class="favorite-card__actions" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
+              <view class="favorite-card__action favorite-card__action--primary" data-id="{{item.id}}" catchtap="openWork" aria-role="button" aria-label="查看作品 {{item.title}}">
+                <image class="favorite-card__action-icon" src="/assets/icons/work-view.svg" mode="aspectFit" />
+                <text>查看作品</text>
+              </view>
+              <view class="favorite-card__action" catchtap="downloadWork" aria-role="button" aria-label="下载作品 {{item.title}}">
+                <image class="favorite-card__action-icon" src="/assets/icons/profile-menu-download.svg" mode="aspectFit" />
+                <text>下载</text>
+              </view>
+              <view class="favorite-card__action favorite-card__action--danger" data-id="{{item.id}}" catchtap="removeFavorite" aria-role="button" aria-label="取消收藏 {{item.title}}">
+                <image class="favorite-card__action-icon" src="/assets/icons/work-heart-off.svg" mode="aspectFit" />
+                <text>取消收藏</text>
+              </view>
             </view>
           </view>
         </view>

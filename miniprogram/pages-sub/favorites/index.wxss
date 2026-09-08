@@ -18,17 +18,16 @@
 .favorite-card__main { display: flex; min-width: 0; align-items: stretch; gap: 20rpx; }
 .favorite-card__cover { width: 192rpx; height: 192rpx; flex: 0 0 192rpx; align-self: flex-start; border-radius: var(--radius-media); background: var(--color-surface-muted); }
 .favorite-card__info { display: flex; min-width: 0; flex: 1; flex-direction: column; }
-.favorite-card__title-row { display: flex; min-width: 0; align-items: flex-start; gap: 12rpx; }
-.favorite-card__title { min-width: 0; overflow: hidden; flex: 1; font-size: 28rpx; font-weight: 600; line-height: 40rpx; text-overflow: ellipsis; white-space: nowrap; }
-.favorite-card__status { box-sizing: border-box; width: 136rpx; height: 40rpx; flex: 0 0 136rpx; padding: 0 4rpx; border-radius: var(--radius-full); color: var(--color-success); font-size: 22rpx; line-height: 40rpx; text-align: right; white-space: nowrap; }
-.favorite-card__status:active { background: var(--color-success-soft); }
+.favorite-card__title { min-width: 0; overflow: hidden; font-size: 28rpx; font-weight: 600; line-height: 40rpx; text-overflow: ellipsis; white-space: nowrap; }
 .favorite-card__meta { margin-top: 12rpx; color: var(--color-text-secondary); font-size: 22rpx; line-height: 28rpx; white-space: nowrap; }
 .favorite-card__date { margin-top: 4rpx; color: var(--color-text-tertiary); font-size: 21rpx; line-height: 28rpx; white-space: nowrap; }
-.favorite-card__actions { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-top: auto; padding-top: 8rpx; }
-.favorite-card__view { display: flex; box-sizing: border-box; width: 152rpx; height: 88rpx; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); color: var(--color-primary); font-size: 24rpx; line-height: 1; text-align: center; transition: var(--transition-press); }
-.favorite-card__view:active { background: var(--strong-overlay); transform: scale(0.97); }
-.favorite-card__more { display: flex; box-sizing: border-box; width: 88rpx; height: 88rpx; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); color: var(--color-text-secondary); font-size: 18rpx; letter-spacing: 1rpx; transition: var(--transition-press); }
-.favorite-card__more:active { background: var(--strong-overlay); transform: scale(0.97); }
+.favorite-card__actions { display: flex; box-sizing: border-box; width: 100%; min-width: 0; flex-flow: row nowrap; align-items: center; margin-top: auto; padding-top: 16rpx; }
+.favorite-card__action { display: flex; box-sizing: border-box; min-width: 0; height: 48rpx; flex: 1 1 0; align-items: center; justify-content: center; gap: 8rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 1; white-space: nowrap; transition: var(--transition-press); }
+.favorite-card__action-icon { width: 28rpx; height: 28rpx; flex-shrink: 0; }
+.favorite-card__action:active { background: var(--strong-overlay); transform: scale(0.97); }
+.favorite-card__action--primary { color: var(--color-primary); }
+.favorite-card__action--danger { color: var(--color-danger); }
+.favorite-card__action--danger:active { background: var(--color-danger-soft); }
 
 @media (max-width: 380px) {
   .favorite-tabs { gap: 8rpx; }
@@ -39,6 +38,7 @@
   .favorite-card__main { gap: 16rpx; }
   .favorite-card__cover { width: 176rpx; height: 176rpx; flex-basis: 176rpx; }
   .favorite-card__title { font-size: 26rpx; }
-  .favorite-card__status { width: 128rpx; flex-basis: 128rpx; font-size: 20rpx; }
   .favorite-card__meta { font-size: 21rpx; }
+  .favorite-card__action { gap: 4rpx; font-size: 22rpx; }
+  .favorite-card__action-icon { width: 24rpx; height: 24rpx; }
 }
