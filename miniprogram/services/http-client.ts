@@ -18,6 +18,7 @@ interface ApiUploadOptions {
   formData?: Readonly<Record<string, string>>
   token?: string
   timeoutMs?: number
+  onProgress?: (progress: number) => void
 }
 
 interface ApiErrorBody {
@@ -102,7 +103,7 @@ export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const header: Record<string, string> = { accept: 'application/json' }
     if (options.token) header.authorization = `Bearer ${options.token}`
-    wx.uploadFile({
+    const task = wx.uploadFile({
       url,
       filePath: options.filePath,
       name: options.name,
@@ -130,6 +131,9 @@ export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
         reject(new ApiError('图片上传失败，请检查网络后重试', { code: 'NETWORK_ERROR' }))
       },
     })
+    if (options.onProgress) {
+      task.onProgressUpdate(({ progress }) => options.onProgress?.(progress))
+    }
   })
 }
 

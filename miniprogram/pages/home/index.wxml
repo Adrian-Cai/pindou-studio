@@ -3,15 +3,7 @@
 
   <!-- ① Hero 主视觉 -->
   <view class="hero">
-    <view class="hero-copy">
-      <view class="hero-slogan">
-        <text>把喜欢的画面</text>
-        <text>变成一颗颗小豆子 ♥</text>
-      </view>
-      <view class="hero-title">上传图片，生成你的拼豆图</view>
-      <view class="hero-desc">选择图片后，可继续调整生成方式和尺寸</view>
-    </view>
-    <image class="hero-mascot" src="/assets/images/hero-mascot.png" mode="widthFix" aria-label="小露拼豆角色插画" />
+    <view class="hero-title">上传图片，生成你的拼豆图</view>
     <view class="steps" role="list" aria-label="生成流程">
       <block wx:for="{{generationSteps}}" wx:key="id">
         <view
@@ -29,17 +21,11 @@
   <!-- ② 统一上传状态卡 -->
   <upload-status-card
     sourceImagePath="{{sourceImagePath}}"
-    previewWidth="{{previewWidth}}"
-    previewHeight="{{previewHeight}}"
     choosing="{{choosing}}"
-    securityStatus="{{securityStatus}}"
-    securityLoadingVisible="{{securityLoadingVisible}}"
-    securityLongWait="{{securityLongWait}}"
+    uploadStatus="{{uploadStatus}}"
+    uploadProgress="{{uploadProgress}}"
     bind:chooseimage="chooseImage"
-    bind:clearimage="clearImage"
-    bind:previewload="handlePreviewLoad"
     bind:previewerror="handlePreviewError"
-    bind:securityhelp="showSecurityHelp"
   />
 
   <!-- ③ 生成方式 -->
@@ -135,8 +121,9 @@
   <!-- ⑥ 开始生成 -->
   <button
     class="button-primary home__submit"
+    style="width: 100%;"
     bindtap="startCreating"
-    disabled="{{generating || securityStatus === 'checking' || securityStatus === 'rejected' || securityStatus === 'error'}}"
+    disabled="{{generating || uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'rejected' || uploadStatus === 'error'}}"
     aria-label="开始生成"
   >
     开始生成

@@ -1,8 +1,4 @@
-type SecurityStatus = 'idle' | 'checking' | 'passed' | 'rejected' | 'error'
-
-interface PreviewLoadEvent extends WechatMiniprogram.BaseEvent {
-  detail: { width: number; height: number }
-}
+type UploadStatus = 'empty' | 'uploading' | 'checking' | 'success' | 'rejected' | 'error'
 
 Component({
   options: {
@@ -11,12 +7,10 @@ Component({
 
   properties: {
     sourceImagePath: { type: String, value: '' },
-    previewWidth: { type: Number, value: 0 },
-    previewHeight: { type: Number, value: 0 },
     choosing: { type: Boolean, value: false },
-    securityStatus: { type: String, value: 'idle' as SecurityStatus },
-    securityLoadingVisible: { type: Boolean, value: false },
-    securityLongWait: { type: Boolean, value: false },
+    uploadStatus: { type: String, value: 'empty' as UploadStatus },
+    /** -1 表示 SDK 未提供可展示的真实上传进度 */
+    uploadProgress: { type: Number, value: -1 },
   },
 
   methods: {
@@ -24,20 +18,8 @@ Component({
       this.triggerEvent('chooseimage')
     },
 
-    handleClearImage() {
-      this.triggerEvent('clearimage')
-    },
-
-    handlePreviewLoad(event: PreviewLoadEvent) {
-      this.triggerEvent('previewload', event.detail)
-    },
-
     handlePreviewError() {
       this.triggerEvent('previewerror')
-    },
-
-    handleSecurityHelp() {
-      this.triggerEvent('securityhelp')
     },
   },
 })

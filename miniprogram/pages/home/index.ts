@@ -4,18 +4,11 @@ import { checkImageContent } from '../../services/content-security-service'
 import { ApiError } from '../../services/http-client'
 import { appStore } from '../../store/app-store'
 
-/** 上传状态卡缩略图最大宽度（rpx） */
-const MAX_PREVIEW_WIDTH_RPX = 240
-/** 上传状态卡缩略图最大高度（rpx） */
-const MAX_PREVIEW_HEIGHT_RPX = 240
-
 /** 生成模式 */
 type GenerationMode = 'standard' | 'ai'
-type SecurityStatus = 'idle' | 'checking' | 'passed' | 'rejected' | 'error'
+type UploadStatus = 'empty' | 'uploading' | 'checking' | 'success' | 'rejected' | 'error'
 
-let activeSecurityCheckId = 0
-let securityLoadingTimer: ReturnType<typeof setTimeout> | null = null
-let securitySlowTimer: ReturnType<typeof setTimeout> | null = null
+let currentUploadRequestId = 0
 
 interface GenerationModeOption {
   id: GenerationMode
@@ -34,10 +27,6 @@ interface SampleImage {
   mode: GenerationMode
   label: string
   alt: string
-}
-
-interface PreviewImageLoadEvent extends WechatMiniprogram.BaseEvent {
-  detail: { width: number; height: number }
 }
 
 const GENERATION_MODES: GenerationModeOption[] = [
@@ -97,18 +86,14 @@ const GENERATION_STEPS = [
 Page({
   data: {
     sourceImagePath: '',
-    /** 预览容器宽度（rpx），0 表示未计算 */
-    previewWidth: 0,
-    /** 预览容器高度（rpx），0 表示未计算 */
-    previewHeight: 0,
     settings: { ...DEFAULT_PATTERN_SETTINGS, width: 64, height: 64, colorLimit: 32 },
     sizeOptions: [32, 48, 64, 96, 128],
     colorOptions: [16, 32, 64, 96],
     choosing: false,
     generating: false,
-    securityStatus: 'idle' as SecurityStatus,
-    securityLoadingVisible: false,
-    securityLongWait: false,
+    uploadStatus: 'empty' as UploadStatus,
+    /** -1 表示上传 SDK 尚未提供真实进度 */
+    uploadProgress: -1,
     currentStep: 1,
     generationSteps: GENERATION_STEPS,
     /** 当前选中的生成方式 */
@@ -124,8 +109,7 @@ Page({
   },
 
   onUnload() {
-    activeSecurityCheckId += 1
-    clearSecurityTimers()
+    currentUploadRequestId += 1
   },
 
   selectMode(event: WechatMiniprogram.TouchEvent) {
@@ -135,7 +119,7 @@ Page({
   },
 
   async chooseImage() {
-    if (this.data.choosing) return
+    if (this.data.choosing || this.data.uploadStatus === 'uploading' || this.data.uploadStatus === 'checking') return
     this.setData({ choosing: true })
 
     let sourceImagePath: string | null = null
@@ -157,138 +141,52 @@ Page({
     this.setData({ choosing: false })
     if (!sourceImagePath) return
 
-    const checkId = ++activeSecurityCheckId
-    clearSecurityTimers()
+    const requestId = ++currentUploadRequestId
     this.setData({
       sourceImagePath,
-      previewWidth: MAX_PREVIEW_WIDTH_RPX,
-      previewHeight: MAX_PREVIEW_HEIGHT_RPX,
-      securityStatus: 'checking',
-      securityLoadingVisible: false,
-      securityLongWait: false,
+      uploadStatus: 'uploading',
+      uploadProgress: -1,
       currentStep: 1,
     })
 
-    securityLoadingTimer = setTimeout(() => {
-      if (checkId !== activeSecurityCheckId) return
-      this.setData({ securityLoadingVisible: true })
-    }, 400)
-    securitySlowTimer = setTimeout(() => {
-      if (checkId !== activeSecurityCheckId) return
-      this.setData({ securityLongWait: true })
-    }, 3000)
-
-    this._calcPreviewSize(sourceImagePath)
-      .then((size) => {
-        if (checkId === activeSecurityCheckId) this.setData(size)
-      })
-      .catch((error) => {
-        // 部分开发者工具临时路径无法调用 getImageInfo，等待 <image> bindload 返回真实尺寸
-        console.warn('图片尺寸接口不可用，改用图片加载事件计算预览', error)
-      })
-
     try {
-      let securityImagePath: string
-      try {
-        securityImagePath = await prepareImageForContentSecurity(sourceImagePath)
-      } catch (error) {
-        logHomeError('image_prepare_failed', error)
-        throw error
-      }
-      await checkImageContent(securityImagePath)
-      if (checkId !== activeSecurityCheckId) return
+      const securityImagePath = await prepareImageForContentSecurity(sourceImagePath)
+      if (requestId !== currentUploadRequestId) return
+      await checkImageContent(securityImagePath, (progress) => {
+        if (requestId !== currentUploadRequestId) return
+        if (progress >= 100) {
+          this.setData({ uploadStatus: 'checking', uploadProgress: -1 })
+          return
+        }
+        this.setData({ uploadProgress: progress })
+      })
+      if (requestId !== currentUploadRequestId) return
       this.setData({
-        securityStatus: 'passed',
-        securityLoadingVisible: false,
-        securityLongWait: false,
+        uploadStatus: 'checking',
+        uploadProgress: -1,
+      })
+      this.setData({
+        uploadStatus: 'success',
         currentStep: 2,
       })
     } catch (error) {
-      if (checkId !== activeSecurityCheckId) return
+      if (requestId !== currentUploadRequestId) return
       const rejected = error instanceof ApiError && error.code === 'CONTENT_RISKY'
       logHomeError('image_security_check_failed', error)
       this.setData({
-        securityStatus: rejected ? 'rejected' : 'error',
-        securityLoadingVisible: true,
-        securityLongWait: false,
+        uploadStatus: rejected ? 'rejected' : 'error',
+        uploadProgress: -1,
         currentStep: 1,
       })
-    } finally {
-      if (checkId === activeSecurityCheckId) clearSecurityTimers()
     }
-  },
-
-  handlePreviewLoad(event: PreviewImageLoadEvent) {
-    const { width, height } = event.detail
-    const size = this._previewSizeFromDimensions(width, height)
-    if (size) this.setData(size)
-  },
-
-  showSecurityHelp() {
-    wx.showToast({
-      title: '图片未通过内容安全检查，请更换其他图片后重试',
-      icon: 'none',
-      duration: 2400,
-    })
   },
 
   handlePreviewError() {
-    this.clearImage()
-    wx.showToast({ title: '图片无法读取，请换一张重试', icon: 'none' })
-  },
-
-  /**
-   * 根据原图尺寸计算受最大宽高约束的预览尺寸（rpx）
-   * 优先读取原图尺寸；开发者工具不支持临时路径时由图片加载事件补充真实尺寸
-   */
-  async _calcPreviewSize(
-    imagePath: string,
-  ): Promise<{ previewWidth: number; previewHeight: number }> {
-    const { width: imageWidth, height: imageHeight } = await getImageInfo(imagePath)
-    if (!imageWidth || !imageHeight) {
-      throw new Error('图片尺寸无效')
-    }
-
-    const size = this._previewSizeFromDimensions(imageWidth, imageHeight)
-    if (!size) throw new Error('无法读取页面尺寸')
-    return size
-  },
-
-  _previewSizeFromDimensions(
-    imageWidth: number,
-    imageHeight: number,
-  ): { previewWidth: number; previewHeight: number } | null {
-    if (!imageWidth || !imageHeight) return null
-    const windowWidth = wx.getWindowInfo().windowWidth
-    if (!windowWidth) {
-      return null
-    }
-
-    // 将图片像素换算为 rpx，再按最大宽度和最大高度等比缩放
-    const imageWidthRpx = imageWidth * (750 / windowWidth)
-    const imageHeightRpx = imageHeight * (750 / windowWidth)
-    const scale = Math.min(
-      MAX_PREVIEW_WIDTH_RPX / imageWidthRpx,
-      MAX_PREVIEW_HEIGHT_RPX / imageHeightRpx,
-      1,
-    )
-
-    return {
-      previewWidth: Math.max(1, Math.round(imageWidthRpx * scale)),
-      previewHeight: Math.max(1, Math.round(imageHeightRpx * scale)),
-    }
-  },
-
-  clearImage() {
-    activeSecurityCheckId += 1
-    clearSecurityTimers()
+    currentUploadRequestId += 1
     this.setData({
       sourceImagePath: '',
-      previewWidth: 0,
-      previewHeight: 0,
-      securityStatus: 'idle',
-      securityLoadingVisible: false,
-      securityLongWait: false,
+      uploadStatus: 'error',
+      uploadProgress: -1,
       currentStep: 1,
     })
   },
@@ -311,9 +209,11 @@ Page({
       wx.showToast({ title: '请先上传图片', icon: 'none' })
       return
     }
-    if (this.data.securityStatus !== 'passed') {
+    if (this.data.uploadStatus !== 'success') {
       wx.showToast({
-        title: this.data.securityStatus === 'checking' ? '图片正在检测，请稍候' : '请先通过图片安全检测',
+        title: this.data.uploadStatus === 'uploading' || this.data.uploadStatus === 'checking'
+          ? '图片正在检测，请稍候'
+          : '请先通过图片安全检测',
         icon: 'none',
       })
       return
@@ -343,27 +243,6 @@ Page({
     }
   },
 })
-
-function clearSecurityTimers(): void {
-  if (securityLoadingTimer !== null) {
-    clearTimeout(securityLoadingTimer)
-    securityLoadingTimer = null
-  }
-  if (securitySlowTimer !== null) {
-    clearTimeout(securitySlowTimer)
-    securitySlowTimer = null
-  }
-}
-
-function getImageInfo(imagePath: string): Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult> {
-  return new Promise((resolve, reject) => {
-    wx.getImageInfo({
-      src: imagePath,
-      success: resolve,
-      fail: reject,
-    })
-  })
-}
 
 function imageErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) return '上传失败，请稍后重试'

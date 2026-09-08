@@ -15,7 +15,10 @@ export async function checkTextContent(content: string): Promise<void> {
   }
 }
 
-export async function checkImageContent(filePath: string): Promise<void> {
+export async function checkImageContent(
+  filePath: string,
+  onUploadProgress?: (progress: number) => void,
+): Promise<void> {
   let stage: 'login' | 'upload' = 'login'
   try {
     const token = (await ensureLoggedInSession()).token
@@ -26,6 +29,7 @@ export async function checkImageContent(filePath: string): Promise<void> {
       name: 'file',
       token,
       timeoutMs: 30_000,
+      onProgress: onUploadProgress,
     })
   } catch (error) {
     logContentSecurityError(stage === 'login' ? 'login_failed' : 'content_security_upload_failed', error)
