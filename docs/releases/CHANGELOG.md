@@ -2,10 +2,13 @@
 
 ## 0.25.17
 
-- 解决点击《用户协议》与《隐私政策》时跳转卡顿与白屏加载缓慢的问题：
-  - 在 `app.json` 中配置 `preloadRule`，进入“我的”主页面时静默预下载 `pages-sub` 分包，消除首次跳转时因实时下载编译分包造成的 1~2 秒阻塞无响应感
-  - 优化登录弹窗时序与路由逻辑：移除跳转协议前同步销毁弹窗的 `this.hideActiveSheet()` 调用，消除主线程大规模 DOM 销毁与 TabBar 重绘导致的掉帧；用户阅读完协议返回时保留登录弹窗状态与勾选，确保登录流程连贯
-  - 在 `legal-document-service` 与 `privacy-document` 中引入 Memory + Storage 双层本地持久化缓存与 SWR 策略：打开文档时优先从本地极速渲染（0ms 秒开），后台静默核对版本与更新，彻底避免每次进入白屏等待远程 API 接口的问题
+- 解决点击《用户协议》与《隐私政策》时跳转缓慢与白屏加载的问题：
+  - 在 `app.json` 中为 `pages/profile/index` 配置 `preloadRule`，进入“我的”页面后异步预下载 `pages-sub` 分包（源码约 218KB），降低该版本内首次进入任意分包页面时的下载等待；预下载在页面渲染之后才发起，不保证用户点击时已就绪
+  - 优化登录弹窗与路由时序：跳转协议前不再调用 `this.hideActiveSheet()` 销毁弹窗，避免 TabBar 在页面推入动画期间闪回；用户从协议页返回时，登录弹窗与协议勾选状态保持不变，登录流程连贯
+  - 在 `legal-document-service` 与 `privacy-document` 中引入内存 + 本地存储双层缓存与 stale-while-revalidate 策略：命中缓存时先渲染本地内容，网络返回后仅当 `version` 或 `content` 变化时才重渲染，避免长文档二次重排与滚动位置跳动；首次安装无缓存时仍需等待接口响应
+  - `wx.navigateTo` 增加 `fail` 回调复位 `preserveSheetOnNextHide`，避免跳转失败后标志残留、导致下一次页面隐藏时不关闭登录弹窗
+  - 移除 `getCachedLegalDocument` 中多余的 `JSON.parse` 兼容分支：`wx.setStorageSync` 存对象后 `getStorageSync` 返回对象，且该缓存键前缀为首次发布，无历史字符串数据
+  - 法律文档生效日期改为保留接口 ISO 值中的日历日期，避免设备时区导致北京时间生效日期显示成前一天；缓存与接口响应同时校验 `document.key` 必须与请求 key 一致
 
 ## 0.25.16
 

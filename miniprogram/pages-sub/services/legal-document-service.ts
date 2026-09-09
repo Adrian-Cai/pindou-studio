@@ -16,14 +16,13 @@ const memoryCache = new Map<LegalDocumentKey, LegalDocument>()
 
 export function getCachedLegalDocument(key: LegalDocumentKey): LegalDocument | null {
   const memory = memoryCache.get(key)
-  if (memory) return memory
+  if (memory?.key === key) return memory
 
   try {
     const raw = wx.getStorageSync(`${STORAGE_PREFIX}${key}`)
     if (raw) {
-      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
-      const doc = parseDocument(parsed)
-      if (doc) {
+      const doc = parseDocument(raw)
+      if (doc?.key === key) {
         memoryCache.set(key, doc)
         return doc
       }
@@ -48,7 +47,7 @@ export async function fetchLegalDocument(key: LegalDocumentKey): Promise<LegalDo
     path: `/api/legal-documents/${key}`,
   })
   const document = isRecord(response) ? parseDocument(response.document) : null
-  if (!document) {
+  if (!document || document.key !== key) {
     throw new ApiError('服务返回了无法识别的文档内容，请稍后重试', { code: 'INVALID_RESPONSE' })
   }
   saveCachedLegalDocument(document)

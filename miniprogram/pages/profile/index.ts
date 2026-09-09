@@ -264,13 +264,22 @@ Page({
   },
 
   openUserAgreement() {
-    this.preserveSheetOnNextHide = true
-    wx.navigateTo({ url: '/pages-sub/privacy-document/index?key=user-agreement' })
+    this.openLegalDocument('user-agreement')
   },
 
   openPrivacyPolicy() {
+    this.openLegalDocument('privacy-policy')
+  },
+
+  openLegalDocument(key: 'user-agreement' | 'privacy-policy') {
     this.preserveSheetOnNextHide = true
-    wx.navigateTo({ url: '/pages-sub/privacy-document/index?key=privacy-policy' })
+    wx.navigateTo({
+      url: `/pages-sub/privacy-document/index?key=${key}`,
+      // 跳转失败时 onHide 不会触发，必须在此复位，否则标志残留会让下次真正隐藏时跳过关闭弹窗
+      fail: () => {
+        this.preserveSheetOnNextHide = false
+      },
+    })
   },
 
   refreshAccountData() {

@@ -44,6 +44,8 @@ Page({
 
     try {
       const document = await fetchLegalDocument(key)
+      // version 是后端唯一变更信号，content 兜住漏改版本；两者都没变就不再重渲染
+      if (document.version === this.data.version && document.content === this.data.content) return
       this.applyDocument(document)
     } catch (error) {
       if (!this.data.content) {
@@ -82,7 +84,6 @@ function parseKey(value: string | undefined): LegalDocumentKey | null {
 }
 
 function formatDate(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  const match = /^(\d{4}-\d{2}-\d{2})(?:T|$)/.exec(value)
+  return match?.[1] ?? value
 }
