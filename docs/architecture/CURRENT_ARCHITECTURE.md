@@ -4,7 +4,7 @@
 >
 > 适用版本：0.19.x
 >
-> 本文描述当前已经落地的系统，不包含尚未接入的 AI 精致模式未来 AI 架构见 `docs/backend/AI_GENERATION_DESIGN.md`
+> 本文描述当前已经落地的系统，不包含尚未接入的 Ai 模式未来 AI 架构见 `docs/backend/AI_GENERATION_DESIGN.md`
 
 ## 1. 总体架构
 
@@ -170,5 +170,5 @@ wx.login
 - 主包 / 分包结构变化
 - 数据存储边界变化
 - 标准模式生成链路变化
-- AI 精致模式正式接入生产
+- Ai 模式正式接入生产
 - 文件存储或 PostgreSQL 架构发生变化

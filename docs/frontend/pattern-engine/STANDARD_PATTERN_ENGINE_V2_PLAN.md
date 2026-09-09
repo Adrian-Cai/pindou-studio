@@ -139,7 +139,7 @@ Standard V2 不承担 AI 语义理解，也不尝试“重新设计”图片
                   Pattern Matrix
 ```
 
-AI 精致模式未来只负责把原图变成“更适合拼豆转换的中间稿”，之后仍然进入 Standard Engine V2
+Ai 模式未来只负责把原图变成“更适合拼豆转换的中间稿”，之后仍然进入 Standard Engine V2
 
 因此 Standard Engine V2 是未来两种生成模式共同依赖的核心能力
 
@@ -1456,7 +1456,7 @@ feat(pattern): improve bead renderer
 1. 本次只完成指定 Phase
 2. 修改前读取 AGENTS.md、docs/development/CODE_RULES.md 和本方案
 3. 不提前实现下一 Phase
-4. 不修改 AI 精致模式
+4. 不修改 Ai 模式
 5. 不改变页面跳转
 6. 不改变编辑器现有交互
 7. 不改变作品云同步协议，除非任务明确要求

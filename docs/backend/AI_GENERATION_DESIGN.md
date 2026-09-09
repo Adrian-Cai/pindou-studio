@@ -1,12 +1,12 @@
-# 一起拼豆吧 · AI 精致模式接入设计
+# 一起拼豆吧 · Ai 模式接入设计
 
 > 状态：预研设计，不代表当前已上线能力
 >
-> 当前标准模式继续使用本地 Standard Pattern EngineAI 精致模式作为独立上游图像处理能力接入，不替换现有 Pattern Schema
+> 当前标准模式继续使用本地 Standard Pattern EngineAi 模式作为独立上游图像处理能力接入，不替换现有 Pattern Schema
 
 ## 1. 目标
 
-AI 精致模式解决的问题不是“让模型直接输出最终拼豆格子”，而是：
+Ai 模式解决的问题不是“让模型直接输出最终拼豆格子”，而是：
 
 ```text
 用户原图
@@ -277,7 +277,7 @@ POST /api/ai/generations/{id}/cancel
 AI 模式流程建议：
 
 ```text
-选择 AI 精致模式
+选择 Ai 模式
 → 选图
 → 上传 ai_input
 → POST /api/ai/generations

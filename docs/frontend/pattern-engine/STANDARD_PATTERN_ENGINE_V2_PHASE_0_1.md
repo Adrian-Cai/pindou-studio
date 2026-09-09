@@ -1392,7 +1392,7 @@ Codex 执行过程中遇到以下情况必须停下来报告，不允许自行�
 - 不做 Cleanup
 - 不做 Edge Detection
 - 不做 Dithering
-- 不修改 AI 精致模式
+- 不修改 Ai 模式
 - 不修改 Pattern Schema
 - 不修改后端 API/数据库
 - 不改变 createDraft() 的页面调用方式

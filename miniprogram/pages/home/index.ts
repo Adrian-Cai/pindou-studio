@@ -41,7 +41,7 @@ const GENERATION_MODES: GenerationModeOption[] = [
   },
   {
     id: 'ai',
-    title: 'AI 精致模式',
+    title: 'Ai 模式',
     description: 'AI 优化细节，更接近原图',
     note: 'AI 优化细节，效果更精致，更接近原图',
     icon: '/assets/icons/mode-ai-sparkle.svg',
@@ -66,14 +66,14 @@ const SAMPLE_IMAGES: SampleImage[] = [
   {
     src: '/assets/samples/home-sample-ai-1.webp',
     mode: 'ai',
-    label: 'AI 精致模式',
-    alt: 'AI 精致模式示例作品一',
+    label: 'Ai 模式',
+    alt: 'Ai 模式示例作品一',
   },
   {
     src: '/assets/samples/home-sample-ai-2.webp',
     mode: 'ai',
-    label: 'AI 精致模式',
-    alt: 'AI 精致模式示例作品二',
+    label: 'Ai 模式',
+    alt: 'Ai 模式示例作品二',
   },
 ]
 
@@ -219,9 +219,9 @@ Page({
       return
     }
 
-    // AI 精致模式暂未上线，明确提示用户，不伪执行标准流程
+    // Ai 模式暂未上线，明确提示用户，不伪执行标准流程
     if (this.data.generationMode === 'ai') {
-      wx.showToast({ title: 'AI 精致模式即将上线，敬请期待', icon: 'none', duration: 2000 })
+      wx.showToast({ title: 'Ai 模式即将上线，敬请期待', icon: 'none', duration: 2000 })
       return
     }
 
