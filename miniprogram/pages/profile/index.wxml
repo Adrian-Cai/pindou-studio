@@ -52,8 +52,6 @@
         <view class="profile-menu__arrow">›</view>
       </view>
     </view>
-
-    <view class="profile-page__version">拼豆制作工具 · Version 0.25.16</view>
   </view>
 </page-layout>
 

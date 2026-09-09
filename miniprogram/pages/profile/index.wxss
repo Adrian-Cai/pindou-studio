@@ -37,8 +37,6 @@
 .profile-menu__icon { width: 38rpx; height: 38rpx; }
 .profile-menu__title { flex: 1; margin-left: 16rpx; font-size: 28rpx; }
 .profile-menu__arrow { font-size: 42rpx; }
-.profile-page__version { padding: 32rpx 0 8rpx; color: var(--color-text-tertiary); font-size: 22rpx; text-align: center; }
-
 .sheet-mask { position: fixed; z-index: 300; inset: 0; background: rgba(15, 18, 17, 0.48); }
 .profile-sheet { position: absolute; right: 0; bottom: 0; left: 0; box-sizing: border-box; padding: 16rpx 32rpx calc(32rpx + env(safe-area-inset-bottom)); border-radius: var(--radius-card-large) var(--radius-card-large) 0 0; background: var(--color-surface); box-shadow: var(--shadow-card); }
 .profile-sheet__handle { width: 80rpx; height: 8rpx; margin: 0 auto 24rpx; border-radius: 8rpx; background: var(--color-disabled); }
