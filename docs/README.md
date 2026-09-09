@@ -33,7 +33,7 @@ UI 设计稿、运行截图和对比资料保存在 [`ui/`](ui/) 与 [`ui-compar
 ### `backend/`：服务端、接口与数据
 
 - [API_SPEC.md](backend/API_SPEC.md)：后端接口范围和请求响应约束
-- [FAVORITES_BACKEND_DESIGN.md](backend/FAVORITES_BACKEND_DESIGN.md)：收藏软删除、时间语义与接口实现基线
+- [FAVORITES_BACKEND_DESIGN.md](backend/FAVORITES_BACKEND_DESIGN.md)：收藏软删除、收藏时间语义、接口幂等与迁移设计基线
 - [AI_GENERATION_DESIGN.md](backend/AI_GENERATION_DESIGN.md)：Ai 模式的接入设计
 - [PRIVACY_API_PLAN.md](backend/PRIVACY_API_PLAN.md)：隐私相关接口规划
 - [拼豆工作室 · 小程序后端 API 需求审计.md](backend/拼豆工作室%20·%20小程序后端%20API%20需求审计.md)：后端 API 需求与边界审计
