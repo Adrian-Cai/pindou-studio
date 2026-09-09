@@ -65,6 +65,15 @@
       </view>
     </view>
 
+    <view
+      wx:if="{{generationMode === 'ai'}}"
+      class="ai-compliance-notice"
+      role="note"
+      aria-label="当前生成结果由人工智能生成"
+    >
+      ✨ 当前生成结果由人工智能生成
+    </view>
+
   </view>
 
   <!-- ④ 示例图片 -->

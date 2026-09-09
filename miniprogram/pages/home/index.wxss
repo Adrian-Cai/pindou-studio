@@ -21,6 +21,9 @@ page {
   --color-ai-soft: #f5f1ff;
   --color-ai-border: rgba(124, 92, 252, 0.4);
   --color-ai-text: #7c5cfc;
+  --color-ai-notice-bg: #fff7d6;
+  --color-ai-notice-border: #e7b94f;
+  --color-ai-notice-text: #47413a;
 
   /* ── 示例图片统一尺寸 token（标准 / AI 共用同一套，禁止各自定义） ── */
   --sample-media-height: 156rpx;
@@ -315,6 +318,19 @@ page {
   top: 40rpx;
 }
 
+.ai-compliance-notice {
+  margin-top: 24rpx;
+  padding: 20rpx 26rpx;
+  border: 2rpx solid var(--color-ai-notice-border);
+  border-radius: 22rpx;
+  background: var(--color-ai-notice-bg);
+  color: var(--color-ai-notice-text);
+  font-size: 24rpx;
+  font-weight: 500;
+  line-height: 36rpx;
+  white-space: nowrap;
+}
+
 
 
 /* ════════════════════════════════
@@ -523,6 +539,9 @@ page {
     --color-ai-soft: #2d2450;
     --color-ai-border: rgba(176, 156, 255, 0.62);
     --color-ai-text: #c2b5ff;
+    --color-ai-notice-bg: #3f3215;
+    --color-ai-notice-border: #d7a93f;
+    --color-ai-notice-text: #f1e9d8;
   }
 
   .hero {
