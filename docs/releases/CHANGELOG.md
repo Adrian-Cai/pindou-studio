@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.25.17
+
+- 解决点击《用户协议》与《隐私政策》时跳转卡顿与白屏加载缓慢的问题：
+  - 在 `app.json` 中配置 `preloadRule`，进入“我的”主页面时静默预下载 `pages-sub` 分包，消除首次跳转时因实时下载编译分包造成的 1~2 秒阻塞无响应感
+  - 优化登录弹窗时序与路由逻辑：移除跳转协议前同步销毁弹窗的 `this.hideActiveSheet()` 调用，消除主线程大规模 DOM 销毁与 TabBar 重绘导致的掉帧；用户阅读完协议返回时保留登录弹窗状态与勾选，确保登录流程连贯
+  - 在 `legal-document-service` 与 `privacy-document` 中引入 Memory + Storage 双层本地持久化缓存与 SWR 策略：打开文档时优先从本地极速渲染（0ms 秒开），后台静默核对版本与更新，彻底避免每次进入白屏等待远程 API 接口的问题
+
 ## 0.25.16
 
 - 修复图片内容安全检测频繁出现 `NETWORK_ERROR (statusCode: 0)` 的问题：

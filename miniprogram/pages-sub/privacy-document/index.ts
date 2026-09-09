@@ -1,4 +1,9 @@
-import { fetchLegalDocument, type LegalDocumentKey } from '../services/legal-document-service'
+import {
+  fetchLegalDocument,
+  getCachedLegalDocument,
+  type LegalDocument,
+  type LegalDocumentKey,
+} from '../services/legal-document-service'
 
 const TITLES: Record<LegalDocumentKey, string> = {
   'user-agreement': '小露拼豆用户协议',
@@ -30,24 +35,37 @@ Page({
   },
 
   async loadDocument(key: LegalDocumentKey) {
-    this.setData({ loading: true, errorMessage: '' })
+    const cached = getCachedLegalDocument(key)
+    if (cached) {
+      this.applyDocument(cached)
+    } else {
+      this.setData({ loading: true, errorMessage: '' })
+    }
+
     try {
       const document = await fetchLegalDocument(key)
-      const content = document.content.trim()
-      this.setData({
-        title: document.title,
-        version: document.version,
-        effectiveAt: formatDate(document.effectiveAt),
-        content: document.content,
-        empty: content.length === 0,
-        loading: false,
-      })
+      this.applyDocument(document)
     } catch (error) {
-      this.setData({
-        loading: false,
-        errorMessage: error instanceof Error ? error.message : '文档加载失败，请稍后重试',
-      })
+      if (!this.data.content) {
+        this.setData({
+          loading: false,
+          errorMessage: error instanceof Error ? error.message : '文档加载失败，请稍后重试',
+        })
+      }
     }
+  },
+
+  applyDocument(document: LegalDocument) {
+    const content = document.content.trim()
+    this.setData({
+      title: document.title,
+      version: document.version,
+      effectiveAt: formatDate(document.effectiveAt),
+      content: document.content,
+      empty: content.length === 0,
+      loading: false,
+      errorMessage: '',
+    })
   },
 
   retry() {

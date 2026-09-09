@@ -43,6 +43,7 @@ Page({
   authUnsubscribe: undefined as (() => void) | undefined,
   appUnsubscribe: undefined as (() => void) | undefined,
   loginCloseTimer: 0,
+  preserveSheetOnNextHide: false,
 
   onLoad() {
     this.authUnsubscribe = authStore.subscribe((state) => this.applyAuthState(state))
@@ -50,7 +51,13 @@ Page({
   },
 
   onShow() {
-    this.getTabBar()?.setData({ selected: 2 })
+    this.getTabBar()?.setData({
+      selected: 2,
+      hidden: this.data.activeSheet !== 'none',
+    })
+    if (this.data.activeSheet !== 'none') {
+      wx.hideTabBar({ animation: false })
+    }
     this.applyAuthState(authStore.getSnapshot())
     if (this.data.isLoggedIn) {
       void authStore.refresh()
@@ -200,6 +207,10 @@ Page({
 
   onHide() {
     clearTimeout(this.loginCloseTimer)
+    if (this.preserveSheetOnNextHide) {
+      this.preserveSheetOnNextHide = false
+      return
+    }
     if (this.data.activeSheet !== 'none') {
       this.setData({
         activeSheet: 'none',
@@ -253,12 +264,12 @@ Page({
   },
 
   openUserAgreement() {
-    this.hideActiveSheet()
+    this.preserveSheetOnNextHide = true
     wx.navigateTo({ url: '/pages-sub/privacy-document/index?key=user-agreement' })
   },
 
   openPrivacyPolicy() {
-    this.hideActiveSheet()
+    this.preserveSheetOnNextHide = true
     wx.navigateTo({ url: '/pages-sub/privacy-document/index?key=privacy-policy' })
   },
 

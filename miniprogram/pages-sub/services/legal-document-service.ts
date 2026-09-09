@@ -11,6 +11,38 @@ export interface LegalDocument {
   content: string
 }
 
+const STORAGE_PREFIX = 'pindou:legal-doc:'
+const memoryCache = new Map<LegalDocumentKey, LegalDocument>()
+
+export function getCachedLegalDocument(key: LegalDocumentKey): LegalDocument | null {
+  const memory = memoryCache.get(key)
+  if (memory) return memory
+
+  try {
+    const raw = wx.getStorageSync(`${STORAGE_PREFIX}${key}`)
+    if (raw) {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+      const doc = parseDocument(parsed)
+      if (doc) {
+        memoryCache.set(key, doc)
+        return doc
+      }
+    }
+  } catch {
+    // 忽略存储读取异常
+  }
+  return null
+}
+
+export function saveCachedLegalDocument(document: LegalDocument): void {
+  memoryCache.set(document.key, document)
+  try {
+    wx.setStorageSync(`${STORAGE_PREFIX}${document.key}`, document)
+  } catch {
+    // 忽略存储写入异常
+  }
+}
+
 export async function fetchLegalDocument(key: LegalDocumentKey): Promise<LegalDocument> {
   const response = await apiRequest<unknown>({
     path: `/api/legal-documents/${key}`,
@@ -19,6 +51,7 @@ export async function fetchLegalDocument(key: LegalDocumentKey): Promise<LegalDo
   if (!document) {
     throw new ApiError('服务返回了无法识别的文档内容，请稍后重试', { code: 'INVALID_RESPONSE' })
   }
+  saveCachedLegalDocument(document)
   return document
 }
 
