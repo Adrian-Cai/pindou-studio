@@ -1,5 +1,5 @@
-import { DOWNLOAD_PACKAGES, PROFILE_MENU_ITEMS } from '../../config/profile'
-import { appStore } from '../../store/app-store'
+import { DOWNLOAD_PACKAGES } from '../../config/profile'
+import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
 
 const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.webp'
@@ -15,12 +15,9 @@ interface NicknameInputEvent {
 
 Page({
   data: {
-    menuItems: PROFILE_MENU_ITEMS,
     packages: DOWNLOAD_PACKAGES,
-    workCount: 0,
-    favoriteCount: 0,
-    downloadCount: 0,
     downloadQuota: 0,
+    dailyFreeDownloadQuota: DAILY_FREE_DOWNLOAD_QUOTA,
     avatarPath: DEFAULT_AVATAR_PATH,
     isLoggedIn: false,
     accountName: '拼豆用户',
@@ -91,18 +88,12 @@ Page({
       ? shouldCompleteProfile ? 'profile' : 'none'
       : this.data.activeSheet
 
-    const localOnlyWorksCount = state.works.filter((work) => !work.isCloud).length
-    const cloudWorksCount = profile?.stats.workCount ?? state.works.filter((work) => work.isCloud).length
-    const workCount = Math.max(state.works.length, cloudWorksCount + localOnlyWorksCount)
-    const favoriteCount = Math.max(state.favoriteIds.length, profile?.stats.favoriteCount ?? 0)
-    const downloadCount = Math.max(state.downloadRecords.length, profile?.stats.downloadCount ?? 0)
     const downloadQuota = profile?.quota.remaining ?? state.downloadQuota
+    const dailyFreeDownloadQuota = profile?.quota.dailyFree ?? DAILY_FREE_DOWNLOAD_QUOTA
 
     this.setData({
-      workCount,
-      favoriteCount,
-      downloadCount,
       downloadQuota,
+      dailyFreeDownloadQuota,
       avatarPath: DEFAULT_AVATAR_PATH,
       isLoggedIn: hasAuthenticatedUser,
       accountName: user?.nickname?.trim() || '拼豆用户',
@@ -142,10 +133,6 @@ Page({
     }
   },
 
-  openMenu(event: WechatMiniprogram.TouchEvent) {
-    wx.navigateTo({ url: String(event.currentTarget.dataset.url) })
-  },
-
   openProjects() {
     wx.switchTab({ url: '/pages/projects/index' })
   },
@@ -156,6 +143,10 @@ Page({
 
   openDownloads() {
     wx.navigateTo({ url: '/pages-sub/downloads/index' })
+  },
+
+  openSettings() {
+    wx.navigateTo({ url: '/pages-sub/settings/index' })
   },
 
   openUserPanel() {
@@ -275,7 +266,6 @@ Page({
     this.preserveSheetOnNextHide = true
     wx.navigateTo({
       url: `/pages-sub/privacy-document/index?key=${key}`,
-      // 跳转失败时 onHide 不会触发，必须在此复位，否则标志残留会让下次真正隐藏时跳过关闭弹窗
       fail: () => {
         this.preserveSheetOnNextHide = false
       },

@@ -20,5 +20,5 @@
       <slot />
     </view>
   </scroll-view>
-  <main-tab-bar wx:if="{{showMainNav}}" selected="{{selectedTab}}" />
+  <main-tab-bar wx:if="{{showEmbeddedMainNav}}" selected="{{selectedTab}}" />
 </view>

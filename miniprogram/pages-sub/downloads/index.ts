@@ -4,7 +4,7 @@ import {
   fetchDownloads,
 } from '../../services/download-service'
 import { hasCloudSession } from '../../services/work-service'
-import { appStore } from '../../store/app-store'
+import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
 
 type DownloadTab = 'all' | DownloadFileType
@@ -39,6 +39,7 @@ Page({
     allRecords: [] as DownloadView[],
     records: [] as DownloadView[],
     quota: 0,
+    dailyFreeDownloadQuota: DAILY_FREE_DOWNLOAD_QUOTA,
     monthCount: 0,
     recentText: '暂无',
   },
@@ -72,6 +73,7 @@ Page({
       this.setData({
         allRecords,
         quota: quota?.remaining ?? authStore.getSnapshot().profile?.quota.remaining ?? 0,
+        dailyFreeDownloadQuota: quota?.dailyFree ?? authStore.getSnapshot().profile?.quota.dailyFree ?? DAILY_FREE_DOWNLOAD_QUOTA,
         monthCount: allRecords.filter((record) => isThisMonth(record.downloadedAt)).length,
         recentText: allRecords.length ? formatRelative(allRecords[0].downloadedAt) : '暂无',
       }, () => this.applyFilters())
@@ -89,6 +91,7 @@ Page({
     this.setData({
       allRecords,
       quota: authStore.getSnapshot().profile?.quota.remaining ?? state.downloadQuota,
+      dailyFreeDownloadQuota: authStore.getSnapshot().profile?.quota.dailyFree ?? DAILY_FREE_DOWNLOAD_QUOTA,
       monthCount: allRecords.filter((record) => isThisMonth(record.downloadedAt)).length,
       recentText: allRecords.length ? formatRelative(allRecords[0].downloadedAt) : '暂无',
     }, () => this.applyFilters())

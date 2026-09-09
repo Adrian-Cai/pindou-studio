@@ -12,7 +12,7 @@ import {
   cloudDownloadToLocalRecord,
   createDownload,
 } from '../../services/download-service'
-import { appStore } from '../../store/app-store'
+import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
 import { checkTextContent } from '../../services/content-security-service'
 import { getCustomNavigationMetrics } from '../../utils/navigation'
@@ -82,6 +82,7 @@ Page({
     canvasReady: false,
     renderError: false,
     quota: 0,
+    dailyFreeQuota: DAILY_FREE_DOWNLOAD_QUOTA,
     quotaTipsOpen: false,
     downloadLoading: false,
     downloadingType: '' as DownloadFileType | '',
@@ -125,7 +126,9 @@ Page({
   onShow() {
     appStore.refreshDownloadQuota()
     const state = appStore.getSnapshot()
-    const accountQuota = authStore.getSnapshot().profile?.quota.remaining
+    const profileQuota = authStore.getSnapshot().profile?.quota
+    const accountQuota = profileQuota?.remaining
+    const dailyFreeQuota = profileQuota?.dailyFree ?? DAILY_FREE_DOWNLOAD_QUOTA
     const draft = state.currentDraft
     const work = draft ? state.works.find((item) => item.id === draft.id) : undefined
     const materialSummary = draft
@@ -151,6 +154,7 @@ Page({
         materialListExpanded,
         paletteExpanded,
         quota: accountQuota ?? state.downloadQuota,
+        dailyFreeQuota,
         isFavorite: draft ? state.favoriteIds.includes(draft.id) : false,
         summary: draft
           ? {
@@ -193,7 +197,7 @@ Page({
     const quota = await authStore.refreshQuota()
     if (!quota) return
     appStore.setDownloadQuota(quota.remaining)
-    this.setData({ quota: quota.remaining })
+    this.setData({ quota: quota.remaining, dailyFreeQuota: quota.dailyFree })
   },
 
   async getCurrentQuota(): Promise<number> {

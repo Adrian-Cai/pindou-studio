@@ -4,6 +4,10 @@ Component({
       type: Number,
       value: 0,
     },
+    dailyFreeQuota: {
+      type: Number,
+      value: 9,
+    },
     tipsOpen: {
       type: Boolean,
       value: false,

@@ -18,7 +18,8 @@
         "privacy-document/index",
         "feedback/index",
         "recharge/index",
-        "payment-success/index"
+        "payment-success/index",
+        "settings/index"
       ]
     }
   ],

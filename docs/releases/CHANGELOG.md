@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.25.20
+
+- 修复前端页面将每日免费下载上限硬编码为 9 次的问题：
+  - “我的”页面权益卡片展示从写死 `{{downloadQuota}} / 9 次` 改为动态绑定 `{{downloadQuota}} / {{dailyFreeDownloadQuota}} 次`，优先使用服务端返回的 `quota.dailyFree`，未登录或离线时安全回退至本地默认配置。
+  - 同步优化“下载记录”页面（`pages-sub/downloads`）中的“剩余免费次数”展示，由写死 `/ 9` 改为绑定 `{{dailyFreeDownloadQuota}}`。
+  - 同步优化生成结果页下载配额提示条组件（`download-quota-bar`），免费下载说明由固定“每日可免费成功保存 9 个文件”改为动态支持属性 `dailyFreeQuota`。
+  - 导出 `app-store.ts` 中的 `DAILY_FREE_DOWNLOAD_QUOTA` 常量，统一多处前端降级回退口径。服务端后续调整环境变量 `STANDARD_DOWNLOAD_DAILY_FREE` 时，小程序前端 UI 自动同步生效，无需修改前端代码。
+- 优化“我的”页面布局与设置入口：
+  - 新增分包设置页（`pages-sub/settings/index`），收敛“使用帮助”、“意见反馈”、“隐私设置”、“关于我们”二级入口，简化个人中心主视觉。
+  - 重构个人中心为 2×2 功能宫格（我的作品、我的收藏、下载记录、设置），清理个人中心未使用的冗余计数计算与未使用的样式。
+  - 优化未登录引导界面及登录弹窗样式，移除冗余图标。
+- 修复底部主导航栏（`main-tab-bar`）与页面布局层叠问题：
+  - 优化 `page-layout` 嵌入式 TabBar 渲染判断，主 Tab 页面统一由微信系统自定义 TabBar 承载，避免嵌入式 TabBar 产生双重叠加。
+  - 提高 `main-tab-bar` 的 z-index 并提供不透明背景底色与深色模式适配，避免滚动内容穿透。
+
 ## 0.25.19
 
 - 移除“我的”页底部的“拼豆制作工具 · Version 0.25.16”展示文案及其样式，避免页面滚动时该非必要文案进入固定底部主导航的覆盖区域。

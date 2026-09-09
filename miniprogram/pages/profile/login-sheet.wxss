@@ -40,10 +40,7 @@
 .login-sheet__subtitle { max-width: 540rpx; margin: 20rpx auto 0; color: #6b7280; font-size: 14px; line-height: 22px; }
 .login-sheet__subtitle view { white-space: nowrap; }
 
-.login-benefits { display: flex; align-items: flex-start; justify-content: space-between; margin-top: 60rpx; }
-.login-benefit { display: flex; min-width: 0; flex: 1; align-items: center; flex-direction: column; gap: 20rpx; color: #374151; font-size: 14px; line-height: 22px; white-space: nowrap; }
-.login-benefit__icon { display: flex; width: 112rpx; height: 112rpx; align-items: center; justify-content: center; border-radius: 50%; background: #ecfdf5; }
-.login-benefit__icon image { width: 56rpx; height: 56rpx; }
+
 
 .login-sheet__message { margin-top: 32rpx; color: #6b7280; font-size: 13px; line-height: 20px; }
 .login-sheet__message--error { color: #b42318; }
@@ -68,7 +65,7 @@
 @keyframes login-sheet-out { from { transform: translateY(0); } to { transform: translateY(100%); } }
 
 @media (max-width: 340px) {
-  .login-sheet__subtitle, .login-benefit { font-size: 12px; }
+  .login-sheet__subtitle { font-size: 12px; }
   .login-sheet__agreement { font-size: 11px; }
 }
 
