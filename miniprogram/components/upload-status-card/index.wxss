@@ -108,11 +108,15 @@
   overflow: hidden;
 }
 
-.upload-status-card__state-content--success,
 .upload-status-card__state-content--rejected,
 .upload-status-card__state-content--error {
   justify-content: flex-start;
   padding: 20rpx 0;
+}
+
+.upload-status-card__state-content--success {
+  justify-content: flex-start;
+  padding: 12rpx 0;
 }
 
 .upload-status-card__upload-heading,
@@ -205,6 +209,23 @@
   line-height: 36rpx;
 }
 
+.upload-status-card__result-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  margin-top: auto;
+  margin-bottom: 16rpx;
+  color: var(--color-text-secondary);
+  font-size: 22rpx;
+  line-height: 32rpx;
+}
+
+.upload-status-card__result-note-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .upload-status-card__progress {
   box-sizing: border-box;
   width: 100%;
@@ -260,6 +281,10 @@
 .upload-status-card__reselect-action:active {
   opacity: 0.84;
   transform: scale(0.97);
+}
+
+.upload-status-card__state-content--success .upload-status-card__reselect-action {
+  margin: 0;
 }
 
 .upload-status-card__empty {
@@ -350,6 +375,11 @@
 
   .upload-status-card__description {
     font-size: 21rpx;
+  }
+
+  .upload-status-card__result-note {
+    font-size: 20rpx;
+    line-height: 28rpx;
   }
 }
 

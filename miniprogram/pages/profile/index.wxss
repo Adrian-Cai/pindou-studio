@@ -5,30 +5,172 @@
 .profile-page { box-sizing: border-box; padding: 16rpx var(--page-padding) 0; }
 
 /* ── 用户卡 ── */
-.user-card { display: flex; align-items: center; padding: 28rpx 32rpx; }
-.user-card__avatar { width: 96rpx; height: 96rpx; flex-shrink: 0; border-radius: 20rpx; background: var(--color-primary-soft); }
-.user-card__name { min-width: 0; flex: 1; margin-left: 24rpx; font-size: 32rpx; font-weight: 600; line-height: 44rpx; }
-.user-card__arrow { color: var(--color-text-secondary); font-size: 48rpx; font-weight: 300; }
+.user-card {
+  display: flex;
+  height: 192rpx;
+  box-sizing: border-box;
+  align-items: center;
+  padding: 0 38rpx;
+  border-radius: 38rpx;
+  background: var(--surface);
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+}
+.user-card__avatar {
+  width: 116rpx;
+  height: 116rpx;
+  flex-shrink: 0;
+  border-radius: 28rpx;
+  background: var(--color-primary-soft);
+}
+.user-card__name {
+  min-width: 0;
+  flex: 1;
+  margin-left: 30rpx;
+  color: var(--color-text);
+  font-size: 36rpx;
+  font-weight: 600;
+  line-height: 48rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-card__arrow {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  font-size: 40rpx;
+  font-weight: 300;
+  line-height: 1;
+}
 
-/* ── 权益卡（紧凑单行） ── */
-.benefit-card { display: flex; align-items: center; justify-content: space-between; margin-top: 24rpx; padding: 24rpx 28rpx; border-radius: var(--radius-card-large); background: var(--color-primary-surface); box-shadow: var(--shadow-card); }
-.benefit-card__left { min-width: 0; }
-.benefit-card__label { display: flex; align-items: center; color: var(--color-primary); font-size: 25rpx; font-weight: 600; }
-.benefit-card__icon { width: 36rpx; height: 36rpx; flex-shrink: 0; margin-right: 8rpx; }
-.benefit-card__quota-row { display: flex; align-items: baseline; gap: 12rpx; margin-top: 12rpx; }
-.benefit-card__caption { color: var(--color-text-secondary); font-size: 24rpx; }
-.benefit-card__quota { font-size: 26rpx; }
-.benefit-card__quota-num { color: var(--color-primary); font-size: 52rpx; font-weight: 700; line-height: 1; }
-.benefit-card__action { flex-shrink: 0; padding: 16rpx 24rpx; border-radius: var(--radius-card-small); background: var(--color-surface); color: var(--color-primary); font-size: 24rpx; font-weight: 600; box-shadow: var(--shadow-card); transition: var(--transition-press); }
-.benefit-card__action:active { opacity: 0.72; transform: scale(0.97); }
+/* ── 权益卡 ── */
+.benefit-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 248rpx;
+  box-sizing: border-box;
+  margin-top: 20rpx;
+  padding: 30rpx 40rpx 28rpx;
+  border-radius: 38rpx;
+  background: var(--color-primary-surface);
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.03);
+}
+.benefit-card__header {
+  display: flex;
+  align-items: center;
+}
+.benefit-card__icon {
+  width: 34rpx;
+  height: 34rpx;
+  flex-shrink: 0;
+  margin-right: 12rpx;
+}
+.benefit-card__title {
+  color: var(--color-primary);
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 40rpx;
+}
+.benefit-card__content {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.benefit-card__quota-info {
+  display: flex;
+  flex-direction: column;
+}
+.benefit-card__caption {
+  margin-bottom: 8rpx;
+  color: var(--color-text-secondary);
+  font-size: 26rpx;
+  line-height: 34rpx;
+}
+.benefit-card__quota-val {
+  display: flex;
+  align-items: baseline;
+}
+.benefit-card__quota-num {
+  color: var(--color-primary);
+  font-size: 60rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+.benefit-card__quota-unit {
+  margin-left: 8rpx;
+  color: var(--color-text);
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+.benefit-card__action {
+  display: inline-flex;
+  height: 72rpx;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28rpx;
+  border-radius: 999rpx;
+  background: #ffffff;
+  color: var(--color-primary);
+  font-size: 26rpx;
+  font-weight: 600;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  transition: var(--transition-press);
+}
+.benefit-card__action:active {
+  opacity: 0.76;
+  transform: scale(0.97);
+}
 
 /* ── 2×2 功能宫格 ── */
-.profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20rpx; margin-top: 24rpx; }
-.profile-grid__item { display: flex; flex-direction: column; align-items: flex-start; padding: 28rpx 28rpx 24rpx; transition: var(--transition-press); }
-.profile-grid__item:active { opacity: 0.72; transform: scale(0.98); }
-.profile-grid__icon { width: 52rpx; height: 52rpx; margin-bottom: 20rpx; }
-.profile-grid__title { flex: 1; font-size: 28rpx; font-weight: 500; }
-.profile-grid__arrow { align-self: flex-end; color: var(--color-text-secondary); font-size: 40rpx; font-weight: 300; line-height: 1; margin-top: 8rpx; }
+.profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22rpx;
+  margin-top: 20rpx;
+}
+.profile-grid__item {
+  display: flex;
+  flex-direction: row;
+  height: 224rpx;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 28rpx 28rpx 32rpx;
+  border-radius: 38rpx;
+  background: var(--surface);
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+  transition: var(--transition-press);
+}
+.profile-grid__item:active {
+  opacity: 0.72;
+  transform: scale(0.98);
+}
+.profile-grid__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.profile-grid__icon {
+  width: 56rpx;
+  height: 56rpx;
+  margin-bottom: 28rpx;
+  flex-shrink: 0;
+}
+.profile-grid__title {
+  color: var(--color-text);
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.profile-grid__arrow {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  font-size: 40rpx;
+  font-weight: 300;
+  line-height: 1;
+}
 
 /* ── 未登录状态 ── */
 .profile-guest { display: flex; flex-direction: column; min-height: 80vh; }
@@ -91,27 +233,13 @@
 .profile-editor__submit:active { transform: scale(0.97); }
 .profile-editor__submit[disabled] { background: var(--color-primary); color: #fff; opacity: 0.5; }
 
-/* ── Account Sheet ── */
-.account-sheet__title { margin: 4rpx 0 28rpx; font-size: 36rpx; font-weight: 600; line-height: 50rpx; }
-.account-summary { display: flex; align-items: center; padding: 24rpx; border-radius: var(--radius-control); background: var(--color-primary-soft); }
-.account-summary__avatar { width: 96rpx; height: 96rpx; flex-shrink: 0; border-radius: 20rpx; }
-.account-summary__content { min-width: 0; flex: 1; margin-left: 20rpx; }
-.account-summary__name { font-size: 29rpx; font-weight: 600; line-height: 42rpx; }
-.account-summary__desc { margin-top: 4rpx; color: var(--color-text-secondary); font-size: 22rpx; line-height: 32rpx; }
-.account-summary__status { flex-shrink: 0; padding: 10rpx 16rpx; border-radius: 999rpx; background: var(--color-success-soft); color: var(--color-primary); font-size: 21rpx; }
-.account-action { display: flex; height: 96rpx; align-items: center; margin-top: 20rpx; padding: 0 24rpx; border-radius: var(--radius-card-small); background: var(--color-background); font-size: 27rpx; transition: var(--transition-press); }
-.account-action:active { opacity: 0.72; transform: scale(0.99); }
-.account-action image { width: 36rpx; height: 36rpx; margin-right: 18rpx; }
-.account-action .account-action__avatar-icon { border-radius: 8rpx; }
-.account-action text:nth-child(2) { min-width: 0; flex: 1; }
-.account-action view { color: var(--color-text-secondary); font-size: 40rpx; font-weight: 300; }
-.account-action--disabled { opacity: 0.56; }
-.account-action--danger { margin-top: 12rpx; background: var(--color-danger-soft); color: var(--color-danger); }
-.account-action__logout-icon { display: flex; width: 36rpx; height: 36rpx; flex: none !important; align-items: center; justify-content: center; margin-right: 18rpx; font-size: 34rpx; }
-.account-sheet__cancel { padding-top: 28rpx; color: var(--color-text-secondary); font-size: 27rpx; text-align: center; }
-
 @media (max-width: 340px) {
   .profile-page { padding-right: var(--page-padding-compact); padding-left: var(--page-padding-compact); }
-  .benefit-card__quota-num { font-size: 44rpx; }
+  .benefit-card { min-height: 232rpx; padding: 24rpx 28rpx 24rpx; }
+  .benefit-card__quota-num { font-size: 50rpx; }
+  .benefit-card__action { height: 64rpx; padding: 0 20rpx; font-size: 24rpx; }
   .profile-grid { gap: 16rpx; }
+  .profile-grid__item { height: 204rpx; padding: 24rpx 20rpx 24rpx 24rpx; }
+  .profile-grid__icon { width: 48rpx; height: 48rpx; margin-bottom: 20rpx; }
+  .profile-grid__title { font-size: 30rpx; }
 }

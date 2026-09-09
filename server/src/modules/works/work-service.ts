@@ -59,6 +59,17 @@ export interface WorkListResponse {
   readonly items: readonly WorkSummary[];
 }
 
+export interface FavoriteWorkSummary extends WorkSummary {
+  readonly favoritedAt: string;
+}
+
+export interface FavoriteListResponse {
+  readonly total: number;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly items: readonly FavoriteWorkSummary[];
+}
+
 export interface FavoriteListOptions {
   readonly userId: string;
   readonly page: number;
@@ -87,6 +98,7 @@ interface WorkRow extends QueryResultRow {
   readonly created_at: Date | string;
   readonly updated_at: Date | string;
   readonly deleted_at: Date | null;
+  readonly favorited_at?: Date | string;
   readonly is_favorite?: boolean;
   readonly schema_version?: number;
   readonly color_limit?: number;
@@ -294,6 +306,7 @@ export class PostgresWorkService {
               EXISTS (
                 SELECT 1 FROM pindou_favorites favorites
                  WHERE favorites.user_id = $1 AND favorites.work_id = works.id
+                   AND favorites.deleted_at IS NULL
               ) AS is_favorite
          FROM pindou_works works
          LEFT JOIN pindou_file_assets files ON files.id = works.cover_file_id AND files.deleted_at IS NULL
@@ -302,7 +315,7 @@ export class PostgresWorkService {
         LIMIT $${parameters.length - 1} OFFSET $${parameters.length}`,
       parameters,
     );
-    return mapWorkListResponse(options, countResult.rows[0]?.total_count, result.rows);
+    return mapListResponse(options, countResult.rows[0]?.total_count, result.rows, mapSummary);
   }
 
   public async get(userId: string, workId: string): Promise<WorkDetail> {
@@ -316,6 +329,7 @@ export class PostgresWorkService {
               EXISTS (
                 SELECT 1 FROM pindou_favorites favorites
                  WHERE favorites.user_id = $1 AND favorites.work_id = works.id
+                   AND favorites.deleted_at IS NULL
               ) AS is_favorite
          FROM pindou_works works
          JOIN pindou_work_patterns patterns ON patterns.work_id = works.id
@@ -342,28 +356,55 @@ export class PostgresWorkService {
     await assertWorkOwner(this.pool, workId, userId);
     if (!favorite) {
       await this.pool.query(
-        `DELETE FROM pindou_favorites
-          WHERE user_id = $1 AND work_id = $2`,
-        [userId, workId],
+        `UPDATE pindou_favorites
+            SET deleted_at = $3
+          WHERE user_id = $1 AND work_id = $2 AND deleted_at IS NULL`,
+        [userId, workId, this.now()],
       );
       return { workId, isFavorite: false, favoritedAt: null };
     }
 
-    const result = await this.pool.query<{ readonly created_at: Date | string }>(
-      `INSERT INTO pindou_favorites (user_id, work_id, created_at)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (user_id, work_id) DO UPDATE
-       SET created_at = pindou_favorites.created_at
-       RETURNING created_at`,
+    const result = await this.pool.query<{ readonly favorited_at: Date | string }>(
+      `WITH changed AS (
+         INSERT INTO pindou_favorites (user_id, work_id, created_at, favorited_at, deleted_at)
+         SELECT $1, $2, $3, $3, NULL
+           FROM pindou_works
+          WHERE id = $2 AND user_id = $1 AND deleted_at IS NULL
+         ON CONFLICT (user_id, work_id) DO UPDATE
+         SET favorited_at = EXCLUDED.favorited_at,
+             deleted_at = NULL
+         WHERE pindou_favorites.deleted_at IS NOT NULL
+         RETURNING favorited_at
+       )
+       SELECT favorited_at FROM changed
+       UNION ALL
+       SELECT favorited_at
+         FROM pindou_favorites
+        WHERE user_id = $1 AND work_id = $2 AND deleted_at IS NULL
+       LIMIT 1`,
       [userId, workId, this.now()],
     );
-    const createdAt = result.rows[0]?.created_at;
-    if (!createdAt) throw new AppError(500, "INTERNAL_ERROR", "收藏关系写入失败");
-    return { workId, isFavorite: true, favoritedAt: toIso(createdAt) };
+    let favoritedAt = result.rows[0]?.favorited_at;
+    if (!favoritedAt) {
+      const current = await this.pool.query<{ readonly favorited_at: Date | string }>(
+        `SELECT favorites.favorited_at
+           FROM pindou_favorites favorites
+           JOIN pindou_works works
+             ON works.id = favorites.work_id AND works.user_id = favorites.user_id
+          WHERE favorites.user_id = $1 AND favorites.work_id = $2
+            AND favorites.deleted_at IS NULL AND works.deleted_at IS NULL
+          LIMIT 1`,
+        [userId, workId],
+      );
+      favoritedAt = current.rows[0]?.favorited_at;
+    }
+    if (!favoritedAt) await assertWorkOwner(this.pool, workId, userId);
+    if (!favoritedAt) throw new AppError(500, "INTERNAL_ERROR", "收藏关系写入失败");
+    return { workId, isFavorite: true, favoritedAt: toIso(favoritedAt) };
   }
 
-  public async listFavorites(options: FavoriteListOptions): Promise<WorkListResponse> {
-    const conditions = ["favorites.user_id = $1", "works.deleted_at IS NULL"];
+  public async listFavorites(options: FavoriteListOptions): Promise<FavoriteListResponse> {
+    const conditions = ["favorites.user_id = $1", "favorites.deleted_at IS NULL", "works.deleted_at IS NULL"];
     const parameters: unknown[] = [options.userId];
     if (options.query) {
       parameters.push(`%${options.query}%`);
@@ -383,17 +424,18 @@ export class PostgresWorkService {
               files.public_url AS cover_url, works.width, works.height,
               works.bead_count, works.color_count, works.brand, works.status,
               works.created_at, works.updated_at, works.deleted_at,
+              favorites.favorited_at,
               TRUE AS is_favorite
          FROM pindou_favorites favorites
          JOIN pindou_works works
            ON works.id = favorites.work_id AND works.user_id = favorites.user_id
          LEFT JOIN pindou_file_assets files ON files.id = works.cover_file_id AND files.deleted_at IS NULL
         WHERE ${conditions.join(" AND ")}
-        ORDER BY favorites.created_at DESC, works.id DESC
+        ORDER BY favorites.favorited_at DESC, works.id DESC
         LIMIT $${parameters.length - 1} OFFSET $${parameters.length}`,
       parameters,
     );
-    return mapWorkListResponse(options, countResult.rows[0]?.total_count, result.rows);
+    return mapListResponse(options, countResult.rows[0]?.total_count, result.rows, mapFavoriteSummary);
   }
 }
 
@@ -464,6 +506,11 @@ function mapDetail(row: WorkRow): WorkDetail {
   return { ...mapSummary(row), pattern: mapPattern(row) };
 }
 
+function mapFavoriteSummary(row: WorkRow): FavoriteWorkSummary {
+  if (!row.favorited_at) throw new AppError(500, "INTERNAL_ERROR", "收藏时间缺失");
+  return { ...mapSummary(row), favoritedAt: toIso(row.favorited_at) };
+}
+
 function mapPattern(row: WorkRow): PersistedPattern {
   const pattern = {
     schemaVersion: row.schema_version,
@@ -495,16 +542,17 @@ async function assertWorkOwner(pool: Pool, workId: string, userId: string): Prom
   if (row.user_id !== userId) throw forbidden("作品不属于当前用户");
 }
 
-function mapWorkListResponse(
+function mapListResponse<T>(
   options: Pick<WorkListOptions, "page" | "pageSize">,
   totalCount: string | number | undefined,
   rows: readonly WorkRow[],
-): WorkListResponse {
+  mapRow: (row: WorkRow) => T,
+): { readonly total: number; readonly page: number; readonly pageSize: number; readonly items: readonly T[] } {
   const total = Number(totalCount ?? 0);
   return {
     total: Number.isSafeInteger(total) ? total : 0,
     page: options.page,
     pageSize: options.pageSize,
-    items: rows.map(mapSummary),
+    items: rows.map(mapRow),
   };
 }

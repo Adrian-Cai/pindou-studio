@@ -467,7 +467,8 @@ Authorization: Bearer <token>
 删除规则：
 
 - 先校验作品归属
-- 同步删除或软删除关联的收藏、图案数据和下载记录引用；下载历史是否保留由数据库外键策略确定，建议保留记录但将 `workId` 置空或保留快照字段
+- 作品使用 `deleted_at` 软删除；收藏关系保留历史记录，并由收藏列表与统计通过作品的 `deleted_at` 隐藏
+- 下载历史是否保留由数据库外键策略确定，建议保留记录但将 `workId` 置空或保留快照字段
 - 封面对象可以异步清理，不得因为对象存储暂时失败而让数据库删除返回不确定状态
 
 ## 阶段 3：收藏
@@ -490,7 +491,7 @@ Authorization: Bearer <token>
 { "workId": "work_xxx", "isFavorite": true, "favoritedAt": "2026-08-26T11:00:00Z" }
 ```
 
-操作必须幂等：重复设置同一个值不创建重复收藏
+操作必须幂等：重复设置同一个值不创建重复收藏，也不刷新当前状态的时间。首次收藏写入关系；取消收藏只写 `deleted_at`；重新收藏复用原关系并刷新 `favorited_at`。收藏操作不修改作品的 `updated_at`。
 
 ### GET `/api/favorites`
 
@@ -498,9 +499,9 @@ Authorization: Bearer <token>
 
 鉴权：需要
 
-查询参数：`page`、`pageSize`、`query`默认按 `favoritedAt DESC`
+查询参数：`page`、`pageSize`、`query`，默认按 `favoritedAt DESC`
 
-响应 `200`：分页的 `WorkSummary` 列表，`isFavorite` 固定为 `true`，不返回完整 `pattern`
+响应 `200`：分页的 `FavoriteWorkSummary` 列表，`isFavorite` 固定为 `true`，不返回完整 `pattern`。每项在 `WorkSummary` 基础上增加最近一次有效收藏时间 `favoritedAt`；`createdAt`、`updatedAt` 仍分别表示作品创建和最后修改时间。
 
 ## 阶段 4：额度与下载记录
 

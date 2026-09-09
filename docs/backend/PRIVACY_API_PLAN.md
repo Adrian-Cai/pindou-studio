@@ -249,7 +249,7 @@ Authorization: Bearer <token>
   → 标记 users.deleted_at
   → 清空/匿名化昵称、头像和可恢复身份字段
   → 软删除用户作品
-  → 清理收藏关系
+  → 将收藏关系标记为已删除
   → 撤销该用户全部 auth sessions
   → 提交事务
 ```

@@ -4,7 +4,7 @@ import { authStore } from '../../store/auth-store'
 
 const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.webp'
 
-type ProfileSheet = 'none' | 'recharge' | 'login' | 'account' | 'profile'
+type ProfileSheet = 'none' | 'recharge' | 'login' | 'profile'
 type LoginUiState = 'idle' | 'loading' | 'error'
 type LoginMessageTone = 'info' | 'error'
 type AuthState = ReturnType<typeof authStore.getSnapshot>
@@ -21,8 +21,6 @@ Page({
     avatarPath: DEFAULT_AVATAR_PATH,
     isLoggedIn: false,
     accountName: '拼豆用户',
-    accountStatusText: '云端数据已连接',
-    accountRefreshing: false,
     activeSheet: 'none' as ProfileSheet,
     loginUiState: 'idle' as LoginUiState,
     loginAgreementAccepted: false,
@@ -97,8 +95,6 @@ Page({
       avatarPath: DEFAULT_AVATAR_PATH,
       isLoggedIn: hasAuthenticatedUser,
       accountName: user?.nickname?.trim() || '拼豆用户',
-      accountStatusText: accountStatusText(authState),
-      accountRefreshing: authState.status === 'refreshing' || authState.status === 'updating',
       loginUiState: authState.status === 'authenticating'
         ? 'loading'
         : authState.status === 'error' ? 'error' : 'idle',
@@ -150,8 +146,12 @@ Page({
   },
 
   openUserPanel() {
-    if (!this.data.isLoggedIn) authStore.clearError()
-    this.showProfileSheet(this.data.isLoggedIn ? 'account' : 'login')
+    if (this.data.isLoggedIn) {
+      wx.navigateTo({ url: '/pages-sub/account/index' })
+      return
+    }
+    authStore.clearError()
+    this.showProfileSheet('login')
   },
 
   showProfileSheet(sheet: Exclude<ProfileSheet, 'none'>) {
@@ -272,11 +272,6 @@ Page({
     })
   },
 
-  refreshAccountData() {
-    if (this.data.accountRefreshing) return
-    void authStore.refresh()
-  },
-
   updateProfileNickname(event: NicknameInputEvent) {
     const nickname = event.detail.value ?? ''
     this.setData({
@@ -307,27 +302,4 @@ Page({
       })
     }
   },
-
-  confirmLogout() {
-    wx.showModal({
-      title: '确认退出登录？',
-      content: '退出后将停止访问云端作品和下载记录，本机草稿不会被删除再次登录后可以恢复云端数据',
-      confirmText: '确认退出',
-      confirmColor: '#e5484d',
-      success: ({ confirm }) => {
-        if (!confirm) return
-        authStore.logout()
-        this.hideActiveSheet()
-        wx.showToast({ title: '已退出登录', icon: 'success' })
-      },
-    })
-  },
 })
-
-function accountStatusText(state: Readonly<AuthState>): string {
-  if (state.status === 'restoring') return '正在恢复登录状态…'
-  if (state.status === 'refreshing') return '正在刷新账号数据…'
-  if (state.status === 'updating') return '正在保存个人资料…'
-  if (state.isOffline) return '网络异常，当前显示缓存账号'
-  return '云端数据已连接'
-}

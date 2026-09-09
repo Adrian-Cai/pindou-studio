@@ -9,7 +9,6 @@ import {
 import {
   calculateFittedImageSize,
   clampViewTranslation,
-  drawMagnifier,
   drawPatternViewport,
   editorTools,
   exportPatternCoverImage,
@@ -23,16 +22,6 @@ import {
   type PatternCanvasContext,
   type ViewTransform,
 } from '../services/pattern-editor-service'
-import {
-  buildPrecisionSelectionFeedback,
-  createPrecisionSelection,
-  MAGNIFIER_CANVAS_HEIGHT,
-  MAGNIFIER_HALF_GRID,
-  MAGNIFIER_SIZE,
-  type MagnifierState,
-  type PrecisionSelection,
-  type TargetHighlightState,
-} from './precision-selection'
 
 interface PatternCanvas {
   width: number
@@ -59,7 +48,6 @@ const SCALE_MIN = 1
 const SCALE_MAX = 3
 const SCALE_STEP = 0.2
 const SCALE_DEFAULT = 1
-const HAPTIC_INTERVAL_MS = 60
 
 Page({
   data: {
@@ -78,21 +66,6 @@ Page({
     undoStack: [] as PatternCell[][],
     redoStack: [] as PatternCell[][],
     tools: editorTools(false, false),
-    magnifier: {
-      visible: false,
-      top: 0,
-      left: 0,
-      row: 0,
-      column: 0,
-      colorCode: '',
-    } as MagnifierState,
-    targetHighlight: {
-      visible: false,
-      top: 0,
-      left: 0,
-      width: 0,
-      height: 0,
-    } as TargetHighlightState,
     toast: {
       visible: false,
       message: '',
@@ -102,9 +75,7 @@ Page({
   _viewportRect: null as CanvasRect | null,
   _fittedImage: null as FittedImageSize | null,
   _patternCanvasNode: null as PatternCanvas | null,
-  _magCanvasNode: null as PatternCanvas | null,
-  _selection: null as PrecisionSelection | null,
-  _lastHapticAt: 0,
+  _singleTouchActive: false,
   _blockSingleTouchUntilRelease: false,
   _toastTimer: null as ReturnType<typeof setTimeout> | null,
 
@@ -308,93 +279,6 @@ Page({
     )
   },
 
-  getMagCanvasNode(): Promise<PatternCanvas> {
-    if (this._magCanvasNode) {
-      return Promise.resolve(this._magCanvasNode)
-    }
-    return new Promise((resolve, reject) => {
-      wx.createSelectorQuery()
-        .in(this)
-        .select('#magnifierCanvas')
-        .fields({ node: true, size: true })
-        .exec((results) => {
-          const result = results[0] as CanvasQueryResult | undefined
-          if (!result?.node) {
-            reject(new Error('放大镜 canvas 未找到'))
-            return
-          }
-          const canvas = result.node
-          const pixelRatio = wx.getWindowInfo().pixelRatio || 1
-          canvas.width = Math.round(MAGNIFIER_SIZE * pixelRatio)
-          canvas.height = Math.round(MAGNIFIER_CANVAS_HEIGHT * pixelRatio)
-          const ctx = canvas.getContext('2d')
-          ctx.scale(pixelRatio, pixelRatio)
-          this._magCanvasNode = canvas
-          resolve(canvas)
-        })
-    })
-  },
-
-  showSelectionFeedback(
-    touchClientX: number,
-    touchClientY: number,
-    cell: GridCell,
-    selection: PrecisionSelection,
-    revision: number,
-    redrawMagnifier: boolean,
-  ) {
-    const draft = this.data.draft
-    const viewport = this._viewportRect
-    const image = this._fittedImage
-    if (!draft || !viewport || !image) return
-
-    const { windowWidth, windowHeight } = wx.getWindowInfo()
-    const feedback = buildPrecisionSelectionFeedback(
-      touchClientX,
-      touchClientY,
-      cell,
-      draft,
-      image,
-      {
-        scale: this.data.scale,
-        translateX: this.data.translateX,
-        translateY: this.data.translateY,
-      },
-      viewport,
-      windowWidth,
-      windowHeight,
-    )
-    this.setData(
-      feedback,
-      () => {
-        if (!redrawMagnifier || this._selection !== selection || selection.revision !== revision) {
-          return
-        }
-        void this.getMagCanvasNode()
-          .then((canvas) => {
-            if (this._selection !== selection || selection.revision !== revision) return
-            drawMagnifier(
-              canvas.getContext('2d'),
-              MAGNIFIER_SIZE,
-              cell.row,
-              cell.column,
-              draft,
-              MAGNIFIER_HALF_GRID,
-            )
-          })
-          .catch(() => undefined)
-      },
-    )
-  },
-
-  hideSelectionFeedback() {
-    this._magCanvasNode = null
-    this.setData({
-      'magnifier.visible': false,
-      'targetHighlight.visible': false,
-    })
-  },
-
   onWorkspaceTouchStart(event: WechatMiniprogram.TouchEvent) {
     const touches = event.touches
     if (touches.length >= 2) {
@@ -402,10 +286,7 @@ Page({
       return
     }
     if (touches.length === 1 && !this._isPinching && !this._blockSingleTouchUntilRelease) {
-      const touch = touches[0]
-      const selection = createPrecisionSelection()
-      this._selection = selection
-      void this.updatePrecisionSelection(selection, touch.clientX, touch.clientY)
+      this._singleTouchActive = true
     }
   },
 
@@ -416,10 +297,6 @@ Page({
       this._updatePinch(touches[0], touches[1])
       return
     }
-    const touch = touches[0]
-    const selection = this._selection
-    if (!touch || !selection || this._isPinching || this._blockSingleTouchUntilRelease) return
-    void this.updatePrecisionSelection(selection, touch.clientX, touch.clientY)
   },
 
   onWorkspaceTouchEnd(event: WechatMiniprogram.TouchEvent) {
@@ -436,16 +313,16 @@ Page({
       return
     }
     if (touches.length > 0) return
-    const selection = this._selection
     const touch = event.changedTouches[0]
-    if (selection && touch) void this.finishPrecisionSelection(selection, touch.clientX, touch.clientY)
+    const shouldExecute = this._singleTouchActive && Boolean(touch)
+    this._singleTouchActive = false
+    if (shouldExecute && touch) void this.finishSingleTouch(touch.clientX, touch.clientY)
   },
 
   onWorkspaceTouchCancel() {
-    this._selection = null
+    this._singleTouchActive = false
     this._isPinching = false
     this._blockSingleTouchUntilRelease = false
-    this.hideSelectionFeedback()
   },
 
   _pinchDist(t0: WechatMiniprogram.TouchDetail, t1: WechatMiniprogram.TouchDetail): number {
@@ -458,9 +335,8 @@ Page({
     const viewport = this._viewportRect
     if (!viewport) return
     this._isPinching = true
-    this._selection = null
+    this._singleTouchActive = false
     this._blockSingleTouchUntilRelease = true
-    this.hideSelectionFeedback()
     this._pinchStartDist = this._pinchDist(t0, t1)
     this._pinchStartScale = this.data.scale
     this._pinchStartTransform = {
@@ -526,43 +402,10 @@ Page({
     )
   },
 
-  async updatePrecisionSelection(
-    selection: PrecisionSelection,
-    clientX: number,
-    clientY: number,
-  ) {
-    const revision = ++selection.revision
+  async finishSingleTouch(clientX: number, clientY: number) {
     const cell = await this.touchToGridCell(clientX, clientY).catch(() => null)
-    if (this._selection !== selection || selection.revision !== revision || this._isPinching) return
-    const previous = selection.target
-    selection.target = cell
-    if (!cell) {
-      this.hideSelectionFeedback()
-      return
-    }
-    const changed = !previous || previous.row !== cell.row || previous.column !== cell.column
-    if (previous && changed) this.vibrateCellChange()
-    this.showSelectionFeedback(clientX, clientY, cell, selection, revision, changed)
-  },
-
-  async finishPrecisionSelection(
-    selection: PrecisionSelection,
-    clientX: number,
-    clientY: number,
-  ) {
-    const revision = ++selection.revision
-    const cell = await this.touchToGridCell(clientX, clientY).catch(() => null)
-    if (this._selection !== selection || selection.revision !== revision) return
-    this._selection = null
-    this.hideSelectionFeedback()
+    if (this._isPinching || this._blockSingleTouchUntilRelease) return
     if (cell) this.executeToolAt(cell)
-  },
-
-  vibrateCellChange() {
-    const now = Date.now()
-    if (now - this._lastHapticAt < HAPTIC_INTERVAL_MS || typeof wx.vibrateShort !== 'function') return
-    this._lastHapticAt = now
-    wx.vibrateShort({ type: 'light', fail: () => undefined })
   },
 
   executeToolAt(cell: GridCell) {

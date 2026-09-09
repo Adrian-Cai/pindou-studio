@@ -84,6 +84,8 @@ export const EXPECTED_SCHEMA = {
     user_id: column("varchar", false, 32),
     work_id: column("varchar", false, 32),
     created_at: column("timestamptz"),
+    favorited_at: column("timestamptz"),
+    deleted_at: column("timestamptz", true),
   },
   pindou_download_records: {
     id: column("varchar", false, 32),
@@ -190,6 +192,7 @@ export const REQUIRED_INDEXES: readonly RequiredDatabaseObject[] = [
   { table: "pindou_works", label: "用户作品更新时间索引", includes: ["(user_id, updated_at)"] },
   { table: "pindou_works", label: "用户作品状态索引", includes: ["(user_id, status, updated_at)"] },
   { table: "pindou_favorites", label: "最近收藏索引", includes: ["(user_id, created_at)"] },
+  { table: "pindou_favorites", label: "有效收藏时间索引", includes: ["(user_id, favorited_at desc)", "where", "deleted_at is null"] },
   { table: "pindou_download_records", label: "下载幂等唯一索引", includes: ["unique index", "(idempotency_key)"] },
   { table: "pindou_download_records", label: "下载时间索引", includes: ["(user_id, downloaded_at)"] },
   { table: "pindou_download_records", label: "下载类型索引", includes: ["(user_id, file_type, downloaded_at)"] },

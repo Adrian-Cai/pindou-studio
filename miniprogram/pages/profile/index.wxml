@@ -51,39 +51,50 @@
 
     <!-- B. 权益卡 -->
     <view class="benefit-card">
-      <view class="benefit-card__left">
-        <view class="benefit-card__label">
-          <image class="benefit-card__icon" src="/assets/icons/profile-benefit-badge.svg" mode="aspectFit" />
-          <text>我的权益</text>
-        </view>
-        <view class="benefit-card__quota-row">
-          <text class="benefit-card__caption">今日剩余</text>
-          <text class="benefit-card__quota"><text class="benefit-card__quota-num">{{downloadQuota}}</text> / {{dailyFreeDownloadQuota}} 次</text>
-        </view>
+      <view class="benefit-card__header">
+        <image class="benefit-card__icon" src="/assets/icons/profile-benefit-badge.svg" mode="aspectFit" />
+        <text class="benefit-card__title">我的权益</text>
       </view>
-      <view class="benefit-card__action" bindtap="showRechargeSheet">获取更多次数 ›</view>
+      <view class="benefit-card__content">
+        <view class="benefit-card__quota-info">
+          <text class="benefit-card__caption">今日剩余</text>
+          <view class="benefit-card__quota-val">
+            <text class="benefit-card__quota-num">{{downloadQuota}}</text>
+            <text class="benefit-card__quota-unit"> / {{dailyFreeDownloadQuota}} 次</text>
+          </view>
+        </view>
+        <view class="benefit-card__action" bindtap="showRechargeSheet">获取更多次数 ›</view>
+      </view>
     </view>
 
     <!-- C. 2×2 功能宫格 -->
     <view class="profile-grid">
       <view class="profile-grid__item ui-card" bindtap="openProjects">
-        <image class="profile-grid__icon" src="/assets/icons/profile-stat-gallery.svg" mode="aspectFit" />
-        <text class="profile-grid__title">我的作品</text>
+        <view class="profile-grid__body">
+          <image class="profile-grid__icon" src="/assets/icons/profile-stat-gallery.svg" mode="aspectFit" />
+          <text class="profile-grid__title">我的作品</text>
+        </view>
         <text class="profile-grid__arrow">›</text>
       </view>
       <view class="profile-grid__item ui-card" bindtap="openFavorites">
-        <image class="profile-grid__icon" src="/assets/icons/profile-stat-star.svg" mode="aspectFit" />
-        <text class="profile-grid__title">我的收藏</text>
+        <view class="profile-grid__body">
+          <image class="profile-grid__icon" src="/assets/icons/profile-stat-star.svg" mode="aspectFit" />
+          <text class="profile-grid__title">我的收藏</text>
+        </view>
         <text class="profile-grid__arrow">›</text>
       </view>
       <view class="profile-grid__item ui-card" bindtap="openDownloads">
-        <image class="profile-grid__icon" src="/assets/icons/profile-stat-download.svg" mode="aspectFit" />
-        <text class="profile-grid__title">下载记录</text>
+        <view class="profile-grid__body">
+          <image class="profile-grid__icon" src="/assets/icons/profile-stat-download.svg" mode="aspectFit" />
+          <text class="profile-grid__title">下载记录</text>
+        </view>
         <text class="profile-grid__arrow">›</text>
       </view>
       <view class="profile-grid__item ui-card" bindtap="openSettings">
-        <image class="profile-grid__icon" src="/assets/icons/profile-menu-settings.svg" mode="aspectFit" />
-        <text class="profile-grid__title">设置</text>
+        <view class="profile-grid__body">
+          <image class="profile-grid__icon" src="/assets/icons/profile-stat-settings.svg" mode="aspectFit" />
+          <text class="profile-grid__title">设置</text>
+        </view>
         <text class="profile-grid__arrow">›</text>
       </view>
     </view>
@@ -198,39 +209,5 @@
       disabled="{{profileSaving || !profileCanSave}}"
       bindtap="saveProfile"
     >{{profileSaving ? '保存中…' : '保存个人资料'}}</button>
-  </view>
-</view>
-
-<!-- ── Account Sheet ── -->
-<view wx:if="{{activeSheet === 'account'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
-  <view class="profile-sheet account-sheet" catchtap="stopPropagation">
-    <view class="profile-sheet__handle"></view>
-    <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭账号面板">×</view>
-    <view class="account-sheet__title">账号与登录</view>
-
-    <view class="account-summary">
-      <image class="account-summary__avatar" src="{{avatarPath}}" mode="aspectFill" />
-      <view class="account-summary__content">
-        <view class="account-summary__name">{{accountName}}</view>
-        <view class="account-summary__desc">{{accountStatusText}}</view>
-      </view>
-      <view class="account-summary__status">✓ 已登录</view>
-    </view>
-
-    <view class="account-action" bindtap="openProfileEditor">
-      <image class="account-action__avatar-icon" src="/assets/icons/brand-avatar.svg" mode="aspectFit" />
-      <text>编辑个人资料</text>
-      <view>›</view>
-    </view>
-    <view class="account-action {{accountRefreshing ? 'account-action--disabled' : ''}}" bindtap="refreshAccountData">
-      <image src="/assets/icons/profile-stat-download.svg" mode="aspectFit" />
-      <text>{{accountRefreshing ? '正在刷新…' : '刷新账号数据'}}</text>
-      <view>›</view>
-    </view>
-    <view class="account-action account-action--danger" bindtap="confirmLogout">
-      <text class="account-action__logout-icon">↪</text>
-      <text>退出登录</text>
-    </view>
-    <view class="account-sheet__cancel" bindtap="hideActiveSheet">取消</view>
   </view>
 </view>

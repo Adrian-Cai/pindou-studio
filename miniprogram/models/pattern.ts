@@ -44,6 +44,7 @@ export interface WorkItem {
   status?: 'draft' | 'completed'
   isCloud?: boolean
   createdAt?: number
+  favoritedAt?: number
 }
 
 export type DownloadFileType = 'preview' | 'chart' | 'materials' | 'palette'

@@ -132,12 +132,34 @@ export class AppStore {
     this.update({ works: [...cloudWorks, ...localWorks] })
   }
 
-  toggleFavorite(workId: string) {
-    const exists = this.state.favoriteIds.includes(workId)
-    const favoriteIds = exists
-      ? this.state.favoriteIds.filter((id) => id !== workId)
-      : [...this.state.favoriteIds, workId]
-    this.update({ favoriteIds })
+  replaceCloudFavorites(cloudFavorites: WorkItem[]) {
+    const favoriteById = new Map(cloudFavorites.map((work) => [work.id, work]))
+    const cachedCloudIds = new Set(
+      this.state.works.filter((work) => work.isCloud).map((work) => work.id),
+    )
+    const localFavoriteIds = this.state.favoriteIds.filter((id) => !cachedCloudIds.has(id))
+    const mergedWorks = this.state.works.map((work) => {
+      if (!work.isCloud) return work
+      return favoriteById.get(work.id) ?? { ...work, favoritedAt: undefined }
+    })
+    const knownWorkIds = new Set(mergedWorks.map((work) => work.id))
+    const missingFavorites = cloudFavorites.filter((work) => !knownWorkIds.has(work.id))
+    this.update({
+      works: [...missingFavorites, ...mergedWorks],
+      favoriteIds: [...new Set([...localFavoriteIds, ...favoriteById.keys()])],
+    })
+  }
+
+  setFavorite(workId: string, favorite: boolean, favoritedAt = Date.now()) {
+    const favoriteIds = favorite
+      ? [...new Set([...this.state.favoriteIds, workId])]
+      : this.state.favoriteIds.filter((id) => id !== workId)
+    const works = this.state.works.map((work) => (
+      work.id === workId
+        ? { ...work, favoritedAt: favorite ? favoritedAt : undefined }
+        : work
+    ))
+    this.update({ favoriteIds, works })
   }
 
   deleteWork(workId: string) {

@@ -282,9 +282,14 @@ test("favorite update uses the authenticated user and validates the exact boolea
   });
 });
 
-test("favorite list accepts query pagination and returns summaries without pattern", async () => {
+test("favorite list accepts query pagination and returns favorite timestamps without pattern", async () => {
   let received;
-  const favoriteSummary = { ...summary(), isFavorite: true, pattern: pattern() };
+  const favoriteSummary = {
+    ...summary(),
+    isFavorite: true,
+    favoritedAt: "2026-09-02T03:00:00.000Z",
+    pattern: pattern(),
+  };
   const works = {
     ...dependencies().works,
     async listFavorites(options) {
@@ -301,6 +306,7 @@ test("favorite list accepts query pagination and returns summaries without patte
     assert.equal(response.status, 200, JSON.stringify(body));
     assert.deepEqual(received, { userId: "usr_current", query: "猫", page: 2, pageSize: 1 });
     assert.equal(body.items[0].isFavorite, true);
+    assert.equal(body.items[0].favoritedAt, "2026-09-02T03:00:00.000Z");
     assert.equal(body.items[0].pattern, undefined);
 
     const unsupported = await fetch(`${baseUrl}/api/favorites?status=completed`, {

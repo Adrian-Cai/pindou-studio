@@ -162,8 +162,11 @@ export class PostgresUserProfileService implements UserProfileService {
                   WHERE works.user_id = users.id AND works.deleted_at IS NULL) AS work_count,
                 (SELECT COUNT(*)
                    FROM pindou_favorites favorites
-                   JOIN pindou_works works ON works.id = favorites.work_id
-                  WHERE favorites.user_id = users.id AND works.deleted_at IS NULL) AS favorite_count,
+                   JOIN pindou_works works
+                     ON works.id = favorites.work_id AND works.user_id = favorites.user_id
+                  WHERE favorites.user_id = users.id
+                    AND favorites.deleted_at IS NULL
+                    AND works.deleted_at IS NULL) AS favorite_count,
                 (SELECT COUNT(*)
                    FROM pindou_download_records downloads
                   WHERE downloads.user_id = users.id) AS download_count
@@ -331,7 +334,12 @@ export class PostgresUserProfileService implements UserProfileService {
           WHERE user_id = $1`,
         [userId, now],
       );
-      await client.query("DELETE FROM pindou_favorites WHERE user_id = $1", [userId]);
+      await client.query(
+        `UPDATE pindou_favorites
+            SET deleted_at = COALESCE(deleted_at, $2)
+          WHERE user_id = $1`,
+        [userId, now],
+      );
       const files = await client.query<DeletedFileAssetRow>(
         `UPDATE pindou_file_assets
             SET deleted_at = COALESCE(deleted_at, $2)

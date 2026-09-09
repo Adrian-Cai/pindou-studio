@@ -93,6 +93,8 @@ erDiagram
       varchar32 user_id PK_FK
       varchar32 work_id PK_FK
       timestamptz created_at
+      timestamptz favorited_at
+      timestamptz deleted_at
     }
 
     pindou_download_records {

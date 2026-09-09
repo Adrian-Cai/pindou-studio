@@ -4,6 +4,7 @@ import {
   cloudSummaryToWorkItem,
   hasCloudSession,
   saveNewCloudWork,
+  setCloudFavorite,
 } from '../../services/work-service'
 import { checkImageContent } from '../../services/content-security-service'
 import { prepareImageForContentSecurity } from '../../services/image-service'
@@ -37,7 +38,13 @@ export async function syncLocalWorksToCloud(): Promise<LocalWorkSyncResult> {
       const securityImagePath = await prepareImageForContentSecurity(work.coverPath)
       await checkImageContent(securityImagePath)
       const summary = await saveNewCloudWork(draft, work.coverPath, work.title)
-      appStore.replaceLocalWorkWithCloud(work.id, cloudSummaryToWorkItem(summary))
+      const wasFavorite = state.favoriteIds.includes(work.id)
+      const favorite = wasFavorite ? await setCloudFavorite(summary.id, true) : null
+      const cloudWork = cloudSummaryToWorkItem(summary)
+      appStore.replaceLocalWorkWithCloud(work.id, {
+        ...cloudWork,
+        ...(favorite?.favoritedAt ? { favoritedAt: Date.parse(favorite.favoritedAt) } : {}),
+      })
       uploaded += 1
     } catch (error) {
       failed += 1

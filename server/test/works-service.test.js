@@ -48,11 +48,16 @@ test("list query does not load cells and detail query maps the persisted pattern
   const listRow = row("work_list");
   const detailRow = row("work_detail");
   let listSql = "";
+  let detailSql = "";
   const pool = {
     async query(sql) {
       if (sql.includes("COUNT(*)")) return { rows: [{ total_count: "1" }] };
-      if (sql.includes("FROM pindou_works works") && sql.includes("is_favorite")) { listSql = sql; return { rows: [{ ...listRow, is_favorite: true }] }; }
-      return { rows: [detailRow] };
+      if (sql.includes("is_favorite") && !sql.includes("patterns.schema_version")) {
+        listSql = sql;
+        return { rows: [{ ...listRow, is_favorite: true }] };
+      }
+      detailSql = sql;
+      return { rows: [{ ...detailRow, is_favorite: true }] };
     },
   };
   const service = new PostgresWorkService(pool);
@@ -62,9 +67,11 @@ test("list query does not load cells and detail query maps the persisted pattern
   assert.equal(list.items[0].pattern, undefined);
   assert.equal(listSql.includes("cells_json"), false);
   assert.equal(listSql.includes("pindou_work_patterns"), false);
+  assert.match(listSql, /favorites\.deleted_at IS NULL/u);
   const detail = await service.get("usr_current", "work_detail");
   assert.equal(detail.pattern.cells.length, 1024);
   assert.equal(detail.pattern.cells[1], 1);
+  assert.match(detailSql, /favorites\.deleted_at IS NULL/u);
 });
 
 test("update replaces edited pattern and derived summary in one transaction", async () => {

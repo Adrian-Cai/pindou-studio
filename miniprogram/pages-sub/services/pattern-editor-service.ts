@@ -2,25 +2,12 @@
 
 export interface PatternCanvasContext {
   fillStyle: string
-  strokeStyle: string
-  lineWidth: number
   globalAlpha: number
-  font: string
-  textAlign: string
-  textBaseline: string
   scale(x: number, y: number): void
   fillRect(x: number, y: number, width: number, height: number): void
-  clearRect(x: number, y: number, width: number, height: number): void
-  strokeRect(x: number, y: number, width: number, height: number): void
   beginPath(): void
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void
   fill(): void
-  stroke(): void
-  fillText(text: string, x: number, y: number): void
-  save(): void
-  restore(): void
-  clip(): void
-  rect(x: number, y: number, width: number, height: number): void
 }
 
 /** 鐭╁舰浣嶇疆涓庡昂瀵革紙CSS 鍍忕礌锛?*/
@@ -296,153 +283,6 @@ export function screenPointToGridCell(
     return null
   }
   return { row, column, index: row * draft.settings.width + column }
-}
-
-/** 灏?grid cell 姝ｅ悜鏄犲皠鍒?viewport 灞€閮ㄥ潗鏍囷紝鐢ㄤ簬缁樺埗鍥哄畾绾垮鐨勯€変腑妗嗐€?*/
-export function gridCellToViewportRect(
-  cell: GridCell,
-  image: FittedImageSize,
-  transform: ViewTransform,
-  viewportWidth: number,
-  viewportHeight: number,
-): CanvasRect {
-  const width = image.cellWidth * transform.scale
-  const height = image.cellHeight * transform.scale
-  const imageLeft = viewportWidth / 2 + transform.translateX - image.width * transform.scale / 2
-  const imageTop = viewportHeight / 2 + transform.translateY - image.height * transform.scale / 2
-  return {
-    left: imageLeft + cell.column * width,
-    top: imageTop + cell.row * height,
-    width,
-    height,
-  }
-}
-
-/**
- * 鏀惧ぇ闀滄覆鏌擄細鐩存帴璇诲彇 grid 鏁版嵁閲嶇粯锛屼繚璇佹竻鏅板害
- * @param magCtx        鏀惧ぇ闀?canvas 鐨?2d context锛堝凡鎸?pixelRatio scale锛? * @param magSize       鏀惧ぇ闀?canvas 鐨?CSS 杈归暱锛坧x锛? * @param centerRow     涓績琛? * @param centerColumn  涓績鍒? * @param draft         褰撳墠鑽夌
- * @param halfGrid      鍗婂緞鏍兼暟锛岄粯璁?3 鈫?鏄剧ず 7脳7
- */
-export function drawMagnifier(
-  magCtx: PatternCanvasContext,
-  magSize: number,
-  centerRow: number,
-  centerColumn: number,
-  draft: PatternDraft,
-  halfGrid = 3,
-): void {
-  const gridSpan = halfGrid * 2 + 1
-  const cellSize = magSize / gridSpan
-  const radius = cellSize * 0.44
-  const totalRows = draft.settings.height
-  const totalCols = draft.settings.width
-
-  // 鑳屾櫙
-  magCtx.fillStyle = '#f0f0f0'
-  magCtx.fillRect(0, 0, magSize, magSize)
-
-  for (let dr = -halfGrid; dr <= halfGrid; dr++) {
-    for (let dc = -halfGrid; dc <= halfGrid; dc++) {
-      const row = centerRow + dr
-      const col = centerColumn + dc
-      const px = (dc + halfGrid) * cellSize
-      const py = (dr + halfGrid) * cellSize
-      const cx = px + cellSize / 2
-      const cy = py + cellSize / 2
-      const isCenter = dr === 0 && dc === 0
-
-      if (row < 0 || row >= totalRows || col < 0 || col >= totalCols) {
-        // 越界格子使用浅灰填充
-        magCtx.globalAlpha = 0.3
-        magCtx.fillStyle = '#cccccc'
-        magCtx.fillRect(px, py, cellSize, cellSize)
-        magCtx.globalAlpha = 1
-        continue
-      }
-
-      const cell = draft.cells[row * totalCols + col]
-      if (!cell || cell.color === 'transparent') {
-        // 閫忔槑鏍硷細鏄剧ず鏍肩嚎
-        magCtx.globalAlpha = 0.12
-        magCtx.fillStyle = '#aaaaaa'
-        magCtx.fillRect(px, py, cellSize, cellSize)
-        magCtx.globalAlpha = 1
-      } else {
-        // 鎶曞奖
-        magCtx.globalAlpha = 0.18
-        magCtx.fillStyle = '#000000'
-        magCtx.beginPath()
-        magCtx.arc(cx + cellSize * 0.06, cy + cellSize * 0.08, radius, 0, Math.PI * 2)
-        magCtx.fill()
-        magCtx.globalAlpha = 1
-
-        // 鎷艰眴涓讳綋
-        magCtx.fillStyle = cell.color
-        magCtx.beginPath()
-        magCtx.arc(cx, cy, radius, 0, Math.PI * 2)
-        magCtx.fill()
-
-        // 楂樺厜
-        if (radius >= 3) {
-          magCtx.globalAlpha = 0.34
-          magCtx.fillStyle = '#ffffff'
-          magCtx.beginPath()
-          magCtx.arc(cx - radius * 0.32, cy - radius * 0.34, radius * 0.22, 0, Math.PI * 2)
-          magCtx.fill()
-          magCtx.globalAlpha = 1
-        }
-      }
-
-      // 中心格高亮描边
-      if (isCenter) {
-        magCtx.strokeStyle = '#ffffff'
-        magCtx.lineWidth = 3
-        magCtx.strokeRect(px + 1.5, py + 1.5, cellSize - 3, cellSize - 3)
-        magCtx.strokeStyle = '#1677ff'
-        magCtx.lineWidth = 2
-        magCtx.strokeRect(px + 3, py + 3, cellSize - 6, cellSize - 6)
-
-      }
-
-      // 鏍肩嚎鍒嗛殧
-      magCtx.globalAlpha = 0.08
-      magCtx.strokeStyle = '#000000'
-      magCtx.lineWidth = 0.5
-      magCtx.strokeRect(px, py, cellSize, cellSize)
-      magCtx.globalAlpha = 1
-    }
-  }
-
-  // 涓績鍗佸瓧鍑嗘槦
-  const half = magSize / 2
-  magCtx.strokeStyle = 'rgba(22,119,255,0.75)'
-  magCtx.lineWidth = 1
-  magCtx.globalAlpha = 0.5
-  const cs = cellSize
-  const midX = half
-  const midY = half
-  magCtx.beginPath()
-  magCtx.rect(midX - cs / 2, midY - cs / 2, cs, cs)
-  magCtx.stroke()
-  magCtx.globalAlpha = 1
-
-  const captionTop = magSize
-  const captionHeight = 48
-  const code = draft.cells[centerRow * totalCols + centerColumn]?.colorCode || '空白'
-  magCtx.fillStyle = '#ffffff'
-  magCtx.fillRect(0, captionTop, magSize, captionHeight)
-  magCtx.fillStyle = '#1677ff'
-  magCtx.fillRect(0, captionTop, magSize, 2)
-  magCtx.fillStyle = '#172033'
-  magCtx.font = '600 12px sans-serif'
-  magCtx.textAlign = 'center'
-  magCtx.textBaseline = 'middle'
-  magCtx.fillText(`第${centerRow + 1} 行 · 第${centerColumn + 1} 列`, magSize / 2, captionTop + 16)
-  magCtx.fillStyle = '#eaf3ff'
-  magCtx.fillRect(magSize / 2 - 22, captionTop + 27, 44, 18)
-  magCtx.fillStyle = '#0b63ce'
-  magCtx.font = '700 11px sans-serif'
-  magCtx.fillText(code, magSize / 2, captionTop + 36)
 }
 
 export function fillConnectedCells(

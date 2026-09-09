@@ -1,8 +1,18 @@
 import type { WorkItem } from '../../models/pattern'
+import {
+  cloudSummaryToWorkItem,
+  fetchCloudFavorites,
+  hasCloudSession,
+  setCloudFavorite,
+} from '../../services/work-service'
 import { appStore } from '../../store/app-store'
 
 type FavoriteTab = 'all' | 'recent' | 'inspiration' | 'completed'
-type FavoriteView = WorkItem & { dateText: string; dimensions: string }
+type FavoriteView = Omit<WorkItem, 'favoritedAt'> & {
+  favoritedAt: number
+  dateText: string
+  dimensions: string
+}
 
 const tabs = [
   { id: 'all', label: '全部' },
@@ -22,10 +32,27 @@ Page({
   },
 
   onShow() {
-    this.refreshFavorites()
+    void this.refreshFavorites()
   },
 
-  refreshFavorites() {
+  async refreshFavorites() {
+    if (hasCloudSession()) {
+      try {
+        let response = await fetchCloudFavorites()
+        const cloudFavorites = [...response.items]
+        while (cloudFavorites.length < response.total && response.items.length > 0) {
+          response = await fetchCloudFavorites({
+            page: response.page + 1,
+            pageSize: response.pageSize,
+          })
+          cloudFavorites.push(...response.items)
+        }
+        appStore.replaceCloudFavorites(cloudFavorites.map(cloudSummaryToWorkItem))
+      } catch (error) {
+        console.error('读取云端收藏失败', error)
+        wx.showToast({ title: '云端收藏加载失败，已显示本地缓存', icon: 'none' })
+      }
+    }
     const state = appStore.getSnapshot()
     const draft = state.currentDraft
     const allWorks = state.works
@@ -33,15 +60,18 @@ Page({
       .map((work) => {
         const width = work.width ?? (draft?.id === work.id ? draft.settings.width : 0)
         const height = work.height ?? (draft?.id === work.id ? draft.settings.height : 0)
+        const favoritedAt = work.favoritedAt ?? work.updatedAt
         return {
           ...work,
-          dateText: formatDate(work.updatedAt),
+          favoritedAt,
+          dateText: formatDate(favoritedAt),
           dimensions: width && height ? `${width}×${height}` : '尺寸待同步',
         }
       })
+      .sort((a, b) => b.favoritedAt - a.favoritedAt)
     this.setData({
       allWorks,
-      recentCount: allWorks.filter((work) => isRecent(work.updatedAt)).length,
+      recentCount: allWorks.filter((work) => isRecent(work.favoritedAt)).length,
     }, () => this.applyFilters())
   },
 
@@ -58,7 +88,7 @@ Page({
     const activeTab = this.data.activeTab
     const works = this.data.allWorks.filter((work) => {
       if (query && !work.title.toLowerCase().includes(query)) return false
-      if (activeTab === 'recent') return isRecent(work.updatedAt)
+      if (activeTab === 'recent') return isRecent(work.favoritedAt)
       if (activeTab === 'inspiration') return work.status === 'draft'
       if (activeTab === 'completed') return work.status !== 'draft'
       return true
@@ -72,7 +102,7 @@ Page({
       success: ({ tapIndex }) => {
         const allWorks = [...this.data.allWorks]
         allWorks.sort(tapIndex === 0
-          ? (a, b) => b.updatedAt - a.updatedAt
+          ? (a, b) => b.favoritedAt - a.favoritedAt
           : (a, b) => a.title.localeCompare(b.title, 'zh-CN'))
         this.setData({ allWorks }, () => this.applyFilters())
       },
@@ -88,11 +118,22 @@ Page({
     wx.showToast({ title: '历史作品详情服务待接入', icon: 'none' })
   },
 
-  removeFavorite(event: WechatMiniprogram.TouchEvent) {
+  async removeFavorite(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
-    appStore.toggleFavorite(id)
-    this.refreshFavorites()
-    wx.showToast({ title: '已取消收藏', icon: 'none' })
+    const work = appStore.getSnapshot().works.find((item) => item.id === id)
+    if (!work) return
+    wx.showLoading({ title: '正在取消', mask: true })
+    try {
+      if (work.isCloud) await setCloudFavorite(id, false)
+      appStore.setFavorite(id, false)
+      await this.refreshFavorites()
+      wx.hideLoading()
+      wx.showToast({ title: '已取消收藏', icon: 'none' })
+    } catch (error) {
+      console.error('取消收藏失败', error)
+      wx.hideLoading()
+      wx.showToast({ title: '取消收藏失败，请重试', icon: 'none' })
+    }
   },
 
   downloadWork() {

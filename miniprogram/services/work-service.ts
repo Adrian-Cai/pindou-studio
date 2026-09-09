@@ -25,11 +25,28 @@ export interface CloudWorkDetail extends CloudWorkSummary {
   pattern: PersistedPattern
 }
 
+export interface CloudFavoriteSummary extends CloudWorkSummary {
+  favoritedAt: string
+}
+
 interface WorkListResponse {
   total: number
   page: number
   pageSize: number
   items: CloudWorkSummary[]
+}
+
+interface FavoriteListResponse {
+  total: number
+  page: number
+  pageSize: number
+  items: CloudFavoriteSummary[]
+}
+
+interface FavoriteUpdateResponse {
+  workId: string
+  isFavorite: boolean
+  favoritedAt: string | null
 }
 
 export function hasCloudSession(): boolean {
@@ -91,6 +108,42 @@ export async function fetchCloudWork(workId: string): Promise<CloudWorkDetail> {
   return parseWorkDetail(response)
 }
 
+export async function fetchCloudFavorites(options: {
+  page?: number
+  pageSize?: number
+} = {}): Promise<FavoriteListResponse> {
+  const query = [
+    `page=${options.page ?? 1}`,
+    `pageSize=${options.pageSize ?? 50}`,
+  ].join('&')
+  const response = await apiRequest<unknown>({
+    path: `/api/favorites?${query}`,
+    token: requireToken(),
+  })
+  return parseFavoriteList(response)
+}
+
+export async function setCloudFavorite(workId: string, favorite: boolean): Promise<FavoriteUpdateResponse> {
+  const response = await apiRequest<unknown>({
+    path: `/api/works/${encodeURIComponent(workId)}/favorite`,
+    method: 'PATCH',
+    token: requireToken(),
+    data: { favorite },
+  })
+  const favoritedAt = response && isRecord(response) ? response.favoritedAt : undefined
+  if (!isRecord(response)
+    || response.workId !== workId
+    || response.isFavorite !== favorite
+    || (favorite
+      ? typeof favoritedAt !== 'string' || !Number.isFinite(Date.parse(favoritedAt))
+      : favoritedAt !== null)) throw invalidResponse()
+  return {
+    workId: response.workId,
+    isFavorite: response.isFavorite,
+    favoritedAt: favoritedAt as string | null,
+  }
+}
+
 export async function deleteCloudWork(workId: string): Promise<void> {
   await apiRequest<unknown>({
     path: `/api/works/${encodeURIComponent(workId)}`,
@@ -99,7 +152,7 @@ export async function deleteCloudWork(workId: string): Promise<void> {
   })
 }
 
-export function cloudSummaryToWorkItem(summary: CloudWorkSummary): WorkItem {
+export function cloudSummaryToWorkItem(summary: CloudWorkSummary | CloudFavoriteSummary): WorkItem {
   return {
     id: summary.id,
     title: summary.title,
@@ -112,6 +165,7 @@ export function cloudSummaryToWorkItem(summary: CloudWorkSummary): WorkItem {
     height: summary.height,
     status: summary.status,
     isCloud: true,
+    ...('favoritedAt' in summary ? { favoritedAt: Date.parse(summary.favoritedAt) } : {}),
   }
 }
 
@@ -217,6 +271,22 @@ function parseWorkList(value: unknown): WorkListResponse {
     page: value.page,
     pageSize: value.pageSize,
     items: value.items.map(parseWorkSummary),
+  }
+}
+
+function parseFavoriteList(value: unknown): FavoriteListResponse {
+  if (!isRecord(value) || !isFiniteNumber(value.total) || !isFiniteNumber(value.page)
+    || !isFiniteNumber(value.pageSize) || !Array.isArray(value.items)) throw invalidResponse()
+  return {
+    total: value.total,
+    page: value.page,
+    pageSize: value.pageSize,
+    items: value.items.map((item) => {
+      const summary = parseWorkSummary(item)
+      if (!isRecord(item) || typeof item.favoritedAt !== 'string'
+        || !Number.isFinite(Date.parse(item.favoritedAt))) throw invalidResponse()
+      return { ...summary, favoritedAt: item.favoritedAt }
+    }),
   }
 }
 

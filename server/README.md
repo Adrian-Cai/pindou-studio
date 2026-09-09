@@ -29,10 +29,10 @@ node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'
 已有数据库部署本版本前，先由 `pindou_*` 表 owner 执行以下迁移，再执行 `npm run db:inspect`：
 
 ```powershell
-psql "<由运维安全提供的迁移连接>" -v ON_ERROR_STOP=1 -f sql/005_release_deleted_account_openid.sql
+psql "<由运维安全提供的迁移连接>" -v ON_ERROR_STOP=1 -f sql/006_favorites_soft_delete.sql
 ```
 
-该迁移会释放已注销账号的微信标识；同一微信后续登录将创建全新的账号，而不会恢复旧数据。
+迁移必须按编号顺序执行；`006_favorites_soft_delete.sql` 会回填历史收藏时间，增加收藏软删除字段与有效收藏时间索引。部署代码前必须先完成该迁移，否则结构校验会阻止服务启动。
 
 健康检查：
 
@@ -106,7 +106,7 @@ type=cover
 
 ## 阶段 3、4 接口
 
-收藏接口包括 `PATCH /api/works/:id/favorite` 和 `GET /api/favorites`，只允许操作当前登录用户自己的可用作品
+收藏接口包括 `PATCH /api/works/:id/favorite` 和 `GET /api/favorites`，只允许操作当前登录用户自己的可用作品。收藏关系使用软删除；重复收藏或取消不会刷新时间，重新收藏会更新 `favoritedAt`，收藏列表按该字段倒序返回。
 
 `GET /api/quota/me` 从额度流水汇总当前用户额度，并按 `Asia/Shanghai` 自然日懒创建每日免费额度流水；数据库中的 `created_at` 仍使用 UTC 时间`GET /api/downloads` 只返回下载记录和作品标题快照，不返回文件 URL
 

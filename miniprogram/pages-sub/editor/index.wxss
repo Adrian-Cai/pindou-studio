@@ -84,19 +84,6 @@ page {
   background: #f7f7f7;
 }
 
-.target-highlight {
-  position: absolute;
-  z-index: 2;
-  box-sizing: border-box;
-  border: 2px solid #1677ff;
-  background: rgba(22, 119, 255, 0.16);
-  box-shadow:
-    0 0 0 1px #ffffff,
-    0 0 0 3px rgba(22, 119, 255, 0.32);
-  pointer-events: none;
-}
-
-
 /* ─── 缩放控制 ───────────────────────────────────────────────── */
 
 .zoom-control {
@@ -324,32 +311,6 @@ page {
   transform: scale(0.97);
 }
 
-
-/* ─── 放大镜 ─────────────────────────────────────────────────── */
-
-.magnifier {
-  position: fixed;
-  z-index: 999;
-  box-sizing: border-box;
-  width: 156px;
-  height: 204px;
-  padding: 6px;
-  border: 2px solid #1677ff;
-  border-radius: 16px;
-  background: #ffffff;
-  box-shadow:
-    0 8rpx 32rpx rgba(0, 0, 0, 0.22),
-    0 2rpx 8rpx rgba(22, 119, 255, 0.22);
-  pointer-events: none;
-}
-
-.magnifier-canvas {
-  display: block;
-  width: 140px;
-  height: 188px;
-  overflow: hidden;
-  border-radius: 9px;
-}
 
 .export-pattern-canvas {
   position: fixed;

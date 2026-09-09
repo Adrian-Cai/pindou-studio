@@ -19,11 +19,6 @@
             type="2d"
           ></canvas>
         </view>
-        <view
-          wx:if="{{targetHighlight.visible}}"
-          class="target-highlight"
-          style="top: {{targetHighlight.top}}px; left: {{targetHighlight.left}}px; width: {{targetHighlight.width}}px; height: {{targetHighlight.height}}px;"
-        ></view>
       </view>
 
       <!-- ── 缩放控制 ── -->
@@ -93,20 +88,6 @@
       </view>
 
     </view>
-  </view>
-
-  <!-- 放大镜 overlay -->
-  <view
-    wx:if="{{magnifier.visible}}"
-    class="magnifier"
-    style="top: {{magnifier.top}}px; left: {{magnifier.left}}px;"
-  >
-    <canvas
-      id="magnifierCanvas"
-      class="magnifier-canvas"
-      type="2d"
-      aria-label="第 {{magnifier.row}} 行，第 {{magnifier.column}} 列，当前色号 {{magnifier.colorCode}}"
-    ></canvas>
   </view>
 
   <canvas

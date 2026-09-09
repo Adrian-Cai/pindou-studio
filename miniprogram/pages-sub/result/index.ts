@@ -7,7 +7,7 @@ import {
   friendlyDownloadError,
   saveImageToAlbum,
 } from '../services/result-download-service'
-import { cloudSummaryToWorkItem, renameCloudWork } from '../../services/work-service'
+import { cloudSummaryToWorkItem, renameCloudWork, setCloudFavorite } from '../../services/work-service'
 import {
   cloudDownloadToLocalRecord,
   createDownload,
@@ -236,18 +236,23 @@ Page({
     this.setData({ paletteExpanded: !this.data.paletteExpanded })
   },
 
-  toggleFavorite() {
+  async toggleFavorite() {
     const draft = this.data.draft
     if (!draft || this.data.favoriteUpdating) return
     const previousIsFavorite = this.data.isFavorite
     const isFavorite = !this.data.isFavorite
+    const work = appStore.getSnapshot().works.find((item) => item.id === draft.id)
 
     this.setData({ favoriteUpdating: true })
     try {
-      appStore.toggleFavorite(draft.id)
+      const response = work?.isCloud
+        ? await setCloudFavorite(draft.id, isFavorite)
+        : null
+      const favoritedAt = response?.favoritedAt ? Date.parse(response.favoritedAt) : Date.now()
+      appStore.setFavorite(draft.id, isFavorite, favoritedAt)
       this.setData({ isFavorite })
       wx.showToast({ title: isFavorite ? '已收藏' : '已取消收藏', icon: 'none', duration: 1500 })
-      wx.nextTick(() => this.setData({ favoriteUpdating: false }))
+      this.setData({ favoriteUpdating: false })
     } catch (error) {
       console.error('切换收藏状态失败', error)
       this.setData({ isFavorite: previousIsFavorite, favoriteUpdating: false })

@@ -44,6 +44,8 @@ test("current user response supports nullable profile and summarizes owned data"
   });
   assert.deepEqual(calls[0].parameters, ["usr_test"]);
   assert.deepEqual(calls[1].parameters, ["usr_test", "2026-08-26"]);
+  assert.match(calls[0].sql, /favorites\.deleted_at IS NULL/u);
+  assert.match(calls[0].sql, /works\.deleted_at IS NULL/u);
 });
 
 test("missing current user is unauthorized", async () => {

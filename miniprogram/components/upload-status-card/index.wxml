@@ -45,7 +45,10 @@
           <view class="upload-status-card__status-icon upload-status-card__status-icon--success" aria-hidden="true"></view>
           <view class="upload-status-card__title">图片已通过检测</view>
         </view>
-        <view class="upload-status-card__description">可以继续选择生成方式</view>
+        <view class="upload-status-card__result-note">
+          <view class="upload-status-card__result-note-line">图片符合要求，可继续使用</view>
+          <view class="upload-status-card__result-note-line">可用于生成拼豆图纸</view>
+        </view>
       </block>
 
       <block wx:elif="{{uploadStatus === 'rejected'}}">

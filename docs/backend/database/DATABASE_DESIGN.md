@@ -238,13 +238,17 @@ pindou_users
 | --- | --- | --- | --- |
 | `user_id` | varchar(32) | PK 组合, FK | 当前用户 |
 | `work_id` | varchar(32) | PK 组合, FK | 被收藏作品 |
-| `created_at` | timestamp | NOT NULL | 收藏时间 |
+| `created_at` | timestamptz | NOT NULL | 首次建立收藏关系的时间，永久不变 |
+| `favorited_at` | timestamptz | NOT NULL | 最近一次进入有效收藏状态的时间 |
+| `deleted_at` | timestamptz | NULL | 取消收藏时间；`NULL` 表示当前有效 |
 
 主键/唯一约束：`(user_id, work_id)`
 
 第一版不支持收藏他人的非公开作品；作品分享能力后续另行建模
 
-索引：`(user_id, created_at DESC)`
+索引：保留 `(user_id, created_at DESC)`，新增 `(user_id, favorited_at DESC) WHERE deleted_at IS NULL`
+
+收藏关系采用软删除：取消收藏只写 `deleted_at`，重新收藏复用原记录、清空 `deleted_at` 并刷新 `favorited_at`。所有当前收藏状态、列表和统计必须过滤 `deleted_at IS NULL`；收藏操作不得修改作品的 `updated_at`。
 
 ### 3.7 `pindou_download_records`
 
@@ -410,7 +414,7 @@ pindou_users
 | `pindou_auth_sessions` | `token_hash UNIQUE`、`expires_at` | 快速鉴权与过期清理 |
 | `pindou_works` | `(user_id, updated_at)` | 作品列表 |
 | `pindou_work_patterns` | `work_id PK/FK` | 一对一图案恢复 |
-| `pindou_favorites` | `(user_id, work_id) UNIQUE` | 收藏操作幂等 |
+| `pindou_favorites` | `(user_id, work_id) UNIQUE`；有效收藏 `(user_id, favorited_at DESC) WHERE deleted_at IS NULL` | 收藏操作幂等及最近收藏查询 |
 | `pindou_download_records` | `idempotency_key UNIQUE` | 下载重试不重复扣费 |
 | `pindou_quota_transactions` | 每日免费发放唯一 | 防止重复发放 |
 | `pindou_orders` | `wx_transaction_id UNIQUE` | 支付回调幂等 |

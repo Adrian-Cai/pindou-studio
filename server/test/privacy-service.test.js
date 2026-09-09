@@ -90,7 +90,7 @@ test("account deletion marks assets and physically removes avatar, covers and AI
   assert.match(deleteUserStatement, /openid_ciphertext = NULL/);
   assert.match(statements.find((sql) => sql.includes("UPDATE pindou_auth_sessions")), /UPDATE pindou_auth_sessions/);
   assert.match(statements.find((sql) => sql.includes("UPDATE pindou_works")), /UPDATE pindou_works/);
-  assert.match(statements.find((sql) => sql.includes("DELETE FROM pindou_favorites")), /DELETE FROM pindou_favorites/);
+  assert.match(statements.find((sql) => sql.includes("UPDATE pindou_favorites")), /deleted_at = COALESCE\(deleted_at, \$2\)/);
   assert.match(statements.find((sql) => sql.includes("UPDATE pindou_file_assets")), /UPDATE pindou_file_assets/);
   assert.equal(statements.at(-1), "COMMIT");
   assert.equal(statements.some((sql) => /pindou_orders|pindou_quota_transactions/.test(sql)), false);

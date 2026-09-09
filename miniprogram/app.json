@@ -19,7 +19,9 @@
         "feedback/index",
         "recharge/index",
         "payment-success/index",
-        "settings/index"
+        "settings/index",
+        "account/index",
+        "profile-edit/index"
       ]
     }
   ],

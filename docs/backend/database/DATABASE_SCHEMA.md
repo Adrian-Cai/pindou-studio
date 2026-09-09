@@ -200,9 +200,10 @@ pindou_users
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
 | `user_id` | `varchar(32)` | 否 | 用户 ID |
-| `quota_kind` | `varchar(30)` | 否 | `standard_download` / `ai_generation` |
 | `work_id` | `varchar(32)` | 否 | 作品 ID |
-| `created_at` | `timestamptz` | 否 | 收藏时间 |
+| `created_at` | `timestamptz` | 否 | 首次建立收藏关系的时间，永久不变 |
+| `favorited_at` | `timestamptz` | 否 | 最近一次进入有效收藏状态的时间 |
+| `deleted_at` | `timestamptz` | 是 | 取消收藏时间；`NULL` 表示当前有效 |
 
 主要约束/索引：
 
@@ -210,6 +211,7 @@ pindou_users
 - FK：`user_id -> pindou_users.id`
 - FK：`work_id -> pindou_works.id`
 - INDEX：`(user_id, created_at)`
+- 部分 INDEX：`(user_id, favorited_at DESC) WHERE deleted_at IS NULL`
 
 ## 8. `pindou_download_records`
 
