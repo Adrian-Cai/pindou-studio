@@ -85,7 +85,7 @@
     </view>
 
     <view wx:else class="empty-state">
-      <view class="empty-state__icon">▧</view>
+      <image class="empty-state__icon" src="/assets/icons/project-empty.svg" mode="aspectFit" />
       <view class="empty-state__title">{{loading ? '正在读取作品' : (allWorks.length ? '没有匹配的作品' : '还没有作品')}}</view>
       <view class="empty-state__desc">{{loading ? '正在同步云端数据，请稍候' : (allWorks.length ? '换个关键词或筛选条件试试' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸')}}</view>
       <button wx:if="{{!loading && !allWorks.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
