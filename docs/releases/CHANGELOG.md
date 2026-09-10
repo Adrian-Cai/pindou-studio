@@ -1,11 +1,28 @@
 # CHANGELOG
 
-## 0.28.7
+## 0.28.9
 
 - 修复 CNB 流水线「健康检查」阶段永久失败（`健康检查失败，查看最近日志：` + 60 次 `尝试 N/60: HTTP 000000` + `docker compose logs --tail 50 api` 只出现 `The "DB_NAME" variable is not set. Defaulting to a blank string.` 无关 env 告警）：根因是 `.cnb.yml` 健康检查 `ssh ... 'bash -s' <<'REMOTE'` 把远端命令用引号包成**单个参数**。CNB Runner 用 sh 执行脚本，sh 把 `ssh ... 'bash -s' <<'REMOTE'` 解析为「远端命令在 quoting 层、heredoc 在命令层」，于是 heredoc 正文被喂给**本地** sh 而不是远端。远端只收到 EOF 空脚本，立刻成功退出；本地 sh 则把远端脚本按脚本语言执行——日志里每次尝试打印两遍 `HTTP 000000`（`%{http_code}` 输出 `000`，再被 `|| echo 000` 追加）正是本地 sh 回显（远端只回一次）导致的，平台日志渲染把双份压成了一个。修复：远端命令不再加引号，并显式声明解释器 `bash -s <<'REMOTE'`；heredoc 正文与结束标识 `REMOTE` 顶格对齐。
 - 同类问题一并加固：部署阶段 `ssh ... sh -s --` 改显式为 `bash -s --`（远端脚本含 `set -eu` 与 `for ... do`，不应依赖远端登录 shell 的解析行为）。
 - 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
 
+## 0.28.8
+
+- 修复 CNB 流水线生产部署失败（`archive/tar: invalid tar header`，Stage「SSH 部署到生产服务器」）：根因是搬运 postgres 镜像时写成 `docker pull -q postgres:17-bookworm && docker save postgres:17-bookworm` 并把整个命令组重定向进 `ssh ... docker load`，`docker pull -q` 也会向 stdout 打印 `Loaded image: postgres:17-bookworm`，该文本被混进 save 产生的 tar 流前部，远端 `docker load` 以 `archive/tar: invalid tar header` 失败。项目镜像那条 `docker save` 是纯 tar 输出，所以先 load 成功，日志中 `Loaded image: ...pindou-studio:latest` 之后的报错即来自 postgres 那条。
+- 修复方式：`docker pull -q postgres:17-bookworm` 独立成行执行，仅把 `docker save postgres:17-bookworm` 的 stdout 重定向到 ssh 管道，stdout 只保留 tar 内容。master push 与 web 端「部署 production」（`tag_deploy.production`）两处同步修正。
+- 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
+
+## 0.28.7
+
+- 修复生产部署在已有数据库缺少 `idx_pindou_orders_user_created` 时持续健康检查失败的问题：部署流程现在先等待 PostgreSQL 健康，再执行幂等订单索引迁移，最后启动并等待 API，避免 API 因 Schema Contract 不一致反复重启。
+- CNB master push、CNB `tag_deploy.production` 和 Jenkins 部署流程同步修正；数据库数据仍使用原有持久化挂载，不删除或重建数据卷。
+- 修复 CNB 流水线生产部署失败（`error from registry: Blocked By Network Policy. 网络策略拦截。`）：根因是生产服务器出网被网络策略拦截，无法访问 `docker.cnb.cool`（也无法访问公共 Docker Hub）。此前部署依赖服务器执行 `docker compose pull`，一旦服务器本地没有待部署镜像就会联网并被拦截，整条部署流水线失败。历史上个别构建「看似成功」只是因为服务器本地已缓存了该镜像 Tag（如 `latest` 未变），并非真的拉取成功。
+- 修复方式：不再让服务器联网拉取。改为在构建容器内 `docker save` 镜像，通过 ssh 管道直接 `docker load` 到服务器（构建容器可正常访问制品库），随后由远端 `docker compose up -d` 直接使用本地镜像。这是覆盖 0.28.6「改用仓库部署令牌让服务器自行拉取」的替代方案：0.28.6 仍需服务器出网，未解决网络策略拦截本身。
+- `deploy/compose.yaml` 中的 `postgres:17-bookworm` 是公网镜像，服务器同样拉不到，因此在部署阶段一并从构建容器搬运到服务器。
+- 移除已无用的制品库凭证注入逻辑（`REGISTRY_AUTH` / `CNB_REGISTRY_DEPLOY_TOKEN` / `/root/.docker/config.json`）：镜像已由 ssh 管道送入，服务器不再需要任何 registry 凭据，少一条会随 Token 失效的凭据链路。
+- 远端拉取前的 `docker compose pull` 改为 `docker image inspect` 断言，镜像未就位时立即失败并给出明确原因，避免部署到旧镜像。
+- master push 与 web 端「部署 production」（`tag_deploy.production`）两处部署脚本同步修正。
+- 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
 
 ## 0.28.6
 
@@ -18,6 +35,7 @@
 
 - 修复 CNB 流水线生产部署失败（`unable to get image ':': Error response from daemon: invalid reference format`）：根因是上一版把部署脚本改为 `ssh ... sh -s -- <参数> <<'REMOTE'` heredoc 传参时，远端只写了 `IMAGE_REPO="$3"`、`IMAGE_TAG="$4"`，没有 `export`。远端 `docker compose` 读不到这两个非导出变量，`deploy/compose.yaml` 的 `${IMAGE_REPO}:${IMAGE_TAG}` 插值成空串，compose 以空镜像名直接失败（日志同时出现 `The "IMAGE_REPO" variable is not set`、`The "IMAGE_TAG" variable is not set`）。
 - 修复方式：远端改为 `export IMAGE_REPO="$3"`、`export IMAGE_TAG="$4"`，镜像地址与 Tag 显式进入远端环境，供 compose 插值；master push 与 web 端「部署 production」（`tag_deploy.production`）两处部署脚本同步修正。
+- 同时让 `docker compose pull` 显式加载 `/opt/pindou/config/api.env`，确保 `DB_*` 与镜像变量在拉取阶段都能完成插值，避免再次出现空镜像引用。
 - 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
 
 ## 0.28.4

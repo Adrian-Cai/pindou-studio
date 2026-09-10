@@ -41,21 +41,23 @@ master:
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p /opt/pindou/deploy"
             scp $SSH_OPTS -P "$SSH_PORT" deploy/compose.yaml \
               "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/compose.yaml"
-            # 流水线内置 CNB_TOKEN 仅在 CNB 构建网络内有效，外部服务器用它拉镜像会被
-            # 制品库以 Blocked By Network Policy 拦截；外部拉取须用仓库部署令牌（只读，
-            # 用户名固定 cnb），由 envs.yml 导入，勿改回内置 CNB_TOKEN
-            : "${CNB_REGISTRY_DEPLOY_TOKEN:?CNB_REGISTRY_DEPLOY_TOKEN 未配置，请在 envs.yml 添加仓库部署令牌}"
-            REGISTRY_AUTH=$(printf '%s:%s' "cnb" "$CNB_REGISTRY_DEPLOY_TOKEN" | base64 -w0)
-            # 用带引号的 heredoc 传远端脚本：避免多层 ssh 双引号嵌套把 JSON 的引号吞掉；
-            # 镜像名与 Tag 须 export 给远端 shell，否则 compose 会以空镜像名报 invalid reference format
+            scp $SSH_OPTS -P "$SSH_PORT" server/sql/008_orders_user_created_index.sql \
+              "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/008_orders_user_created_index.sql"
+            # 服务器出网被网络策略拦截拉不到镜像，改为构建容器 docker save 后经 ssh 管道 load 到服务器
+            IMAGE_REPO="$CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE"
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
+              < <(docker save "$IMAGE_REPO:latest")
+            # compose 里 postgres 是公网镜像，服务器同样拉不到，一并搬运
+            docker pull -q postgres:17-bookworm
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
+              < <(docker save postgres:17-bookworm)
+            # 用带引号的 heredoc 传远端脚本，避免多层 ssh 双引号嵌套被 shell 改写
+            # 远端命令不加引号，否则 heredoc 会被本地 sh 执行
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s -- \
-              "$CNB_DOCKER_REGISTRY" "$REGISTRY_AUTH" \
-              "$CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE" "latest" <<'REMOTE'
+              "$IMAGE_REPO" "latest" <<'REMOTE'
             set -eu
-            REGISTRY="$1"
-            REGISTRY_AUTH="$2"
-            export IMAGE_REPO="$3"
-            export IMAGE_TAG="$4"
+            export IMAGE_REPO="$1"
+            export IMAGE_TAG="$2"
             cd /opt/pindou/deploy
             # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
             test -r /opt/pindou/config/api.env || {
@@ -69,20 +71,19 @@ master:
                 exit 1
               }
             done
-            # 私有镜像需制品库凭证，写入 compose 读取的 docker config，部署后清除
-            mkdir -p /root/.docker
-            printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$REGISTRY_AUTH" \
-              > /root/.docker/config.json
-            # 凭证写入失败或镜像不可拉取时立即失败，避免部署到旧镜像
-            if ! docker compose --env-file /opt/pindou/config/api.env pull; then
-              rm -f /root/.docker/config.json
+            docker image inspect "$IMAGE_REPO:$IMAGE_TAG" > /dev/null || {
+              echo "服务器缺少镜像 $IMAGE_REPO:$IMAGE_TAG，docker load 未成功"
               exit 1
-            fi
+            }
             # 旧容器可能由手工 docker run 或其它 compose 项目创建，无本项目 compose 标签，
             # 直接 up 会报 container name already in use；数据在 bind mount 中，删除容器不影响数据
             docker rm -f pindou-postgres pindou-api 2>/dev/null || true
-            docker compose --env-file /opt/pindou/config/api.env up -d
-            rm -f /root/.docker/config.json
+            # 先启动数据库并完成幂等迁移，再启动 API；否则 API 会因 schema contract 不一致反复重启
+            docker compose --env-file /opt/pindou/config/api.env up -d --wait --wait-timeout 120 postgres
+            docker compose --env-file /opt/pindou/config/api.env exec -T postgres \
+              sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+              < /opt/pindou/deploy/008_orders_user_created_index.sql
+            docker compose --env-file /opt/pindou/config/api.env up -d --wait --wait-timeout 120 api
             REMOTE
         - name: 健康检查
           imports:
@@ -166,21 +167,23 @@ $:
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p /opt/pindou/deploy"
             scp $SSH_OPTS -P "$SSH_PORT" deploy/compose.yaml \
               "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/compose.yaml"
-            # 流水线内置 CNB_TOKEN 仅在 CNB 构建网络内有效，外部服务器用它拉镜像会被
-            # 制品库以 Blocked By Network Policy 拦截；外部拉取须用仓库部署令牌（只读，
-            # 用户名固定 cnb），由 envs.yml 导入，勿改回内置 CNB_TOKEN
-            : "${CNB_REGISTRY_DEPLOY_TOKEN:?CNB_REGISTRY_DEPLOY_TOKEN 未配置，请在 envs.yml 添加仓库部署令牌}"
-            REGISTRY_AUTH=$(printf '%s:%s' "cnb" "$CNB_REGISTRY_DEPLOY_TOKEN" | base64 -w0)
-            # 用带引号的 heredoc 传远端脚本：避免多层 ssh 双引号嵌套把 JSON 的引号吞掉，
-            # 参数经 argv 显式传入，远端只做 %s 替换，不再拼字符串
+            scp $SSH_OPTS -P "$SSH_PORT" server/sql/008_orders_user_created_index.sql \
+              "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/008_orders_user_created_index.sql"
+            # 服务器出网被网络策略拦截拉不到镜像，改为构建容器 docker save 后经 ssh 管道 load 到服务器
+            IMAGE_REPO="$CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE"
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
+              < <(docker save "$IMAGE_REPO:$CNB_BRANCH")
+            # compose 里 postgres 是公网镜像，服务器同样拉不到，一并搬运
+            docker pull -q postgres:17-bookworm
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
+              < <(docker save postgres:17-bookworm)
+            # 用带引号的 heredoc 传远端脚本，避免多层 ssh 双引号嵌套被 shell 改写
+            # 远端命令不加引号，否则 heredoc 会被本地 sh 执行
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s -- \
-              "$CNB_DOCKER_REGISTRY" "$REGISTRY_AUTH" \
-              "$CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE" "$CNB_BRANCH" <<'REMOTE'
+              "$IMAGE_REPO" "$CNB_BRANCH" <<'REMOTE'
             set -eu
-            REGISTRY="$1"
-            REGISTRY_AUTH="$2"
-            export IMAGE_REPO="$3"
-            export IMAGE_TAG="$4"
+            export IMAGE_REPO="$1"
+            export IMAGE_TAG="$2"
             cd /opt/pindou/deploy
             # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
             test -r /opt/pindou/config/api.env || {
@@ -194,18 +197,17 @@ $:
                 exit 1
               }
             done
-            # 私有镜像需制品库凭证，写入 compose 读取的 docker config，部署后清除
-            mkdir -p /root/.docker
-            printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$REGISTRY_AUTH" \
-              > /root/.docker/config.json
-            # 凭证写入失败或镜像不可拉取时立即失败，避免部署到旧镜像
-            if ! docker compose --env-file /opt/pindou/config/api.env pull; then
-              rm -f /root/.docker/config.json
+            docker image inspect "$IMAGE_REPO:$IMAGE_TAG" > /dev/null || {
+              echo "服务器缺少镜像 $IMAGE_REPO:$IMAGE_TAG，docker load 未成功"
               exit 1
-            fi
+            }
             # 旧容器可能由手工 docker run 或其它 compose 项目创建，无本项目 compose 标签，
             # 直接 up 会报 container name already in use；数据在 bind mount 中，删除容器不影响数据
             docker rm -f pindou-postgres pindou-api 2>/dev/null || true
-            docker compose --env-file /opt/pindou/config/api.env up -d
-            rm -f /root/.docker/config.json
+            # 先启动数据库并完成幂等迁移，再启动 API；否则 API 会因 schema contract 不一致反复重启
+            docker compose --env-file /opt/pindou/config/api.env up -d --wait --wait-timeout 120 postgres
+            docker compose --env-file /opt/pindou/config/api.env exec -T postgres \
+              sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+              < /opt/pindou/deploy/008_orders_user_created_index.sql
+            docker compose --env-file /opt/pindou/config/api.env up -d --wait --wait-timeout 120 api
             REMOTE
