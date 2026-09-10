@@ -2,6 +2,11 @@ master:
   push:
     - services:
         - docker
+      # 防止多次推送并发部署，只保留最新一次排队
+      lock:
+        key: deploy-production
+        wait: true
+        cancel-in-wait: true
       stages:
         - name: 构建 Docker 镜像
           script: |
@@ -22,7 +27,8 @@ master:
             mkdir -p ~/.ssh && chmod 700 ~/.ssh
             printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
             chmod 600 ~/.ssh/id_rsa
-            ssh -o StrictHostKeyChecking=no -p $SSH_PORT $SSH_USER@$SSH_HOST "
+            ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15 \
+              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "
               set -e
               cd /opt/pindou/deploy
               export IMAGE_REPO='${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}'
@@ -51,6 +57,10 @@ $:
   tag_deploy.production:
     - imports:
         - https://cnb.cool/ImAcaiy/envs/-/blob/main/envs.yml
+      lock:
+        key: deploy-production
+        wait: true
+        cancel-in-wait: true
       stages:
         - name: SSH 部署到生产服务器
           script: |
@@ -60,7 +70,8 @@ $:
             printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
             chmod 600 ~/.ssh/id_rsa
             # 远程拉取镜像并重启服务
-            ssh -o StrictHostKeyChecking=no -p $SSH_PORT $SSH_USER@$SSH_HOST "
+            ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15 \
+              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "
               set -e
               cd /opt/pindou/deploy
               export IMAGE_REPO='${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}'
