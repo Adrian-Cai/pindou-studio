@@ -2,6 +2,14 @@
 
 ## 0.27.1
 
+- 修复首页「开始生成」按钮与底部 TabBar 之间异常留白（80~100px）问题：
+  - 定位根因：微信小程序自定义 TabBar 下 `wx.getWindowInfo().windowHeight` 已扣除 TabBar 区域，`page-layout` 独立滚动区域自然终止于 TabBar 顶部；此前公共布局对主 Tab 页面仍应用了预留固定 TabBar 高度的 `.page-layout__content--with-nav`（`160rpx + env(safe-area-inset-bottom)`），且首页容器类名与全局 `.page`（`min-height: 100vh`）冲突，导致重复产生 80～100px 布局占位。
+  - 优化公共布局组件：`page-layout` 识别主 Tab 页面（`isMainTabPage`），对主 Tab 页面应用 `.page-layout__content--main-tab`（`padding-bottom: 24rpx`），精准收敛底部留白至 24rpx（约 12px），同时确保分包嵌入式 TabBar 页面原有防遮挡逻辑不受影响。
+  - 容器解耦与全局样式清理：首页容器切换为 `.home-page`，显式设置 `min-height: auto` 避免高度异常撑满；同步清理 `app.wxss` 中历史 `.page` 的 `min-height: 100vh` 与多余底部 padding。
+- 修复未登录状态点击收藏提示错误与会话隔离：
+  - 隔离内容安全审核的临时微信会话，使用独立的内存级变量进行缓存，不再调用 `saveAuthSession` 写入主用户本地存储 Key（`pindou-auth-session-v1`），避免游客被误判为拥有云端会话。
+  - 在 `authStore` 中增加 `isLoggedIn()` 判定，统一收敛“是否存在有效登录用户”规则。
+  - 结果页（`pages-sub/result`）收藏逻辑重构：未登录状态下点击收藏统一提示“收藏失败，请先登录”；仅在用户已登录且数据恢复同步中或作品待上传（`pending`）时提示“作品正在同步，请稍后重试”。
 - 重构拼豆生成结果页面（`pages-sub/result`）：
   - 复用公共组件：移除页面自建的 `.result-nav` 导航栏，复用已有公共组件 `<main-tab-bar selected="{{1}}" />`，遵守公共布局强约束规范。
   - 抽离离屏 Canvas 渲染服务（`services/pattern-render-service.ts`）：解耦缩略图、成品图、编号施工图、高清施工图、材料清单图及色板参考图的绘制与导出逻辑。
@@ -9,7 +17,7 @@
     - `work-summary`：独立作品信息头卡片与重命名、收藏交互。
     - `materials-panel`：独立材料清单展示与自闭环折叠/展开逻辑。
     - `palette-panel`：独立色板参考展示与自闭环折叠/展开逻辑。
-  - 瘦身效果显著：`result/index.ts` 代码量从 976 行大幅缩减至 598 行（降幅近 40%），各子组件与服务均控制在 40~300 行内，消除了单文件超 800 行的架构违规。
+  - 瘦身效果显著：`result/index.ts` 代码量从 976 行大幅缩减至 600 行以内，各子组件与服务均控制在 40~300 行内，消除了单文件超 800 行的架构违规。
   - 保持现有所有业务逻辑、视觉样式、暗黑模式适配及下载流程 100% 不变。
 
 ## 0.27.0
