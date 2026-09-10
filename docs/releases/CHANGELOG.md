@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.28.1
+
+- 修复生产部署流水线 SSH 认证失败（`Permission denied (publickey)`）：脚本此前固定写入 `id_rsa`，而流水线环境变量 `SSH_IDENTITY_FILE` 指向 `id_ed25519`，私钥文件名与服务器仅接受的公钥类型不匹配。
+- 私钥统一写入 `~/.ssh/id_ed25519`，未显式声明身份文件时依赖 ssh 按密钥类型自动匹配；已声明时自动补全 ed25519 身份文件。
+- 部署前新增密钥完整性校验：`SSH_PRIVATE_KEY`、`SSH_USER`、`SSH_HOST`、`SSH_PORT` 缺失或私钥非法时立即失败并输出明确原因，避免以 `Permission denied` 掩盖真实问题。
+
 ## 0.28.0
 
 - 新增“我的订单”二级页面，从“我的”Tab 的权益卡下方直接进入，不新增底部 Tab，也不归入“账号与登录”。
