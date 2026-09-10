@@ -116,6 +116,10 @@ interface OwnershipRow extends QueryResultRow {
 export class PostgresWorkService {
   public constructor(private readonly pool: Pool, private readonly now: () => Date = () => new Date()) {}
 
+  /**
+   * 使用“用户 + 幂等键”生成稳定作品 ID。客户端重试同一次创建请求时返回原作品；
+   * 若相同幂等键携带了不同内容，则拒绝请求，避免静默覆盖已有作品。
+   */
   public async create(input: CreateWorkInput): Promise<WorkSummary> {
     const workId = createIdempotentWorkId(input.userId, input.idempotencyKey);
     const currentTime = this.now();
@@ -143,6 +147,7 @@ export class PostgresWorkService {
       if (coverRow.file_type !== "cover" || coverRow.deleted_at) throw notFound("封面文件不可用");
 
       const { pattern, beadCount, colorCount } = input.validatedPattern;
+      // 作品摘要与图纸详情必须在同一事务中落库，避免出现“有作品、无图纸”的半成品数据。
       const workInsert = await client.query<WorkRow>(
         `INSERT INTO pindou_works (
            id, user_id, title, cover_file_id, width, height, bead_count, color_count,
@@ -156,6 +161,7 @@ export class PostgresWorkService {
       );
       const inserted = workInsert.rows[0];
       if (!inserted) {
+        // ON CONFLICT 也可能来自并发重试；重新读取并校验原请求，只有内容完全一致才视为成功。
         const concurrent = await readWorkDetail(client, workId);
         if (!concurrent || concurrent.user_id !== input.userId || concurrent.deleted_at || !sameRequest(concurrent, input)) {
           throw idempotencyConflict();
@@ -343,6 +349,7 @@ export class PostgresWorkService {
     return mapDetail(row as WorkRow);
   }
 
+  /** 作品删除采用软删除，保留历史记录及关联数据，所有查询统一过滤 deleted_at。 */
   public async delete(userId: string, workId: string): Promise<void> {
     await assertWorkOwner(this.pool, workId, userId);
     await this.pool.query(
@@ -352,6 +359,10 @@ export class PostgresWorkService {
     );
   }
 
+  /**
+   * 收藏关系永不物理删除：取消收藏写入 deleted_at，再次收藏时恢复同一条关系并刷新 favorited_at。
+   * 这样既能审计历史，也能由唯一键保证同一用户与作品只有一条收藏记录。
+   */
   public async setFavorite(userId: string, workId: string, favorite: boolean): Promise<FavoriteUpdateResponse> {
     await assertWorkOwner(this.pool, workId, userId);
     if (!favorite) {
@@ -365,6 +376,7 @@ export class PostgresWorkService {
     }
 
     const result = await this.pool.query<{ readonly favorited_at: Date | string }>(
+      // CTE 同时覆盖首次收藏、恢复软删除记录和“本来已收藏”的幂等调用。
       `WITH changed AS (
          INSERT INTO pindou_favorites (user_id, work_id, created_at, favorited_at, deleted_at)
          SELECT $1, $2, $3, $3, NULL
@@ -431,6 +443,7 @@ export class PostgresWorkService {
            ON works.id = favorites.work_id AND works.user_id = favorites.user_id
          LEFT JOIN pindou_file_assets files ON files.id = works.cover_file_id AND files.deleted_at IS NULL
         WHERE ${conditions.join(" AND ")}
+        -- 收藏列表按收藏动作时间排序；作品自身的 updated_at 仍单独返回给客户端展示作品更新时间。
         ORDER BY favorites.favorited_at DESC, works.id DESC
         LIMIT $${parameters.length - 1} OFFSET $${parameters.length}`,
       parameters,
