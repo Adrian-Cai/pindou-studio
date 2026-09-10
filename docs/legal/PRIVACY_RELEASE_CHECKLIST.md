@@ -44,6 +44,6 @@
 - 图片选择：`wx.chooseImage`；反馈页面另外调用 `wx.chooseMedia`，均由用户主动触发
 - 相册保存：`wx.saveImageToPhotosAlbum`，仅在用户主动下载时触发
 - 内容安全图片：`/api/content-security/media` 临时存储，异步审核配置为 35 分钟过期
-- 云同步：编辑器保存受 `privacy.cloudSync` 控制；已有本地作品只应在隐私页确认后迁移
+- 云同步：登录用户新作品默认保存云端；网络错误时按账号暂存并自动重试。已有游客作品只在登录后的确认中迁移。
 - 注销清理：事务提交后按类型调用头像、封面和 AI 文件存储的 `remove()`；服务测试已验证删除后文件不可读
 - 协议同意：当前未发现 `pindou_user_consents` 或等价表

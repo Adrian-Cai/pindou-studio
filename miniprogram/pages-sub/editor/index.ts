@@ -6,6 +6,7 @@ import {
   saveNewCloudWork,
   updateCloudWork,
 } from '../../services/work-service'
+import { isNetworkError, queueWorkForSync } from '../../services/work-sync-service'
 import {
   calculateFittedImageSize,
   clampViewTranslation,
@@ -594,19 +595,7 @@ Page({
     try {
       const state = appStore.getSnapshot()
       const existing = state.works.find((item) => item.id === draft.id)
-      if (hasCloudSession() && state.privacyPreferences.cloudSync) {
-        const coverPath = await exportPatternCoverImage(draft, this)
-        const summary = existing?.isCloud
-          ? await updateCloudWork(existing.id, draft, coverPath, existing.title)
-          : await saveNewCloudWork(draft, coverPath, existing?.title ?? '未命名作品')
-        const savedDraft = { ...draft, id: summary.id, sourceImagePath: '' }
-        if (existing && existing.id !== summary.id) appStore.deleteWork(existing.id)
-        appStore.removeLocalDraft(draft.id)
-        appStore.setCurrentDraft(savedDraft)
-        appStore.saveWork(cloudSummaryToWorkItem(summary))
-      } else {
-        appStore.saveLocalDraft(draft)
-        appStore.saveWork({
+      const localWork = {
           id: draft.id,
           title: existing?.title ?? '未命名作品',
           coverPath: draft.sourceImagePath,
@@ -616,9 +605,38 @@ Page({
           colorCount: this.getPaletteColors(draft).length,
           width: draft.settings.width,
           height: draft.settings.height,
-          status: 'completed',
+          status: 'completed' as const,
           isCloud: false,
-        })
+      }
+      if (!hasCloudSession()) {
+        await appStore.saveLocalDraft(draft)
+        await appStore.saveWork({ ...localWork, syncStatus: 'guest' })
+        wx.showToast({ title: '已保存到本机', icon: 'success' })
+      } else {
+        const coverPath = await exportPatternCoverImage(draft, this)
+        try {
+          const summary = existing?.syncStatus === 'synced' || existing?.isCloud
+            ? await updateCloudWork(existing.id, draft, coverPath, existing.title)
+            : await saveNewCloudWork(draft, coverPath, existing?.title ?? '未命名作品')
+          const savedDraft = { ...draft, id: summary.id, sourceImagePath: '' }
+          if (existing && existing.id !== summary.id) await appStore.deleteWork(existing.id)
+          await appStore.removeLocalDraft(draft.id)
+          await appStore.saveWork(cloudSummaryToWorkItem(summary))
+          await appStore.setCurrentDraft(savedDraft)
+          wx.showToast({ title: '已保存到云端', icon: 'success' })
+        } catch (error) {
+          const pending = isNetworkError(error)
+          await queueWorkForSync({
+            ...localWork,
+            coverPath,
+            syncStatus: pending ? 'pending' : 'failed',
+            syncError: error instanceof Error ? error.message : '云端保存失败，请稍后重试',
+          }, draft)
+          wx.showToast({
+            title: pending ? '已保存到本机，联网后自动同步' : '已保存到本机，云端保存失败',
+            icon: 'none',
+          })
+        }
       }
       wx.navigateTo({ url: '/pages-sub/result/index' })
     } catch (error) {

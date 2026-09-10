@@ -1,6 +1,8 @@
 import type { WorkItem } from '../../models/pattern'
 import {
   cloudSummaryToWorkItem,
+  cloudDetailToDraft,
+  fetchCloudWork,
   fetchCloudFavorites,
   hasCloudSession,
   setCloudFavorite,
@@ -109,13 +111,31 @@ Page({
     })
   },
 
-  openWork(event: WechatMiniprogram.TouchEvent) {
+  async openWork(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
-    if (appStore.getSnapshot().currentDraft?.id === id) {
+    const state = appStore.getSnapshot()
+    const work = state.works.find((item) => item.id === id)
+    if (!work) return
+    if (state.currentDraft?.id === id) {
       wx.navigateTo({ url: '/pages-sub/result/index' })
       return
     }
-    wx.showToast({ title: '历史作品详情服务待接入', icon: 'none' })
+    if (!work.isCloud) {
+      const draft = appStore.getLocalDraft(id)
+      if (!draft) { wx.showToast({ title: '这份本地作品缺少可恢复的图案数据', icon: 'none' }); return }
+      await appStore.setCurrentDraft(draft)
+      wx.navigateTo({ url: '/pages-sub/result/index' })
+      return
+    }
+    wx.showLoading({ title: '正在读取', mask: true })
+    try {
+      const detail = await fetchCloudWork(id)
+      await appStore.setCurrentDraft(cloudDetailToDraft(detail))
+      await appStore.saveWork(cloudSummaryToWorkItem(detail))
+      wx.navigateTo({ url: '/pages-sub/result/index' })
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : '作品读取失败，请重试', icon: 'none' })
+    } finally { wx.hideLoading() }
   },
 
   async removeFavorite(event: WechatMiniprogram.TouchEvent) {
@@ -125,7 +145,7 @@ Page({
     wx.showLoading({ title: '正在取消', mask: true })
     try {
       if (work.isCloud) await setCloudFavorite(id, false)
-      appStore.setFavorite(id, false)
+      await appStore.setFavorite(id, false)
       await this.refreshFavorites()
       wx.hideLoading()
       wx.showToast({ title: '已取消收藏', icon: 'none' })

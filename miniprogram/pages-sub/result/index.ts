@@ -249,7 +249,7 @@ Page({
         ? await setCloudFavorite(draft.id, isFavorite)
         : null
       const favoritedAt = response?.favoritedAt ? Date.parse(response.favoritedAt) : Date.now()
-      appStore.setFavorite(draft.id, isFavorite, favoritedAt)
+      await appStore.setFavorite(draft.id, isFavorite, favoritedAt)
       this.setData({ isFavorite })
       wx.showToast({ title: isFavorite ? '已收藏' : '已取消收藏', icon: 'none', duration: 1500 })
       this.setData({ favoriteUpdating: false })
@@ -309,9 +309,9 @@ Page({
       if (work.isCloud) {
         const savedWork = await renameCloudWork(work.id, title)
         savedTitle = savedWork.title
-        appStore.saveWork(cloudSummaryToWorkItem(savedWork))
+        await appStore.saveWork(cloudSummaryToWorkItem(savedWork))
       } else {
-        appStore.saveWork({ ...work, title, updatedAt: Date.now() })
+        await appStore.saveWork({ ...work, title, updatedAt: Date.now() })
       }
 
       const summary = this.data.summary

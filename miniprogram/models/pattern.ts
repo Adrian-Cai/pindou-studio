@@ -42,6 +42,12 @@ export interface WorkItem {
   width?: number
   height?: number
   status?: 'draft' | 'completed'
+  /** 本地副本与云端的真实同步状态。 */
+  syncStatus?: 'guest' | 'pending' | 'synced' | 'failed'
+  /** pending / failed 作品归属的账号；游客作品不带该字段。 */
+  ownerId?: string
+  syncError?: string
+  /** @deprecated 使用 syncStatus 判断，保留以兼容旧缓存。 */
   isCloud?: boolean
   createdAt?: number
   favoritedAt?: number
@@ -59,12 +65,4 @@ export interface DownloadRecord {
   width?: number
   height?: number
   colorCount: number
-}
-
-export interface PrivacyPreferences {
-  localOnly: boolean
-  cloudSync: boolean
-  serviceNotices: boolean
-  personalizedRecommendations: boolean
-  updatedAt?: string
 }

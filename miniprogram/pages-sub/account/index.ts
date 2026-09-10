@@ -74,16 +74,20 @@ Page({
       cancelColor: '#626573',
       success: ({ confirm }) => {
         if (!confirm) return
-        authStore.logout()
-        wx.navigateBack({
-          success: () => {
-            wx.showToast({ title: '已退出登录', icon: 'success' })
-          },
-          fail: () => {
-            wx.switchTab({ url: '/pages/profile/index' })
-          },
-        })
+        void this.performLogout()
       },
     })
+  },
+
+  async performLogout() {
+    try {
+      await authStore.logout()
+      wx.navigateBack({
+        success: () => wx.showToast({ title: '已退出登录', icon: 'success' }),
+        fail: () => wx.switchTab({ url: '/pages/profile/index' }),
+      })
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : '退出前保存本地数据失败', icon: 'none' })
+    }
   },
 })

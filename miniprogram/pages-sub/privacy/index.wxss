@@ -6,6 +6,7 @@
 .privacy-card__title text { color: var(--color-primary); font-size: 34rpx; }
 .privacy-setting { display: flex; min-height: 122rpx; align-items: center; border-bottom: 1rpx solid var(--color-border); }
 .privacy-setting:last-child { border-bottom: 0; }
+.privacy-setting--notice { min-height: 146rpx; padding-bottom: 16rpx; }
 .privacy-setting__icon { display: flex; width: 64rpx; flex-shrink: 0; align-items: center; justify-content: center; color: var(--color-primary); font-size: 40rpx; }
 .privacy-setting__content { min-width: 0; flex: 1; margin: 0 18rpx; }
 .privacy-setting__content view { font-size: 28rpx; }

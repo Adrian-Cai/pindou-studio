@@ -17,6 +17,7 @@ type WorkView = WorkItem & {
   dimensions: string
   statusLabel: string
   isDraft: boolean
+  syncLabel: string
 }
 const tabs = [
   { id: 'all', label: '全部' },
@@ -80,6 +81,7 @@ Page({
         dimensions: width && height ? `${width}×${height}` : '尺寸待同步',
         statusLabel: isDraft ? '草稿' : '已完成',
         isDraft,
+        syncLabel: syncLabel(work),
       }
     })
 
@@ -144,8 +146,8 @@ Page({
       wx.showLoading({ title: '正在读取', mask: true })
       try {
         const detail = await fetchCloudWork(id)
-        appStore.setCurrentDraft(cloudDetailToDraft(detail))
-        appStore.saveWork(cloudSummaryToWorkItem(detail))
+        await appStore.setCurrentDraft(cloudDetailToDraft(detail))
+        await appStore.saveWork(cloudSummaryToWorkItem(detail))
         wx.navigateTo({ url: edit ? '/pages-sub/editor/index' : '/pages-sub/result/index' })
       } catch (error) {
         console.error('读取作品详情失败', error)
@@ -221,9 +223,9 @@ Page({
       await checkTextContent(title)
       if (work.isCloud) {
         const summary = await renameCloudWork(id, title)
-        appStore.saveWork(cloudSummaryToWorkItem(summary))
+        await appStore.saveWork(cloudSummaryToWorkItem(summary))
       } else {
-        appStore.saveWork({ ...work, title, updatedAt: Date.now() })
+        await appStore.saveWork({ ...work, title, updatedAt: Date.now() })
       }
       this.refreshVisibleWorks()
       this.resetRenameDialog()
@@ -288,7 +290,7 @@ Page({
     wx.showLoading({ title: '正在删除', mask: true })
     try {
       if (isCloud) await deleteCloudWork(id)
-      appStore.deleteWork(id)
+      await appStore.deleteWork(id)
       this.refreshVisibleWorks()
     } catch (error) {
       console.error('删除作品失败', error)
@@ -321,4 +323,11 @@ function formatDateTime(timestamp: number) {
     .join('-')
   const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
   return `${datePart} ${timePart}`
+}
+
+function syncLabel(work: WorkItem): string {
+  if (work.syncStatus === 'pending') return '待同步'
+  if (work.syncStatus === 'failed') return '同步失败'
+  if (work.syncStatus === 'guest') return '仅本机'
+  return ''
 }

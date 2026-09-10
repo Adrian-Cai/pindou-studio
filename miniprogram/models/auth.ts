@@ -1,5 +1,3 @@
-import type { PrivacyPreferences } from './pattern'
-
 export interface AuthUser {
   id: string
   nickname: string | null
@@ -22,7 +20,6 @@ export interface CurrentUserProfile {
     remaining: number
     resetsAt: string
   }
-  privacy?: PrivacyPreferences
 }
 
 export interface AuthSession {

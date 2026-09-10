@@ -1,270 +1,164 @@
-import type {
-  DownloadRecord,
-  PatternDraft,
-  PrivacyPreferences,
-  WorkItem,
-} from '../models/pattern'
+import type { DownloadRecord, PatternDraft, WorkItem } from '../models/pattern'
 
-interface AppState {
-  currentDraft: PatternDraft | null
-  localDrafts: Record<string, PatternDraft>
-  works: WorkItem[]
-  favoriteIds: string[]
-  downloadQuota: number
-  downloadQuotaDate: string
-  downloadRecords: DownloadRecord[]
-  privacyPreferences: PrivacyPreferences
-}
+interface Workspace { currentDraft: PatternDraft | null; localDrafts: Record<string, PatternDraft>; works: WorkItem[]; favoriteIds: string[]; downloadQuota: number; downloadQuotaDate: string; downloadRecords: DownloadRecord[] }
+interface PersistedState { version: 2; guest: Workspace; accounts: Record<string, Workspace> }
+interface AppState extends Workspace {}
+interface LegacyState extends Partial<Workspace> {}
 
-const STORAGE_KEY = 'pindou-app-state-v1'
+const STORAGE_KEY = 'pindou-app-state-v2'
+const LEGACY_STORAGE_KEY = 'pindou-app-state-v1'
 export const DAILY_FREE_DOWNLOAD_QUOTA = 9
-
-const initialState: AppState = {
-  currentDraft: null,
-  localDrafts: {},
-  works: [],
-  favoriteIds: [],
-  downloadQuota: DAILY_FREE_DOWNLOAD_QUOTA,
-  downloadQuotaDate: '',
-  downloadRecords: [],
-  privacyPreferences: {
-    localOnly: true,
-    cloudSync: false,
-    serviceNotices: true,
-    personalizedRecommendations: false,
-  },
-}
-
 type Listener = (state: Readonly<AppState>) => void
 
-export class AppStore {
-  private state: AppState = createInitialState()
-  private listeners = new Set<Listener>()
+export class LocalStorageError extends Error {
+  constructor(message: string) { super(message); this.name = 'LocalStorageError' }
+}
 
-  hydrate() {
+/** 云端数据仅留在运行期；持久化内容只有游客与按账号隔离的离线队列。 */
+export class AppStore {
+  private persisted: PersistedState = { version: 2, guest: createWorkspace(), accounts: {} }
+  private activeUserId: string | null = null
+  private cloudWorks: WorkItem[] = []
+  private cloudDraft: PatternDraft | null = null
+  private state: AppState = createWorkspace()
+  private listeners = new Set<Listener>()
+  private writeTask: Promise<void> = Promise.resolve()
+
+  hydrate(): void {
     try {
-      const cached = wx.getStorageSync<AppState>(STORAGE_KEY)
-      if (cached) {
-        const today = getLocalBusinessDate()
-        const localDrafts = { ...(cached.localDrafts ?? {}) }
-        const currentWork = cached.works?.find((work) => work.id === cached.currentDraft?.id)
-        if (cached.currentDraft && currentWork && !currentWork.isCloud) {
-          localDrafts[cached.currentDraft.id] = cached.currentDraft
-        }
-        this.state = {
-          ...createInitialState(),
-          ...cached,
-          localDrafts,
-          downloadQuota: cached.downloadQuotaDate === today
-            ? normalizeQuota(cached.downloadQuota)
-            : DAILY_FREE_DOWNLOAD_QUOTA,
-          downloadQuotaDate: today,
-          privacyPreferences: {
-            ...normalizePrivacyPreferences({
-              ...initialState.privacyPreferences,
-              ...cached.privacyPreferences,
-            }),
-          },
-        }
-      }
+      const saved = wx.getStorageSync<unknown>(STORAGE_KEY)
+      this.persisted = isPersistedState(saved) ? normalizePersistedState(saved) : this.migrateLegacy()
+      this.rebuildState()
+      if (!isPersistedState(saved)) void this.persist()
     } catch (error) {
       console.warn('读取本地状态失败', error)
+      this.persisted = { version: 2, guest: createWorkspace(), accounts: {} }
+      this.rebuildState()
     }
   }
 
-  getSnapshot(): Readonly<AppState> {
-    return this.state
+  getSnapshot(): Readonly<AppState> { return this.state }
+  subscribe(listener: Listener): () => void { this.listeners.add(listener); listener(this.state); return () => this.listeners.delete(listener) }
+  getActiveUserId(): string | null { return this.activeUserId }
+  getGuestWorkCount(): number { return this.persisted.guest.works.length }
+
+  async activateAccount(userId: string): Promise<void> {
+    if (!userId) throw new Error('账号标识无效')
+    if (!this.persisted.accounts[userId]) this.persisted.accounts[userId] = createWorkspace()
+    if (this.activeUserId !== userId) { this.activeUserId = userId; this.cloudWorks = []; this.cloudDraft = null; this.rebuildState() }
+    await this.persist()
   }
 
-  subscribe(listener: Listener) {
-    this.listeners.add(listener)
-    listener(this.state)
-    return () => this.listeners.delete(listener)
+  async leaveAccount(): Promise<void> {
+    this.cloudWorks = []; this.cloudDraft = null; this.activeUserId = null; this.rebuildState(); await this.persist()
   }
 
-  setCurrentDraft(currentDraft: PatternDraft | null) {
-    this.update({ currentDraft })
+  /** 用户确认后才将游客作品移入当前账号的待同步队列。 */
+  async adoptGuestWorks(userId: string): Promise<number> {
+    if (this.activeUserId !== userId) throw new Error('当前账号数据空间未准备好')
+    const guest = this.persisted.guest
+    const account = this.getActiveWorkspace()
+    const ids = new Set(guest.works.map((work) => work.id))
+    const works = guest.works.map((work) => ({ ...work, syncStatus: 'pending' as const, ownerId: userId, isCloud: false, syncError: undefined }))
+    account.works = mergeWorks(works, account.works)
+    account.favoriteIds = unique([...account.favoriteIds, ...guest.favoriteIds.filter((id) => ids.has(id))])
+    account.localDrafts = { ...guest.localDrafts, ...account.localDrafts }
+    if (guest.currentDraft && ids.has(guest.currentDraft.id)) account.currentDraft = guest.currentDraft
+    this.persisted.guest = createWorkspace()
+    this.rebuildState(); await this.persist(); return works.length
   }
 
-  saveLocalDraft(draft: PatternDraft) {
-    this.update({
-      localDrafts: { ...this.state.localDrafts, [draft.id]: draft },
-    })
+  setCurrentDraft(currentDraft: PatternDraft | null): Promise<void> {
+    const isCloudDraft = Boolean(currentDraft && this.activeUserId && this.cloudWorks.some((work) => work.id === currentDraft.id))
+    if (isCloudDraft) this.cloudDraft = currentDraft
+    else { this.cloudDraft = null; this.getActiveWorkspace().currentDraft = currentDraft }
+    this.rebuildState(); return this.persist()
   }
+  saveLocalDraft(draft: PatternDraft): Promise<void> { const w = this.getActiveWorkspace(); w.localDrafts = { ...w.localDrafts, [draft.id]: draft }; w.currentDraft = draft; this.rebuildState(); return this.persist() }
+  getLocalDraft(workId: string): PatternDraft | null { return this.getActiveWorkspace().localDrafts[workId] ?? null }
+  removeLocalDraft(workId: string): Promise<void> { const w = this.getActiveWorkspace(); if (!w.localDrafts[workId] && w.currentDraft?.id !== workId) return Promise.resolve(); const drafts = { ...w.localDrafts }; delete drafts[workId]; w.localDrafts = drafts; if (w.currentDraft?.id === workId) w.currentDraft = null; this.rebuildState(); return this.persist() }
 
-  getLocalDraft(workId: string): PatternDraft | null {
-    return this.state.localDrafts[workId] ?? null
-  }
-
-  removeLocalDraft(workId: string) {
-    if (!this.state.localDrafts[workId]) return
-    const localDrafts = { ...this.state.localDrafts }
-    delete localDrafts[workId]
-    this.update({ localDrafts })
-  }
-
-  saveWork(work: WorkItem) {
-    const works = [work, ...this.state.works.filter((item) => item.id !== work.id)]
-    this.update({ works })
-  }
-
-  replaceLocalWorkWithCloud(localWorkId: string, cloudWork: WorkItem) {
-    const works = [
-      cloudWork,
-      ...this.state.works.filter((item) => item.id !== localWorkId && item.id !== cloudWork.id),
-    ]
-    const favoriteIds = [...new Set(this.state.favoriteIds.map((id) => (
-      id === localWorkId ? cloudWork.id : id
-    )))]
-    const downloadRecords = this.state.downloadRecords.map((record) => (
-      record.workId === localWorkId ? { ...record, workId: cloudWork.id } : record
-    ))
-    const currentDraft = this.state.currentDraft?.id === localWorkId
-      ? { ...this.state.currentDraft, id: cloudWork.id, sourceImagePath: '' }
-      : this.state.currentDraft
-    const localDrafts = { ...this.state.localDrafts }
-    delete localDrafts[localWorkId]
-    this.update({ works, favoriteIds, downloadRecords, currentDraft, localDrafts })
-  }
-
-  replaceCloudWorks(cloudWorks: WorkItem[]) {
-    const localWorks = this.state.works.filter((item) => !item.isCloud)
-    this.update({ works: [...cloudWorks, ...localWorks] })
-  }
-
-  replaceCloudFavorites(cloudFavorites: WorkItem[]) {
-    const favoriteById = new Map(cloudFavorites.map((work) => [work.id, work]))
-    const cachedCloudIds = new Set(
-      this.state.works.filter((work) => work.isCloud).map((work) => work.id),
-    )
-    const localFavoriteIds = this.state.favoriteIds.filter((id) => !cachedCloudIds.has(id))
-    const mergedWorks = this.state.works.map((work) => {
-      if (!work.isCloud) return work
-      return favoriteById.get(work.id) ?? { ...work, favoritedAt: undefined }
-    })
-    const knownWorkIds = new Set(mergedWorks.map((work) => work.id))
-    const missingFavorites = cloudFavorites.filter((work) => !knownWorkIds.has(work.id))
-    this.update({
-      works: [...missingFavorites, ...mergedWorks],
-      favoriteIds: [...new Set([...localFavoriteIds, ...favoriteById.keys()])],
-    })
-  }
-
-  setFavorite(workId: string, favorite: boolean, favoritedAt = Date.now()) {
-    const favoriteIds = favorite
-      ? [...new Set([...this.state.favoriteIds, workId])]
-      : this.state.favoriteIds.filter((id) => id !== workId)
-    const works = this.state.works.map((work) => (
-      work.id === workId
-        ? { ...work, favoritedAt: favorite ? favoritedAt : undefined }
-        : work
-    ))
-    this.update({ favoriteIds, works })
-  }
-
-  deleteWork(workId: string) {
-    const works = this.state.works.filter((item) => item.id !== workId)
-    const favoriteIds = this.state.favoriteIds.filter((id) => id !== workId)
-    const downloadRecords = this.state.downloadRecords.filter((item) => item.workId !== workId)
-    const currentDraft = this.state.currentDraft?.id === workId ? null : this.state.currentDraft
-    const localDrafts = { ...this.state.localDrafts }
-    delete localDrafts[workId]
-    this.update({ works, favoriteIds, downloadRecords, currentDraft, localDrafts })
-  }
-
-  addDownloadRecord(record: DownloadRecord) {
-    const downloadRecords = [
-      record,
-      ...this.state.downloadRecords.filter((item) => item.id !== record.id),
-    ]
-    this.update({ downloadRecords })
-  }
-
-  setDownloadQuota(downloadQuota: number) {
-    this.update({
-      downloadQuota: normalizeQuota(downloadQuota),
-      downloadQuotaDate: getLocalBusinessDate(),
-    })
-  }
-
-  refreshDownloadQuota(): number {
-    const today = getLocalBusinessDate()
-    if (this.state.downloadQuotaDate !== today) {
-      this.update({
-        downloadQuota: DAILY_FREE_DOWNLOAD_QUOTA,
-        downloadQuotaDate: today,
-      })
+  saveWork(work: WorkItem): Promise<void> {
+    if (isSynced(work)) this.cloudWorks = mergeWorks([{ ...work, syncStatus: 'synced', isCloud: true }], this.cloudWorks)
+    else {
+      const normalized: WorkItem = this.activeUserId
+        ? { ...work, syncStatus: work.syncStatus === 'failed' ? 'failed' : 'pending' as const, ownerId: this.activeUserId, isCloud: false }
+        : { ...work, syncStatus: 'guest' as const, ownerId: undefined, isCloud: false }
+      const w = this.getActiveWorkspace(); w.works = mergeWorks([normalized], w.works)
     }
-    return this.state.downloadQuota
+    this.rebuildState(); return this.persist()
   }
 
-  completeDownload(record: DownloadRecord): number | null {
-    this.refreshDownloadQuota()
-    if (this.state.downloadQuota <= 0) return null
-    const downloadQuota = this.state.downloadQuota - 1
-    const downloadRecords = [
-      record,
-      ...this.state.downloadRecords.filter((item) => item.id !== record.id),
-    ]
-    this.update({ downloadQuota, downloadRecords })
-    return downloadQuota
+  markSyncStatus(workId: string, status: 'pending' | 'failed', syncError?: string): Promise<void> {
+    const w = this.getActiveWorkspace()
+    w.works = w.works.map((work) => work.id === workId ? { ...work, syncStatus: status, syncError, ownerId: this.activeUserId ?? undefined, isCloud: false } : work)
+    this.rebuildState(); return this.persist()
   }
+  getSyncCandidates(userId: string): WorkItem[] { return (this.persisted.accounts[userId]?.works ?? []).filter((work) => work.syncStatus === 'pending' || work.syncStatus === 'failed') }
 
-  setPrivacyPreferences(patch: Partial<PrivacyPreferences>) {
-    this.update({
-      privacyPreferences: normalizePrivacyPreferences({
-        ...this.state.privacyPreferences,
-        ...patch,
-      }),
-    })
-  }
-
-  clearLocalData() {
-    this.state = createInitialState()
-    try {
-      wx.removeStorageSync(STORAGE_KEY)
-    } catch (error) {
-      console.warn('清除本地状态失败', error)
+  async replaceLocalWorkWithCloud(localId: string, cloudWork: WorkItem): Promise<void> {
+    const w = this.getActiveWorkspace()
+    w.works = w.works.filter((item) => item.id !== localId)
+    w.favoriteIds = unique(w.favoriteIds.map((id) => id === localId ? cloudWork.id : id))
+    w.downloadRecords = w.downloadRecords.map((record) => record.workId === localId ? { ...record, workId: cloudWork.id } : record)
+    const drafts = { ...w.localDrafts }; delete drafts[localId]; w.localDrafts = drafts
+    if (w.currentDraft?.id === localId) {
+      this.cloudDraft = { ...w.currentDraft, id: cloudWork.id, sourceImagePath: '' }
+      w.currentDraft = null
     }
-    this.listeners.forEach((listener) => listener(this.state))
+    this.cloudWorks = mergeWorks([{ ...cloudWork, syncStatus: 'synced', isCloud: true }], this.cloudWorks)
+    this.rebuildState(); await this.persist()
   }
 
-  private update(patch: Partial<AppState>) {
-    this.state = { ...this.state, ...patch }
-    wx.setStorage({ key: STORAGE_KEY, data: this.state })
-    this.listeners.forEach((listener) => listener(this.state))
+  replaceCloudWorks(works: WorkItem[]): void { this.cloudWorks = works.map((work) => ({ ...work, syncStatus: 'synced', isCloud: true })); this.rebuildState() }
+  replaceCloudFavorites(favorites: WorkItem[]): void {
+    const favoriteIds = new Set(favorites.map((work) => work.id))
+    const byId = new Map(favorites.map((work) => [work.id, { ...work, syncStatus: 'synced' as const, isCloud: true }]))
+    this.cloudWorks = this.cloudWorks.map((work) => byId.get(work.id) ?? { ...work, favoritedAt: undefined })
+    byId.forEach((work) => { if (!this.cloudWorks.some((item) => item.id === work.id)) this.cloudWorks.unshift(work) })
+    const w = this.getActiveWorkspace(); w.favoriteIds = w.favoriteIds.filter((id) => !this.cloudWorks.some((work) => work.id === id))
+    this.rebuildState([...favoriteIds])
+  }
+
+  setFavorite(workId: string, favorite: boolean, favoritedAt = Date.now()): Promise<void> {
+    const w = this.getActiveWorkspace(); w.favoriteIds = favorite ? unique([...w.favoriteIds, workId]) : w.favoriteIds.filter((id) => id !== workId)
+    w.works = applyFavorite(w.works, workId, favorite, favoritedAt); this.cloudWorks = applyFavorite(this.cloudWorks, workId, favorite, favoritedAt)
+    this.rebuildState(); return this.persist()
+  }
+  deleteWork(workId: string): Promise<void> {
+    const w = this.getActiveWorkspace(); w.works = w.works.filter((item) => item.id !== workId); w.favoriteIds = w.favoriteIds.filter((id) => id !== workId); w.downloadRecords = w.downloadRecords.filter((item) => item.workId !== workId); if (w.currentDraft?.id === workId) w.currentDraft = null
+    const drafts = { ...w.localDrafts }; delete drafts[workId]; w.localDrafts = drafts; this.cloudWorks = this.cloudWorks.filter((item) => item.id !== workId)
+    this.rebuildState(); return this.persist()
+  }
+  addDownloadRecord(record: DownloadRecord): Promise<void> { const w = this.getActiveWorkspace(); w.downloadRecords = [record, ...w.downloadRecords.filter((item) => item.id !== record.id)]; this.rebuildState(); return this.persist() }
+  setDownloadQuota(quota: number): Promise<void> { const w = this.getActiveWorkspace(); w.downloadQuota = normalizeQuota(quota); w.downloadQuotaDate = dateKey(); this.rebuildState(); return this.persist() }
+  refreshDownloadQuota(): number { const w = this.getActiveWorkspace(); if (w.downloadQuotaDate !== dateKey()) { w.downloadQuota = DAILY_FREE_DOWNLOAD_QUOTA; w.downloadQuotaDate = dateKey(); this.rebuildState(); void this.persist() }; return w.downloadQuota }
+  completeDownload(record: DownloadRecord): number | null { if (this.refreshDownloadQuota() <= 0) return null; const w = this.getActiveWorkspace(); w.downloadQuota -= 1; w.downloadRecords = [record, ...w.downloadRecords.filter((item) => item.id !== record.id)]; this.rebuildState(); void this.persist(); return w.downloadQuota }
+
+  private getActiveWorkspace(): Workspace { if (!this.activeUserId) return this.persisted.guest; return this.persisted.accounts[this.activeUserId] ?? (this.persisted.accounts[this.activeUserId] = createWorkspace()) }
+  private rebuildState(cloudFavoriteIds?: string[]): void { const w = this.getActiveWorkspace(); const cloudIds = cloudFavoriteIds ?? this.cloudWorks.filter((work) => work.favoritedAt).map((work) => work.id); this.state = { ...cloneWorkspace(w), currentDraft: this.cloudDraft ?? w.currentDraft, works: mergeWorks(this.cloudWorks, w.works), favoriteIds: unique([...w.favoriteIds, ...cloudIds]) }; this.listeners.forEach((listener) => listener(this.state)) }
+  private persist(): Promise<void> {
+    const payload = this.persisted
+    this.writeTask = this.writeTask.catch(() => undefined).then(() => new Promise<void>((resolve, reject) => wx.setStorage({ key: STORAGE_KEY, data: payload, success: () => resolve(), fail: (error) => reject(new LocalStorageError(storageMessage(error))) })))
+    return this.writeTask
+  }
+  private migrateLegacy(): PersistedState {
+    const legacy = wx.getStorageSync<LegacyState>(LEGACY_STORAGE_KEY)
+    if (!legacy || !Array.isArray(legacy.works)) return { version: 2, guest: createWorkspace(), accounts: {} }
+    return { version: 2, guest: normalizeWorkspace({ ...legacy, works: legacy.works.filter((work) => !work.isCloud).map((work) => ({ ...work, syncStatus: 'guest', isCloud: false })) }), accounts: {} }
   }
 }
 
 export const appStore = new AppStore()
-
-function createInitialState(): AppState {
-  return {
-    ...initialState,
-    localDrafts: {},
-    works: [],
-    favoriteIds: [],
-    downloadQuotaDate: getLocalBusinessDate(),
-    downloadRecords: [],
-    privacyPreferences: { ...initialState.privacyPreferences },
-  }
-}
-
-function normalizePrivacyPreferences(value: PrivacyPreferences): PrivacyPreferences {
-  if (value.cloudSync) return { ...value, localOnly: false }
-  if (value.localOnly) return { ...value, cloudSync: false }
-  return value
-}
-
-function getLocalBusinessDate(): string {
-  const date = new Date()
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function normalizeQuota(value: number): number {
-  if (!Number.isFinite(value)) return DAILY_FREE_DOWNLOAD_QUOTA
-  return Math.max(0, Math.floor(value))
-}
+function createWorkspace(): Workspace { return { currentDraft: null, localDrafts: {}, works: [], favoriteIds: [], downloadQuota: DAILY_FREE_DOWNLOAD_QUOTA, downloadQuotaDate: dateKey(), downloadRecords: [] } }
+function cloneWorkspace(w: Workspace): Workspace { return { ...w, localDrafts: { ...w.localDrafts }, works: [...w.works], favoriteIds: [...w.favoriteIds], downloadRecords: [...w.downloadRecords] } }
+function normalizeWorkspace(w: Partial<Workspace>): Workspace { return { ...createWorkspace(), ...w, localDrafts: { ...(w.localDrafts ?? {}) }, works: w.works ?? [], favoriteIds: w.favoriteIds ?? [], downloadRecords: w.downloadRecords ?? [] } }
+function normalizePersistedState(state: PersistedState): PersistedState { return { version: 2, guest: normalizeWorkspace(state.guest), accounts: Object.fromEntries(Object.entries(state.accounts ?? {}).map(([id, w]) => [id, normalizeWorkspace(w)])) } }
+function isPersistedState(value: unknown): value is PersistedState { return typeof value === 'object' && value !== null && (value as { version?: unknown }).version === 2 && typeof (value as { guest?: unknown }).guest === 'object' }
+function isSynced(work: WorkItem): boolean { return work.syncStatus === 'synced' || work.isCloud === true }
+function mergeWorks(first: WorkItem[], second: WorkItem[]): WorkItem[] { const seen = new Set<string>(); return [...first, ...second].filter((work) => !seen.has(work.id) && (seen.add(work.id), true)) }
+function applyFavorite(works: WorkItem[], id: string, favorite: boolean, at: number): WorkItem[] { return works.map((work) => work.id === id ? { ...work, favoritedAt: favorite ? at : undefined } : work) }
+function unique(values: string[]): string[] { return [...new Set(values)] }
+function dateKey(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+function normalizeQuota(value: number): number { return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : DAILY_FREE_DOWNLOAD_QUOTA }
+function storageMessage(error: unknown): string { const raw = typeof (error as { errMsg?: unknown })?.errMsg === 'string' ? (error as { errMsg: string }).errMsg : ''; return /exceed|limit/i.test(raw) ? '本机存储空间不足，请清理空间后重试' : '本机保存失败，请稍后重试' }

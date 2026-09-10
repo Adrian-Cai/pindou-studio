@@ -1,11 +1,9 @@
 import type { AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
-import type { PrivacyPreferences } from '../models/pattern'
 import {
   deleteCurrentUser,
   fetchCurrentUser,
   loginWithWechat,
   updateNickname,
-  updatePrivacyPreferences as updatePrivacyPreferencesApi,
 } from '../services/auth-service'
 import { fetchQuota, type QuotaResponse } from '../services/download-service'
 import { ApiError } from '../services/http-client'
@@ -16,6 +14,8 @@ import {
   saveAuthSession,
 } from '../services/token-storage'
 import { appStore } from './app-store'
+import { cloudSummaryToWorkItem, fetchCloudFavorites, fetchCloudWorks } from '../services/work-service'
+import { syncPendingWorks } from '../services/work-sync-service'
 
 export type AuthStatus =
   | 'guest'
@@ -111,15 +111,17 @@ export class AuthStore {
         isOffline: false,
         errorMessage: '',
       })
-      applyPrivacyPreferences(profile)
+      await this.restoreAccountData(profile.user.id)
     } catch (error) {
       if (isUnauthorized(error)) {
         this.expireSession()
         return
       }
+      const cachedUser = session.profile?.user ?? session.user
+      await appStore.activateAccount(cachedUser.id)
       this.setState({
         status: 'authenticated',
-        user: session.profile?.user ?? session.user,
+        user: cachedUser,
         profile: session.profile ?? null,
         isOffline: true,
         errorMessage: friendlyAuthError(error),
@@ -199,38 +201,6 @@ export class AuthStore {
     }
   }
 
-  async updatePrivacyPreferences(
-    patch: Partial<Omit<PrivacyPreferences, 'updatedAt'>>,
-  ): Promise<PrivacyPreferences> {
-    const session = loadAuthSession()
-    if (!session || isAuthSessionExpired(session)) {
-      this.expireSession()
-      throw new Error('登录状态已失效，请重新登录')
-    }
-
-    try {
-      const privacy = await updatePrivacyPreferencesApi(session.token, patch)
-      const profile = this.state.profile ?? session.profile
-      const nextProfile = profile ? { ...profile, privacy } : undefined
-      saveAuthSession({
-        ...session,
-        ...(nextProfile ? { user: nextProfile.user, profile: nextProfile } : {}),
-      })
-      appStore.setPrivacyPreferences(privacy)
-      this.setState({
-        ...this.state,
-        ...(nextProfile ? { user: nextProfile.user, profile: nextProfile } : {}),
-        isOffline: false,
-        errorMessage: '',
-      })
-      return privacy
-    } catch (error) {
-      if (isUnauthorized(error)) this.expireSession()
-      else this.setState({ ...this.state, isOffline: true, errorMessage: friendlyAuthError(error) })
-      throw error
-    }
-  }
-
   async deleteAccount(): Promise<void> {
     const session = loadAuthSession()
     if (!session || isAuthSessionExpired(session)) {
@@ -240,14 +210,15 @@ export class AuthStore {
 
     try {
       await deleteCurrentUser(session.token)
-      this.logout()
+      await this.logout()
     } catch (error) {
       if (isUnauthorized(error)) this.expireSession()
       throw error
     }
   }
 
-  logout(): void {
+  async logout(): Promise<void> {
+    await appStore.leaveAccount()
     clearAuthSession()
     this.setState({ ...initialState })
   }
@@ -335,15 +306,17 @@ export class AuthStore {
         isOffline: false,
         errorMessage: '',
       })
-      applyPrivacyPreferences(profile)
+      await this.restoreAccountData(profile.user.id)
     } catch (error) {
       if (isUnauthorized(error)) {
         this.expireSession()
         return
       }
+      const cachedUser = session.profile?.user ?? session.user
+      await appStore.activateAccount(cachedUser.id)
       this.setState({
         status: 'authenticated',
-        user: session.profile?.user ?? session.user,
+        user: cachedUser,
         profile: session.profile ?? null,
         isOffline: true,
         errorMessage: friendlyAuthError(error),
@@ -370,6 +343,7 @@ export class AuthStore {
   }
 
   private expireSession(): void {
+    void appStore.leaveAccount()
     clearAuthSession()
     this.setState({ ...initialState, status: 'expired' })
   }
@@ -378,13 +352,22 @@ export class AuthStore {
     this.state = state
     this.listeners.forEach((listener) => listener(this.state))
   }
+
+  private async restoreAccountData(userId: string): Promise<void> {
+    await appStore.activateAccount(userId)
+    try {
+      const [works, favorites] = await Promise.all([fetchCloudWorks(), fetchCloudFavorites({ pageSize: 50 })])
+      appStore.replaceCloudWorks(works.items.map(cloudSummaryToWorkItem))
+      appStore.replaceCloudFavorites(favorites.items.map(cloudSummaryToWorkItem))
+      void syncPendingWorks(userId)
+    } catch (error) {
+      if (isUnauthorized(error)) throw error
+      this.setState({ ...this.state, isOffline: true, errorMessage: friendlyAuthError(error) })
+    }
+  }
 }
 
 export const authStore = new AuthStore()
-
-function applyPrivacyPreferences(profile: CurrentUserProfile): void {
-  if (profile.privacy) appStore.setPrivacyPreferences(profile.privacy)
-}
 
 function isUnauthorized(error: unknown): boolean {
   return error instanceof ApiError

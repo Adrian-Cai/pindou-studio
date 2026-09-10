@@ -54,6 +54,7 @@
               <view class="project-card__date">{{item.updatedText}}</view>
             </view>
             <text class="status-pill {{item.isDraft ? 'status-pill--draft' : ''}}">{{item.statusLabel}}</text>
+            <text wx:if="{{item.syncLabel}}" class="status-pill status-pill--draft">{{item.syncLabel}}</text>
           </view>
           <view class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
             <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="startRename" aria-role="button" aria-label="重命名作品 {{item.title}}">
