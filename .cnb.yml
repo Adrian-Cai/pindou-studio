@@ -43,16 +43,16 @@ master:
               "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/compose.yaml"
             # 制品库登录凭证属于发起构建的账号，须由流水线侧生成，勿改回服务器上 docker login
             REGISTRY_AUTH=$(printf '%s:%s' "$CNB_TOKEN_USER_NAME" "$CNB_TOKEN" | base64 -w0)
-            # 用带引号的 heredoc 传远端脚本：避免多层 ssh 双引号嵌套把 JSON 的引号吞掉，
-            # 参数经 argv 显式传入，远端只做 %s 替换，不再拼字符串
+            # 用带引号的 heredoc 传远端脚本：避免多层 ssh 双引号嵌套把 JSON 的引号吞掉；
+            # 镜像名与 Tag 须 export 给远端 shell，否则 compose 会以空镜像名报 invalid reference format
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" sh -s -- \
               "$CNB_DOCKER_REGISTRY" "$REGISTRY_AUTH" \
               "$CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE" "latest" <<'REMOTE'
             set -eu
             REGISTRY="$1"
             REGISTRY_AUTH="$2"
-            IMAGE_REPO="$3"
-            IMAGE_TAG="$4"
+            export IMAGE_REPO="$3"
+            export IMAGE_TAG="$4"
             cd /opt/pindou/deploy
             # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
             test -r /opt/pindou/config/api.env || {
@@ -173,8 +173,8 @@ $:
             set -eu
             REGISTRY="$1"
             REGISTRY_AUTH="$2"
-            IMAGE_REPO="$3"
-            IMAGE_TAG="$4"
+            export IMAGE_REPO="$3"
+            export IMAGE_TAG="$4"
             cd /opt/pindou/deploy
             # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
             test -r /opt/pindou/config/api.env || {
