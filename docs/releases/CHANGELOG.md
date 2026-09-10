@@ -2,6 +2,8 @@
 
 ## 0.28.7
 
+- 修复生产部署在已有数据库缺少 `idx_pindou_orders_user_created` 时持续健康检查失败的问题：部署流程现在先等待 PostgreSQL 健康，再执行幂等订单索引迁移，最后启动并等待 API，避免 API 因 Schema Contract 不一致反复重启。
+- CNB master push、CNB `tag_deploy.production` 和 Jenkins 部署流程同步修正；数据库数据仍使用原有持久化挂载，不删除或重建数据卷。
 - 修复 CNB 流水线生产部署失败（`error from registry: Blocked By Network Policy. 网络策略拦截。`）：根因是生产服务器出网被网络策略拦截，无法访问 `docker.cnb.cool`（也无法访问公共 Docker Hub）。此前部署依赖服务器执行 `docker compose pull`，一旦服务器本地没有待部署镜像就会联网并被拦截，整条部署流水线失败。历史上个别构建「看似成功」只是因为服务器本地已缓存了该镜像 Tag（如 `latest` 未变），并非真的拉取成功。
 - 修复方式：不再让服务器联网拉取。改为在构建容器内 `docker save` 镜像，通过 ssh 管道直接 `docker load` 到服务器（构建容器可正常访问制品库），随后由远端 `docker compose up -d` 直接使用本地镜像。这是覆盖 0.28.6「改用仓库部署令牌让服务器自行拉取」的替代方案：0.28.6 仍需服务器出网，未解决网络策略拦截本身。
 - `deploy/compose.yaml` 中的 `postgres:17-bookworm` 是公网镜像，服务器同样拉不到，因此在部署阶段一并从构建容器搬运到服务器。
