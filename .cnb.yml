@@ -2,6 +2,8 @@ master:
   push:
     - services:
         - docker
+      imports:
+        - https://cnb.cool/ImAcaiy/envs/-/blob/main/envs.yml
       stages:
         - name: 构建 Docker 镜像
           script: |
@@ -14,6 +16,20 @@ master:
           script: |
             docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${CNB_COMMIT_SHORT}
             docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
+        - name: SSH 部署到生产服务器
+          script: |
+            set -e
+            mkdir -p ~/.ssh && chmod 700 ~/.ssh
+            printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            ssh -o StrictHostKeyChecking=no -p $SSH_PORT $SSH_USER@$SSH_HOST "
+              set -e
+              cd /opt/pindou/deploy
+              export IMAGE_REPO='${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}'
+              export IMAGE_TAG='latest'
+              docker compose pull
+              docker compose up -d
+            "
 
 # 打 Tag 时用 Tag 名作为镜像标签构建并推送
 $:
