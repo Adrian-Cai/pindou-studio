@@ -48,8 +48,9 @@ master:
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
               < <(docker save "$IMAGE_REPO:latest")
             # compose 里 postgres 是公网镜像，服务器同样拉不到，一并搬运
+            docker pull -q postgres:17-bookworm
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
-              < <(docker pull -q postgres:17-bookworm && docker save postgres:17-bookworm)
+              < <(docker save postgres:17-bookworm)
             # 用带引号的 heredoc 传远端脚本，避免多层 ssh 双引号嵌套被 shell 改写
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" sh -s -- \
               "$IMAGE_REPO" "latest" <<'REMOTE'
@@ -172,8 +173,9 @@ $:
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
               < <(docker save "$IMAGE_REPO:$CNB_BRANCH")
             # compose 里 postgres 是公网镜像，服务器同样拉不到，一并搬运
+            docker pull -q postgres:17-bookworm
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
-              < <(docker pull -q postgres:17-bookworm && docker save postgres:17-bookworm)
+              < <(docker save postgres:17-bookworm)
             # 用带引号的 heredoc 传远端脚本，避免多层 ssh 双引号嵌套被 shell 改写
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" sh -s -- \
               "$IMAGE_REPO" "$CNB_BRANCH" <<'REMOTE'
