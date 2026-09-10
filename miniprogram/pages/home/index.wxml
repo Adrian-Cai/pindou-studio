@@ -1,5 +1,5 @@
 <page-layout title="小露拼豆" home show-main-nav selected-tab="{{0}}">
-<view class="page">
+<view class="home-page">
 
   <!-- ① Hero 主视觉 -->
   <view class="hero">

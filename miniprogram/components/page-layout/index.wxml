@@ -16,7 +16,7 @@
     show-scrollbar="{{false}}"
     style="height: {{scrollAreaHeight}}px;"
   >
-    <view class="page-layout__content {{showMainNav ? 'page-layout__content--with-nav' : ''}} {{compactBottomPadding ? 'page-layout__content--compact-bottom' : ''}}">
+    <view class="page-layout__content {{showMainNav ? (isMainTabPage ? 'page-layout__content--main-tab' : 'page-layout__content--with-nav') : ''}} {{compactBottomPadding ? 'page-layout__content--compact-bottom' : ''}}">
       <slot />
     </view>
   </scroll-view>

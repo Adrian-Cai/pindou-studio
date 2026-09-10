@@ -2,9 +2,10 @@ import { DOWNLOAD_CONFIGS } from '../config/download'
 import type { DownloadSheetState, DownloadTabConfig } from '../config/download'
 import type { DownloadFileType, PatternDraft, WorkItem } from '../../models/pattern'
 import {
-  drawMaterialsDownload,
-  drawPaletteDownload,
+  createDownloadIdempotencyKey,
+  executeCloudDownload,
   friendlyDownloadError,
+  recordLocalDownloadResult,
   saveImageToAlbum,
 } from '../services/result-download-service'
 import {
@@ -13,10 +14,6 @@ import {
   renameCloudWork,
   setCloudFavorite,
 } from '../../services/work-service'
-import {
-  cloudDownloadToLocalRecord,
-  createDownload,
-} from '../../services/download-service'
 import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
 import { checkTextContent } from '../../services/content-security-service'
@@ -24,47 +21,20 @@ import { getCustomNavigationMetrics } from '../../utils/navigation'
 import {
   createDraftRenderKey,
   formatDateTime,
-  getTextColor,
   type MaterialItem,
   type ResultSummary,
   summarizeMaterials,
 } from './utils'
+import {
+  DOWNLOAD_CANVAS_WIDTH,
+  drawChartImages,
+  drawMaterialsDownloadImage,
+  drawPaletteDownloadImage,
+  drawPreviewImage,
+  drawThumbnail,
+} from '../services/pattern-render-service'
 
 type ResultTab = 'preview' | 'materials' | 'chart' | 'palette'
-
-const MATERIAL_PREVIEW_LIMIT = 5
-const PALETTE_PREVIEW_LIMIT = 5
-const THUMB_SIZE_RPX = 176
-const DOWNLOAD_CANVAS_WIDTH = 900
-
-interface PatternCanvas {
-  width: number
-  height: number
-  getContext(type: '2d'): PatternCanvasContext
-}
-
-interface PatternCanvasContext {
-  fillStyle: string
-  strokeStyle: string
-  lineWidth: number
-  globalAlpha: number
-  font: string
-  textAlign: string
-  textBaseline: string
-  scale(x: number, y: number): void
-  fillRect(x: number, y: number, width: number, height: number): void
-  strokeRect(x: number, y: number, width: number, height: number): void
-  beginPath(): void
-  arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void
-  fill(): void
-  fillText(text: string, x: number, y: number): void
-}
-
-interface CanvasQueryResult {
-  node: PatternCanvas
-  width: number
-  height: number
-}
 
 interface DownloadRequestEvent extends WechatMiniprogram.CustomEvent {
   detail: {
@@ -77,10 +47,6 @@ Page({
     draft: null as PatternDraft | null,
     summary: null as ResultSummary | null,
     materials: [] as MaterialItem[],
-    visibleMaterials: [] as MaterialItem[],
-    palettePreviewMaterials: [] as MaterialItem[],
-    materialListExpanded: false,
-    paletteExpanded: false,
     activeTab: 'preview' as ResultTab,
     isFavorite: false,
     favoriteUpdating: false,
@@ -141,10 +107,6 @@ Page({
       : { items: [], totalCount: 0 }
     const materials = materialSummary.items
     const beadCount = materialSummary.totalCount
-    const materialListExpanded = materials.length > MATERIAL_PREVIEW_LIMIT
-      && this.data.draft?.id === draft?.id
-      && this.data.materialListExpanded
-    const paletteExpanded = this.data.draft?.id === draft?.id && this.data.paletteExpanded
     const draftRenderKey = draft ? createDraftRenderKey(draft) : ''
     const shouldRenderPatternImages = draftRenderKey !== this.data.renderedDraftKey
 
@@ -152,12 +114,6 @@ Page({
       {
         draft,
         materials,
-        visibleMaterials: materialListExpanded
-          ? materials
-          : materials.slice(0, MATERIAL_PREVIEW_LIMIT),
-        palettePreviewMaterials: materials.slice(0, PALETTE_PREVIEW_LIMIT),
-        materialListExpanded,
-        paletteExpanded,
         quota: accountQuota ?? state.downloadQuota,
         dailyFreeQuota,
         isFavorite: draft ? state.favoriteIds.includes(draft.id) : false,
@@ -222,23 +178,9 @@ Page({
     const activeTab = String(event.currentTarget.dataset.tab) as ResultTab
     if (activeTab === this.data.activeTab) return
     this.setData(
-      { activeTab, paletteExpanded: false, quotaTipsOpen: false, renderError: false },
+      { activeTab, quotaTipsOpen: false, renderError: false },
       () => this.renderVisibleCanvases(),
     )
-  },
-
-  toggleMaterialList() {
-    const materialListExpanded = !this.data.materialListExpanded
-    this.setData({
-      materialListExpanded,
-      visibleMaterials: materialListExpanded
-        ? this.data.materials
-        : this.data.materials.slice(0, MATERIAL_PREVIEW_LIMIT),
-    })
-  },
-
-  togglePalette() {
-    this.setData({ paletteExpanded: !this.data.paletteExpanded })
   },
 
   async toggleFavorite() {
@@ -360,9 +302,6 @@ Page({
 
   // ── 统一下载交互处理 ──
 
-  /**
-   * 4 个 Tab 的下载按钮统一点进事件：打开 DownloadConfirmSheet
-   */
   async handleRequestDownload(event: DownloadRequestEvent) {
     if (this.data.downloadLoading) return
 
@@ -395,9 +334,6 @@ Page({
     })
   },
 
-  /**
-   * 取消或关闭半屏
-   */
   handleCancelDownload() {
     if (this.data.downloadSheetState === 'processing') return
     this.setData({
@@ -418,9 +354,6 @@ Page({
     })
   },
 
-  /**
-   * 点击半屏中的「确认下载」
-   */
   async handleConfirmDownload() {
     if (this.data.downloadSheetState === 'processing' || this.data.downloadLoading) return
 
@@ -454,21 +387,26 @@ Page({
     })
 
     try {
-      // 1. 生成待下载图片文件
       const filePath = await this.createDownloadImage(fileType)
-
-      // 2. 保存到用户设备相册
       await saveImageToAlbum(filePath)
 
-      // 3. 只有真实保存成功后，才记录云端下载或扣除本地次数
-      const cloudResult = await this.recordCloudDownload(fileType)
-      const nextQuota = cloudResult
-        ? this.recordSuccessfulCloudDownload(cloudResult)
-        : this.recordSuccessfulDownload(fileType)
-      if (nextQuota === null) throw new Error('下载次数状态已变化，请刷新后重试')
-      if (!cloudResult) authStore.recordLocalDownload(nextQuota)
+      const draft = this.data.draft
+      const summary = this.data.summary
+      if (!draft || !summary) throw new Error('作品信息不存在')
 
-      // 4. 切换至下载成功半屏
+      const cloudQuota = await executeCloudDownload(draft, fileType, this.data.downloadIdempotencyKey)
+      const nextQuota = cloudQuota !== null
+        ? cloudQuota
+        : recordLocalDownloadResult(
+            draft,
+            summary.title,
+            summary.colorCount,
+            this.data.previewSrc || this.data.thumbnailSrc,
+            fileType,
+          )
+      if (nextQuota === null) throw new Error('下载次数状态已变化，请刷新后重试')
+      if (cloudQuota === null) authStore.recordLocalDownload(nextQuota)
+
       this.setData({
         quota: nextQuota,
         downloadSheetQuota: nextQuota,
@@ -485,7 +423,6 @@ Page({
         title: friendlyDownloadError(error),
         icon: 'none',
       })
-      // 失败时不扣次数，保持在 confirm 状态可重试
       this.setData({
         downloadSheetState: 'confirm',
         downloadLoading: false,
@@ -494,9 +431,6 @@ Page({
     }
   },
 
-  /**
-   * 成功半屏中点击「查看图片/查看施工图/查看色板」
-   */
   handlePreviewDownloadedFile() {
     const savedPath = this.data.savedDownloadedPath
     const fileType = this.data.savedDownloadType
@@ -525,9 +459,6 @@ Page({
     }
   },
 
-  /**
-   * 成功半屏中点击「完成」
-   */
   handleCompleteDownloadSheet() {
     this.setData({
       downloadSheetVisible: false,
@@ -545,105 +476,58 @@ Page({
 
     if (fileType === 'preview') {
       if (this.data.previewSrc) return this.data.previewSrc
-      await this.drawPreviewImage(draft)
-      if (!this.data.previewSrc) throw new Error('成品图生成失败')
-      return this.data.previewSrc
+      const previewSrc = await drawPreviewImage(this, draft)
+      this.setData({ previewSrc })
+      return previewSrc
     }
 
     if (fileType === 'chart') {
       if (this.data.chartHdSrc) return this.data.chartHdSrc
       if (this.data.chartSrc) return this.data.chartSrc
-      await this.drawChartImage(draft)
-      const chartPath = this.data.chartHdSrc || this.data.chartSrc
+      const { chartSrc, chartHdSrc } = await drawChartImages(this, draft)
+      this.setData({ chartSrc, chartHdSrc })
+      const chartPath = chartHdSrc || chartSrc
       if (!chartPath) throw new Error('施工图生成失败')
       return chartPath
     }
 
-    if (fileType === 'materials') return this.drawMaterialsDownloadImage()
-    return this.drawPaletteDownloadImage()
+    if (fileType === 'materials') return this.drawMaterialsDownloadFile()
+    return this.drawPaletteDownloadFile()
   },
 
-  async drawMaterialsDownloadImage(): Promise<string> {
+  async drawMaterialsDownloadFile(): Promise<string> {
     const materials = this.data.materials
     const height = 220 + materials.length * 72
     await this.resizeDownloadCanvas({ materialsCanvasHeight: height })
-    const canvas = await this.queryCanvas('#materialsDownloadCanvas')
-    canvas.node.width = DOWNLOAD_CANVAS_WIDTH
-    canvas.node.height = height
-    const context = canvas.node.getContext('2d')
-
-    drawMaterialsDownload(context, {
-      width: DOWNLOAD_CANVAS_WIDTH,
+    return drawMaterialsDownloadImage(
+      this,
+      materials,
+      this.data.summary?.title ?? '未命名作品',
+      this.data.summary?.beadCount ?? 0,
       height,
-      workTitle: this.data.summary?.title ?? '未命名作品',
-      fileTitle: '材料清单',
-    }, materials, this.data.summary?.beadCount ?? 0)
-    return this.exportCanvas(canvas.node)
+    )
   },
 
-  async drawPaletteDownloadImage(): Promise<string> {
+  async drawPaletteDownloadFile(): Promise<string> {
     const materials = this.data.materials
     const columns = 4
     const rows = Math.max(1, Math.ceil(materials.length / columns))
     const height = 210 + rows * 190
     await this.resizeDownloadCanvas({ paletteCanvasHeight: height })
-    const canvas = await this.queryCanvas('#paletteDownloadCanvas')
-    canvas.node.width = DOWNLOAD_CANVAS_WIDTH
-    canvas.node.height = height
-    const context = canvas.node.getContext('2d')
-
-    drawPaletteDownload(context, {
-      width: DOWNLOAD_CANVAS_WIDTH,
+    return drawPaletteDownloadImage(
+      this,
+      materials,
+      this.data.summary?.title ?? '未命名作品',
       height,
-      workTitle: this.data.summary?.title ?? '未命名作品',
-      fileTitle: '色板参考',
-    }, materials)
-    return this.exportCanvas(canvas.node)
+    )
   },
 
   resizeDownloadCanvas(patch: { materialsCanvasHeight?: number; paletteCanvasHeight?: number }) {
     return new Promise<void>((resolve) => this.setData(patch, resolve))
   },
 
-  recordSuccessfulDownload(fileType: DownloadFileType): number | null {
-    const draft = this.data.draft
-    const summary = this.data.summary
-    if (!draft || !summary) return null
-    return appStore.completeDownload({
-      id: `download_${draft.id}_${fileType}_${Date.now()}`,
-      workId: draft.id,
-      title: summary.title,
-      coverPath: this.data.previewSrc || this.data.thumbnailSrc,
-      downloadedAt: Date.now(),
-      fileType,
-      width: draft.settings.width,
-      height: draft.settings.height,
-      colorCount: summary.colorCount,
-    })
-  },
-
-  async recordCloudDownload(fileType: DownloadFileType) {
-    const draft = this.data.draft
-    const work = draft ? appStore.getSnapshot().works.find((item) => item.id === draft.id) : undefined
-    if (!draft || !work?.isCloud) return null
-    return createDownload(work.id, fileType, this.data.downloadIdempotencyKey)
-  },
-
-  recordSuccessfulCloudDownload(result: Awaited<ReturnType<typeof createDownload>>): number {
-    const draft = this.data.draft
-    const work = draft ? appStore.getSnapshot().works.find((item) => item.id === draft.id) : undefined
-    appStore.addDownloadRecord(cloudDownloadToLocalRecord(result.downloadRecord, work))
-    appStore.setDownloadQuota(result.quota.remaining)
-    authStore.recordServerDownload(result.quota)
-    return result.quota.remaining
-  },
-
   goCreate() {
     wx.switchTab({ url: '/pages/home/index' })
-  },
-
-  switchMainTab(event: WechatMiniprogram.TouchEvent) {
-    wx.switchTab({ url: String(event.currentTarget.dataset.path) })
   },
 
   async renderVisibleCanvases() {
@@ -663,7 +547,7 @@ Page({
         && !this.data.chartSrc
         && !this.data.chartImageRendering
       ) {
-        jobs.push(this.drawChartImage(draft))
+        jobs.push(this.renderChartImages(draft))
       }
       await Promise.all(jobs)
       if (this.data.renderError) this.setData({ renderError: false })
@@ -676,264 +560,24 @@ Page({
   async renderPatternImages(draft: PatternDraft) {
     this.setData({ patternImagesRendering: true })
     try {
-      await Promise.all([this.drawThumbnail(draft), this.drawPreviewImage(draft)])
+      const [thumbnailSrc, previewSrc] = await Promise.all([
+        drawThumbnail(this, draft),
+        drawPreviewImage(this, draft),
+      ])
+      this.setData({ thumbnailSrc, previewSrc })
     } finally {
       this.setData({ patternImagesRendering: false })
     }
   },
 
-  async drawThumbnail(draft: PatternDraft) {
-    const THUMB_SIZE_PX = Math.round((THUMB_SIZE_RPX / 750) * wx.getWindowInfo().windowWidth)
-    const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
-
-    const canvasNode = await new Promise<PatternCanvas>((resolve, reject) => {
-      wx.createSelectorQuery()
-        .in(this)
-        .select('#thumbnailCanvas')
-        .fields({ node: true })
-        .exec((results: [{ node?: PatternCanvas } | undefined]) => {
-          const node = results[0]?.node
-          if (!node) {
-            reject(new Error('thumbnailCanvas not found'))
-            return
-          }
-          resolve(node)
-        })
-    })
-
-    const drawSize = THUMB_SIZE_PX
-    canvasNode.width = Math.round(drawSize * pixelRatio)
-    canvasNode.height = Math.round(drawSize * pixelRatio)
-
-    const context = canvasNode.getContext('2d')
-    context.scale(pixelRatio, pixelRatio)
-    context.fillStyle = '#f7f7f9'
-    context.fillRect(0, 0, drawSize, drawSize)
-
-    const cellWidth = drawSize / draft.settings.width
-    const cellHeight = drawSize / draft.settings.height
-    const radius = Math.min(cellWidth, cellHeight) * 0.43
-
-    draft.cells.forEach((cell, index) => {
-      if (cell.color === 'transparent') return
-      const column = index % draft.settings.width
-      const row = Math.floor(index / draft.settings.width)
-      const centerX = column * cellWidth + cellWidth / 2
-      const centerY = row * cellHeight + cellHeight / 2
-
-      context.globalAlpha = 0.16
-      context.fillStyle = '#111111'
-      context.beginPath()
-      context.arc(centerX + radius * 0.1, centerY + radius * 0.14, radius, 0, Math.PI * 2)
-      context.fill()
-
-      context.globalAlpha = 1
-      context.fillStyle = cell.color
-      context.beginPath()
-      context.arc(centerX, centerY, radius, 0, Math.PI * 2)
-      context.fill()
-
-      if (radius >= 1.7) {
-        context.globalAlpha = 0.35
-        context.fillStyle = '#ffffff'
-        context.beginPath()
-        context.arc(
-          centerX - radius * 0.3,
-          centerY - radius * 0.32,
-          radius * 0.2,
-          0,
-          Math.PI * 2,
-        )
-        context.fill()
-      }
-    })
-    context.globalAlpha = 1
-
-    const tempFilePath = await new Promise<string>((resolve, reject) => {
-      wx.canvasToTempFilePath(
-        {
-          canvas: canvasNode as unknown as WechatMiniprogram.Canvas,
-          fileType: 'png' as const,
-          quality: 1,
-          success: (res: WechatMiniprogram.CanvasToTempFilePathSuccessCallbackResult) =>
-            resolve(res.tempFilePath),
-          fail: (err: WechatMiniprogram.GeneralCallbackResult) => reject(new Error(err.errMsg)),
-        },
-        this,
-      )
-    })
-    this.setData({ thumbnailSrc: tempFilePath })
-  },
-
-  async drawPreviewImage(draft: PatternDraft) {
-    const canvas = await this.drawBeadCanvas('#previewRenderCanvas', draft)
-    const tempFilePath = await this.exportCanvas(canvas)
-    this.setData({ previewSrc: tempFilePath })
-  },
-
-  async drawBeadCanvas(selector: string, draft: PatternDraft): Promise<PatternCanvas> {
-    const result = await this.queryCanvas(selector)
-    const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
-    const canvas = result.node
-    canvas.width = Math.round(result.width * pixelRatio)
-    canvas.height = Math.round(result.height * pixelRatio)
-
-    const context = canvas.getContext('2d')
-    context.scale(pixelRatio, pixelRatio)
-    context.fillStyle = '#f7f7f9'
-    context.fillRect(0, 0, result.width, result.height)
-
-    const cellWidth = result.width / draft.settings.width
-    const cellHeight = result.height / draft.settings.height
-    const radius = Math.min(cellWidth, cellHeight) * 0.43
-
-    draft.cells.forEach((cell, index) => {
-      if (cell.color === 'transparent') return
-      const column = index % draft.settings.width
-      const row = Math.floor(index / draft.settings.width)
-      const centerX = column * cellWidth + cellWidth / 2
-      const centerY = row * cellHeight + cellHeight / 2
-
-      context.globalAlpha = 0.16
-      context.fillStyle = '#111111'
-      context.beginPath()
-      context.arc(centerX + radius * 0.1, centerY + radius * 0.14, radius, 0, Math.PI * 2)
-      context.fill()
-
-      context.globalAlpha = 1
-      context.fillStyle = cell.color
-      context.beginPath()
-      context.arc(centerX, centerY, radius, 0, Math.PI * 2)
-      context.fill()
-
-      if (radius >= 1.7) {
-        context.globalAlpha = 0.35
-        context.fillStyle = '#ffffff'
-        context.beginPath()
-        context.arc(centerX - radius * 0.3, centerY - radius * 0.32, radius * 0.2, 0, Math.PI * 2)
-        context.fill()
-      }
-    })
-    context.globalAlpha = 1
-    return canvas
-  },
-
-  exportCanvas(canvas: PatternCanvas): Promise<string> {
-    return new Promise((resolve, reject) => {
-      wx.canvasToTempFilePath(
-        {
-          canvas: canvas as unknown as WechatMiniprogram.Canvas,
-          fileType: 'png',
-          quality: 1,
-          success: ({ tempFilePath }) => resolve(tempFilePath),
-          fail: (error) => reject(new Error(error.errMsg || '图片生成失败')),
-        },
-        this,
-      )
-    })
-  },
-
-  async drawChartImage(draft: PatternDraft) {
+  async renderChartImages(draft: PatternDraft) {
     this.setData({ chartImageRendering: true })
     try {
-      const [canvas, hdCanvas] = await Promise.all([
-        this.drawChartCanvas('#chartRenderCanvas', draft),
-        this.drawChartHdCanvas('#chartHdRenderCanvas', draft),
-      ])
-      const [tempFilePath, hdTempFilePath] = await Promise.all([
-        this.exportCanvas(canvas),
-        this.exportCanvas(hdCanvas),
-      ])
-      this.setData({ chartSrc: tempFilePath, chartHdSrc: hdTempFilePath })
+      const { chartSrc, chartHdSrc } = await drawChartImages(this, draft)
+      this.setData({ chartSrc, chartHdSrc })
     } finally {
       this.setData({ chartImageRendering: false })
     }
-  },
-
-  async drawChartCanvas(selector: string, draft: PatternDraft): Promise<PatternCanvas> {
-    const result = await this.queryCanvas(selector)
-    const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
-    const canvas = result.node
-    canvas.width = Math.round(result.width * pixelRatio)
-    canvas.height = Math.round(result.height * pixelRatio)
-
-    const context = canvas.getContext('2d')
-    context.scale(pixelRatio, pixelRatio)
-    const cellWidth = result.width / draft.settings.width
-    const cellHeight = result.height / draft.settings.height
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, result.width, result.height)
-    context.lineWidth = 0.5
-    context.strokeStyle = '#d9d9d9'
-    context.textAlign = 'center'
-    context.textBaseline = 'middle'
-    context.font = `${Math.max(7, Math.min(10, cellWidth * 0.52))}px sans-serif`
-
-    draft.cells.forEach((cell, index) => {
-      const column = index % draft.settings.width
-      const row = Math.floor(index / draft.settings.width)
-      const x = column * cellWidth
-      const y = row * cellHeight
-      context.fillStyle = cell.color === 'transparent' ? '#ffffff' : cell.color
-      context.fillRect(x, y, cellWidth, cellHeight)
-      context.strokeRect(x, y, cellWidth, cellHeight)
-
-      if (cell.colorCode) {
-        context.fillStyle = getTextColor(cell.color)
-        context.fillText(cell.colorCode.replace(/^C0?/, ''), x + cellWidth / 2, y + cellHeight / 2)
-      }
-    })
-    return canvas
-  },
-
-  async drawChartHdCanvas(selector: string, draft: PatternDraft): Promise<PatternCanvas> {
-    const CHART_HD_CELL_PX = 24
-    const totalWidth = draft.settings.width * CHART_HD_CELL_PX
-    const totalHeight = draft.settings.height * CHART_HD_CELL_PX
-
-    const canvas = await new Promise<PatternCanvas>((resolve, reject) => {
-      wx.createSelectorQuery()
-        .in(this)
-        .select(selector)
-        .fields({ node: true })
-        .exec((results: [{ node?: PatternCanvas } | undefined]) => {
-          const node = results[0]?.node
-          if (!node) {
-            reject(new Error(`未找到画布 ${selector}`))
-            return
-          }
-          resolve(node)
-        })
-    })
-
-    canvas.width = totalWidth
-    canvas.height = totalHeight
-
-    const context = canvas.getContext('2d')
-    const cellPx = CHART_HD_CELL_PX
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, totalWidth, totalHeight)
-    context.lineWidth = 0.5
-    context.strokeStyle = '#cccccc'
-    context.textAlign = 'center'
-    context.textBaseline = 'middle'
-    context.font = `${Math.round(cellPx * 0.5)}px sans-serif`
-
-    draft.cells.forEach((cell, index) => {
-      const column = index % draft.settings.width
-      const row = Math.floor(index / draft.settings.width)
-      const x = column * cellPx
-      const y = row * cellPx
-      context.fillStyle = cell.color === 'transparent' ? '#ffffff' : cell.color
-      context.fillRect(x, y, cellPx, cellPx)
-      context.strokeRect(x, y, cellPx, cellPx)
-
-      if (cell.colorCode) {
-        context.fillStyle = getTextColor(cell.color)
-        context.fillText(cell.colorCode.replace(/^C0?/, ''), x + cellPx / 2, y + cellPx / 2)
-      }
-    })
-    return canvas
   },
 
   openChartPreview() {
@@ -945,23 +589,6 @@ Page({
     })
   },
 
-  queryCanvas(selector: string): Promise<CanvasQueryResult> {
-    return new Promise((resolve, reject) => {
-      wx.createSelectorQuery()
-        .in(this)
-        .select(selector)
-        .fields({ node: true, size: true })
-        .exec((results) => {
-          const result = results[0] as CanvasQueryResult | undefined
-          if (!result?.node || !result.width || !result.height) {
-            reject(new Error(`未找到画布 ${selector}`))
-            return
-          }
-          resolve(result)
-        })
-    })
-  },
-
   onShareAppMessage() {
     return {
       title: '看看我刚生成的拼豆图纸',
@@ -969,7 +596,3 @@ Page({
     }
   },
 })
-
-function createDownloadIdempotencyKey(): string {
-  return `export-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-}

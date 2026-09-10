@@ -54,6 +54,16 @@ export class AuthStore {
     return this.state
   }
 
+  isLoggedIn(): boolean {
+    const user = this.state.profile?.user ?? this.state.user
+    return Boolean(user) && (
+      this.state.status === 'authenticated'
+      || this.state.status === 'refreshing'
+      || this.state.status === 'restoring'
+      || this.state.status === 'updating'
+    )
+  }
+
   subscribe(listener: AuthListener): () => void {
     this.listeners.add(listener)
     listener(this.state)

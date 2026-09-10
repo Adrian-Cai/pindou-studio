@@ -1,4 +1,11 @@
 import { ApiError } from '../../services/http-client'
+import type { DownloadFileType, PatternDraft } from '../../models/pattern'
+import {
+  cloudDownloadToLocalRecord,
+  createDownload,
+} from '../../services/download-service'
+import { appStore } from '../../store/app-store'
+import { authStore } from '../../store/auth-store'
 
 export interface DownloadCanvasContext {
   fillStyle: string
@@ -109,4 +116,42 @@ function drawDownloadHeader(context: DownloadCanvasContext, header: DownloadHead
   context.fillStyle = '#626573'
   context.font = '24px sans-serif'
   context.fillText(header.workTitle, 40, 108)
+}
+
+export function createDownloadIdempotencyKey(): string {
+  return `export-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+export function recordLocalDownloadResult(
+  draft: PatternDraft,
+  title: string,
+  colorCount: number,
+  coverPath: string,
+  fileType: DownloadFileType,
+): number | null {
+  return appStore.completeDownload({
+    id: `download_${draft.id}_${fileType}_${Date.now()}`,
+    workId: draft.id,
+    title,
+    coverPath,
+    downloadedAt: Date.now(),
+    fileType,
+    width: draft.settings.width,
+    height: draft.settings.height,
+    colorCount,
+  })
+}
+
+export async function executeCloudDownload(
+  draft: PatternDraft,
+  fileType: DownloadFileType,
+  idempotencyKey: string,
+): Promise<number | null> {
+  const work = appStore.getSnapshot().works.find((item) => item.id === draft.id)
+  if (!work?.isCloud) return null
+  const result = await createDownload(work.id, fileType, idempotencyKey)
+  appStore.addDownloadRecord(cloudDownloadToLocalRecord(result.downloadRecord, work))
+  appStore.setDownloadQuota(result.quota.remaining)
+  authStore.recordServerDownload(result.quota)
+  return result.quota.remaining
 }

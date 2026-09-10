@@ -30,8 +30,9 @@ page {
   --sample-label-height: 44rpx;
 }
 
-.page {
+.home-page {
   box-sizing: border-box;
+  min-height: auto;
   padding: 0 40rpx;
   color: var(--color-text);
 }
@@ -490,7 +491,7 @@ page {
     --sample-media-height: 160rpx;
   }
 
-  .page {
+  .home-page {
     padding-right: 32rpx;
     padding-left: 32rpx;
   }

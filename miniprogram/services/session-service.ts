@@ -3,13 +3,16 @@ import { loginWithWechat } from './auth-service'
 import {
   isAuthSessionExpired,
   loadAuthSession,
-  saveAuthSession,
 } from './token-storage'
+
+let securitySession: AuthSession | null = null
 
 export async function ensureLoggedInSession(): Promise<AuthSession> {
   const current = loadAuthSession()
   if (current && !isAuthSessionExpired(current)) return current
+  if (securitySession && !isAuthSessionExpired(securitySession)) return securitySession
   const session = await loginWithWechat()
-  saveAuthSession(session)
+  securitySession = session
   return session
 }
+

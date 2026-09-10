@@ -1,0 +1,33 @@
+<view class="work-summary">
+  <image class="work-summary__thumb" src="{{thumbnailSrc}}" mode="aspectFit"></image>
+  <view class="work-summary__info">
+    <view
+      class="work-summary__title-row {{renamingTitle ? 'work-summary__title-row--disabled' : ''}}"
+      bindtap="onEditTitle"
+      role="button"
+      aria-label="编辑作品名称，当前名称 {{title}}"
+      aria-disabled="{{renamingTitle}}"
+    >
+      <text class="work-summary__title">{{title}}</text>
+      <view class="work-summary__edit-btn" hover-class="work-summary__edit-btn--hover" aria-hidden="true">
+        <image class="work-summary__edit-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
+      </view>
+    </view>
+    <view class="work-summary__meta">
+      {{dimensions}} · {{colorCount}}色
+    </view>
+    <view class="work-summary__count">共 {{beadCount}} 颗</view>
+    <view class="work-summary__date">创建于 {{createdText}}</view>
+  </view>
+  <view
+    class="favorite {{isFavorite ? 'favorite--active' : ''}} {{favoriteUpdating ? 'favorite--updating' : ''}}"
+    catchtap="onToggleFavorite"
+    hover-class="favorite--pressed"
+    role="button"
+    aria-label="{{isFavorite ? '取消收藏' : '收藏作品'}}"
+    aria-pressed="{{isFavorite}}"
+    aria-disabled="{{favoriteUpdating}}"
+  >
+    <text class="favorite__heart">{{isFavorite ? '♥' : '♡'}}</text>
+  </view>
+</view>

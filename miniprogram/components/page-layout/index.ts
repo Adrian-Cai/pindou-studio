@@ -17,6 +17,7 @@ Component({
     navigationBarHeight: 0,
     scrollAreaHeight: 0,
     showEmbeddedMainNav: false,
+    isMainTabPage: false,
   },
 
   observers: {
@@ -55,8 +56,11 @@ Component({
       const pages = getCurrentPages()
       const page = pages[pages.length - 1]
       const route = '/' + (page?.route ?? '')
-      const isMainTabPage = ['/pages/home/index', '/pages/projects/index', '/pages/profile/index'].includes(route)
-      this.setData({ showEmbeddedMainNav: this.properties.showMainNav && !isMainTabPage })
+      const isMainTabPage = Boolean(this.properties.home) || ['/pages/home/index', '/pages/projects/index', '/pages/profile/index'].includes(route)
+      this.setData({
+        showEmbeddedMainNav: this.properties.showMainNav && !isMainTabPage,
+        isMainTabPage,
+      })
     },
 
     handleAction() {
