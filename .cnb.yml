@@ -46,6 +46,42 @@ master:
               docker compose pull
               docker compose up -d
             "
+        - name: 健康检查
+          imports:
+            - https://cnb.cool/ImAcaiy/envs/-/blob/main/envs.yml
+          script: |
+            set -eu
+            # 缺少密钥时立即报错，避免生成空密钥文件导致 ssh 报 Permission denied
+            : "${SSH_PRIVATE_KEY:?SSH_PRIVATE_KEY 未配置，请检查 envs.yml 导入}"
+            : "${SSH_USER:?SSH_USER 未配置}"
+            : "${SSH_HOST:?SSH_HOST 未配置}"
+            : "${SSH_PORT:?SSH_PORT 未配置}"
+            # 服务器只接受 ed25519 公钥，私钥写入 id_ed25519
+            mkdir -p ~/.ssh && chmod 700 ~/.ssh
+            printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+            chmod 600 ~/.ssh/id_ed25519
+            # 校验私钥完整性，避免残缺密钥只报 Permission denied
+            ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null \
+              || { echo "SSH_PRIVATE_KEY 不是合法私钥，请在 envs.yml 更新为完整 PEM"; exit 1; }
+            ssh -i ~/.ssh/id_ed25519 \
+              -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15 \
+              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" 'bash -s' <<'REMOTE'
+              echo "等待服务启动..."
+              for i in $(seq 1 60); do
+                code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3100/health 2>/dev/null || echo 000)
+                if [ "$code" = "200" ]; then
+                  echo "健康检查通过 (HTTP 200)"
+                  curl -s http://localhost:3100/health
+                  echo ""
+                  exit 0
+                fi
+                echo "尝试 $i/60: HTTP $code"
+                sleep 2
+              done
+              echo "健康检查失败，查看最近日志："
+              cd /opt/pindou/deploy && docker compose logs --tail 50 api
+              exit 1
+            REMOTE
 
 # 打 Tag 时用 Tag 名作为镜像标签构建并推送
 $:
