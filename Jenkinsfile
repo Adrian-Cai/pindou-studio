@@ -56,11 +56,20 @@ pipeline {
                     set -eu
                     mkdir -p "$DEPLOY_DIR"
                     cp deploy/compose.yaml "$DEPLOY_DIR/compose.yaml"
+                    cp server/sql/008_orders_user_created_index.sql \
+                      "$DEPLOY_DIR/008_orders_user_created_index.sql"
 
                     cd "$DEPLOY_DIR"
                     IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" \
                       docker compose --env-file "$RUNTIME_ENV_FILE" \
-                        up -d --wait --wait-timeout 120 postgres api
+                        up -d --wait --wait-timeout 120 postgres
+                    IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" \
+                      docker compose --env-file "$RUNTIME_ENV_FILE" exec -T postgres \
+                        sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+                        < "$DEPLOY_DIR/008_orders_user_created_index.sql"
+                    IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" \
+                      docker compose --env-file "$RUNTIME_ENV_FILE" \
+                        up -d --wait --wait-timeout 120 api
                 '''
             }
         }

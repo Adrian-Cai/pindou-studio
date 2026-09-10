@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.28.7
+
+- 修复生产部署在已有数据库缺少 `idx_pindou_orders_user_created` 时持续健康检查失败的问题：部署流程现在先等待 PostgreSQL 健康，再执行幂等订单索引迁移，最后启动并等待 API，避免 API 因 Schema Contract 不一致反复重启。
+- CNB master push、CNB `tag_deploy.production` 和 Jenkins 部署流程同步修正；数据库数据仍使用原有持久化挂载，不删除或重建数据卷。
+
 ## 0.28.6
 
 - 修复 CNB 流水线生产部署失败（`docker.cnb.cool/imacaiy/pindou-studio:latest Error error from registry: Blocked By Network Policy. 网络策略拦截。`）：根因是流水线内置 `CNB_TOKEN` 只在 CNB 构建网络内有效（0.28.3 已确认该令牌出构建容器无效，但当时仅改了凭证传输方式，传出去的仍是同一枚内置令牌），外部服务器携带它请求制品库会被网关以网络策略拦截，而凭证格式错误只报 `unauthorized`，故判定为令牌使用范围的网络策略问题，非 JSON 格式或 compose 配置问题。
