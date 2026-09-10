@@ -2,8 +2,6 @@ master:
   push:
     - services:
         - docker
-      imports:
-        - https://cnb.cool/ImAcaiy/envs/-/blob/main/envs.yml
       stages:
         - name: 构建 Docker 镜像
           script: |
@@ -17,6 +15,8 @@ master:
             docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${CNB_COMMIT_SHORT}
             docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
         - name: SSH 部署到生产服务器
+          imports:
+            - https://cnb.cool/ImAcaiy/envs/-/blob/main/envs.yml
           script: |
             set -e
             mkdir -p ~/.ssh && chmod 700 ~/.ssh
