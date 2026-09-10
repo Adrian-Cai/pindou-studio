@@ -1,7 +1,6 @@
 import { DOWNLOAD_PACKAGES } from '../../config/profile'
 import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
-import { syncPendingWorks } from '../../services/work-sync-service'
 
 const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.webp'
 
@@ -34,7 +33,6 @@ Page({
     profileSaving: false,
     profileMessage: '',
     selectedPackage: 0,
-    guestMigrationPrompted: false,
   },
 
   authUnsubscribe: undefined as (() => void) | undefined,
@@ -119,7 +117,6 @@ Page({
           : shouldCompleteProfile ? '登录成功，请完善资料' : '登录成功',
         icon: 'none',
       })
-      void this.promptGuestMigration()
     }
 
     if (authState.status === 'expired') {
@@ -130,32 +127,6 @@ Page({
       wx.showToast({ title: '登录状态已过期，请重新登录', icon: 'none' })
       authStore.acknowledgeExpiry()
     }
-  },
-
-  async promptGuestMigration() {
-    if (this.data.guestMigrationPrompted) return
-    const userId = authStore.getSnapshot().user?.id
-    const count = appStore.getGuestWorkCount()
-    if (!userId || count <= 0) return
-    this.setData({ guestMigrationPrompted: true })
-    wx.showModal({
-      title: '同步本地作品',
-      content: `检测到 ${count} 个本地作品。同步后可在其他设备查看。`,
-      confirmText: '立即同步',
-      cancelText: '暂不处理',
-      success: ({ confirm }) => {
-        if (!confirm) return
-        void (async () => {
-          try {
-            await appStore.adoptGuestWorks(userId)
-            const result = await syncPendingWorks(userId)
-            wx.showToast({ title: result.failed ? '部分作品等待同步' : `已同步 ${result.uploaded} 个作品`, icon: 'none' })
-          } catch (error) {
-            wx.showToast({ title: error instanceof Error ? error.message : '本地作品迁移失败', icon: 'none' })
-          }
-        })()
-      },
-    })
   },
 
   openProjects() {
@@ -266,7 +237,7 @@ Page({
       wx.showToast({ title: '请先阅读并同意用户协议和隐私政策', icon: 'none' })
       return
     }
-    this.setData({ loginUiState: 'loading', loginMessage: '', guestMigrationPrompted: false })
+    this.setData({ loginUiState: 'loading', loginMessage: '' })
     await authStore.login()
   },
 

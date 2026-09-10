@@ -53,7 +53,7 @@ export class AppStore {
     this.cloudWorks = []; this.cloudDraft = null; this.activeUserId = null; this.rebuildState(); await this.persist()
   }
 
-  /** 用户确认后才将游客作品移入当前账号的待同步队列。 */
+  /** 登录成功后将游客作品移入当前账号的待同步队列。 */
   async adoptGuestWorks(userId: string): Promise<number> {
     if (this.activeUserId !== userId) throw new Error('当前账号数据空间未准备好')
     const guest = this.persisted.guest

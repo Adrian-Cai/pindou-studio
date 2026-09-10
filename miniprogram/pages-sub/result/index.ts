@@ -7,7 +7,12 @@ import {
   friendlyDownloadError,
   saveImageToAlbum,
 } from '../services/result-download-service'
-import { cloudSummaryToWorkItem, renameCloudWork, setCloudFavorite } from '../../services/work-service'
+import {
+  cloudSummaryToWorkItem,
+  hasCloudSession,
+  renameCloudWork,
+  setCloudFavorite,
+} from '../../services/work-service'
 import {
   cloudDownloadToLocalRecord,
   createDownload,
@@ -239,15 +244,25 @@ Page({
   async toggleFavorite() {
     const draft = this.data.draft
     if (!draft || this.data.favoriteUpdating) return
+    if (!hasCloudSession()) {
+      wx.showToast({ title: '收藏失败，请先登录', icon: 'none' })
+      return
+    }
+    if (authStore.getSnapshot().status !== 'authenticated') {
+      wx.showToast({ title: '作品正在同步，请稍后重试', icon: 'none' })
+      return
+    }
     const previousIsFavorite = this.data.isFavorite
     const isFavorite = !this.data.isFavorite
     const work = appStore.getSnapshot().works.find((item) => item.id === draft.id)
+    if (!work?.isCloud) {
+      wx.showToast({ title: '作品同步失败，请稍后重试', icon: 'none' })
+      return
+    }
 
     this.setData({ favoriteUpdating: true })
     try {
-      const response = work?.isCloud
-        ? await setCloudFavorite(draft.id, isFavorite)
-        : null
+      const response = await setCloudFavorite(draft.id, isFavorite)
       const favoritedAt = response?.favoritedAt ? Date.parse(response.favoritedAt) : Date.now()
       await appStore.setFavorite(draft.id, isFavorite, favoritedAt)
       this.setData({ isFavorite })
@@ -285,8 +300,8 @@ Page({
           wx.showToast({ title: '作品名称不能为空', icon: 'none' })
           return
         }
-        if (Array.from(nextTitle).length > 120) {
-          wx.showToast({ title: '作品名称不能超过 120 个字符', icon: 'none' })
+        if (Array.from(nextTitle).length > 20) {
+          wx.showToast({ title: '作品名称不能超过 20 个字符', icon: 'none' })
           return
         }
         if (/[\u0000-\u001f\u007f]/u.test(nextTitle)) {

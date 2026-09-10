@@ -105,13 +105,14 @@ export class AuthStore {
       const profile = await fetchCurrentUser(session.token)
       saveAuthSession({ ...session, user: profile.user, profile })
       this.setState({
-        status: 'authenticated',
+        status: 'refreshing',
         user: profile.user,
         profile,
         isOffline: false,
         errorMessage: '',
       })
       await this.restoreAccountData(profile.user.id)
+      this.setState({ ...this.state, status: 'authenticated', user: profile.user, profile })
     } catch (error) {
       if (isUnauthorized(error)) {
         this.expireSession()
@@ -300,13 +301,14 @@ export class AuthStore {
       const profile = await fetchCurrentUser(session.token)
       saveAuthSession({ ...session, user: profile.user, profile })
       this.setState({
-        status: 'authenticated',
+        status: this.state.status === 'restoring' ? 'restoring' : 'authenticating',
         user: profile.user,
         profile,
         isOffline: false,
         errorMessage: '',
       })
       await this.restoreAccountData(profile.user.id)
+      this.setState({ ...this.state, status: 'authenticated', user: profile.user, profile })
     } catch (error) {
       if (isUnauthorized(error)) {
         this.expireSession()
@@ -355,11 +357,12 @@ export class AuthStore {
 
   private async restoreAccountData(userId: string): Promise<void> {
     await appStore.activateAccount(userId)
+    if (appStore.getGuestWorkCount() > 0) await appStore.adoptGuestWorks(userId)
     try {
       const [works, favorites] = await Promise.all([fetchCloudWorks(), fetchCloudFavorites({ pageSize: 50 })])
       appStore.replaceCloudWorks(works.items.map(cloudSummaryToWorkItem))
       appStore.replaceCloudFavorites(favorites.items.map(cloudSummaryToWorkItem))
-      void syncPendingWorks(userId)
+      await syncPendingWorks(userId)
     } catch (error) {
       if (isUnauthorized(error)) throw error
       this.setState({ ...this.state, isOffline: true, errorMessage: friendlyAuthError(error) })
