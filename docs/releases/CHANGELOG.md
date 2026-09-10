@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.28.8
+
+- 修复 CNB 流水线生产部署失败（`archive/tar: invalid tar header`，Stage「SSH 部署到生产服务器」）：根因是搬运 postgres 镜像时写成 `docker pull -q postgres:17-bookworm && docker save postgres:17-bookworm` 并把整个命令组重定向进 `ssh ... docker load`，`docker pull -q` 也会向 stdout 打印 `Loaded image: postgres:17-bookworm`，该文本被混进 save 产生的 tar 流前部，远端 `docker load` 以 `archive/tar: invalid tar header` 失败。项目镜像那条 `docker save` 是纯 tar 输出，所以先 load 成功，日志中 `Loaded image: ...pindou-studio:latest` 之后的报错即来自 postgres 那条。
+- 修复方式：`docker pull -q postgres:17-bookworm` 独立成行执行，仅把 `docker save postgres:17-bookworm` 的 stdout 重定向到 ssh 管道，stdout 只保留 tar 内容。master push 与 web 端「部署 production」（`tag_deploy.production`）两处同步修正。
+- 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
+
 ## 0.28.7
 
 - 修复生产部署在已有数据库缺少 `idx_pindou_orders_user_created` 时持续健康检查失败的问题：部署流程现在先等待 PostgreSQL 健康，再执行幂等订单索引迁移，最后启动并等待 API，避免 API 因 Schema Contract 不一致反复重启。
