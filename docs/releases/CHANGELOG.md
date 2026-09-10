@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.28.9
+
+- 修复 CNB 流水线「健康检查」阶段永久失败（`健康检查失败，查看最近日志：` + 60 次 `尝试 N/60: HTTP 000000` + `docker compose logs --tail 50 api` 只出现 `The "DB_NAME" variable is not set. Defaulting to a blank string.` 无关 env 告警）：根因是 `.cnb.yml` 健康检查 `ssh ... 'bash -s' <<'REMOTE'` 把远端命令用引号包成**单个参数**。CNB Runner 用 sh 执行脚本，sh 把 `ssh ... 'bash -s' <<'REMOTE'` 解析为「远端命令在 quoting 层、heredoc 在命令层」，于是 heredoc 正文被喂给**本地** sh 而不是远端。远端只收到 EOF 空脚本，立刻成功退出；本地 sh 则把远端脚本按脚本语言执行——日志里每次尝试打印两遍 `HTTP 000000`（`%{http_code}` 输出 `000`，再被 `|| echo 000` 追加）正是本地 sh 回显（远端只回一次）导致的，平台日志渲染把双份压成了一个。修复：远端命令不再加引号，并显式声明解释器 `bash -s <<'REMOTE'`；heredoc 正文与结束标识 `REMOTE` 顶格对齐。
+- 同类问题一并加固：部署阶段 `ssh ... sh -s --` 改显式为 `bash -s --`（远端脚本含 `set -eu` 与 `for ... do`，不应依赖远端登录 shell 的解析行为）。
+- 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
+
 ## 0.28.8
 
 - 修复 CNB 流水线生产部署失败（`archive/tar: invalid tar header`，Stage「SSH 部署到生产服务器」）：根因是搬运 postgres 镜像时写成 `docker pull -q postgres:17-bookworm && docker save postgres:17-bookworm` 并把整个命令组重定向进 `ssh ... docker load`，`docker pull -q` 也会向 stdout 打印 `Loaded image: postgres:17-bookworm`，该文本被混进 save 产生的 tar 流前部，远端 `docker load` 以 `archive/tar: invalid tar header` 失败。项目镜像那条 `docker save` 是纯 tar 输出，所以先 load 成功，日志中 `Loaded image: ...pindou-studio:latest` 之后的报错即来自 postgres 那条。
