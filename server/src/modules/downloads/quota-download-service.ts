@@ -171,6 +171,7 @@ export class PostgresQuotaDownloadService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
+  /** 返回上海自然日口径的免费额度，以及不会按天清零的付费额度。 */
   public async getQuota(userId: string): Promise<QuotaResponse> {
     const currentTime = this.now();
     const quotaDate = shanghaiDate(currentTime);
@@ -231,8 +232,13 @@ export class PostgresQuotaDownloadService {
     };
   }
 
+  /**
+   * 创建下载记录和额度流水必须处于同一事务：成功时两者同时落库，失败时均回滚。
+   * 幂等键用于抵御客户端超时重试，确保同一次下载最多扣减一次额度。
+   */
   public async createDownload(input: CreateDownloadInput): Promise<CreateDownloadResponse> {
     const currentTime = this.now();
+    // 每日免费额度按上海时区划分日期，不能直接使用服务器所在时区或 UTC 日期。
     const quotaDate = shanghaiDate(currentTime);
     const client = await this.pool.connect();
     try {
@@ -307,6 +313,7 @@ export class PostgresQuotaDownloadService {
           WHERE id = $1 AND quota_transaction_id IS NULL`,
         [downloadId, quotaTransactionId],
       );
+      // 以额度流水为审计事实来源；下载记录保存流水 ID，方便后台追踪每次消耗。
       const quotaAfter = await readQuota(client, input.userId, "standard_download", quotaDate);
       await client.query("COMMIT");
       return {
