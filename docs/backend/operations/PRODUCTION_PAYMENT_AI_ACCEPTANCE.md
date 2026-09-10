@@ -7,9 +7,14 @@
 由 `pindou_*` 表 owner 在目标数据库执行：
 
 ```powershell
-psql "<由运维安全提供的迁移连接>" -v ON_ERROR_STOP=1 -f server/sql/001_ai_quota_and_jobs.sql
-psql "<由运维安全提供的迁移连接>" -v ON_ERROR_STOP=1 -f server/sql/007_ai_generation_packages_only.sql
+$connection = "<由运维安全提供的迁移连接>"
+$env:PGPASSWORD = "<数据库密码>"
+Get-ChildItem server/sql/*.sql | Sort-Object Name | ForEach-Object {
+  psql $connection -v ON_ERROR_STOP=1 -f $_.FullName
+}
 ```
+
+迁移连接必须是 API 实际使用的那个库（`config/api.env` 中 `DB_HOST` 指向的实例）；部署流水线会在启动 API 前用宿主机 `psql` 对同一连接自动执行 `server/sql` 下全部迁移，手工补跑时同样要对准该实例。完整清单与说明见 `server/README.md`。
 
 随后使用应用账号执行：
 
@@ -21,7 +26,7 @@ $env:RUN_DATABASE_INTEGRATION='1'
 npm test
 ```
 
-迁移会加入双额度字段、AI 任务表和三档 AI 套餐：`¥9.9/30`、`¥19.9/80`、`¥29.9/150`；`007` 会停用旧下载套餐和无限会员套餐，生产执行前先备份，并在预发布库完整演练一次
+迁移会加入双额度字段、AI 任务表和三档 AI 套餐：`¥9.9/30`、`¥19.9/80`、`¥29.9/150`；`001` 会停用旧下载套餐和无限会员套餐，生产执行前先备份，并在预发布库完整演练一次
 
 ## 微信支付小额实付
 

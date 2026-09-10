@@ -38,19 +38,18 @@ master:
               || { echo "SSH_PRIVATE_KEY 不是合法私钥，请在 envs.yml 更新为完整 PEM"; exit 1; }
             SSH_OPTS="-i $HOME/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15"
             # 首次部署时服务器上没有 /opt/pindou/deploy：先建目录并上传 compose.yaml
-            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p /opt/pindou/deploy"
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p /opt/pindou/deploy/sql"
             scp $SSH_OPTS -P "$SSH_PORT" deploy/compose.yaml \
               "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/compose.yaml"
-            scp $SSH_OPTS -P "$SSH_PORT" server/sql/008_orders_user_created_index.sql \
-              "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/008_orders_user_created_index.sql"
+            # 服务器上没有仓库，上传全部迁移脚本供部署时按编号执行
+            for file in server/sql/*.sql; do
+              scp $SSH_OPTS -P "$SSH_PORT" "$file" \
+                "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/sql/$(basename "$file")"
+            done
             # 服务器出网被网络策略拦截拉不到镜像，改为构建容器 docker save 后经 ssh 管道 load 到服务器
             IMAGE_REPO="$CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE"
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
               < <(docker save "$IMAGE_REPO:latest")
-            # compose 里 postgres 是公网镜像，服务器同样拉不到，一并搬运
-            docker pull -q postgres:17-bookworm
-            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
-              < <(docker save postgres:17-bookworm)
             # 用带引号的 heredoc 传远端脚本，避免多层 ssh 双引号嵌套被 shell 改写
             # 远端命令不加引号，否则 heredoc 会被本地 sh 执行
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s -- \
@@ -59,30 +58,51 @@ master:
             export IMAGE_REPO="$1"
             export IMAGE_TAG="$2"
             cd /opt/pindou/deploy
-            # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
+            # 迁移连接信息来自该文件；缺失则无法对生产库执行迁移
             test -r /opt/pindou/config/api.env || {
               echo '缺少 /opt/pindou/config/api.env，请先在服务器配置运行时环境变量'
               exit 1
             }
-            # 仅检查文件存在不够：变量缺失时 compose 会把 DB_* 当空值，postgres 以空密码初始化
-            for key in DB_NAME DB_USER DB_PASSWORD; do
-              grep -q "^${key}=" /opt/pindou/config/api.env || {
-                echo "api.env 缺少 ${key}，postgres 会以空值初始化"
+            # 只取 DB_ 前缀变量，避免把 api.env 中其它配置打进日志环境
+            DB_ENV=$(grep -E '^DB_[A-Z_]+=' /opt/pindou/config/api.env || true)
+            for key in DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD; do
+              echo "$DB_ENV" | grep -q "^${key}=" || {
+                echo "api.env 缺少 ${key}，无法连接生产库执行迁移"
                 exit 1
               }
             done
+            # 去掉可选引号后导出为环境变量；第二个 sed 把 \$ 与反引号转成字面量，
+            # 否则密码里的 \$ 会被 eval 二次展开
+            set -a
+            eval "$(printf '%s\n' "$DB_ENV" \
+              | sed -E 's/^([A-Z_]+)="?([^"]*)"?$/\1="\2"/' \
+              | sed -e 's/\\$/\\\$/g' -e 's/`/\\`/g')"
+            set +a
+            command -v psql > /dev/null || {
+              echo '宿主机缺少 psql 命令，无法执行数据库迁移'
+              exit 1
+            }
             docker image inspect "$IMAGE_REPO:$IMAGE_TAG" > /dev/null || {
               echo "服务器缺少镜像 $IMAGE_REPO:$IMAGE_TAG，docker load 未成功"
               exit 1
             }
             # 旧容器可能由手工 docker run 或其它 compose 项目创建，无本项目 compose 标签，
             # 直接 up 会报 container name already in use；数据在 bind mount 中，删除容器不影响数据
-            docker rm -f pindou-postgres pindou-api 2>/dev/null || true
-            # 先启动数据库并完成幂等迁移，再启动 API；否则 API 会因 schema contract 不一致反复重启
-            docker compose --env-file /opt/pindou/config/api.env up -d --wait --wait-timeout 120 postgres
-            docker compose --env-file /opt/pindou/config/api.env exec -T postgres \
-              sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
-              < /opt/pindou/deploy/008_orders_user_created_index.sql
+            docker rm -f pindou-api 2>/dev/null || true
+            # 先对生产库执行幂等迁移，再启动 API；否则 API 会因 schema contract 不一致反复重启。
+            # 生产库是 api.env 里 DB_HOST 指向的外部实例，必须连它执行迁移；
+            # 进 postgres 容器执行只会打到 compose 内的空库
+            [ -n "$(ls -1 /opt/pindou/deploy/sql/[0-9][0-9][0-9]_*.sql 2>/dev/null)" ] || {
+              echo '缺少 /opt/pindou/deploy/sql 迁移脚本'
+              exit 1
+            }
+            for migration in $(ls -1 /opt/pindou/deploy/sql/[0-9][0-9][0-9]_*.sql | sort); do
+              echo "执行迁移 $(basename "$migration")"
+              PGPASSWORD="$DB_PASSWORD" psql \
+                -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
+                -v ON_ERROR_STOP=1 \
+                -f "$migration"
+            done
             docker compose --env-file /opt/pindou/config/api.env up -d --wait --wait-timeout 120 api
             REMOTE
         - name: 健康检查
@@ -164,19 +184,18 @@ $:
               || { echo "SSH_PRIVATE_KEY 不是合法私钥，请在 envs.yml 更新为完整 PEM"; exit 1; }
             SSH_OPTS="-i $HOME/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15"
             # 首次部署时服务器上没有 /opt/pindou/deploy：先建目录并上传 compose.yaml
-            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p /opt/pindou/deploy"
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p /opt/pindou/deploy/sql"
             scp $SSH_OPTS -P "$SSH_PORT" deploy/compose.yaml \
               "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/compose.yaml"
-            scp $SSH_OPTS -P "$SSH_PORT" server/sql/008_orders_user_created_index.sql \
-              "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/008_orders_user_created_index.sql"
+            # 服务器上没有仓库，上传全部迁移脚本供部署时按编号执行
+            for file in server/sql/*.sql; do
+              scp $SSH_OPTS -P "$SSH_PORT" "$file" \
+                "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/sql/$(basename "$file")"
+            done
             # 服务器出网被网络策略拦截拉不到镜像，改为构建容器 docker save 后经 ssh 管道 load 到服务器
             IMAGE_REPO="$CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE"
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
               < <(docker save "$IMAGE_REPO:$CNB_BRANCH")
-            # compose 里 postgres 是公网镜像，服务器同样拉不到，一并搬运
-            docker pull -q postgres:17-bookworm
-            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" docker load \
-              < <(docker save postgres:17-bookworm)
             # 用带引号的 heredoc 传远端脚本，避免多层 ssh 双引号嵌套被 shell 改写
             # 远端命令不加引号，否则 heredoc 会被本地 sh 执行
             ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s -- \
@@ -185,29 +204,50 @@ $:
             export IMAGE_REPO="$1"
             export IMAGE_TAG="$2"
             cd /opt/pindou/deploy
-            # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
+            # 迁移连接信息来自该文件；缺失则无法对生产库执行迁移
             test -r /opt/pindou/config/api.env || {
               echo '缺少 /opt/pindou/config/api.env，请先在服务器配置运行时环境变量'
               exit 1
             }
-            # 仅检查文件存在不够：变量缺失时 compose 会把 DB_* 当空值，postgres 以空密码初始化
-            for key in DB_NAME DB_USER DB_PASSWORD; do
-              grep -q "^${key}=" /opt/pindou/config/api.env || {
-                echo "api.env 缺少 ${key}，postgres 会以空值初始化"
+            # 只取 DB_ 前缀变量，避免把 api.env 中其它配置打进日志环境
+            DB_ENV=$(grep -E '^DB_[A-Z_]+=' /opt/pindou/config/api.env || true)
+            for key in DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD; do
+              echo "$DB_ENV" | grep -q "^${key}=" || {
+                echo "api.env 缺少 ${key}，无法连接生产库执行迁移"
                 exit 1
               }
             done
+            # 去掉可选引号后导出为环境变量；第二个 sed 把 \$ 与反引号转成字面量，
+            # 否则密码里的 \$ 会被 eval 二次展开
+            set -a
+            eval "$(printf '%s\n' "$DB_ENV" \
+              | sed -E 's/^([A-Z_]+)="?([^"]*)"?$/\1="\2"/' \
+              | sed -e 's/\\$/\\\$/g' -e 's/`/\\`/g')"
+            set +a
+            command -v psql > /dev/null || {
+              echo '宿主机缺少 psql 命令，无法执行数据库迁移'
+              exit 1
+            }
             docker image inspect "$IMAGE_REPO:$IMAGE_TAG" > /dev/null || {
               echo "服务器缺少镜像 $IMAGE_REPO:$IMAGE_TAG，docker load 未成功"
               exit 1
             }
             # 旧容器可能由手工 docker run 或其它 compose 项目创建，无本项目 compose 标签，
             # 直接 up 会报 container name already in use；数据在 bind mount 中，删除容器不影响数据
-            docker rm -f pindou-postgres pindou-api 2>/dev/null || true
-            # 先启动数据库并完成幂等迁移，再启动 API；否则 API 会因 schema contract 不一致反复重启
-            docker compose --env-file /opt/pindou/config/api.env up -d --wait --wait-timeout 120 postgres
-            docker compose --env-file /opt/pindou/config/api.env exec -T postgres \
-              sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
-              < /opt/pindou/deploy/008_orders_user_created_index.sql
+            docker rm -f pindou-api 2>/dev/null || true
+            # 先对生产库执行幂等迁移，再启动 API；否则 API 会因 schema contract 不一致反复重启。
+            # 生产库是 api.env 里 DB_HOST 指向的外部实例，必须连它执行迁移；
+            # 进 postgres 容器执行只会打到 compose 内的空库
+            [ -n "$(ls -1 /opt/pindou/deploy/sql/[0-9][0-9][0-9]_*.sql 2>/dev/null)" ] || {
+              echo '缺少 /opt/pindou/deploy/sql 迁移脚本'
+              exit 1
+            }
+            for migration in $(ls -1 /opt/pindou/deploy/sql/[0-9][0-9][0-9]_*.sql | sort); do
+              echo "执行迁移 $(basename "$migration")"
+              PGPASSWORD="$DB_PASSWORD" psql \
+                -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
+                -v ON_ERROR_STOP=1 \
+                -f "$migration"
+            done
             docker compose --env-file /opt/pindou/config/api.env up -d --wait --wait-timeout 120 api
             REMOTE
