@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.28.6
+
+- 修复 CNB 流水线生产部署失败（`error from registry: Blocked By Network Policy. 网络策略拦截。`）：根因是生产服务器出网被网络策略拦截，无法访问 `docker.cnb.cool`（也无法访问公共 Docker Hub）。此前部署依赖服务器执行 `docker compose pull`，一旦服务器本地没有待部署镜像就会联网并被拦截，整条部署流水线失败。历史上个别构建「看似成功」只是因为服务器本地已缓存了该镜像 Tag（如 `latest` 未变），并非真的拉取成功。
+- 修复方式：不再让服务器联网拉取。改为在构建容器内 `docker save` 镜像，通过 ssh 管道直接 `docker load` 到服务器（构建容器可正常访问制品库），随后由远端 `docker compose up -d` 直接使用本地镜像。
+- `deploy/compose.yaml` 中的 `postgres:17-bookworm` 是公网镜像，服务器同样拉不到，因此在部署阶段一并从构建容器搬运到服务器。
+- 移除已无用的制品库凭证注入逻辑（`REGISTRY_AUTH` / `/root/.docker/config.json`）：不再在服务器上 `docker login` 或写入 docker config，减少一套会随 Token 变化而失效的凭据链路。
+- 远端拉取前的 `docker compose pull` 改为 `docker image inspect` 断言，镜像未就位时立即失败并给出明确原因，避免部署到旧镜像。
+- master push 与 web 端「部署 production」（`tag_deploy.production`）两处部署脚本同步修正。
+- 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
+
 ## 0.28.5
 
 - 修复 CNB 流水线生产部署失败（`unable to get image ':': Error response from daemon: invalid reference format`）：根因是上一版把部署脚本改为 `ssh ... sh -s -- <参数> <<'REMOTE'` heredoc 传参时，远端只写了 `IMAGE_REPO="$3"`、`IMAGE_TAG="$4"`，没有 `export`。远端 `docker compose` 读不到这两个非导出变量，`deploy/compose.yaml` 的 `${IMAGE_REPO}:${IMAGE_TAG}` 插值成空串，compose 以空镜像名直接失败（日志同时出现 `The "IMAGE_REPO" variable is not set`、`The "IMAGE_TAG" variable is not set`）。
