@@ -11,6 +11,7 @@
 
 - 修复 CNB 流水线生产部署失败（`unable to get image ':': Error response from daemon: invalid reference format`）：根因是上一版把部署脚本改为 `ssh ... sh -s -- <参数> <<'REMOTE'` heredoc 传参时，远端只写了 `IMAGE_REPO="$3"`、`IMAGE_TAG="$4"`，没有 `export`。远端 `docker compose` 读不到这两个非导出变量，`deploy/compose.yaml` 的 `${IMAGE_REPO}:${IMAGE_TAG}` 插值成空串，compose 以空镜像名直接失败（日志同时出现 `The "IMAGE_REPO" variable is not set`、`The "IMAGE_TAG" variable is not set`）。
 - 修复方式：远端改为 `export IMAGE_REPO="$3"`、`export IMAGE_TAG="$4"`，镜像地址与 Tag 显式进入远端环境，供 compose 插值；master push 与 web 端「部署 production」（`tag_deploy.production`）两处部署脚本同步修正。
+- 同时让 `docker compose pull` 显式加载 `/opt/pindou/config/api.env`，确保 `DB_*` 与镜像变量在拉取阶段都能完成插值，避免再次出现空镜像引用。
 - 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
 
 ## 0.28.4
