@@ -6,8 +6,9 @@ environments:
     permissions:
       roles:
         - master
+        - developer
     require:
       - approver:
           roles:
-            - master
+            - owner
           title: 生产部署审批
