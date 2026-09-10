@@ -27,7 +27,7 @@
     <view wx:if="{{works.length}}" class="favorite-grid">
       <view class="favorite-card ui-card" wx:for="{{works}}" wx:key="id">
         <view class="favorite-card__main" data-id="{{item.id}}" bindtap="openWork">
-          <image class="favorite-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
+          <image class="favorite-card__cover" src="{{item.coverPath}}" data-id="{{item.id}}" mode="aspectFill" binderror="handleCoverError" />
           <view class="favorite-card__info">
             <view class="favorite-card__title">{{item.title}}</view>
             <view class="favorite-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>

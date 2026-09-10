@@ -45,7 +45,7 @@
         aria-role="button"
         aria-label="查看作品 {{item.title}}"
       >
-        <image class="project-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
+        <image class="project-card__cover" src="{{item.coverPath}}" data-id="{{item.id}}" mode="aspectFill" binderror="handleCoverError" />
         <view class="project-card__body">
           <view class="project-card__header">
             <view class="project-card__info">

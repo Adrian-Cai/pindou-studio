@@ -44,6 +44,7 @@
 - `pages-sub/favorites/index`：收藏列表
 - `pages-sub/downloads/index`：下载记录
 - `pages-sub/recharge/index`：下载次数 / 额度相关展示
+- `pages-sub/orders/index`：当前用户的 AI 生成次数订单列表
 - `pages-sub/payment-success/index`：支付成功展示页，当前支付闭环尚未正式接入
 - `pages-sub/help/index`：使用帮助
 - `pages-sub/feedback/index`：意见反馈
@@ -196,7 +197,8 @@ Ai 模式当前只保留产品入口和说明，真实 AI 生成链路尚未上�
 ├─ 收藏数量 → 收藏列表
 ├─ 下载数量 → 下载记录
 ├─ 账号区域 → 登录 / 账号 / 资料编辑
-├─ 下载次数 / 套餐 → 额度相关入口
+├─ AI 生成次数 / 套餐 → AI 额度相关入口
+├─ 我的订单 → AI 生成次数订单列表
 ├─ 使用帮助
 ├─ 意见反馈
 ├─ 隐私设置

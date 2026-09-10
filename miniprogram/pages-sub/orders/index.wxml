@@ -1,0 +1,52 @@
+<page-layout title="我的订单" back showMainNav selectedTab="2">
+  <view class="subpage orders-page">
+    <view wx:if="{{loadState === 'loading'}}" class="orders-message">
+      <view class="orders-message__title">正在加载订单</view>
+      <view class="orders-message__description">请稍候</view>
+    </view>
+
+    <view wx:elif="{{loadState === 'unauthorized'}}" class="orders-message">
+      <view class="orders-message__title">请先登录</view>
+      <view class="orders-message__description">登录后才能查看支付记录和订单状态</view>
+      <button class="button-primary orders-message__button" bindtap="openProfile">去登录</button>
+    </view>
+
+    <view wx:elif="{{loadState === 'error'}}" class="orders-message">
+      <view class="orders-message__title">订单加载失败</view>
+      <view class="orders-message__description">{{errorMessage}}</view>
+      <button class="button-secondary orders-message__button" bindtap="retry">重新加载</button>
+    </view>
+
+    <view wx:elif="{{orders.length}}" class="orders-list">
+      <view class="order-card ui-card" wx:for="{{orders}}" wx:key="id">
+        <view class="order-card__header">
+          <view class="order-card__label">{{item.packageLabel}}</view>
+          <view class="status-pill order-status {{item.statusClass}}">{{item.statusLabel}}</view>
+        </view>
+
+        <view class="order-card__amount">{{item.amountText}}</view>
+
+        <view class="order-card__details">
+          <view class="order-card__detail">
+            <text class="order-card__detail-label">下单时间</text>
+            <text class="order-card__detail-value">{{item.createdAtText}}</text>
+          </view>
+          <view wx:if="{{item.paidAtText}}" class="order-card__detail">
+            <text class="order-card__detail-label">支付成功时间</text>
+            <text class="order-card__detail-value">{{item.paidAtText}}</text>
+          </view>
+          <view class="order-card__detail">
+            <text class="order-card__detail-label">订单号</text>
+            <text class="order-card__detail-value">{{item.orderSuffix}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:elif="{{loadState === 'ready'}}" class="empty-state orders-empty">
+      <image class="orders-empty__icon" src="/assets/icons/bead-stack.svg" mode="aspectFit" aria-hidden="true" />
+      <view class="empty-state__title">暂无订单</view>
+      <view class="empty-state__desc">购买 AI 生成次数后，订单会显示在这里</view>
+    </view>
+  </view>
+</page-layout>

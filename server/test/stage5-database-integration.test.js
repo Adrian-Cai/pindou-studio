@@ -15,7 +15,7 @@ test("stage 5 real database flow: package snapshot, tamper rejection, verified g
   const pool = createPool(config.database);
   const suffix = randomBytes(6).toString("hex");
   const userId = `usr_pay_${suffix}`;
-  const enabledPackageId = `starter_${suffix}`;
+  const enabledPackageId = `ai_generation_30_${suffix}`;
   const disabledPackageId = `hidden_${suffix}`;
   const openid = `openid_${suffix}`;
   const now = new Date("2026-08-31T12:00:00.000Z");
@@ -56,7 +56,7 @@ test("stage 5 real database flow: package snapshot, tamper rejection, verified g
          id, label, quota_amount, quota_kind, membership_type, membership_days,
          price_fen, currency, enabled, sort_order, created_at, updated_at
        ) VALUES
-         ($1, '加购 3 次', 3, 'ai_generation', NULL, NULL, 990, 'CNY', TRUE, 1, $3, $3),
+         ($1, 'AI 精致生成 30 次', 30, 'ai_generation', NULL, NULL, 990, 'CNY', TRUE, 1, $3, $3),
          ($2, '隐藏套餐', 99, 'ai_generation', NULL, NULL, 1, 'CNY', FALSE, 0, $3, $3)`,
       [enabledPackageId, disabledPackageId, now],
     );
@@ -86,8 +86,8 @@ test("stage 5 real database flow: package snapshot, tamper rejection, verified g
       [created.orderId],
     );
     assert.deepEqual(snapshot.rows[0], {
-      package_label_snapshot: "加购 3 次",
-      quota_amount_snapshot: 3,
+      package_label_snapshot: "AI 精致生成 30 次",
+      quota_amount_snapshot: 30,
       quota_kind_snapshot: "ai_generation",
       membership_type_snapshot: null,
       price_fen: 990,

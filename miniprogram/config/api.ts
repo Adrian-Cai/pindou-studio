@@ -29,6 +29,21 @@ export function buildApiUrl(path: string): string {
   return `${getApiBaseUrl()}${path}`
 }
 
+const LOCAL_COVER_URL_PATTERN = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(\/api\/media\/covers\/[^?#]+)$/u
+const RELATIVE_COVER_URL_PATTERN = /^\/api\/media\/covers\/[^?#]+$/u
+
+/**
+ * 将历史本地封面地址收敛到当前小程序可访问的 HTTPS API 地址。
+ * 合法 CDN 地址保持不变，避免把外部对象存储地址错误改写。
+ */
+export function normalizeCoverUrl(value: string | null | undefined): string {
+  const url = value?.trim() ?? ''
+  if (!url) return ''
+  if (RELATIVE_COVER_URL_PATTERN.test(url)) return buildApiUrl(url)
+  const localMatch = url.match(LOCAL_COVER_URL_PATTERN)
+  return localMatch?.[1] ? buildApiUrl(localMatch[1]) : url
+}
+
 function getMiniProgramEnvironment(): MiniProgramEnvironment {
   try {
     const environment = wx.getAccountInfoSync().miniProgram.envVersion

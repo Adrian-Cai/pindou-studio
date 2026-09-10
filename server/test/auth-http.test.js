@@ -121,7 +121,20 @@ test("GET /api/users/me derives ownership exclusively from Bearer token", async 
         return {
           user: { id: userId, nickname: null, avatarUrl: null, createdAt: "2026-08-26T09:00:00.000Z" },
           stats: { workCount: 0, favoriteCount: 0, downloadCount: 0 },
-          quota: { dailyFree: 3, usedToday: 0, purchased: 0, remaining: 3, resetsAt: "2026-08-27T00:00:00+08:00" },
+          quota: {
+            dailyFree: 3,
+            usedToday: 0,
+            purchased: 0,
+            remaining: 3,
+            resetsAt: "2026-08-27T00:00:00+08:00",
+            aiGeneration: {
+              dailyFree: 3,
+              usedToday: 0,
+              purchased: 0,
+              remaining: 3,
+              resetsAt: "2026-08-27T00:00:00+08:00",
+            },
+          },
         };
       } },
     }),

@@ -18,6 +18,7 @@
         "privacy-document/index",
         "feedback/index",
         "recharge/index",
+        "orders/index",
         "payment-success/index",
         "settings/index",
         "account/index",

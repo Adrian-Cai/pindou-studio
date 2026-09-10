@@ -20,7 +20,7 @@ import type {
   DownloadListOptions,
   PostgresQuotaDownloadService,
 } from "../modules/downloads/quota-download-service";
-import type { PaymentService } from "../modules/payments/payment-service";
+import type { OrderListOptions, PaymentService } from "../modules/payments/payment-service";
 import { getLegalDocument } from "../modules/legal/legal-document-service";
 import type { PrivacyPreferencesPatch } from "../modules/users/user-profile-service";
 import { validatePersistedPattern, type PersistedPattern } from "../modules/works/pattern";
@@ -351,6 +351,18 @@ function downloadListOptions(url: URL, userId: string): DownloadListOptions {
   };
 }
 
+function orderListOptions(url: URL, userId: string): OrderListOptions {
+  for (const key of url.searchParams.keys()) {
+    if (!["page", "pageSize"].includes(key)) throw invalidArgument("订单列表包含不支持的查询参数");
+    if (url.searchParams.getAll(key).length > 1) throw invalidArgument(`查询参数 ${key} 不能重复`);
+  }
+  return {
+    userId,
+    page: positiveQueryInteger(url.searchParams.get("page"), 1, 1_000_000, "page"),
+    pageSize: positiveQueryInteger(url.searchParams.get("pageSize"), 20, 50, "pageSize"),
+  };
+}
+
 function positiveQueryInteger(value: string | null, fallback: number, maximum: number, name: string): number {
   if (value === null) return fallback;
   if (!/^[0-9]+$/u.test(value)) throw invalidArgument(`${name} 必须是整数`);
@@ -639,6 +651,12 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       if (request.method === "GET" && url.pathname === "/api/packages") {
         if (url.searchParams.size > 0) throw invalidArgument("套餐接口不接受查询参数");
         sendJson(response, 200, await dependencies.payments.listPackages());
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/orders") {
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, await dependencies.payments.listOrders(orderListOptions(url, currentUser.id)));
         return;
       }
 

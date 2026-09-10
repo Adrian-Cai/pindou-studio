@@ -3,6 +3,7 @@ import type {
   PersistedPattern,
   WorkItem,
 } from '../models/pattern'
+import { normalizeCoverUrl } from '../config/api'
 import { isAuthSessionExpired, loadAuthSession } from './token-storage'
 import { ApiError, apiRequest, apiUploadFile } from './http-client'
 
@@ -156,7 +157,7 @@ export function cloudSummaryToWorkItem(summary: CloudWorkSummary | CloudFavorite
   return {
     id: summary.id,
     title: summary.title,
-    coverPath: summary.coverUrl,
+    coverPath: normalizeCoverUrl(summary.coverUrl),
     updatedAt: Date.parse(summary.updatedAt),
     createdAt: Date.parse(summary.createdAt),
     beadCount: summary.beadCount,

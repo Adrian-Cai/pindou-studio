@@ -57,14 +57,22 @@
       </view>
       <view class="benefit-card__content">
         <view class="benefit-card__quota-info">
-          <text class="benefit-card__caption">今日剩余</text>
+          <text class="benefit-card__caption">AI 今日剩余</text>
           <view class="benefit-card__quota-val">
-            <text class="benefit-card__quota-num">{{downloadQuota}}</text>
-            <text class="benefit-card__quota-unit"> / {{dailyFreeDownloadQuota}} 次</text>
+            <text class="benefit-card__quota-num">{{aiGenerationQuota}}</text>
+            <text class="benefit-card__quota-unit"> / {{dailyFreeAiGenerationQuota}} 次</text>
           </view>
         </view>
-        <view class="benefit-card__action" bindtap="showRechargeSheet">获取更多次数 ›</view>
+        <view class="benefit-card__action" bindtap="showRechargeSheet">购买 AI 生成次数 ›</view>
       </view>
+    </view>
+
+    <view class="order-entry ui-card" bindtap="openOrders" aria-role="button" aria-label="我的订单">
+      <view class="order-entry__content">
+        <view class="order-entry__title">我的订单</view>
+        <view class="order-entry__description">查看支付记录、套餐和订单状态</view>
+      </view>
+      <text class="order-entry__arrow">›</text>
     </view>
 
     <!-- C. 2×2 功能宫格 -->
@@ -105,24 +113,28 @@
 <view wx:if="{{activeSheet === 'recharge'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
   <view class="profile-sheet recharge-sheet" catchtap="stopPropagation">
     <view class="profile-sheet__handle"></view>
-    <view class="recharge-sheet__title">获取下载次数</view>
-    <view class="recharge-sheet__quota">今日剩余 <text>{{downloadQuota}}</text> 次</view>
-    <view
-      class="recharge-option package-row {{selectedPackage === index ? 'recharge-option--active' : ''}}"
-      wx:for="{{packages}}"
-      wx:key="id"
-      data-index="{{index}}"
-      bindtap="selectPackage"
-    >
-      <view class="package-icon-wrap">
-        <image class="package-icon" src="/assets/icons/bead-stack.svg" mode="aspectFit" />
+    <view class="recharge-sheet__title">购买 AI 生成次数</view>
+    <view class="recharge-sheet__quota">AI 今日剩余 <text>{{aiGenerationQuota}}</text> 次</view>
+    <view wx:if="{{packagesLoading}}" class="recharge-sheet__message">正在加载 AI 套餐…</view>
+    <view wx:elif="{{packageMessage}}" class="recharge-sheet__message">{{packageMessage}}</view>
+    <block wx:else>
+      <view
+        class="recharge-option package-row {{selectedPackage === index ? 'recharge-option--active' : ''}}"
+        wx:for="{{packages}}"
+        wx:key="id"
+        data-index="{{index}}"
+        bindtap="selectPackage"
+      >
+        <view class="package-icon-wrap">
+          <image class="package-icon" src="/assets/icons/bead-stack.svg" mode="aspectFit" />
+        </view>
+        <text class="recharge-option__label">{{item.label}}</text>
+        <view class="package-right">
+          <text class="recharge-option__price">¥ {{item.price}}</text>
+          <view class="package-radio {{selectedPackage === index ? 'package-radio--selected' : ''}}"></view>
+        </view>
       </view>
-      <text class="recharge-option__label">{{item.label}}</text>
-      <view class="package-right">
-        <text class="recharge-option__price">¥ {{item.price}}</text>
-        <view class="package-radio {{selectedPackage === index ? 'package-radio--selected' : ''}}"></view>
-      </view>
-    </view>
+    </block>
     <view class="payment-row">
       <text>支付方式</text>
       <view class="payment-row__method">
@@ -130,7 +142,7 @@
         <text class="payment-row__arrow">›</text>
       </view>
     </view>
-    <button class="button-primary recharge-sheet__pay" style="width: 100%;" bindtap="purchase">立即支付</button>
+    <button class="button-primary recharge-sheet__pay" style="width: 100%;" disabled="{{packagesLoading || packages.length === 0}}" bindtap="purchase">立即支付</button>
     <view class="recharge-sheet__cancel" bindtap="hideActiveSheet">取消</view>
   </view>
 </view>

@@ -19,6 +19,13 @@ export interface CurrentUserProfile {
     purchased: number
     remaining: number
     resetsAt: string
+    aiGeneration: {
+      dailyFree: number
+      usedToday: number
+      purchased: number
+      remaining: number
+      resetsAt: string
+    }
   }
 }
 

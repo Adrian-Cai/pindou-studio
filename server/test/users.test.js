@@ -18,7 +18,7 @@ test("current user response supports nullable profile and summarizes owned data"
           download_count: "3",
         }] };
       }
-      return { rows: [{ used_today: "1", purchased: "2" }] };
+      return { rows: [{ used_today: "1", purchased: "2", ai_used_today: "2", ai_purchased: "8" }] };
     },
   };
   const service = new PostgresUserProfileService(
@@ -41,6 +41,13 @@ test("current user response supports nullable profile and summarizes owned data"
     purchased: 2,
     remaining: 4,
     resetsAt: "2026-08-27T00:00:00+08:00",
+    aiGeneration: {
+      dailyFree: 3,
+      usedToday: 2,
+      purchased: 8,
+      remaining: 9,
+      resetsAt: "2026-08-27T00:00:00+08:00",
+    },
   });
   assert.deepEqual(calls[0].parameters, ["usr_test"]);
   assert.deepEqual(calls[1].parameters, ["usr_test", "2026-08-26"]);
@@ -53,7 +60,7 @@ test("missing current user is unauthorized", async () => {
     async query(sql) {
       return sql.includes("FROM pindou_users users")
         ? { rows: [] }
-        : { rows: [{ used_today: "0", purchased: "0" }] };
+        : { rows: [{ used_today: "0", purchased: "0", ai_used_today: "0", ai_purchased: "0" }] };
     },
   };
   const service = new PostgresUserProfileService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 });

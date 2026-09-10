@@ -25,6 +25,7 @@ const tabs = [
   { id: 'draft', label: '草稿' },
   { id: 'completed', label: '已完成' },
 ] as const
+const COVER_FALLBACK_PATH = '/assets/icons/image-upload.svg'
 
 Page({
   data: {
@@ -76,7 +77,7 @@ Page({
       const height = work.height ?? (currentDraft?.id === work.id ? currentDraft.settings.height : 0)
       return {
         ...work,
-        coverPath: work.coverPath || '/assets/icons/image-upload.svg',
+        coverPath: work.coverPath || COVER_FALLBACK_PATH,
         updatedText: formatDateTime(work.updatedAt),
         dimensions: width && height ? `${width}×${height}` : '尺寸待同步',
         statusLabel: isDraft ? '草稿' : '已完成',
@@ -90,6 +91,17 @@ Page({
       recentCount: allWorks.filter((work) => isRecent(work.updatedAt)).length,
       draftCount: allWorks.filter((work) => work.isDraft).length,
     }, () => this.applyFilters())
+  },
+
+  handleCoverError(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    const work = this.data.allWorks.find((item) => item.id === id)
+    if (!work || work.coverPath === COVER_FALLBACK_PATH) return
+    const allWorks = this.data.allWorks.map((work) => work.id === id
+      ? { ...work, coverPath: COVER_FALLBACK_PATH }
+      : work)
+    this.setData({ allWorks }, () => this.applyFilters())
   },
 
   changeSearch(event: WechatMiniprogram.Input) {

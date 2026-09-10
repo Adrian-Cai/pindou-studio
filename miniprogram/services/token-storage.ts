@@ -64,6 +64,7 @@ function parseProfile(value: unknown): CurrentUserProfile | null {
 
   const stats = value.stats
   const quota = value.quota
+  const aiGeneration = quota.aiGeneration
   if (
     !isFiniteNumber(stats.workCount)
     || !isFiniteNumber(stats.favoriteCount)
@@ -73,6 +74,13 @@ function parseProfile(value: unknown): CurrentUserProfile | null {
     || !isFiniteNumber(quota.purchased)
     || !isFiniteNumber(quota.remaining)
     || typeof quota.resetsAt !== 'string'
+    || !isRecord(aiGeneration)
+    || !isFiniteNumber(aiGeneration.dailyFree)
+    || !isFiniteNumber(aiGeneration.usedToday)
+    || !isFiniteNumber(aiGeneration.purchased)
+    || !isFiniteNumber(aiGeneration.remaining)
+    || typeof aiGeneration.resetsAt !== 'string'
+    || !Number.isFinite(Date.parse(aiGeneration.resetsAt))
   ) return null
 
   return {
@@ -88,6 +96,13 @@ function parseProfile(value: unknown): CurrentUserProfile | null {
       purchased: quota.purchased,
       remaining: quota.remaining,
       resetsAt: quota.resetsAt,
+      aiGeneration: {
+        dailyFree: aiGeneration.dailyFree,
+        usedToday: aiGeneration.usedToday,
+        purchased: aiGeneration.purchased,
+        remaining: aiGeneration.remaining,
+        resetsAt: aiGeneration.resetsAt,
+      },
     },
   }
 }

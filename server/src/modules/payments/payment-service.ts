@@ -35,8 +35,37 @@ export interface CreatePaymentResponse {
   readonly payment: PaymentParameters;
 }
 
+export type OrderStatus = "pending" | "paid" | "failed" | "closed" | "refunded";
+
+export interface OrderListOptions {
+  readonly userId: string;
+  readonly page: number;
+  readonly pageSize: number;
+}
+
+export interface OrderItem {
+  readonly id: string;
+  readonly packageId: string | null;
+  readonly packageLabel: string;
+  readonly quotaAmount: number;
+  readonly quotaKind: "ai_generation";
+  readonly priceFen: number;
+  readonly currency: "CNY";
+  readonly status: OrderStatus;
+  readonly createdAt: string;
+  readonly paidAt: string | null;
+}
+
+export interface OrderListResponse {
+  readonly total: number;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly items: readonly OrderItem[];
+}
+
 export interface PaymentService {
   listPackages(): Promise<{ readonly items: readonly PaymentPackage[] }>;
+  listOrders(options: OrderListOptions): Promise<OrderListResponse>;
   createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse>;
   handleNotification(input: PaymentNotificationInput): Promise<{ readonly duplicate: boolean }>;
 }
@@ -66,6 +95,8 @@ interface OrderRow extends QueryResultRow {
   readonly wx_prepay_id: string | null;
   readonly wx_transaction_id: string | null;
   readonly openid_ciphertext?: string | null;
+  readonly paid_at?: Date | string | null;
+  readonly created_at?: Date | string;
 }
 
 interface UserPaymentRow extends QueryResultRow {
@@ -77,6 +108,8 @@ function packageResponse(row: PackageRow): PaymentPackage {
     row.currency !== "CNY"
     || row.enabled !== true
     || row.quota_kind !== "ai_generation"
+    || row.membership_type !== null
+    || row.membership_days !== null
     || !Number.isSafeInteger(row.quota_amount)
     || !Number.isSafeInteger(row.price_fen)
   ) {
@@ -98,6 +131,48 @@ function paymentDescription(label: string): string {
   return Array.from(`小露拼豆-${label}`).slice(0, 127).join("");
 }
 
+function orderStatus(value: string): OrderStatus {
+  if (value === "pending" || value === "paid" || value === "failed" || value === "closed" || value === "refunded") {
+    return value;
+  }
+  throw new Error("数据库订单状态不符合支付业务约束");
+}
+
+function isoTimestamp(value: Date | string | undefined | null, field: string): string | null {
+  if (value === null || value === undefined) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) throw new Error(`数据库订单 ${field} 时间无效`);
+  return date.toISOString();
+}
+
+function orderResponse(row: OrderRow): OrderItem {
+  const createdAt = isoTimestamp(row.created_at, "created_at");
+  if (!createdAt
+    || row.quota_kind_snapshot !== "ai_generation"
+    || !row.id
+    || (row.package_id !== null && typeof row.package_id !== "string")
+    || typeof row.package_label_snapshot !== "string"
+    || !row.package_label_snapshot
+    || !Number.isSafeInteger(row.quota_amount_snapshot)
+    || row.quota_amount_snapshot < 0
+    || !Number.isSafeInteger(row.price_fen)
+    || row.price_fen < 0) {
+    throw new Error("数据库 AI 订单快照不符合订单列表约束");
+  }
+  return {
+    id: row.id,
+    packageId: row.package_id,
+    packageLabel: row.package_label_snapshot,
+    quotaAmount: row.quota_amount_snapshot,
+    quotaKind: "ai_generation",
+    priceFen: row.price_fen,
+    currency: "CNY",
+    status: orderStatus(row.status),
+    createdAt,
+    paidAt: isoTimestamp(row.paid_at, "paid_at"),
+  };
+}
+
 function ensurePayablePackage(row: PackageRow | undefined): PackageRow {
   if (!row) throw notFound("套餐不存在或已下架");
   if (
@@ -107,6 +182,8 @@ function ensurePayablePackage(row: PackageRow | undefined): PackageRow {
     || !Number.isSafeInteger(row.quota_amount)
     || row.quota_amount <= 0
     || row.quota_kind !== "ai_generation"
+    || row.membership_type !== null
+    || row.membership_days !== null
   ) {
     throw new AppError(409, "PACKAGE_NOT_PAYABLE", "套餐当前不能通过微信支付购买");
   }
@@ -152,9 +229,38 @@ export class PostgresPaymentService implements PaymentService {
               price_fen, currency, enabled
          FROM pindou_packages
         WHERE enabled = TRUE
+          AND quota_kind = 'ai_generation'
+          AND membership_type IS NULL
+          AND membership_days IS NULL
         ORDER BY sort_order, id`,
     );
     return { items: result.rows.map(packageResponse) };
+  }
+
+  public async listOrders(options: OrderListOptions): Promise<OrderListResponse> {
+    const countResult = await this.pool.query<{ total: number }>(
+      `SELECT COUNT(*)::int AS total
+         FROM pindou_orders
+        WHERE user_id = $1
+          AND quota_kind_snapshot = 'ai_generation'`,
+      [options.userId],
+    );
+    const result = await this.pool.query<OrderRow>(
+      `SELECT id, package_id, package_label_snapshot, quota_amount_snapshot,
+              quota_kind_snapshot, price_fen, status, created_at, paid_at
+         FROM pindou_orders
+        WHERE user_id = $1
+          AND quota_kind_snapshot = 'ai_generation'
+        ORDER BY created_at DESC, id DESC
+        LIMIT $2 OFFSET $3`,
+      [options.userId, options.pageSize, (options.page - 1) * options.pageSize],
+    );
+    return {
+      total: countResult.rows[0]?.total ?? 0,
+      page: options.page,
+      pageSize: options.pageSize,
+      items: result.rows.map(orderResponse),
+    };
   }
 
   public async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse> {

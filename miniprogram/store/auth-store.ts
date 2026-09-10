@@ -157,6 +157,7 @@ export class AuthStore {
             purchased: quota.purchased,
             remaining: quota.remaining,
             resetsAt: quota.resetsAt,
+            aiGeneration: quota.aiGeneration,
           },
         }
         this.persistProfileCache(nextProfile)
@@ -169,6 +170,35 @@ export class AuthStore {
         return null
       }
       console.error('刷新下载额度失败', error)
+      return null
+    }
+  }
+
+  async refreshAiQuota(): Promise<QuotaResponse | null> {
+    const session = loadAuthSession()
+    if (!session || isAuthSessionExpired(session)) return null
+
+    try {
+      const quota = await fetchQuota()
+      const profile = this.state.profile
+      if (profile) {
+        const nextProfile: CurrentUserProfile = {
+          ...profile,
+          quota: {
+            ...profile.quota,
+            aiGeneration: quota.aiGeneration,
+          },
+        }
+        this.persistProfileCache(nextProfile)
+        this.setState({ ...this.state, user: nextProfile.user, profile: nextProfile })
+      }
+      return quota
+    } catch (error) {
+      if (isUnauthorized(error)) {
+        this.expireSession()
+        return null
+      }
+      console.error('刷新 AI 额度失败', error)
       return null
     }
   }

@@ -182,14 +182,14 @@ PatternDraft
 
 **用户操作：**
 - 点击用户卡片登录（toast"账号登录能力待接入"）
-- 查看今日下载额度
-- 点击"获取更多次数"→ 弹出套餐 Sheet
+- 查看 AI 今日剩余额度
+- 点击"购买 AI 生成次数"→ 弹出套餐 Sheet
 - 选择套餐 → 点击支付（toast"支付能力尚未接入"）
 - 导航到各子页面
 
 **当前数据来源：**  
 `appStore.getSnapshot()`（Storage）  
-套餐数据：`DOWNLOAD_PACKAGES`（**硬编码**）
+套餐数据：充值页和个人页调用 `/api/packages`，支付事实以服务端套餐接口为准
 
 **需要后端：**
 
@@ -306,10 +306,10 @@ URL 参数：`packageLabel`、`amount`、`quota`（**前端直接传递，无验
 |-----|---------|-------------|---------|
 | `store/app-store.ts` | `wx.getStorageSync('pindou-app-state-v1')` 序列化全量状态 | `currentDraft`、`works[]`、`favoriteIds[]`、`downloadQuota`、`downloadRecords[]`、`privacyPreferences` | 登录后迁移到各对应云端 API；本地 Storage 只保留当前 draft 缓存 |
 | `services/image-service.ts` | `id: 'draft-' + Date.now()` | draft ID | 后端负责生成真实 ID |
-| `config/product.ts` | `DOWNLOAD_PACKAGES` 硬编码套餐 | 套餐价格/次数 | 建议后端下发，便于运营调价 |
-| `pages/profile/index.wxml` | 硬编码显示 `/ 3 次` | 每日免费额度上限 | 后端下发当日额度 |
+| `services/payment-service.ts` | 解析 `/api/packages` | AI 套餐价格/次数 | 服务端数据库为唯一商品事实 |
+| `pages/profile/index.wxml` | 读取 `quota.aiGeneration.dailyFree` | AI 每日免费额度上限 | 后端下发当日额度 |
 | `store/app-store.ts` L23 | `downloadQuota: 3` | 初始额度 | 改为登录后从服务端同步 |
-| `pages/payment-success/index.ts` | 从 URL params 读取 `quota` | 支付后额度变更 | 必须从服务端验证，禁止前端自传 |
+| `pages/payment-success/index.ts` | 重新读取 AI 额度接口 | 支付后额度变更 | 必须从服务端验证，禁止前端自传 |
 
 ---
 
@@ -427,7 +427,7 @@ DownloadRecord（前端已有类型）:
 
 ### UserQuota（下载额度）
 
-**代码来源：** `appStore.state.downloadQuota`（硬编码初始值 3），`profile/index.wxml` "/ 3 次"，`config/profile.ts` `DOWNLOAD_PACKAGES`
+**代码来源：** AI 额度读取用户资料中的 `quota.aiGeneration`，下载额度继续读取 `appStore.state.downloadQuota`；套餐展示读取 `/api/packages`，支付事实以服务端接口为准
 
 ```
 当前：本地整数，无重置逻辑，无扣减逻辑
@@ -724,7 +724,7 @@ Response:
 ### POST `/api/payments/create`
 
 ```json
-Request: { "packageId": "starter" }
+Request: { "packageId": "ai_generation_80" }
 Response:
 {
   "orderId": "order_xxx",

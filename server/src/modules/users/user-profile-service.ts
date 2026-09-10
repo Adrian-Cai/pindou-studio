@@ -32,6 +32,8 @@ interface UserRow extends QueryResultRow {
 interface QuotaRow extends QueryResultRow {
   readonly used_today: string;
   readonly purchased: string;
+  readonly ai_used_today: string;
+  readonly ai_purchased: string;
 }
 
 interface DeletedFileAssetRow extends QueryResultRow {
@@ -63,6 +65,13 @@ export interface CurrentUserResponse {
     readonly purchased: number;
     readonly remaining: number;
     readonly resetsAt: string;
+    readonly aiGeneration: {
+      readonly dailyFree: number;
+      readonly usedToday: number;
+      readonly purchased: number;
+      readonly remaining: number;
+      readonly resetsAt: string;
+    };
   };
   readonly privacy: PrivacyPreferences;
 }
@@ -185,7 +194,14 @@ export class PostgresUserProfileService implements UserProfileService {
                 )::text AS used_today,
                   COALESCE(SUM(amount) FILTER (
                     WHERE quota_kind = 'standard_download' AND bucket = 'purchased'
-                  ), 0)::text AS purchased
+                  ), 0)::text AS purchased,
+                  COALESCE(-SUM(amount) FILTER (
+                    WHERE quota_kind = 'ai_generation'
+                      AND bucket = 'daily_free' AND quota_date = $2::date AND amount < 0
+                  ), 0)::text AS ai_used_today,
+                  COALESCE(SUM(amount) FILTER (
+                    WHERE quota_kind = 'ai_generation' AND bucket = 'purchased'
+                  ), 0)::text AS ai_purchased
            FROM pindou_quota_transactions
           WHERE user_id = $1`,
         [userId, shanghaiDate(currentTime)],
@@ -197,7 +213,10 @@ export class PostgresUserProfileService implements UserProfileService {
     const quota = quotaResult.rows[0];
     const usedToday = nonNegativeInteger(quota?.used_today ?? "0");
     const purchased = nonNegativeInteger(quota?.purchased ?? "0");
+    const aiUsedToday = nonNegativeInteger(quota?.ai_used_today ?? "0");
+    const aiPurchased = nonNegativeInteger(quota?.ai_purchased ?? "0");
     const dailyRemaining = Math.max(0, this.quotaConfig.dailyStandardDownloads - usedToday);
+    const aiDailyRemaining = Math.max(0, this.quotaConfig.dailyAiGenerations - aiUsedToday);
 
     return {
       user: {
@@ -217,6 +236,13 @@ export class PostgresUserProfileService implements UserProfileService {
         purchased,
         remaining: dailyRemaining + purchased,
         resetsAt: nextShanghaiMidnight(currentTime),
+        aiGeneration: {
+          dailyFree: this.quotaConfig.dailyAiGenerations,
+          usedToday: aiUsedToday,
+          purchased: aiPurchased,
+          remaining: aiDailyRemaining + aiPurchased,
+          resetsAt: nextShanghaiMidnight(currentTime),
+        },
       },
       privacy: mapPrivacy(profile),
     };

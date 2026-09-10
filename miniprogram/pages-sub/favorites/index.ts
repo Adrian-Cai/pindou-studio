@@ -22,6 +22,7 @@ const tabs = [
   { id: 'inspiration', label: '灵感图' },
   { id: 'completed', label: '已完成作品' },
 ] as const
+const COVER_FALLBACK_PATH = '/assets/icons/image-upload.svg'
 
 Page({
   data: {
@@ -75,6 +76,17 @@ Page({
       allWorks,
       recentCount: allWorks.filter((work) => isRecent(work.favoritedAt)).length,
     }, () => this.applyFilters())
+  },
+
+  handleCoverError(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    const work = this.data.allWorks.find((item) => item.id === id)
+    if (!work || work.coverPath === COVER_FALLBACK_PATH) return
+    const allWorks = this.data.allWorks.map((work) => work.id === id
+      ? { ...work, coverPath: COVER_FALLBACK_PATH }
+      : work)
+    this.setData({ allWorks }, () => this.applyFilters())
   },
 
   changeSearch(event: WechatMiniprogram.Input) {

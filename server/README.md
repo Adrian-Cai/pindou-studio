@@ -26,13 +26,14 @@ node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'
 
 服务在监听端口前会开启 `READ ONLY` 事务，检查数据库产品、版本、11 张表、字段、索引、外键、CHECK 约束和注释发现任何结构差异时会拒绝启动，不会自动修复数据库
 
-已有数据库部署本版本前，先由 `pindou_*` 表 owner 执行以下迁移，再执行 `npm run db:inspect`：
+已有数据库部署本版本前，先由 `pindou_*` 表 owner 按编号顺序执行 `sql/001_ai_quota_and_jobs.sql` 至 `sql/007_ai_generation_packages_only.sql`，再执行 `npm run db:inspect`：
 
 ```powershell
 psql "<由运维安全提供的迁移连接>" -v ON_ERROR_STOP=1 -f sql/006_favorites_soft_delete.sql
+psql "<由运维安全提供的迁移连接>" -v ON_ERROR_STOP=1 -f sql/007_ai_generation_packages_only.sql
 ```
 
-迁移必须按编号顺序执行；`006_favorites_soft_delete.sql` 会回填历史收藏时间，增加收藏软删除字段与有效收藏时间索引。部署代码前必须先完成该迁移，否则结构校验会阻止服务启动。
+迁移必须按编号顺序执行；`006_favorites_soft_delete.sql` 会回填历史收藏时间，增加收藏软删除字段与有效收藏时间索引，`007_ai_generation_packages_only.sql` 会停用历史下载/无限会员套餐但不修改历史订单快照。部署代码前必须先完成结构迁移，否则结构校验会阻止服务启动。
 
 健康检查：
 
@@ -127,7 +128,7 @@ Content-Type: application/json
 
 ## 阶段 5 接口
 
-`GET /api/packages` 公开返回数据库中已启用的套餐创建支付订单需要登录和稳定的 `Idempotency-Key`，请求体只允许包含服务端套餐 ID：
+`GET /api/packages` 公开返回数据库中已启用的 AI 生成次数套餐；创建支付订单需要登录和稳定的 `Idempotency-Key`，请求体只允许包含服务端套餐 ID：
 
 ```http
 POST /api/payments/create
@@ -135,7 +136,7 @@ Authorization: Bearer <token>
 Idempotency-Key: <一次下单动作的稳定唯一键>
 Content-Type: application/json
 
-{"packageId":"starter"}
+{"packageId":"ai_generation_80"}
 ```
 
 服务端从 `pindou_packages` 读取价格和额度、写入订单快照，再调用微信支付 v3 JSAPI/小程序下单客户端只会收到 `wx.requestPayment` 所需字段，不会收到商户私钥、API v3 密钥、AppSecret 或签名原文

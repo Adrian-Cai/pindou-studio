@@ -19,7 +19,7 @@
 }
 
 .page-layout__content--main-tab {
-  padding-bottom: 24rpx;
+  padding-bottom: calc(152rpx + env(safe-area-inset-bottom));
 }
 
 .page-layout__content--compact-bottom {

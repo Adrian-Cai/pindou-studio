@@ -40,7 +40,7 @@ test("packages is public and payment creation accepts only packageId from an aut
   const createCalls = [];
   const payments = {
     async listPackages() {
-      return { items: [{ id: "starter", label: "加购 3 次", quotaAmount: 3, membershipType: null, priceFen: 990, currency: "CNY", enabled: true }] };
+      return { items: [{ id: "ai_generation_30", label: "AI 精致生成 30 次", quotaAmount: 30, quotaKind: "ai_generation", membershipType: null, priceFen: 990, currency: "CNY", enabled: true }] };
     },
     async createPayment(input) {
       createCalls.push(input);
@@ -64,7 +64,7 @@ test("packages is public and payment creation accepts only packageId from an aut
         "content-type": "application/json",
         "idempotency-key": "payment-http-1",
       },
-      body: JSON.stringify({ packageId: "starter", priceFen: 1 }),
+      body: JSON.stringify({ packageId: "ai_generation_30", priceFen: 1 }),
     });
     assert.equal(tampered.status, 400);
     assert.equal((await tampered.json()).error.code, "INVALID_ARGUMENT");
@@ -77,11 +77,11 @@ test("packages is public and payment creation accepts only packageId from an aut
         "content-type": "application/json",
         "idempotency-key": "payment-http-2",
       },
-      body: JSON.stringify({ packageId: "starter" }),
+      body: JSON.stringify({ packageId: "ai_generation_30" }),
     });
     assert.equal(created.status, 201);
     assert.equal((await created.json()).orderId, "order_http");
-    assert.deepEqual(createCalls, [{ userId: "usr_payment", packageId: "starter", idempotencyKey: "payment-http-2" }]);
+    assert.deepEqual(createCalls, [{ userId: "usr_payment", packageId: "ai_generation_30", idempotencyKey: "payment-http-2" }]);
   });
 });
 

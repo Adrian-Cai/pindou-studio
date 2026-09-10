@@ -43,9 +43,9 @@ function paymentParameters() {
 
 function packageRow(overrides = {}) {
   return {
-    id: "starter",
-    label: "加购 3 次",
-    quota_amount: 3,
+    id: "ai_generation_30",
+    label: "AI 精致生成 30 次",
+    quota_amount: 30,
     quota_kind: "ai_generation",
     membership_type: null,
     membership_days: null,
@@ -88,9 +88,9 @@ test("packages returns only the enabled rows selected by the server query", asyn
   const service = new PostgresPaymentService(pool, fakeGateway(), SECRET, () => NOW);
   assert.deepEqual(await service.listPackages(), {
     items: [{
-      id: "starter",
-      label: "加购 3 次",
-      quotaAmount: 3,
+      id: "ai_generation_30",
+      label: "AI 精致生成 30 次",
+      quotaAmount: 30,
       quotaKind: "ai_generation",
       membershipType: null,
       priceFen: 990,
@@ -100,6 +100,15 @@ test("packages returns only the enabled rows selected by the server query", asyn
   });
   assert.match(calls[0].sql, /WHERE enabled = TRUE/);
   assert.match(calls[0].sql, /ORDER BY sort_order, id/);
+});
+
+test("packages fail closed when a database row still carries membership fields", async () => {
+  const { pool } = clientPool(() => ({ rows: [packageRow({ membership_type: "monthly" })] }));
+  const service = new PostgresPaymentService(pool, fakeGateway(), SECRET, () => NOW);
+  await assert.rejects(
+    () => service.listPackages(),
+    /数据库套餐不符合支付业务约束/,
+  );
 });
 
 test("payment creation snapshots server package values and never accepts a client amount", async () => {
@@ -124,20 +133,20 @@ test("payment creation snapshots server package values and never accepts a clien
   const service = new PostgresPaymentService(pool, gateway, SECRET, () => NOW);
   const result = await service.createPayment({
     userId: "usr_a",
-    packageId: "starter",
+    packageId: "ai_generation_30",
     idempotencyKey: "create-starter-1",
   });
 
   assert.match(result.orderId, /^order_[a-f0-9]{26}$/);
   assert.deepEqual(gatewayInput, {
     orderId: result.orderId,
-    description: "小露拼豆-加购 3 次",
+    description: "小露拼豆-AI 精致生成 30 次",
     amountFen: 990,
     currency: "CNY",
     payerOpenid: OPENID,
   });
-  assert.equal(orderInsert[3], "加购 3 次");
-  assert.equal(orderInsert[4], 3);
+  assert.equal(orderInsert[3], "AI 精致生成 30 次");
+  assert.equal(orderInsert[4], 30);
   assert.equal(orderInsert[5], "ai_generation");
   assert.equal(orderInsert[7], 990);
 });
@@ -146,9 +155,9 @@ function notificationHarness(notificationOverrides = {}, options = {}) {
   const order = {
     id: "order_test",
     user_id: "usr_a",
-    package_id: "starter",
-    package_label_snapshot: "加购 3 次",
-    quota_amount_snapshot: 3,
+    package_id: "ai_generation_30",
+    package_label_snapshot: "AI 精致生成 30 次",
+    quota_amount_snapshot: 30,
     quota_kind_snapshot: "ai_generation",
     membership_type_snapshot: null,
     price_fen: 990,
@@ -201,7 +210,7 @@ test("successful callback atomically marks paid and duplicate callback does not 
   assert.equal(harness.orderUpdates, 1);
   assert.deepEqual(
     { quotaKind: harness.grant.quotaKind, amount: harness.grant.amount, orderId: harness.grant.orderId },
-    { quotaKind: "ai_generation", amount: 3, orderId: "order_test" },
+    { quotaKind: "ai_generation", amount: 30, orderId: "order_test" },
   );
   assert.equal(harness.state.calls.filter((call) => call.sql.includes("INSERT INTO pindou_quota_transactions")).length, 1);
 });

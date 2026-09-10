@@ -1,11 +1,25 @@
 # CHANGELOG
 
+## 0.28.0
+
+- 新增“我的订单”二级页面，从“我的”Tab 的权益卡下方直接进入，不新增底部 Tab，也不归入“账号与登录”。
+- 新增 `GET /api/orders`，按当前 Bearer Token 查询 AI 生成次数订单，使用订单套餐快照并隐藏支付敏感字段。
+- 新增订单用户与创建时间索引、分页/状态/金额/时间校验及订单归属、倒序、空列表和非 AI 商品过滤测试。
+- 小程序额度接口解析标准下载与 AI 生成两个额度桶；支付成功页仅刷新 AI 额度，避免覆盖下载额度。
+- 个人页和充值页改为读取 `/api/packages` 的服务端 AI 套餐；新增迁移停用历史 `starter`、`value`、`unlimited` 套餐并保留历史订单快照。
+
+## 0.27.2
+
+- 统一商品类型为 AI 生成次数：前端套餐与后端 `ai_generation` 配置一致，提供 ¥9.9/30 次、¥19.9/80 次、¥29.9/150 次，移除无限下载会员。
+- 个人页、充值页和支付成功页改为展示 AI 生成额度；标准下载额度继续独立用于下载流程。
+- 用户资料接口补充 `quota.aiGeneration`，避免购买入口文案与实际额度来源不一致。
+- 修复作品与收藏列表封面图片地址异常：统一规范化历史本地回环地址和相对封面路径，并在图片加载失败时回退到现有占位图。
+
 ## 0.27.1
 
-- 修复首页「开始生成」按钮与底部 TabBar 之间异常留白（80~100px）问题：
-  - 定位根因：微信小程序自定义 TabBar 下 `wx.getWindowInfo().windowHeight` 已扣除 TabBar 区域，`page-layout` 独立滚动区域自然终止于 TabBar 顶部；此前公共布局对主 Tab 页面仍应用了预留固定 TabBar 高度的 `.page-layout__content--with-nav`（`160rpx + env(safe-area-inset-bottom)`），且首页容器类名与全局 `.page`（`min-height: 100vh`）冲突，导致重复产生 80～100px 布局占位。
-  - 优化公共布局组件：`page-layout` 识别主 Tab 页面（`isMainTabPage`），对主 Tab 页面应用 `.page-layout__content--main-tab`（`padding-bottom: 24rpx`），精准收敛底部留白至 24rpx（约 12px），同时确保分包嵌入式 TabBar 页面原有防遮挡逻辑不受影响。
-  - 容器解耦与全局样式清理：首页容器切换为 `.home-page`，显式设置 `min-height: auto` 避免高度异常撑满；同步清理 `app.wxss` 中历史 `.page` 的 `min-height: 100vh` 与多余底部 padding。
+- 修复首页「开始生成」按钮与底部 TabBar 遮挡及留白问题：
+  - 定位根因：自定义 TabBar 在微信小程序中为 `fixed` 悬浮于屏幕底部（高度 `128rpx + env(safe-area-inset-bottom)`），`page-layout` 独立滚动区域延伸至屏幕底部；此前首页容器类名与全局 `.page`（`min-height: 100vh`）冲突撑出了 80~100px 的冗余空白，但在直接缩减 padding 为 `24rpx` 后未计算 TabBar 自身高度，导致「开始生成」按钮被固定 TabBar 覆盖无法滑动查看。
+  - 精确计算底部留白：在解耦首页容器（`.home-page` 设置 `min-height: auto` 消除多余撑满）的基础上，将 `.page-layout__content--main-tab` 底部内边距修正为 `calc(152rpx + env(safe-area-inset-bottom))`（即 TabBar 高度 128rpx + 视觉间距 24rpx + 安全区）；滑动触底时按钮刚好位于 TabBar 上方 24rpx（约 12px），既能完整展示并点击，又消除了多余占位。
 - 修复未登录状态点击收藏提示错误与会话隔离：
   - 隔离内容安全审核的临时微信会话，使用独立的内存级变量进行缓存，不再调用 `saveAuthSession` 写入主用户本地存储 Key（`pindou-auth-session-v1`），避免游客被误判为拥有云端会话。
   - 在 `authStore` 中增加 `isLoggedIn()` 判定，统一收敛“是否存在有效登录用户”规则。

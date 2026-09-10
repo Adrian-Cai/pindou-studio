@@ -123,6 +123,46 @@
   transform: scale(0.97);
 }
 
+/* ── 订单入口 ── */
+.order-entry {
+  display: flex;
+  min-height: 112rpx;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20rpx;
+  padding: 24rpx 32rpx;
+  border-radius: 38rpx;
+  transition: var(--transition-press);
+}
+.order-entry:active {
+  opacity: 0.72;
+  transform: scale(0.98);
+}
+.order-entry__content {
+  min-width: 0;
+}
+.order-entry__title {
+  color: var(--color-text);
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 40rpx;
+}
+.order-entry__description {
+  margin-top: 6rpx;
+  color: var(--color-text-secondary);
+  font-size: 23rpx;
+  line-height: 34rpx;
+}
+.order-entry__arrow {
+  flex-shrink: 0;
+  margin-left: 24rpx;
+  color: var(--color-text-tertiary);
+  font-size: 40rpx;
+  font-weight: 300;
+  line-height: 1;
+}
+
 /* ── 2×2 功能宫格 ── */
 .profile-grid {
   display: grid;
@@ -199,6 +239,7 @@
 .recharge-sheet__title { font-size: 36rpx; font-weight: 600; text-align: center; }
 .recharge-sheet__quota { margin: 8rpx 0 24rpx; color: var(--color-text-secondary); font-size: 25rpx; text-align: center; }
 .recharge-sheet__quota text { color: var(--color-primary); font-size: 34rpx; font-weight: 600; }
+.recharge-sheet__message { padding: 28rpx 0; color: var(--color-text-secondary); font-size: 25rpx; line-height: 36rpx; text-align: center; }
 .recharge-option { display: flex; height: 92rpx; align-items: center; margin-bottom: 16rpx; padding: 0 24rpx; border: 0; border-radius: var(--radius-card-small); background: var(--color-surface); box-shadow: var(--shadow-card); transition: var(--transition-press); }
 .recharge-option--active { background: var(--color-primary-surface); box-shadow: 0 0 0 2rpx var(--color-primary), var(--shadow-card); }
 .recharge-option:active { background: var(--strong-overlay); transform: scale(0.97); }

@@ -10,6 +10,13 @@ export interface QuotaResponse {
   membershipType: null
   membershipExpiresAt: null
   resetsAt: string
+  aiGeneration: {
+    dailyFree: number
+    usedToday: number
+    purchased: number
+    remaining: number
+    resetsAt: string
+  }
 }
 
 export interface CloudDownloadRecord {
@@ -94,6 +101,7 @@ export function cloudDownloadToLocalRecord(
 }
 
 function parseQuota(value: unknown): QuotaResponse {
+  const aiGeneration = isRecord(value) ? value.aiGeneration : null
   if (!isRecord(value)
     || !isFiniteNumber(value.dailyFree)
     || !isFiniteNumber(value.usedToday)
@@ -102,7 +110,14 @@ function parseQuota(value: unknown): QuotaResponse {
     || (value.membershipType !== null)
     || (value.membershipExpiresAt !== null)
     || typeof value.resetsAt !== 'string'
-    || !Number.isFinite(Date.parse(value.resetsAt))) throw invalidResponse()
+    || !Number.isFinite(Date.parse(value.resetsAt))
+    || !isRecord(aiGeneration)
+    || !isFiniteNumber(aiGeneration.dailyFree)
+    || !isFiniteNumber(aiGeneration.usedToday)
+    || !isFiniteNumber(aiGeneration.purchased)
+    || !isFiniteNumber(aiGeneration.remaining)
+    || typeof aiGeneration.resetsAt !== 'string'
+    || !Number.isFinite(Date.parse(aiGeneration.resetsAt))) throw invalidResponse()
   return {
     dailyFree: value.dailyFree,
     usedToday: value.usedToday,
@@ -111,6 +126,13 @@ function parseQuota(value: unknown): QuotaResponse {
     membershipType: null,
     membershipExpiresAt: null,
     resetsAt: value.resetsAt,
+    aiGeneration: {
+      dailyFree: aiGeneration.dailyFree,
+      usedToday: aiGeneration.usedToday,
+      purchased: aiGeneration.purchased,
+      remaining: aiGeneration.remaining,
+      resetsAt: aiGeneration.resetsAt,
+    },
   }
 }
 

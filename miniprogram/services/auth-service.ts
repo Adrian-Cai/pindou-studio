@@ -89,6 +89,7 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
   const createdAt = value.user.createdAt
   const stats = value.stats
   const quota = value.quota
+  const aiGeneration = quota.aiGeneration
   if (
     !user
     || typeof createdAt !== 'string'
@@ -100,6 +101,13 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
     || !isFiniteNumber(quota.purchased)
     || !isFiniteNumber(quota.remaining)
     || typeof quota.resetsAt !== 'string'
+    || !isRecord(aiGeneration)
+    || !isFiniteNumber(aiGeneration.dailyFree)
+    || !isFiniteNumber(aiGeneration.usedToday)
+    || !isFiniteNumber(aiGeneration.purchased)
+    || !isFiniteNumber(aiGeneration.remaining)
+    || typeof aiGeneration.resetsAt !== 'string'
+    || !Number.isFinite(Date.parse(aiGeneration.resetsAt))
   ) throw invalidResponse()
 
   return {
@@ -115,6 +123,13 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
       purchased: quota.purchased,
       remaining: quota.remaining,
       resetsAt: quota.resetsAt,
+      aiGeneration: {
+        dailyFree: aiGeneration.dailyFree,
+        usedToday: aiGeneration.usedToday,
+        purchased: aiGeneration.purchased,
+        remaining: aiGeneration.remaining,
+        resetsAt: aiGeneration.resetsAt,
+      },
     },
   }
 }

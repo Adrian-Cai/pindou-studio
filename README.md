@@ -113,7 +113,7 @@
 - `pages-sub/feedback/index`：意见反馈
 - `pages-sub/privacy/index`：隐私设置
 - `pages-sub/about/index`：关于我们
-- `pages-sub/recharge/index`：下载次数 / 额度相关页面
+- `pages-sub/recharge/index`：AI 生成次数 / 额度相关页面
 - `pages-sub/payment-success/index`：支付成功展示
 
 ## 技术架构

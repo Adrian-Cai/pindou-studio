@@ -8,6 +8,7 @@
 
 ```powershell
 psql "<由运维安全提供的迁移连接>" -v ON_ERROR_STOP=1 -f server/sql/001_ai_quota_and_jobs.sql
+psql "<由运维安全提供的迁移连接>" -v ON_ERROR_STOP=1 -f server/sql/007_ai_generation_packages_only.sql
 ```
 
 随后使用应用账号执行：
@@ -20,7 +21,7 @@ $env:RUN_DATABASE_INTEGRATION='1'
 npm test
 ```
 
-迁移会加入双额度字段、AI 任务表和三档 AI 套餐：`¥9.9/30`、`¥19.9/80`、`¥29.9/150`生产执行前先备份，并在预发布库完整演练一次
+迁移会加入双额度字段、AI 任务表和三档 AI 套餐：`¥9.9/30`、`¥19.9/80`、`¥29.9/150`；`007` 会停用旧下载套餐和无限会员套餐，生产执行前先备份，并在预发布库完整演练一次
 
 ## 微信支付小额实付
 

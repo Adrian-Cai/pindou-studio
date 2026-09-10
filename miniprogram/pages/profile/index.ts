@@ -1,6 +1,6 @@
-import { DOWNLOAD_PACKAGES } from '../../config/profile'
 import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
+import { fetchAiGenerationPackages, type AiGenerationPackage } from '../../services/payment-service'
 
 const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.webp'
 
@@ -15,9 +15,13 @@ interface NicknameInputEvent {
 
 Page({
   data: {
-    packages: DOWNLOAD_PACKAGES,
+    packages: [] as AiGenerationPackage[],
+    packagesLoading: false,
+    packageMessage: '',
     downloadQuota: 0,
     dailyFreeDownloadQuota: DAILY_FREE_DOWNLOAD_QUOTA,
+    aiGenerationQuota: 0,
+    dailyFreeAiGenerationQuota: 0,
     avatarPath: DEFAULT_AVATAR_PATH,
     isLoggedIn: false,
     accountName: '拼豆用户',
@@ -88,10 +92,14 @@ Page({
 
     const downloadQuota = profile?.quota.remaining ?? state.downloadQuota
     const dailyFreeDownloadQuota = profile?.quota.dailyFree ?? DAILY_FREE_DOWNLOAD_QUOTA
+    const aiGenerationQuota = profile?.quota.aiGeneration.remaining ?? 0
+    const dailyFreeAiGenerationQuota = profile?.quota.aiGeneration.dailyFree ?? 0
 
     this.setData({
       downloadQuota,
       dailyFreeDownloadQuota,
+      aiGenerationQuota,
+      dailyFreeAiGenerationQuota,
       avatarPath: DEFAULT_AVATAR_PATH,
       isLoggedIn: hasAuthenticatedUser,
       accountName: user?.nickname?.trim() || '拼豆用户',
@@ -141,6 +149,10 @@ Page({
     wx.navigateTo({ url: '/pages-sub/downloads/index' })
   },
 
+  openOrders() {
+    wx.navigateTo({ url: '/pages-sub/orders/index' })
+  },
+
   openSettings() {
     wx.navigateTo({ url: '/pages-sub/settings/index' })
   },
@@ -169,6 +181,26 @@ Page({
 
   showRechargeSheet() {
     this.showProfileSheet('recharge')
+    void this.refreshPackages()
+  },
+
+  async refreshPackages() {
+    this.setData({ packagesLoading: true, packageMessage: '' })
+    try {
+      const packages = await fetchAiGenerationPackages()
+      this.setData({
+        packages,
+        packagesLoading: false,
+        packageMessage: packages.length > 0 ? '' : '暂无可购买的 AI 生成套餐',
+        selectedPackage: 0,
+      })
+    } catch {
+      this.setData({
+        packages: [],
+        packagesLoading: false,
+        packageMessage: '套餐加载失败，请稍后重试',
+      })
+    }
   },
 
   openProfileEditor() {
@@ -224,9 +256,10 @@ Page({
   },
 
   purchase() {
+    if (this.data.packages.length === 0) return
     wx.showModal({
       title: '支付能力尚未接入',
-      content: '下载套餐界面已经完成，待商户号、定价和付费服务协议确认后再接入微信支付',
+      content: 'AI 生成次数套餐界面已经完成，待商户号、定价和付费服务协议确认后再接入微信支付',
       showCancel: false,
     })
   },

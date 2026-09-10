@@ -18,7 +18,7 @@
 | 2 | 封面上传、作品保存与恢复 | `POST /api/files/upload`、`GET /api/media/covers/:filename`、`POST /api/works`、`GET /api/works`、`GET /api/works/:id`、`PUT/PATCH /api/works/:id`、`DELETE /api/works/:id` |
 | 3 | 收藏 | `PATCH /api/works/:id/favorite`、`GET /api/favorites` |
 | 4 | 额度与下载记录 | `GET /api/quota/me`、`GET /api/downloads`、`POST /api/downloads` |
-| 5 | 套餐与支付 | `GET /api/packages`、`POST /api/payments/create`、`POST /api/payments/notify` |
+| 5 | 套餐与支付 | `GET /api/packages`、`GET /api/orders`、`POST /api/payments/create`、`POST /api/payments/notify` |
 | 6 | AI 精致生成 | `POST /api/ai/generations`、`GET /api/ai/generations/:id` |
 | 7 | 内容安全审核 | `POST /api/content-security/text`、`POST /api/content-security/media`、`GET/POST /api/wechat/content-security/callback` |
 | 8 | 隐私设置、法律文档和注销 | `GET/PATCH /api/users/me/privacy`、`GET /api/legal-documents/:key`、`DELETE /api/users/me` |
@@ -638,6 +638,46 @@ Authorization: Bearer <token>
       "priceFen": 1990,
       "currency": "CNY",
       "enabled": true
+    }
+  ]
+}
+```
+
+### GET `/api/orders`
+
+用途：获取当前用户的 AI 精致生成订单列表
+
+鉴权：需要
+
+查询参数：`page`、`pageSize`，默认 `page=1&pageSize=20`，`page` 最小为 `1`，`pageSize` 范围为 `1` 至 `50`
+
+服务端必须：
+
+- 只使用 Bearer Token 解析出的当前用户 ID，不接受查询参数或请求体中的 `userId`
+- 只查询 `pindou_orders.quota_kind_snapshot = 'ai_generation'` 的订单
+- 使用订单上的套餐名称、额度类型、额度数量、金额和时间快照，不重新读取当前套餐配置
+- 按 `created_at DESC`（同时间再按 `id DESC`）返回
+- 不返回 `openid`、支付签名、微信预支付 ID、微信交易号或其他支付敏感字段
+
+响应 `200`：
+
+```json
+{
+  "total": 1,
+  "page": 1,
+  "pageSize": 20,
+  "items": [
+    {
+      "id": "order_xxx",
+      "packageId": "ai_generation_80",
+      "packageLabel": "AI 精致生成 80 次",
+      "quotaAmount": 80,
+      "quotaKind": "ai_generation",
+      "priceFen": 1990,
+      "currency": "CNY",
+      "status": "paid",
+      "createdAt": "2026-09-10T06:30:00.000Z",
+      "paidAt": "2026-09-10T06:31:00.000Z"
     }
   ]
 }

@@ -335,6 +335,7 @@ pindou_users
 - FK：`user_id -> pindou_users.id`
 - FK：`package_id -> pindou_packages.id`，删除套餐时 `SET NULL`
 - UNIQUE：`wx_transaction_id`
+- INDEX：`(user_id, created_at DESC)`
 - CHECK：`quota_amount_snapshot >= 0`
 - CHECK：`price_fen >= 0`
 - `status` 的合法值由当前 Schema Contract 的 CHECK 约束维护

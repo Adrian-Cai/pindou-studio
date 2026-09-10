@@ -202,6 +202,7 @@ export const REQUIRED_INDEXES: readonly RequiredDatabaseObject[] = [
   { table: "pindou_quota_transactions", label: "下载扣减唯一索引", includes: ["unique index", "(download_record_id)"] },
   { table: "pindou_quota_transactions", label: "AI 扣减幂等唯一索引", includes: ["unique index", "(idempotency_key)", "usage_debit", "ai_generation", "where"] },
   { table: "pindou_orders", label: "微信交易号唯一索引", includes: ["unique index", "(wx_transaction_id)"] },
+  { table: "pindou_orders", label: "用户订单时间索引", includes: ["(user_id, created_at desc)"] },
   { table: "pindou_ai_generation_jobs", label: "AI 任务幂等唯一索引", includes: ["unique index", "(user_id, idempotency_key)"] },
   { table: "pindou_ai_generation_jobs", label: "AI 任务列表索引", includes: ["(user_id, created_at desc)"] },
   { table: "pindou_ai_generation_jobs", label: "AI 活跃任务索引", includes: ["(status, updated_at)", "queued", "processing", "where"] },

@@ -35,9 +35,3 @@ export const FEEDBACK_CATEGORIES = [
   { id: 'payment', symbol: '▣', label: '支付问题' },
   { id: 'experience', symbol: '○', label: '体验吐槽' },
 ] as const
-
-export const DOWNLOAD_PACKAGES = [
-  { id: 'starter', count: 3, price: '9.9', label: '加购 3 次' },
-  { id: 'value', count: 10, price: '19.9', label: '加购 10 次' },
-  { id: 'unlimited', count: 0, price: '29.9', label: '无限下载会员（月）' },
-] as const

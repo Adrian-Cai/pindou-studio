@@ -8,6 +8,7 @@
 .recharge-hero__quota text { color: var(--color-primary); font-size: 36rpx; font-weight: 600; }
 
 .recharge-options { display: grid; gap: 18rpx; }
+.recharge-options__message { padding: 32rpx 0; color: var(--color-text-secondary); font-size: 26rpx; line-height: 36rpx; text-align: center; }
 .recharge-option { display: flex; height: 104rpx; align-items: center; padding: 0 28rpx; border: 0; border-radius: var(--radius-card-small); background: var(--color-surface); box-shadow: var(--shadow-card); transition: var(--transition-press); }
 .recharge-option--active { background: var(--color-primary-surface); box-shadow: 0 0 0 2rpx var(--color-primary), var(--shadow-card); }
 .recharge-option:active { background: var(--strong-overlay); transform: scale(0.97); }
