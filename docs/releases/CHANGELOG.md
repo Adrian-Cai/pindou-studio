@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.28.3
+
+- 修复 CNB 流水线生产部署失败（`Error response from daemon: Get "https://docker.cnb.cool/v2/": unauthorized`）：根因是流水线内置 `CNB_TOKEN` 只在构建容器内有效，把它透传到服务器后由服务器执行 `docker login`，服务器 sidecar 无法用该凭证换取仓库授权，登录失败后 `docker compose pull` 拉取私有镜像返回 unauthorized。
+- 改为在流水线侧生成制品库 Basic 凭证（`base64(cnb:CNB_TOKEN)`），随 SSH 传到服务器写入 `/root/.docker/config.json`（docker/compose 原生读取的配置路径），`docker compose pull` 成功后立即删除该文件，不再在服务器上执行 `docker login`/`docker logout`。
+- `docker compose pull` 改为显式判断：拉取失败时清理凭证并以非 0 退出，避免继续 `up -d` 把旧镜像当成部署成功。
+- 同步修正 web 端「部署 production」（`tag_deploy.production`）与 master push 两处部署脚本。
+- 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
+
 ## 0.28.2
 
 - 修复 CNB 流水线 SSH 部署失败（`cd: /opt/pindou/deploy: No such file or directory`）：此前假设服务器已初始化部署目录，现改为部署前远程 `mkdir -p` 并用 `scp` 上传 `deploy/compose.yaml`，首次部署不再依赖手工初始化。
