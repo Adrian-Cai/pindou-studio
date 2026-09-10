@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.28.4
+
+- 修复 CNB 流水线生产部署失败（`Conflict. The container name "/pindou-postgres" is already in use`）：根因是 `deploy/compose.yaml` 使用固定 `container_name`，而服务器上已存在的同名容器由历史手工 `docker run` 或其它 compose 项目创建，不带本项目 compose 标签，`docker compose up -d` 无法接管，直接以退出码 1 失败。修复为 `up -d` 前显式 `docker rm -f pindou-postgres pindou-api`（数据在 bind mount `/opt/pindou/data/*`，删除容器不影响数据）。
+- 修复 `/root/.docker/config.json` 解析告警（`invalid character 'a' looking for beginning of object key string`）：根因是创作库凭证时用多层 ssh 双引号 + 单引号混拼 JSON，引号在传递过程中被 shell 吞掉。改为 `ssh ... sh -s -- <参数> <<'REMOTE'` 传远端脚本，凭证用 `printf '{"auths":{"%s":{"auth":"%s"}}}'` 由参数注入，不再拼字符串。
+- `api.env` 校验从「文件可读」升级为逐项检查 `DB_NAME`/`DB_USER`/`DB_PASSWORD` 是否存在，避免 postgres 以空密码初始化（此前日志出现 `The "DB_NAME" variable is not set. Defaulting to a blank string.`）。
+- 同步修正 web 端「部署 production」（`tag_deploy.production`）与 master push 两处部署脚本。
+- 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
+
 ## 0.28.3
 
 - 修复 CNB 流水线生产部署失败（`Error response from daemon: Get "https://docker.cnb.cool/v2/": unauthorized`）：根因是流水线内置 `CNB_TOKEN` 只在构建容器内有效，把它透传到服务器后由服务器执行 `docker login`，服务器 sidecar 无法用该凭证换取仓库授权，登录失败后 `docker compose pull` 拉取私有镜像返回 unauthorized。

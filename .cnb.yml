@@ -43,28 +43,44 @@ master:
               "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/compose.yaml"
             # 制品库登录凭证属于发起构建的账号，须由流水线侧生成，勿改回服务器上 docker login
             REGISTRY_AUTH=$(printf '%s:%s' "$CNB_TOKEN_USER_NAME" "$CNB_TOKEN" | base64 -w0)
-            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "
-              set -e
-              cd /opt/pindou/deploy
-              # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
-              test -r /opt/pindou/config/api.env || {
-                echo '缺少 /opt/pindou/config/api.env，请先在服务器配置运行时环境变量'
+            # 用带引号的 heredoc 传远端脚本：避免多层 ssh 双引号嵌套把 JSON 的引号吞掉，
+            # 参数经 argv 显式传入，远端只做 %s 替换，不再拼字符串
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" sh -s -- \
+              "$CNB_DOCKER_REGISTRY" "$REGISTRY_AUTH" \
+              "$CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE" "latest" <<'REMOTE'
+            set -eu
+            REGISTRY="$1"
+            REGISTRY_AUTH="$2"
+            IMAGE_REPO="$3"
+            IMAGE_TAG="$4"
+            cd /opt/pindou/deploy
+            # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
+            test -r /opt/pindou/config/api.env || {
+              echo '缺少 /opt/pindou/config/api.env，请先在服务器配置运行时环境变量'
+              exit 1
+            }
+            # 仅检查文件存在不够：变量缺失时 compose 会把 DB_* 当空值，postgres 以空密码初始化
+            for key in DB_NAME DB_USER DB_PASSWORD; do
+              grep -q "^${key}=" /opt/pindou/config/api.env || {
+                echo "api.env 缺少 ${key}，postgres 会以空值初始化"
                 exit 1
               }
-              # 私有镜像需制品库凭证，直接写入 compose 读取的 docker config，部署后清除
-              mkdir -p /root/.docker
-              printf '%s' '{"auths":{"'${CNB_DOCKER_REGISTRY}'":{"auth":"'$REGISTRY_AUTH'"}}}' \
-                > /root/.docker/config.json
-              export IMAGE_REPO='${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}'
-              export IMAGE_TAG='latest'
-              # 凭证写入失败或镜像不可拉取时立即失败，避免部署到旧镜像
-              if ! docker compose pull; then
-                rm -f /root/.docker/config.json
-                exit 1
-              fi
-              docker compose --env-file /opt/pindou/config/api.env up -d
+            done
+            # 私有镜像需制品库凭证，写入 compose 读取的 docker config，部署后清除
+            mkdir -p /root/.docker
+            printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$REGISTRY_AUTH" \
+              > /root/.docker/config.json
+            # 凭证写入失败或镜像不可拉取时立即失败，避免部署到旧镜像
+            if ! docker compose pull; then
               rm -f /root/.docker/config.json
-            "
+              exit 1
+            fi
+            # 旧容器可能由手工 docker run 或其它 compose 项目创建，无本项目 compose 标签，
+            # 直接 up 会报 container name already in use；数据在 bind mount 中，删除容器不影响数据
+            docker rm -f pindou-postgres pindou-api 2>/dev/null || true
+            docker compose --env-file /opt/pindou/config/api.env up -d
+            rm -f /root/.docker/config.json
+            REMOTE
         - name: 健康检查
           imports:
             - https://cnb.cool/ImAcaiy/envs/-/blob/main/envs.yml
@@ -149,25 +165,41 @@ $:
               "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/compose.yaml"
             # 制品库登录凭证属于发起构建的账号，须由流水线侧生成，勿改回服务器上 docker login
             REGISTRY_AUTH=$(printf '%s:%s' "$CNB_TOKEN_USER_NAME" "$CNB_TOKEN" | base64 -w0)
-            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "
-              set -e
-              cd /opt/pindou/deploy
-              # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
-              test -r /opt/pindou/config/api.env || {
-                echo '缺少 /opt/pindou/config/api.env，请先在服务器配置运行时环境变量'
+            # 用带引号的 heredoc 传远端脚本：避免多层 ssh 双引号嵌套把 JSON 的引号吞掉，
+            # 参数经 argv 显式传入，远端只做 %s 替换，不再拼字符串
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" sh -s -- \
+              "$CNB_DOCKER_REGISTRY" "$REGISTRY_AUTH" \
+              "$CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE" "$CNB_BRANCH" <<'REMOTE'
+            set -eu
+            REGISTRY="$1"
+            REGISTRY_AUTH="$2"
+            IMAGE_REPO="$3"
+            IMAGE_TAG="$4"
+            cd /opt/pindou/deploy
+            # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
+            test -r /opt/pindou/config/api.env || {
+              echo '缺少 /opt/pindou/config/api.env，请先在服务器配置运行时环境变量'
+              exit 1
+            }
+            # 仅检查文件存在不够：变量缺失时 compose 会把 DB_* 当空值，postgres 以空密码初始化
+            for key in DB_NAME DB_USER DB_PASSWORD; do
+              grep -q "^${key}=" /opt/pindou/config/api.env || {
+                echo "api.env 缺少 ${key}，postgres 会以空值初始化"
                 exit 1
               }
-              # 私有镜像需制品库凭证，直接写入 compose 读取的 docker config，部署后清除
-              mkdir -p /root/.docker
-              printf '%s' '{"auths":{"'${CNB_DOCKER_REGISTRY}'":{"auth":"'$REGISTRY_AUTH'"}}}' \
-                > /root/.docker/config.json
-              export IMAGE_REPO='${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}'
-              export IMAGE_TAG='${CNB_BRANCH}'
-              # 凭证写入失败或镜像不可拉取时立即失败，避免部署到旧镜像
-              if ! docker compose pull; then
-                rm -f /root/.docker/config.json
-                exit 1
-              fi
-              docker compose --env-file /opt/pindou/config/api.env up -d
+            done
+            # 私有镜像需制品库凭证，写入 compose 读取的 docker config，部署后清除
+            mkdir -p /root/.docker
+            printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$REGISTRY_AUTH" \
+              > /root/.docker/config.json
+            # 凭证写入失败或镜像不可拉取时立即失败，避免部署到旧镜像
+            if ! docker compose pull; then
               rm -f /root/.docker/config.json
-            "
+              exit 1
+            fi
+            # 旧容器可能由手工 docker run 或其它 compose 项目创建，无本项目 compose 标签，
+            # 直接 up 会报 container name already in use；数据在 bind mount 中，删除容器不影响数据
+            docker rm -f pindou-postgres pindou-api 2>/dev/null || true
+            docker compose --env-file /opt/pindou/config/api.env up -d
+            rm -f /root/.docker/config.json
+            REMOTE
