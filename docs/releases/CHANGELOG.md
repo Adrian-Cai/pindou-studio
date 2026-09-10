@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.28.6
+
+- 修复 CNB 流水线生产部署失败（`docker.cnb.cool/imacaiy/pindou-studio:latest Error error from registry: Blocked By Network Policy. 网络策略拦截。`）：根因是流水线内置 `CNB_TOKEN` 只在 CNB 构建网络内有效（0.28.3 已确认该令牌出构建容器无效，但当时仅改了凭证传输方式，传出去的仍是同一枚内置令牌），外部服务器携带它请求制品库会被网关以网络策略拦截，而凭证格式错误只报 `unauthorized`，故判定为令牌使用范围的网络策略问题，非 JSON 格式或 compose 配置问题。
+- 修复方式：外部服务器拉取镜像改用**仓库部署令牌**（只读、可撤销、官方文档指定的站外拉取凭证，用户名固定 `cnb`），令牌经 `envs.yml` 以 `CNB_REGISTRY_DEPLOY_TOKEN` 导入，缺失时立即报错；master push 与 web 端「部署 production」（`tag_deploy.production`）两处部署脚本同步修正。
+- `docker compose pull` 补上 `--env-file /opt/pindou/config/api.env`（此前 pull 不带 env-file，日志出现 `The "DB_NAME" variable is not set` 等干扰性警告；api.env 已在 pull 前校验存在，无新增风险）。
+- 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
+
 ## 0.28.5
 
 - 修复 CNB 流水线生产部署失败（`unable to get image ':': Error response from daemon: invalid reference format`）：根因是上一版把部署脚本改为 `ssh ... sh -s -- <参数> <<'REMOTE'` heredoc 传参时，远端只写了 `IMAGE_REPO="$3"`、`IMAGE_TAG="$4"`，没有 `export`。远端 `docker compose` 读不到这两个非导出变量，`deploy/compose.yaml` 的 `${IMAGE_REPO}:${IMAGE_TAG}` 插值成空串，compose 以空镜像名直接失败（日志同时出现 `The "IMAGE_REPO" variable is not set`、`The "IMAGE_TAG" variable is not set`）。
