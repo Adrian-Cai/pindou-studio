@@ -49,6 +49,7 @@ interface FavoriteUpdateResponse {
   favoritedAt: string | null
 }
 
+/** 仅把未过期的本地会话视为可用；真正的身份与作品归属仍由服务端校验。 */
 export function hasCloudSession(): boolean {
   const session = loadAuthSession()
   return Boolean(session && !isAuthSessionExpired(session))
@@ -123,6 +124,10 @@ export async function fetchCloudFavorites(options: {
   return parseFavoriteList(response)
 }
 
+/**
+ * 客户端只提交目标收藏状态，不自行维护收藏时间；服务端负责软删除或恢复收藏关系。
+ * 返回值会被严格校验，避免接口异常时页面误显示为已收藏。
+ */
 export async function setCloudFavorite(workId: string, favorite: boolean): Promise<FavoriteUpdateResponse> {
   const response = await apiRequest<unknown>({
     path: `/api/works/${encodeURIComponent(workId)}/favorite`,
@@ -152,6 +157,7 @@ export async function deleteCloudWork(workId: string): Promise<void> {
   })
 }
 
+/** 将 API 的 ISO 时间转换为页面状态使用的毫秒时间戳，并保留作品更新时间与收藏时间的语义差异。 */
 export function cloudSummaryToWorkItem(summary: CloudWorkSummary | CloudFavoriteSummary): WorkItem {
   return {
     id: summary.id,
@@ -190,6 +196,10 @@ export function cloudDetailToDraft(detail: CloudWorkDetail): PatternDraft {
   }
 }
 
+/**
+ * 将每格保存完整颜色的编辑态压缩成“调色板索引 + cells”。-1 固定表示透明格，
+ * 颜色编号和色值共同作为去重键，避免不同品牌的同色值被错误合并。
+ */
 export function draftToPersistedPattern(draft: PatternDraft): PersistedPattern {
   if (draft.cells.length !== draft.settings.width * draft.settings.height) {
     throw new ApiError('当前作品网格数据不完整，请重新生成', { code: 'INVALID_PATTERN' })
@@ -237,12 +247,14 @@ async function persistCloudWork(input: {
   readonly title: string
 }): Promise<CloudWorkSummary> {
   const token = requireToken()
+  // 后端作品只引用受所有权校验的文件资产 ID，因此必须先上传封面，再创建或更新作品。
   const coverFileId = await uploadCover(token, input.coverPath)
   const isNew = input.workId === undefined
   const response = await apiRequest<unknown>({
     path: isNew ? '/api/works' : `/api/works/${encodeURIComponent(input.workId)}`,
     method: isNew ? 'POST' : 'PUT',
     token,
+    // 草稿 ID 在创建重试期间保持稳定，避免弱网下重复生成云端作品。
     ...(isNew ? { headers: { 'Idempotency-Key': `create-${input.draft.id}` } } : {}),
     data: {
       title: input.title,
