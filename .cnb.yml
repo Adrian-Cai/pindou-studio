@@ -36,15 +36,26 @@ master:
             # 校验私钥完整性，避免残缺密钥只报 Permission denied
             ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null \
               || { echo "SSH_PRIVATE_KEY 不是合法私钥，请在 envs.yml 更新为完整 PEM"; exit 1; }
-            ssh -i ~/.ssh/id_ed25519 \
-              -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15 \
-              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "
+            SSH_OPTS="-i $HOME/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15"
+            # 首次部署时服务器上没有 /opt/pindou/deploy：先建目录并上传 compose.yaml
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p /opt/pindou/deploy"
+            scp $SSH_OPTS -P "$SSH_PORT" deploy/compose.yaml \
+              "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/compose.yaml"
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "
               set -e
               cd /opt/pindou/deploy
+              # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
+              test -r /opt/pindou/config/api.env || {
+                echo '缺少 /opt/pindou/config/api.env，请先在服务器配置运行时环境变量'
+                exit 1
+              }
               export IMAGE_REPO='${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}'
               export IMAGE_TAG='latest'
+              # 服务器需登录制品库才能拉取私有镜像，部署完即登出
+              echo '${CNB_TOKEN}' | docker login ${CNB_DOCKER_REGISTRY} --username cnb --password-stdin
               docker compose pull
-              docker compose up -d
+              docker compose --env-file /opt/pindou/config/api.env up -d
+              docker logout ${CNB_DOCKER_REGISTRY} || true
             "
         - name: 健康检查
           imports:
@@ -123,14 +134,24 @@ $:
             # 校验私钥完整性，避免残缺密钥只报 Permission denied
             ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null \
               || { echo "SSH_PRIVATE_KEY 不是合法私钥，请在 envs.yml 更新为完整 PEM"; exit 1; }
-            # 远程拉取镜像并重启服务
-            ssh -i ~/.ssh/id_ed25519 \
-              -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15 \
-              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "
+            SSH_OPTS="-i $HOME/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15"
+            # 首次部署时服务器上没有 /opt/pindou/deploy：先建目录并上传 compose.yaml
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p /opt/pindou/deploy"
+            scp $SSH_OPTS -P "$SSH_PORT" deploy/compose.yaml \
+              "$SSH_USER@$SSH_HOST:/opt/pindou/deploy/compose.yaml"
+            ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "
               set -e
               cd /opt/pindou/deploy
+              # postgres 容器的 DB_ 环境变量依赖该文件插值，缺失会以空密码建库
+              test -r /opt/pindou/config/api.env || {
+                echo '缺少 /opt/pindou/config/api.env，请先在服务器配置运行时环境变量'
+                exit 1
+              }
               export IMAGE_REPO='${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}'
-              export IMAGE_TAG='${IMAGE_TAG}'
+              export IMAGE_TAG='${CNB_BRANCH}'
+              # 服务器需登录制品库才能拉取私有镜像，部署完即登出
+              echo '${CNB_TOKEN}' | docker login ${CNB_DOCKER_REGISTRY} --username cnb --password-stdin
               docker compose pull
-              docker compose up -d
+              docker compose --env-file /opt/pindou/config/api.env up -d
+              docker logout ${CNB_DOCKER_REGISTRY} || true
             "

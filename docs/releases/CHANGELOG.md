@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.28.2
+
+- 修复 CNB 流水线 SSH 部署失败（`cd: /opt/pindou/deploy: No such file or directory`）：此前假设服务器已初始化部署目录，现改为部署前远程 `mkdir -p` 并用 `scp` 上传 `deploy/compose.yaml`，首次部署不再依赖手工初始化。
+- 部署前校验 `/opt/pindou/config/api.env` 存在，`docker compose up -d` 显式加 `--env-file`，与 Jenkinsfile 行为一致，避免 postgres 容器因 `DB_*` 变量未插值以空密码建库。
+- 服务器拉取私有镜像前使用流水线内置 `CNB_TOKEN` 登录 `docker.cnb.cool`（用户名 `cnb`），部署完成后登出，对齐 Jenkinsfile 的镜像拉取认证方式。
+- 修复 tag 部署（`tag_deploy.production`）引用未定义变量 `IMAGE_TAG` 的问题：改用内置变量 `CNB_BRANCH`（tag 名），与 tag_push 构建镜像使用的标签一致。
+- 本次为部署流水线修复，不涉及小程序页面与后端业务代码。
+
 ## 0.28.1
 
 - 修复生产部署流水线 SSH 认证失败（`Permission denied (publickey)`）：脚本此前固定写入 `id_rsa`，而流水线环境变量 `SSH_IDENTITY_FILE` 指向 `id_ed25519`，私钥文件名与服务器仅接受的公钥类型不匹配。
