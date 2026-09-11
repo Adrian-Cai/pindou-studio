@@ -137,6 +137,15 @@ test("legal documents expose only controlled keys", async () => {
       assert.ok(body.document.content.length > 100);
       assert.equal(/<script\b/i.test(body.document.content), false);
     }
+    const paidService = await fetch(`${baseUrl}/api/legal-documents/paid-service`);
+    const paidServiceBody = await paidService.json();
+    assert.equal(paidService.status, 200);
+    assert.equal(paidServiceBody.document.key, "paid-service");
+    assert.equal(paidServiceBody.document.title, "小露拼豆付费服务协议");
+    assert.equal(paidServiceBody.document.version, "2026-09-11");
+    assert.equal(paidServiceBody.document.effectiveAt, "2026-09-11T00:00:00+08:00");
+    assert.ok(paidServiceBody.document.content.includes("退款"));
+    assert.equal(/<script\b/i.test(paidServiceBody.document.content), false);
     const missing = await fetch(`${baseUrl}/api/legal-documents/not-supported`);
     const missingBody = await missing.json();
     assert.equal(missing.status, 404);

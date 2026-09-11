@@ -1,6 +1,10 @@
 Page({
   openItem(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
+    if (id === 'paid-service') {
+      wx.navigateTo({ url: '/pages-sub/privacy-document/index?key=paid-service' })
+      return
+    }
     if (id === 'agreement') {
       wx.navigateTo({ url: '/pages-sub/privacy-document/index?key=user-agreement' })
       return

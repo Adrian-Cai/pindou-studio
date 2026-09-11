@@ -25,3 +25,7 @@
 .payment-method view .payment-method__arrow { margin-left: 4rpx; }
 .recharge-button { width: 100%; margin-top: 24rpx; }
 .recharge-notes { margin-top: 22rpx; color: var(--color-text-tertiary); font-size: 21rpx; line-height: 34rpx; text-align: center; }
+.recharge-notes__agreement { min-height: 64rpx; line-height: 64rpx; transition: var(--transition-press); }
+.recharge-notes__agreement--pressed { opacity: 0.72; transform: scale(0.97); }
+.recharge-notes__link { color: var(--color-text-secondary); text-decoration: underline; text-underline-offset: 4rpx; }
+.recharge-notes__agreement--pressed .recharge-notes__link { color: var(--color-primary); }

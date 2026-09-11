@@ -6,6 +6,7 @@ import {
 } from '../services/legal-document-service'
 
 const TITLES: Record<LegalDocumentKey, string> = {
+  'paid-service': '小露拼豆付费服务协议',
   'user-agreement': '小露拼豆用户协议',
   'privacy-policy': '小露拼豆隐私政策',
   'personal-information': '个人信息收集清单',
@@ -77,7 +78,7 @@ Page({
 })
 
 function parseKey(value: string | undefined): LegalDocumentKey | null {
-  if (value === 'user-agreement' || value === 'privacy-policy' || value === 'personal-information' || value === 'third-party-sharing') {
+  if (value === 'paid-service' || value === 'user-agreement' || value === 'privacy-policy' || value === 'personal-information' || value === 'third-party-sharing') {
     return value
   }
   return null

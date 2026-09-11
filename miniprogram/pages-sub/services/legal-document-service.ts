@@ -1,6 +1,6 @@
 import { ApiError, apiRequest } from '../../services/http-client'
 
-export type LegalDocumentKey = 'user-agreement' | 'privacy-policy' | 'personal-information' | 'third-party-sharing'
+export type LegalDocumentKey = 'paid-service' | 'user-agreement' | 'privacy-policy' | 'personal-information' | 'third-party-sharing'
 
 export interface LegalDocument {
   key: LegalDocumentKey
@@ -75,7 +75,8 @@ function parseDocument(value: unknown): LegalDocument | null {
 }
 
 function isLegalDocumentKey(value: unknown): value is LegalDocumentKey {
-  return value === 'privacy-policy'
+  return value === 'paid-service'
+    || value === 'privacy-policy'
     || value === 'user-agreement'
     || value === 'personal-information'
     || value === 'third-party-sharing'

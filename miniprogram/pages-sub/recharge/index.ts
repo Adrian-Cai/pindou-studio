@@ -44,6 +44,10 @@ Page({
     this.setData({ selected: Number(event.currentTarget.dataset.index) })
   },
 
+  openPaidServiceAgreement() {
+    wx.navigateTo({ url: '/pages-sub/privacy-document/index?key=paid-service' })
+  },
+
   purchase() {
     if (this.data.packages.length === 0) return
     wx.showModal({
