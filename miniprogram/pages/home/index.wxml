@@ -30,7 +30,37 @@
 
   <!-- ③ 生成方式 -->
   <view class="section-block">
-    <view class="section-label">生成方式</view>
+    <view class="section-label">
+      <text>生成方式</text>
+      <view class="generation-tips-trigger-slot">
+        <button
+          class="generation-tips-trigger {{generationTipsOpen ? 'generation-tips-trigger--open' : ''}}"
+          bindtap="toggleGenerationTips"
+          aria-label="{{generationTipsOpen ? '收起生成方式说明' : '查看生成方式说明'}}"
+          aria-expanded="{{generationTipsOpen}}"
+          aria-controls="generation-tips"
+        ><view class="generation-tips-trigger__icon">?</view></button>
+      </view>
+    </view>
+
+    <view
+      wx:if="{{generationTipsOpen}}"
+      id="generation-tips"
+      class="generation-tips"
+      role="tooltip"
+    >
+      <view
+        wx:for="{{generationModes}}"
+        wx:key="id"
+        class="generation-tip"
+      >
+        <text class="generation-tip__label generation-tip__label--{{item.id}}">{{item.tipTitle}}:</text>
+        <view class="generation-tip__content">
+          <text wx:for="{{item.tips}}" wx:key="*this" class="generation-tip__line">{{item}}</text>
+        </view>
+      </view>
+    </view>
+
     <view class="mode-cards" role="radiogroup" aria-label="生成方式">
       <view
         wx:for="{{generationModes}}"
@@ -40,7 +70,7 @@
         bindtap="selectMode"
         role="radio"
         aria-checked="{{generationMode === item.id}}"
-        aria-label="{{item.title}}，{{item.description}}"
+        aria-label="{{item.title}}"
       >
         <!-- 右上角 badge -->
         <view
@@ -60,20 +90,9 @@
         <!-- 文字 -->
         <view class="mode-card__content">
           <view class="mode-card__title mode-card__title--{{generationMode === item.id ? item.id : ''}}">{{item.title}}</view>
-          <view class="mode-card__desc mode-card__desc--{{generationMode === item.id ? item.id : ''}}">{{item.description}}</view>
         </view>
       </view>
     </view>
-
-    <view
-      wx:if="{{generationMode === 'ai'}}"
-      class="ai-compliance-notice"
-      role="note"
-      aria-label="当前生成结果由人工智能生成"
-    >
-      当前生成结果由人工智能生成
-    </view>
-
   </view>
 
   <!-- ④ 示例图片 -->

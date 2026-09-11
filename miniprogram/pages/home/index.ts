@@ -1,5 +1,5 @@
 import { DEFAULT_PATTERN_SETTINGS } from '../../config/product'
-import { chooseSourceImage, createDraft, prepareImageForContentSecurity } from '../../services/image-service'
+import { chooseSourceImage, createDraft, createPendingDraft, prepareImageForContentSecurity } from '../../services/image-service'
 import { checkImageContent } from '../../services/content-security-service'
 import { ApiError } from '../../services/http-client'
 import {
@@ -12,6 +12,7 @@ import {
   createIdempotencyKey,
   loadAiGenerationSession,
   saveAiGenerationSession,
+  type AiGenerationSession,
 } from '../../services/ai-generation-session'
 import type { PatternSettings } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
@@ -25,9 +26,9 @@ let currentUploadRequestId = 0
 interface GenerationModeOption {
   id: GenerationMode
   title: string
-  description: string
-  /** 「模式说明」区块使用的完整说明文案（仅展示，不参与业务判断） */
-  note: string
+  /** 生成方式提示面板使用的标题和说明文案 */
+  tipTitle: string
+  tips: string[]
   icon: string
   badge: string
   /** 预留：未来 AI 额度消耗，当前阶段不使用 */
@@ -45,8 +46,8 @@ const GENERATION_MODES: GenerationModeOption[] = [
   {
     id: 'standard',
     title: '标准模式',
-    description: '快速转换，免费使用',
-    note: '快速转换，免费使用，适合日常生成',
+    tipTitle: '快速模式',
+    tips: ['快速转换，免费使用，适合日常生成'],
     icon: '/assets/icons/mode-standard.svg',
     badge: '',
     quotaCost: 0,
@@ -54,8 +55,8 @@ const GENERATION_MODES: GenerationModeOption[] = [
   {
     id: 'ai',
     title: 'Ai 模式',
-    description: 'AI 优化细节，更接近原图',
-    note: 'AI 优化细节，效果更精致，更接近原图',
+    tipTitle: 'AI模式',
+    tips: ['当前生成结果由人工智能生成', 'AI 优化细节，效果更精致，更接近原图'],
     icon: '/assets/icons/mode-ai-sparkle.svg',
     badge: '更精致',
     quotaCost: 1,
@@ -111,6 +112,8 @@ Page({
     generationSteps: GENERATION_STEPS,
     /** 当前选中的生成方式 */
     generationMode: 'standard' as GenerationMode,
+    /** 是否展开生成方式说明 */
+    generationTipsOpen: false,
     /** 生成方式选项列表（数据驱动渲染，避免 UI 写死） */
     generationModes: GENERATION_MODES,
     /** 示例图片列表 */
@@ -129,6 +132,10 @@ Page({
     const mode = event.currentTarget.dataset.mode as GenerationMode
     if (mode === this.data.generationMode) return
     this.setData({ generationMode: mode })
+  },
+
+  toggleGenerationTips() {
+    this.setData({ generationTipsOpen: !this.data.generationTipsOpen })
   },
 
   async chooseImage() {
@@ -282,7 +289,7 @@ Page({
       && (existingSession.status === 'processing' || existingSession.status === 'succeeded')
     ) {
       try {
-        await navigateToAiGenerationPage()
+        await openAiEditor(existingSession)
       } catch (error) {
         wx.showToast({ title: aiGenerationErrorMessage(error), icon: 'none' })
       } finally {
@@ -342,7 +349,10 @@ Page({
         jobId: generation.id,
         status: generation.status === 'succeeded' ? 'succeeded' : 'processing',
       })
-      await navigateToAiGenerationPage()
+      const activeSession = loadAiGenerationSession()
+      if (!activeSession) throw new ApiError('AI 任务会话保存失败，请稍后重试', { code: 'INVALID_RESPONSE' })
+      this.setData({ uploadStatus: 'success', uploadProgress: -1 })
+      await openAiEditor(activeSession)
     } catch (error) {
       logHomeError('ai_generation_start_failed', error)
       this.setData({ generating: false, uploadStatus: 'success', uploadProgress: -1, currentStep: 2 })
@@ -377,10 +387,15 @@ function createIdempotentNavigationError(): ApiError {
   return new ApiError('任务页面打开失败，请稍后重试', { code: 'NAVIGATION_ERROR' })
 }
 
-function navigateToAiGenerationPage(): Promise<void> {
+async function openAiEditor(session: AiGenerationSession): Promise<void> {
+  await appStore.setCurrentDraft(createPendingDraft(session.sourceImagePath, session.settings))
+  await navigateToEditor()
+}
+
+function navigateToEditor(): Promise<void> {
   return new Promise((resolve, reject) => {
     wx.navigateTo({
-      url: '/pages-sub/ai-generation/index',
+      url: '/pages-sub/editor/index',
       success: () => resolve(),
       fail: () => reject(createIdempotentNavigationError()),
     })

@@ -7,6 +7,12 @@ import {
   updateCloudWork,
 } from '../../services/work-service'
 import { isNetworkError, queueWorkForSync } from '../../services/work-sync-service'
+import { createPendingDraft } from '../../services/image-service'
+import {
+  AiGenerationFlow,
+  type AiGenerationFlowState,
+} from '../../services/ai-generation-flow'
+import { loadAiGenerationSession } from '../../services/ai-generation-session'
 import {
   calculateFittedImageSize,
   clampViewTranslation,
@@ -64,6 +70,15 @@ Page({
     selectedColorCode: '',
     activeTool: 'pencil',
     saving: false,
+    aiGenerating: false,
+    aiFailed: false,
+    aiLocked: false,
+    aiStateTitle: '',
+    aiStateDescription: '',
+    aiStatusMessage: '',
+    aiWaitingLong: false,
+    aiRetryMode: 'generation',
+    aiShowPurchase: false,
     undoStack: [] as PatternCell[][],
     redoStack: [] as PatternCell[][],
     tools: editorTools(false, false),
@@ -79,6 +94,7 @@ Page({
   _singleTouchActive: false,
   _blockSingleTouchUntilRelease: false,
   _toastTimer: null as ReturnType<typeof setTimeout> | null,
+  _aiFlow: null as AiGenerationFlow | null,
 
   _isPinching: false,
   /** pinch 开始时两指距离 */
@@ -92,7 +108,12 @@ Page({
   _pinchStartMidY: 0,
 
   onLoad() {
-    const draft = appStore.getSnapshot().currentDraft
+    const aiSession = loadAiGenerationSession()
+    let draft = appStore.getSnapshot().currentDraft
+    if (!draft && aiSession) {
+      draft = createPendingDraft(aiSession.sourceImagePath, aiSession.settings)
+      void appStore.setCurrentDraft(draft)
+    }
     if (!draft) {
       wx.showToast({ title: '请先选择图片', icon: 'none' })
       setTimeout(() => wx.switchTab({ url: '/pages/home/index' }), 500)
@@ -111,6 +132,21 @@ Page({
       selectedColorCode: firstColorCode,
       beadCount: draft.cells.filter((cell) => cell.color !== 'transparent').length,
     })
+    if (aiSession && aiSession.sourceImagePath === draft.sourceImagePath && draft.id.startsWith('ai-pending-')) {
+      this._aiFlow = new AiGenerationFlow({
+        onStateChange: (state) => this.applyAiFlowState(state),
+        onDraftReady: (nextDraft) => this.applyAiDraft(nextDraft),
+      })
+      this.setData({ aiLocked: true, aiGenerating: true })
+    }
+  },
+
+  onShow() {
+    this._aiFlow?.onShow()
+  },
+
+  onHide() {
+    this._aiFlow?.onHide()
   },
 
   onReady() {
@@ -123,6 +159,68 @@ Page({
 
   onUnload() {
     this._clearToastTimer()
+    this._aiFlow?.destroy()
+  },
+
+  applyAiFlowState(state: AiGenerationFlowState) {
+    const failed = state.pageState === 'failed'
+    this.setData({
+      aiGenerating: !failed,
+      aiFailed: failed,
+      aiLocked: true,
+      aiStateTitle: state.stateTitle,
+      aiStateDescription: state.stateDescription,
+      aiStatusMessage: state.statusMessage,
+      aiWaitingLong: state.waitingLong,
+      aiRetryMode: state.retryMode,
+      aiShowPurchase: state.showPurchase,
+    })
+  },
+
+  async applyAiDraft(nextDraft: PatternDraft): Promise<void> {
+    await appStore.setCurrentDraft(nextDraft)
+    const paletteColors = this.getPaletteColors(nextDraft)
+    const firstColor = paletteColors[0] ?? ''
+    const firstColorCode = firstColor
+      ? (nextDraft.cells.find((cell) => cell.color === firstColor)?.colorCode ?? '')
+      : ''
+    this._viewportRect = null
+    this._fittedImage = null
+    this._patternCanvasNode = null
+    this.setData({
+      draft: nextDraft,
+      paletteColors,
+      selectedColor: firstColor,
+      selectedColorCode: firstColorCode,
+      beadCount: nextDraft.cells.filter((cell) => cell.color !== 'transparent').length,
+      aiGenerating: false,
+      aiFailed: false,
+      aiLocked: false,
+      aiStateTitle: '',
+      aiStateDescription: '',
+      aiStatusMessage: '',
+      aiWaitingLong: false,
+      aiShowPurchase: false,
+      undoStack: [],
+      redoStack: [],
+      tools: editorTools(false, false),
+      scale: SCALE_DEFAULT,
+      scalePercent: 100,
+      translateX: 0,
+      translateY: 0,
+    }, () => this.measureViewport(true))
+  },
+
+  retryAiGeneration() {
+    void this._aiFlow?.retry()
+  },
+
+  purchaseAiGeneration() {
+    wx.navigateTo({ url: '/pages-sub/recharge/index' })
+  },
+
+  stopWorkspaceTouch() {
+    this._singleTouchActive = false
   },
 
   getPaletteColors(draft: PatternDraft): string[] {
@@ -138,6 +236,7 @@ Page({
   },
 
   selectTool(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.aiLocked) return
     if (event.currentTarget.dataset.disabled) return
     const tool = String(event.currentTarget.dataset.tool)
     if (tool === 'undo') {
@@ -152,6 +251,7 @@ Page({
   },
 
   selectPaletteColor(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.aiLocked) return
     const color = String(event.currentTarget.dataset.color)
     const draft = this.data.draft
     const colorCode = draft
@@ -281,6 +381,7 @@ Page({
   },
 
   onWorkspaceTouchStart(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.aiLocked) return
     const touches = event.touches
     if (touches.length >= 2) {
       this._beginPinch(touches[0], touches[1])
@@ -292,6 +393,7 @@ Page({
   },
 
   onWorkspaceTouchMove(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.aiLocked) return
     const touches = event.touches
     if (touches.length >= 2) {
       if (!this._isPinching) this._beginPinch(touches[0], touches[1])
@@ -301,6 +403,7 @@ Page({
   },
 
   onWorkspaceTouchEnd(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.aiLocked) return
     const touches = event.touches
     if (this._isPinching) {
       if (touches.length >= 2) return
@@ -321,6 +424,7 @@ Page({
   },
 
   onWorkspaceTouchCancel() {
+    if (this.data.aiLocked) return
     this._singleTouchActive = false
     this._isPinching = false
     this._blockSingleTouchUntilRelease = false
@@ -521,12 +625,14 @@ Page({
   // ─── 缩放（按钮） ─────────────────────────────────────────────────────────
 
   zoomIn() {
+    if (this.data.aiLocked) return
     this._setScaleAtViewportCenter(
       Math.min(SCALE_MAX, Number((this.data.scale + SCALE_STEP).toFixed(1))),
     )
   },
 
   zoomOut() {
+    if (this.data.aiLocked) return
     this._setScaleAtViewportCenter(
       Math.max(SCALE_MIN, Number((this.data.scale - SCALE_STEP).toFixed(1))),
     )
@@ -587,7 +693,7 @@ Page({
   },
 
   async saveAndView() {
-    if (this.data.saving) return
+    if (this.data.saving || this.data.aiLocked) return
     const draft = this.data.draft
     if (!draft) return
     this.setData({ saving: true })

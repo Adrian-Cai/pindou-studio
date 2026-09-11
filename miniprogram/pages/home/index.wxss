@@ -21,9 +21,6 @@ page {
   --color-ai-soft: #f5f1ff;
   --color-ai-border: rgba(124, 92, 252, 0.4);
   --color-ai-text: #7c5cfc;
-  --color-ai-notice-bg: #fff7d6;
-  --color-ai-notice-border: #e7b94f;
-  --color-ai-notice-text: #47413a;
 
   /* ── 示例图片统一尺寸 token（标准 / AI 共用同一套，禁止各自定义） ── */
   --sample-media-height: 156rpx;
@@ -172,6 +169,99 @@ page {
   background: var(--color-primary);
 }
 
+.generation-tips-trigger-slot {
+  position: relative;
+  width: 28rpx;
+  height: 28rpx;
+  flex: 0 0 28rpx;
+}
+
+.generation-tips-trigger {
+  position: absolute;
+  top: -30rpx;
+  left: 0;
+  display: flex;
+  width: 88rpx;
+  height: 88rpx;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-start;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary-pressed);
+  font-family: var(--font-heading);
+  transition: var(--transition-press);
+}
+
+.generation-tips-trigger__icon {
+  display: flex;
+  width: 24rpx;
+  height: 24rpx;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid currentColor;
+  border-radius: 50%;
+  font-size: 16rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.generation-tips-trigger--open {
+  color: var(--color-primary);
+}
+
+.generation-tips-trigger:active {
+  opacity: 0.84;
+  transform: scale(0.97);
+}
+
+.generation-tips {
+  box-sizing: border-box;
+  margin-top: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: var(--radius-card-small);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  box-shadow: var(--shadow-card);
+}
+
+.generation-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8rpx;
+  font-size: 22rpx;
+  line-height: 34rpx;
+}
+
+.generation-tip + .generation-tip {
+  margin-top: 8rpx;
+}
+
+.generation-tip__label {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.generation-tip__label--standard {
+  color: var(--color-primary);
+}
+
+.generation-tip__label--ai {
+  color: var(--color-ai-text);
+}
+
+.generation-tip__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.generation-tip__line {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
 /* ════════════════════════════════
    生成方式 — 两张卡片一行
 ════════════════════════════════ */
@@ -189,6 +279,7 @@ page {
   flex-direction: row;
   align-items: center;
   gap: 16rpx;
+  justify-content: center;
   padding: 20rpx 16rpx;
   border: 0;
   border-radius: var(--radius-card-small);
@@ -223,18 +314,24 @@ page {
 
 /* 模式图标 */
 .mode-card__icon {
+  position: absolute;
+  top: 50%;
+  left: 16rpx;
   flex-shrink: 0;
   width: 80rpx;
   height: 80rpx;
+  transform: translateY(-50%);
 }
 
 /* 文字区域 */
 .mode-card__content {
   flex: 1;
   min-width: 0;
+  text-align: center;
 }
 
 .mode-card__title {
+  text-align: center;
   font-size: 26rpx;
   font-weight: 600;
   line-height: 40rpx;
@@ -247,25 +344,6 @@ page {
 
 .mode-card__title--ai {
   color: var(--color-ai-text);
-}
-
-.mode-card__desc {
-  font-size: 22rpx;
-  line-height: 34rpx;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mode-card__desc--standard {
-  color: var(--color-primary);
-  opacity: 0.8;
-}
-
-.mode-card__desc--ai {
-  color: var(--color-ai-text);
-  opacity: 0.8;
 }
 
 /* 右上角 Badge */
@@ -322,21 +400,6 @@ page {
 .mode-card__badge ~ .mode-card__check {
   top: 40rpx;
 }
-
-.ai-compliance-notice {
-  margin-top: 24rpx;
-  padding: 20rpx 26rpx;
-  border: 2rpx solid var(--color-ai-notice-border);
-  border-radius: 22rpx;
-  background: var(--color-ai-notice-bg);
-  color: var(--color-ai-notice-text);
-  font-size: 24rpx;
-  font-weight: 500;
-  line-height: 36rpx;
-  white-space: nowrap;
-}
-
-
 
 /* ════════════════════════════════
    示例图片 — 四个 item 共用同一套 flex / 尺寸规则
@@ -510,6 +573,7 @@ page {
   }
 
   .mode-card__icon {
+    left: 12rpx;
     width: 64rpx;
     height: 64rpx;
   }
@@ -518,9 +582,6 @@ page {
     font-size: 24rpx;
   }
 
-  .mode-card__desc {
-    font-size: 20rpx;
-  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -544,9 +605,6 @@ page {
     --color-ai-soft: #2d2450;
     --color-ai-border: rgba(176, 156, 255, 0.62);
     --color-ai-text: #c2b5ff;
-    --color-ai-notice-bg: #3f3215;
-    --color-ai-notice-border: #d7a93f;
-    --color-ai-notice-text: #f1e9d8;
   }
 
   .hero {

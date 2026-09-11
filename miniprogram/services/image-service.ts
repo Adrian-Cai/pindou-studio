@@ -167,6 +167,32 @@ export async function createDraft(
   }
 }
 
+/**
+ * 创建仅用于等待 AI 结果的临时草稿。
+ * 它不代表可保存的作品，真实网格会在 AI 输出完成后由 createDraft 生成。
+ */
+export function createPendingDraft(
+  sourceImagePath: string,
+  settings: Partial<PatternSettings>,
+): PatternDraft {
+  const normalizedSettings: PatternSettings = {
+    ...DEFAULT_PATTERN_SETTINGS,
+    ...settings,
+  }
+  const now = Date.now()
+
+  return {
+    id: `ai-pending-${now}`,
+    sourceImagePath,
+    createdAt: now,
+    settings: normalizedSettings,
+    cells: Array.from(
+      { length: normalizedSettings.width * normalizedSettings.height },
+      () => ({ color: 'transparent', colorCode: '' }),
+    ),
+  }
+}
+
 function readFileHeader(filePath: string): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     wx.getFileSystemManager().readFile({
