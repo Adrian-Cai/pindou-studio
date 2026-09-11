@@ -14,6 +14,7 @@
       >
         <view class="canvas-stage">
           <canvas
+            wx:if="{{!aiLocked}}"
             id="patternCanvas"
             class="pattern-canvas"
             type="2d"
@@ -21,7 +22,7 @@
         </view>
 
         <view
-          wx:if="{{aiGenerating}}"
+          wx:if="{{aiLocked && !aiFailed}}"
           class="ai-editor-state ai-editor-state--loading"
           role="status"
           aria-label="{{aiStateTitle}}，{{aiStateDescription}}"
@@ -29,9 +30,12 @@
           catchtouchmove="stopWorkspaceTouch"
           catchtouchend="stopWorkspaceTouch"
         >
-          <view class="ai-editor-loading-glow ai-editor-loading-glow--one" aria-hidden="true"></view>
-          <view class="ai-editor-loading-glow ai-editor-loading-glow--two" aria-hidden="true"></view>
-          <view class="ai-editor-loading-glow ai-editor-loading-glow--three" aria-hidden="true"></view>
+          <image
+            class="ai-editor-loading-background"
+            src="/assets/animations/ai-generation-loading.gif"
+            mode="aspectFill"
+            aria-hidden="true"
+          />
           <view class="ai-editor-loading-content">
             <view class="ai-editor-loading-pill" aria-hidden="true">
               <image
@@ -92,8 +96,8 @@
         <view class="info-card__row">
           <text>尺寸：{{draft.settings.width}}×{{draft.settings.height}}</text>
           <text>颜色：{{draft.settings.colorLimit}}色</text>
+          <text>共 {{beadCount}} 颗</text>
         </view>
-        <text class="info-card__count">共 {{beadCount}} 颗</text>
       </view>
 
       <!-- ── 工具栏 ── -->

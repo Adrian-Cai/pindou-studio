@@ -152,9 +152,10 @@
     style="width: 100%;"
     bindtap="startCreating"
     disabled="{{generating || uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'rejected' || uploadStatus === 'error'}}"
-    aria-label="开始生成"
+    loading="{{generating}}"
+    aria-label="{{generating ? '正在生成' : '开始生成'}}"
   >
-    开始生成
+    {{generating ? '正在生成' : '开始生成'}}
   </button>
 
 </view>

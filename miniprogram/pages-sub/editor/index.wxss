@@ -101,52 +101,19 @@ page {
 .ai-editor-state--loading {
   overflow: hidden;
   padding: 32rpx;
-  background:
-    radial-gradient(ellipse at 12% 88%, rgba(255, 255, 255, 0.62) 0, rgba(255, 255, 255, 0) 42%),
-    radial-gradient(ellipse at 86% 18%, rgba(225, 229, 255, 0.86) 0, rgba(225, 229, 255, 0) 38%),
-    linear-gradient(135deg, #c9d0f2 0%, #5150ee 49%, #8b8af3 100%);
+  background: linear-gradient(135deg, #c9d0f2 0%, #5150ee 49%, #8b8af3 100%);
 }
 
 .ai-editor-state--failed {
   background: rgba(255, 255, 255, 0.96);
 }
 
-.ai-editor-loading-glow {
+.ai-editor-loading-background {
   position: absolute;
-  width: 380rpx;
-  height: 280rpx;
-  border-radius: 50%;
-  filter: blur(48rpx);
-  opacity: 0.74;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  transform: translate3d(0, 0, 0) scale(1);
-  animation: ai-editor-loading-glow-float 5.6s ease-in-out infinite;
-}
-
-.ai-editor-loading-glow--one {
-  top: -86rpx;
-  left: -90rpx;
-  background: #3840ed;
-}
-
-.ai-editor-loading-glow--two {
-  right: -116rpx;
-  bottom: -106rpx;
-  background: #3f42e9;
-  animation-delay: -2.2s;
-}
-
-.ai-editor-loading-glow--three {
-  top: 50%;
-  left: 50%;
-  width: 520rpx;
-  height: 180rpx;
-  background: rgba(240, 241, 255, 0.78);
-  opacity: 0.62;
-  transform: translate3d(-50%, -50%, 0) rotate(-18deg) scale(1);
-  animation-name: ai-editor-loading-glow-sweep;
-  animation-duration: 6.8s;
-  animation-delay: -1.4s;
 }
 
 .ai-editor-loading-content {
@@ -234,31 +201,9 @@ page {
   opacity: 0.55;
 }
 
-@keyframes ai-editor-loading-glow-float {
-  0%, 100% {
-    opacity: 0.66;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    opacity: 0.84;
-    transform: translate3d(18rpx, -14rpx, 0) scale(1.08);
-  }
-}
-
-@keyframes ai-editor-loading-glow-sweep {
-  0%, 100% {
-    opacity: 0.42;
-    transform: translate3d(-50%, -50%, 0) rotate(-18deg) scale(0.96);
-  }
-  50% {
-    opacity: 0.72;
-    transform: translate3d(-44%, -50%, 0) rotate(-12deg) scale(1.08);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .ai-editor-loading-glow {
-    animation: none;
+  .ai-editor-loading-background {
+    display: none;
   }
 }
 
@@ -340,7 +285,7 @@ page {
   display: flex;
   flex-shrink: 0;
   box-sizing: border-box;
-  min-height: 136rpx;
+  min-height: 84rpx;
   flex-direction: column;
   justify-content: center;
   margin-top: 24rpx;
@@ -356,11 +301,8 @@ page {
 
 .info-card__row {
   display: flex;
-  gap: 48rpx;
-}
-
-.info-card__count {
-  margin-top: 4rpx;
+  flex-wrap: nowrap;
+  gap: 40rpx;
 }
 
 

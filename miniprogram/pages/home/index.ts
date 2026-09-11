@@ -4,7 +4,6 @@ import { checkImageContent } from '../../services/content-security-service'
 import { ApiError } from '../../services/http-client'
 import {
   aiGenerationErrorMessage,
-  createAiGeneration,
   DEFAULT_AI_OPTIONS,
   uploadAiInput,
 } from '../../services/ai-generation-service'
@@ -280,7 +279,7 @@ Page({
       return
     }
 
-    this.setData({ generating: true, currentStep: 3, uploadStatus: 'uploading', uploadProgress: -1 })
+    this.setData({ generating: true, currentStep: 3 })
     const existingSession = loadAiGenerationSession()
     if (
       existingSession
@@ -293,7 +292,7 @@ Page({
       } catch (error) {
         wx.showToast({ title: aiGenerationErrorMessage(error), icon: 'none' })
       } finally {
-        this.setData({ generating: false, uploadStatus: 'success', uploadProgress: -1, currentStep: 2 })
+        this.setData({ generating: false, currentStep: 2 })
       }
       return
     }
@@ -316,7 +315,7 @@ Page({
     try {
       saveAiGenerationSession(session)
     } catch (error) {
-      this.setData({ generating: false, uploadStatus: 'success', uploadProgress: -1, currentStep: 2 })
+      this.setData({ generating: false, currentStep: 2 })
       wx.showToast({ title: aiGenerationErrorMessage(error), icon: 'none' })
       return
     }
@@ -324,38 +323,23 @@ Page({
     try {
       if (!session.inputFileId) {
         const aiInputImagePath = this.data.aiInputImagePath || await prepareImageForContentSecurity(this.data.sourceImagePath)
-        const uploaded = await uploadAiInput(aiInputImagePath, (progress) => {
-          this.setData({ uploadProgress: progress })
-        })
+        const uploaded = await uploadAiInput(aiInputImagePath)
         session = { ...session, inputFileId: uploaded.id, status: 'creating' }
         saveAiGenerationSession(session)
       }
 
       const inputFileId = session.inputFileId
       if (!inputFileId) {
-        this.setData({ generating: false, uploadStatus: 'success', uploadProgress: -1, currentStep: 2 })
+        this.setData({ generating: false, currentStep: 2 })
         wx.showToast({ title: '输入图片已失效，请重新上传', icon: 'none' })
         return
       }
-      const generation = await createAiGeneration({
-        inputFileId,
-        style: session.style,
-        detailLevel: session.detailLevel,
-        backgroundMode: session.backgroundMode,
-        idempotencyKey: session.idempotencyKey,
-      })
-      saveAiGenerationSession({
-        ...session,
-        jobId: generation.id,
-        status: generation.status === 'succeeded' ? 'succeeded' : 'processing',
-      })
       const activeSession = loadAiGenerationSession()
       if (!activeSession) throw new ApiError('AI 任务会话保存失败，请稍后重试', { code: 'INVALID_RESPONSE' })
-      this.setData({ uploadStatus: 'success', uploadProgress: -1 })
       await openAiEditor(activeSession)
     } catch (error) {
       logHomeError('ai_generation_start_failed', error)
-      this.setData({ generating: false, uploadStatus: 'success', uploadProgress: -1, currentStep: 2 })
+      this.setData({ generating: false, currentStep: 2 })
       if (error instanceof ApiError && error.code === 'QUOTA_INSUFFICIENT') {
         showAiQuotaModal()
         return

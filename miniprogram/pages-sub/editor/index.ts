@@ -70,7 +70,6 @@ Page({
     selectedColorCode: '',
     activeTool: 'pencil',
     saving: false,
-    aiGenerating: false,
     aiFailed: false,
     aiLocked: false,
     aiStateTitle: '',
@@ -110,7 +109,16 @@ Page({
   onLoad() {
     const aiSession = loadAiGenerationSession()
     let draft = appStore.getSnapshot().currentDraft
-    if (!draft && aiSession) {
+
+    const isPendingDraft = draft?.id.startsWith('ai-pending-') === true
+    const shouldResumeAiSession = aiSession !== null && (
+      aiSession.status === 'processing'
+      || aiSession.status === 'succeeded'
+      || (aiSession.status === 'creating' && aiSession.inputFileId !== null)
+      || (aiSession.status === 'failed' && (!draft || isPendingDraft))
+    )
+
+    if (aiSession && shouldResumeAiSession && (!draft || draft.sourceImagePath !== aiSession.sourceImagePath || !isPendingDraft)) {
       draft = createPendingDraft(aiSession.sourceImagePath, aiSession.settings)
       void appStore.setCurrentDraft(draft)
     }
@@ -132,12 +140,13 @@ Page({
       selectedColorCode: firstColorCode,
       beadCount: draft.cells.filter((cell) => cell.color !== 'transparent').length,
     })
-    if (aiSession && aiSession.sourceImagePath === draft.sourceImagePath && draft.id.startsWith('ai-pending-')) {
+    if (aiSession && shouldResumeAiSession && aiSession.sourceImagePath === draft.sourceImagePath && draft.id.startsWith('ai-pending-')) {
       this._aiFlow = new AiGenerationFlow({
         onStateChange: (state) => this.applyAiFlowState(state),
         onDraftReady: (nextDraft) => this.applyAiDraft(nextDraft),
       })
-      this.setData({ aiLocked: true, aiGenerating: true })
+      this.setData({ aiLocked: true })
+      this._aiFlow.onShow()
     }
   },
 
@@ -165,7 +174,6 @@ Page({
   applyAiFlowState(state: AiGenerationFlowState) {
     const failed = state.pageState === 'failed'
     this.setData({
-      aiGenerating: !failed,
       aiFailed: failed,
       aiLocked: true,
       aiStateTitle: state.stateTitle,
@@ -193,7 +201,6 @@ Page({
       selectedColor: firstColor,
       selectedColorCode: firstColorCode,
       beadCount: nextDraft.cells.filter((cell) => cell.color !== 'transparent').length,
-      aiGenerating: false,
       aiFailed: false,
       aiLocked: false,
       aiStateTitle: '',
