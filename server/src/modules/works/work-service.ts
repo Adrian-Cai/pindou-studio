@@ -367,9 +367,9 @@ export class PostgresWorkService {
     const result = await this.pool.query<{ readonly favorited_at: Date | string }>(
       `WITH changed AS (
          INSERT INTO pindou_favorites (user_id, work_id, created_at, favorited_at, deleted_at)
-         SELECT $1, $2, $3, $3, NULL
-           FROM pindou_works
-          WHERE id = $2 AND user_id = $1 AND deleted_at IS NULL
+         SELECT $1::varchar, $2::varchar, $3::timestamptz, $3::timestamptz, NULL::timestamptz
+            FROM pindou_works
+           WHERE id = $2::varchar AND user_id = $1::varchar AND deleted_at IS NULL
          ON CONFLICT (user_id, work_id) DO UPDATE
          SET favorited_at = EXCLUDED.favorited_at,
              deleted_at = NULL
@@ -380,7 +380,7 @@ export class PostgresWorkService {
        UNION ALL
        SELECT favorited_at
          FROM pindou_favorites
-        WHERE user_id = $1 AND work_id = $2 AND deleted_at IS NULL
+         WHERE user_id = $1::varchar AND work_id = $2::varchar AND deleted_at IS NULL
        LIMIT 1`,
       [userId, workId, this.now()],
     );
