@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.28.11
+
+- 修复 CNB 流水线生产部署失败（日志 `BEGIN` 后紧跟 `psql:...001_ai_quota_and_jobs.sql:5: ERROR: must be owner of table pindou_quota_transactions`，Stage「SSH 部署到生产服务器」返回码 3，健康检查被跳过）：根因是**迁移账号不是被改表的 owner**。`001` 起的所有迁移都包含 `ALTER TABLE` / `COMMENT ON` / `CREATE INDEX`，PostgreSQL 要求执行者是被改表的 owner 或超级用户，只有表级 `GRANT` 不够；`config/api.env` 里的 `DB_USER` 没有 `pindou_quota_transactions` 的 owner 权限，于是执行到 `001` 第 5 行第一条 `ALTER TABLE ... ADD COLUMN` 就被拒绝。
+- 修复方式：不修改生产库权限，而是让流水线在**启动迁移前先探测 owner 并失败**。新增 `psql_run` 封装连接参数，随后查询 `pg_tables` 找出 `pindou_*` 中 `tableowner <> current_user` 的表，命中则打印表名及其真实 owner 并退出，提示把 `DB_USER` 换成 owner 或用 owner 账号手工补跑。`.cnb.yml`（master push 与 `tag_deploy.production`）与 `Jenkinsfile` 三处同步实现。
+- 之所以必须前置探测：`psql -f` 是逐句执行而非整体事务，旧流程即使 `001` 头部带 `BEGIN` 被回滚，后续脚本（`003` 无事务且是 `CREATE TABLE`）仍会落库，最终留下**半套 schema**；提前失败可保证「要么不开始、要么跑完整轮」，也让报错直接指向需要修改的账号而不是留在几百行日志中间。
+- 单个迁移脚本失败时立即 `exit 1` 中断部署，不再继续执行后续编号脚本造成误导性报错。
+- 同步更新 `server/README.md` 与 `docs/backend/operations/PRODUCTION_PAYMENT_AI_ACCEPTANCE.md` 的迁移前置说明：明确迁移必须由 `pindou_*` 表 owner（或超级用户）执行。
+- 本次为部署流水线与文档修复，不涉及小程序页面与后端业务代码。
+
 ## 0.28.10
 
 - 修复 CNB 流水线生产部署失败（日志 `BEGIN` 紧接 `ERROR: relation "pindou_orders" does not exist`，Stage「SSH 部署到生产服务器」返回码 3，健康检查被跳过）：根因是**迁移打错了库**。生产库是 `config/api.env` 中 `DB_HOST`（内网 IP）指向的独立 PostgreSQL 实例，而部署脚本用 `docker compose exec -T postgres sh -c 'psql ...'` 进容器执行，psql 连的是 compose 内那个**从未存过业务数据的空库**，`008_orders_user_created_index.sql` 第一句就在空库上建 `pindou_orders` 索引，必然报错；那批基础表由外部工具直接建在 `DB_HOST` 实例上，仓库只保存 001 之后的增量迁移，与本次故障无关。

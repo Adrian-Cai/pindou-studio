@@ -4,7 +4,7 @@
 
 ## 当前必须执行的数据库迁移
 
-由 `pindou_*` 表 owner 在目标数据库执行：
+由 `pindou_*` 表 owner（或超级用户）在目标数据库执行。迁移含 `ALTER TABLE` / `COMMENT ON` / `CREATE INDEX`，PostgreSQL 只允许 owner 改表，仅有表级 `GRANT` 会报 `ERROR: must be owner of table pindou_*`：
 
 ```powershell
 $connection = "<由运维安全提供的迁移连接>"
@@ -14,7 +14,7 @@ Get-ChildItem server/sql/*.sql | Sort-Object Name | ForEach-Object {
 }
 ```
 
-迁移连接必须是 API 实际使用的那个库（`config/api.env` 中 `DB_HOST` 指向的实例）；部署流水线会在启动 API 前用宿主机 `psql` 对同一连接自动执行 `server/sql` 下全部迁移，手工补跑时同样要对准该实例。完整清单与说明见 `server/README.md`。
+迁移连接必须是 API 实际使用的那个库（`config/api.env` 中 `DB_HOST` 指向的实例）；部署流水线会在启动 API 前用宿主机 `psql` 对同一连接自动执行 `server/sql` 下全部迁移，并在启动迁移前校验 `DB_USER` 对全部 `pindou_*` 表的 owner 权限（不满足时直接失败并列出缺权限的表）；手工补跑时同样要对准该实例并使用 owner 账号。完整清单与说明见 `server/README.md`。
 
 随后使用应用账号执行：
 
