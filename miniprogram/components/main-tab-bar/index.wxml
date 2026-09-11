@@ -11,6 +11,6 @@
       src="{{currentSelected === index ? item.activeIcon : item.icon}}"
       mode="aspectFit"
     />
-    <text>{{item.text}}</text>
+    <text class="main-tab-bar__label">{{item.text}}</text>
   </view>
 </view>
