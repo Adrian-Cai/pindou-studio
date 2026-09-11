@@ -2,36 +2,20 @@
   <view class="subpage feedback-page">
     <view class="feedback-hero">
       <image class="feedback-hero__icon" src="/assets/icons/iconsax/message-text.svg" mode="aspectFit" aria-hidden="true" />
-      <view><view>感谢你的反馈</view><text>你可以提交产品建议或问题反馈，帮助我们做得更好</text></view>
+      <view><view>感谢你的反馈</view><text>你可以通过微信客服直接描述问题，也可以发送截图</text></view>
     </view>
 
-    <view class="feedback-label">反馈类型</view>
-    <view class="category-grid">
-      <view
-        class="category-item {{categoryIndex === index ? 'category-item--active' : ''}}"
-        wx:for="{{categories}}"
-        wx:key="id"
-        data-index="{{index}}"
-        bindtap="selectCategory"
-      ><image src="{{item.icon}}" mode="aspectFit" aria-hidden="true" />{{item.label}}</view>
-    </view>
-
-    <view class="feedback-field-head"><view class="feedback-label">问题描述</view><text>{{content.length}}/500</text></view>
-    <textarea class="feedback-textarea" maxlength="500" placeholder="请详细描述你遇到的问题或建议" placeholder-class="feedback-placeholder" value="{{content}}" bindinput="changeContent" />
-
-    <view class="feedback-field-head"><view class="feedback-label">上传截图 <text>（选填，最多 5 张）</text></view><text>{{images.length}}/5</text></view>
-    <view class="image-list">
-      <view class="image-item" wx:for="{{images}}" wx:key="*this">
-        <image src="{{item}}" mode="aspectFill" data-src="{{item}}" bindtap="previewImage" />
-        <view class="image-item__remove" data-index="{{index}}" catchtap="removeImage"><image src="/assets/icons/iconsax/close.svg" mode="aspectFit" aria-hidden="true" /></view>
+    <view class="feedback-contact-card ui-card">
+      <view class="feedback-contact-card__icon">
+        <image src="/assets/icons/iconsax/message-text.svg" mode="aspectFit" aria-hidden="true" />
       </view>
-      <view wx:if="{{images.length < 5}}" class="image-upload" bindtap="chooseImages"><image src="/assets/icons/iconsax/add.svg" mode="aspectFit" aria-hidden="true" /><text>上传图片</text></view>
+      <view class="feedback-contact-card__content">
+        <view class="feedback-contact-card__title">在线联系客服</view>
+        <text>进入客服会话后，发送你的问题描述和相关截图</text>
+      </view>
     </view>
 
-    <view class="feedback-label contact-label">联系方式 <text>（选填）</text></view>
-    <input class="feedback-input" placeholder="请输入手机号或邮箱，方便我们联系你" placeholder-class="feedback-placeholder" value="{{contact}}" bindinput="changeContact" />
-
-    <button class="button-primary feedback-submit" style="width: 100%;" disabled="{{submitting}}" bindtap="submit">{{submitting ? '提交中…' : '提交反馈'}}</button>
-    <view class="feedback-safe"><image src="/assets/icons/iconsax/message-text.svg" mode="aspectFit" aria-hidden="true" />我们会尽快处理你的反馈</view>
+    <button class="button-primary feedback-submit" open-type="contact" aria-label="联系客服">联系客服</button>
+    <view class="feedback-safe"><image src="/assets/icons/iconsax/message-text.svg" mode="aspectFit" aria-hidden="true" />客服会尽快处理你的问题</view>
   </view>
 </page-layout>

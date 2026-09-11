@@ -471,7 +471,7 @@ GET /api/works/:id
 
 - `generation_tasks`：没有服务端图片量化任务
 - `download_files`：没有服务器生成或托管下载文件
-- `feedbacks`：反馈接口后置
+- `feedbacks`：意见反馈由微信小程序客服会话承载，不在服务端建模
 - `public_work_shares`：未开放他人查看作品
 - `privacy_preferences`：云同步开关语义未收敛
 

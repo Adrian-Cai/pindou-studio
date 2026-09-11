@@ -25,13 +25,6 @@ export const HELP_QUESTIONS = [
   },
   {
     title: '如何联系人工支持？',
-    answer: '可在意见反馈页面描述问题并留下联系方式，客服会在工作时间内尽快处理',
+    answer: '进入“意见反馈”页面，点击“联系客服”即可打开微信客服会话，直接发送问题描述和截图',
   },
-] as const
-
-export const FEEDBACK_CATEGORIES = [
-  { id: 'feature', icon: '/assets/icons/iconsax/element.svg', label: '功能建议' },
-  { id: 'bug', icon: '/assets/icons/iconsax/message-question.svg', label: '问题反馈' },
-  { id: 'payment', icon: '/assets/icons/iconsax/document-text.svg', label: '支付问题' },
-  { id: 'experience', icon: '/assets/icons/iconsax/message-text.svg', label: '体验吐槽' },
 ] as const

@@ -29,7 +29,7 @@
 - 不开发服务端成品图、施工图或材料清单生成
 - 不开发 `GET /api/files/download/:workId/:type`
 - 不永久保存原始上传图片；第一版只上传作品封面/预览图
-- 不开发反馈和公开分享接口
+- 意见反馈通过微信小程序客服会话完成，不开发服务端反馈接口
 
 ### 1.3 内容安全审核
 
@@ -342,7 +342,7 @@ Authorization: Bearer <token>
 
 ### POST `/api/files/upload`
 
-用途：上传作品封面/预览图第一版不上传原始图片，不接收反馈截图
+用途：上传作品封面/预览图；第一版不上传原始图片
 
 鉴权：需要
 
@@ -762,7 +762,7 @@ Content-Type: application/json
 | 接口 | 原因 |
 | --- | --- |
 | `/api/files/download/:workId/:type` | 第一版由客户端 Canvas 导出并保存相册 |
-| `POST /api/feedbacks` | 反馈属于后续增强阶段 |
+| 意见反馈 | 通过小程序页面的 `<button open-type="contact">` 打开微信客服会话 |
 | 公开作品分享接口 | 当前分享路径仍是首页，不支持他人读取作品 |
 
 ## 7. 前端接入顺序
