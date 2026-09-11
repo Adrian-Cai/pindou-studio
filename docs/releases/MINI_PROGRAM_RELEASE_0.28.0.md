@@ -38,7 +38,7 @@
 ## 提审前确认
 
 - [ ] 已部署后端额度响应、AI-only 套餐查询与订单接口
-- [ ] 已执行数据库迁移 `007_ai_generation_packages_only.sql`；如订单索引尚未部署，同时执行 `008_orders_user_created_index.sql`
+- [ ] 已按编号顺序对 `config/api.env` 中 `DB_HOST` 指向的生产库执行 `server/sql/` 下全部迁移（详见 `server/README.md`）
 - [ ] 微信支付商户配置、付费服务协议和生产套餐数据已确认
 - [ ] 已验证 AI 生成成功只扣一次，失败、超时、取消不扣额度
 - [ ] 已验证支付回调重复通知不重复发放额度

@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.28.10
+
+- 修复 CNB 流水线生产部署失败（日志 `BEGIN` 紧接 `ERROR: relation "pindou_orders" does not exist`，Stage「SSH 部署到生产服务器」返回码 3，健康检查被跳过）：根因是**迁移打错了库**。生产库是 `config/api.env` 中 `DB_HOST`（内网 IP）指向的独立 PostgreSQL 实例，而部署脚本用 `docker compose exec -T postgres sh -c 'psql ...'` 进容器执行，psql 连的是 compose 内那个**从未存过业务数据的空库**，`008_orders_user_created_index.sql` 第一句就在空库上建 `pindou_orders` 索引，必然报错；那批基础表由外部工具直接建在 `DB_HOST` 实例上，仓库只保存 001 之后的增量迁移，与本次故障无关。
+- 修复方式：迁移改为在**服务器宿主机上用 `psql` 直连 `api.env` 的 `DB_HOST/DB_PORT/DB_NAME/DB_USER`** 执行，`.cnb.yml` 与 `Jenkinsfile` 两处同步修正；宿主机缺少 `psql` 或 `api.env` 缺少连接变量时直接报错退出，不再静默打到空库。
+- 迁移范围从「只执行 `008`」改回「按编号执行 `server/sql` 下全部 `0NN_*.sql`」，脚本统一上传到 `/opt/pindou/deploy/sql/`；仍是先迁移、再启动 API，避免 API 因 Schema Contract 不一致反复重启。
+- `deploy/compose.yaml` 删除无人使用的 `postgres` 服务（生产库是外部实例），`.cnb.yml` 同步去掉 postgres 镜像的公网拉取与搬运，少一次外部依赖。
+- `001_ai_quota_and_jobs.sql` 补齐三档 AI 套餐插入（`ON CONFLICT DO NOTHING`）并把 AI 扣减幂等索引改为先删后建，`007_ai_generation_packages_only.sql` 的套餐停用逻辑并入 `001` 后删除，仓库由 8 个脚本收敛为 7 个。
+- 同步更新 `server/README.md`、`docs/backend/operations/PRODUCTION_PAYMENT_AI_ACCEPTANCE.md`、`docs/releases/MINI_PROGRAM_RELEASE_0.28.0.md` 的迁移清单与前置说明。
+- 本次为部署流水线、数据库迁移脚本与文档修复，不涉及小程序页面与后端业务代码。
+
 ## 0.28.9
 
 - 修复 CNB 流水线「健康检查」阶段永久失败（`健康检查失败，查看最近日志：` + 60 次 `尝试 N/60: HTTP 000000` + `docker compose logs --tail 50 api` 只出现 `The "DB_NAME" variable is not set. Defaulting to a blank string.` 无关 env 告警）：根因是 `.cnb.yml` 健康检查 `ssh ... 'bash -s' <<'REMOTE'` 把远端命令用引号包成**单个参数**。CNB Runner 用 sh 执行脚本，sh 把 `ssh ... 'bash -s' <<'REMOTE'` 解析为「远端命令在 quoting 层、heredoc 在命令层」，于是 heredoc 正文被喂给**本地** sh 而不是远端。远端只收到 EOF 空脚本，立刻成功退出；本地 sh 则把远端脚本按脚本语言执行——日志里每次尝试打印两遍 `HTTP 000000`（`%{http_code}` 输出 `000`，再被 `|| echo 000` 追加）正是本地 sh 回显（远端只回一次）导致的，平台日志渲染把双份压成了一个。修复：远端命令不再加引号，并显式声明解释器 `bash -s <<'REMOTE'`；heredoc 正文与结束标识 `REMOTE` 顶格对齐。
