@@ -166,6 +166,7 @@ export function cloudSummaryToWorkItem(summary: CloudWorkSummary | CloudFavorite
     height: summary.height,
     status: summary.status,
     isCloud: true,
+    isFavorite: summary.isFavorite,
     ...('favoritedAt' in summary ? { favoritedAt: Date.parse(summary.favoritedAt) } : {}),
   }
 }

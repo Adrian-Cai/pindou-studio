@@ -270,7 +270,7 @@ export class PostgresWorkService {
       }
 
       await client.query("COMMIT");
-      return mapSummary({ ...updatedRow, cover_url: coverUrl });
+      return mapSummary({ ...updatedRow, cover_url: coverUrl, is_favorite: existing.is_favorite === true });
     } catch (error: unknown) {
       await rollbackTransaction(client);
       throw error;
@@ -449,6 +449,11 @@ async function readWorkDetail(
             files.public_url AS cover_url, works.width, works.height,
             works.bead_count, works.color_count, works.brand, works.status,
             works.created_at, works.updated_at, works.deleted_at,
+            EXISTS (
+              SELECT 1 FROM pindou_favorites favorites
+               WHERE favorites.user_id = works.user_id AND favorites.work_id = works.id
+                 AND favorites.deleted_at IS NULL
+            ) AS is_favorite,
             patterns.schema_version, patterns.color_limit,
             patterns.brand AS pattern_brand, patterns.palette_json, patterns.cells_json
        FROM pindou_works works
@@ -469,7 +474,12 @@ async function readWorkSummary(
     `SELECT works.id, works.user_id, works.title, works.cover_file_id,
             files.public_url AS cover_url, works.width, works.height,
             works.bead_count, works.color_count, works.brand, works.status,
-            works.created_at, works.updated_at, works.deleted_at
+            works.created_at, works.updated_at, works.deleted_at,
+            EXISTS (
+              SELECT 1 FROM pindou_favorites favorites
+               WHERE favorites.user_id = works.user_id AND favorites.work_id = works.id
+                 AND favorites.deleted_at IS NULL
+            ) AS is_favorite
        FROM pindou_works works
        LEFT JOIN pindou_file_assets files ON files.id = works.cover_file_id AND files.deleted_at IS NULL
       WHERE works.id = $1 LIMIT 1${lock ? " FOR UPDATE OF works" : ""}`,

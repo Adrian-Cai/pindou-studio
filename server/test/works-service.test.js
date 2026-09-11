@@ -76,7 +76,7 @@ test("list query does not load cells and detail query maps the persisted pattern
 
 test("update replaces edited pattern and derived summary in one transaction", async () => {
   const calls = [];
-  const existing = row("work_edit");
+  const existing = { ...row("work_edit"), is_favorite: true };
   const edited = pattern();
   edited.cells[0] = -1;
   edited.cells[1] = 0;
@@ -104,6 +104,7 @@ test("update replaces edited pattern and derived summary in one transaction", as
   assert.equal(result.title, "编辑后的作品");
   assert.equal(result.coverUrl, "https://cdn/edited.png");
   assert.equal(result.beadCount, 1);
+  assert.equal(result.isFavorite, true);
   assert.ok(calls.some((call) => call.sql.includes("UPDATE pindou_work_patterns")));
   assert.equal(calls.at(-1).sql, "COMMIT");
 });

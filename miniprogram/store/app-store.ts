@@ -79,8 +79,10 @@ export class AppStore {
   removeLocalDraft(workId: string): Promise<void> { const w = this.getActiveWorkspace(); if (!w.localDrafts[workId] && w.currentDraft?.id !== workId) return Promise.resolve(); const drafts = { ...w.localDrafts }; delete drafts[workId]; w.localDrafts = drafts; if (w.currentDraft?.id === workId) w.currentDraft = null; this.rebuildState(); return this.persist() }
 
   saveWork(work: WorkItem): Promise<void> {
-    if (isSynced(work)) this.cloudWorks = mergeWorks([{ ...work, syncStatus: 'synced', isCloud: true }], this.cloudWorks)
-    else {
+    if (isSynced(work)) {
+      this.cloudWorks = mergeWorks([{ ...work, syncStatus: 'synced', isCloud: true }], this.cloudWorks)
+      this.updateFavoriteId(work.id, work.isFavorite)
+    } else {
       const normalized: WorkItem = this.activeUserId
         ? { ...work, syncStatus: work.syncStatus === 'failed' ? 'failed' : 'pending' as const, ownerId: this.activeUserId, isCloud: false }
         : { ...work, syncStatus: 'guest' as const, ownerId: undefined, isCloud: false }
@@ -98,6 +100,7 @@ export class AppStore {
 
   async replaceLocalWorkWithCloud(localId: string, cloudWork: WorkItem): Promise<void> {
     const w = this.getActiveWorkspace()
+    const wasFavorite = w.favoriteIds.includes(localId)
     w.works = w.works.filter((item) => item.id !== localId)
     w.favoriteIds = unique(w.favoriteIds.map((id) => id === localId ? cloudWork.id : id))
     w.downloadRecords = w.downloadRecords.map((record) => record.workId === localId ? { ...record, workId: cloudWork.id } : record)
@@ -106,18 +109,43 @@ export class AppStore {
       this.cloudDraft = { ...w.currentDraft, id: cloudWork.id, sourceImagePath: '' }
       w.currentDraft = null
     }
-    this.cloudWorks = mergeWorks([{ ...cloudWork, syncStatus: 'synced', isCloud: true }], this.cloudWorks)
+    this.cloudWorks = mergeWorks([{
+      ...cloudWork,
+      isFavorite: wasFavorite || cloudWork.isFavorite === true,
+      syncStatus: 'synced',
+      isCloud: true,
+    }], this.cloudWorks)
     this.rebuildState(); await this.persist()
   }
 
-  replaceCloudWorks(works: WorkItem[]): void { this.cloudWorks = works.map((work) => ({ ...work, syncStatus: 'synced', isCloud: true })); this.rebuildState() }
-  replaceCloudFavorites(favorites: WorkItem[]): void {
+  replaceCloudWorks(works: WorkItem[]): Promise<void> {
+    const w = this.getActiveWorkspace()
+    this.cloudWorks = works.map((work) => ({ ...work, syncStatus: 'synced', isCloud: true }))
+    const incomingIds = new Set(this.cloudWorks.map((work) => work.id))
+    const incomingFavoriteIds = new Set(this.cloudWorks.filter((work) => work.isFavorite === true).map((work) => work.id))
+    w.favoriteIds = unique([
+      ...w.favoriteIds.filter((id) => !incomingIds.has(id)),
+      ...incomingFavoriteIds,
+    ])
+    this.syncPersistedFavoriteState(w, incomingIds, incomingFavoriteIds)
+    this.rebuildState(); return this.persist()
+  }
+  replaceCloudFavorites(favorites: WorkItem[]): Promise<void> {
+    const w = this.getActiveWorkspace()
+    const knownCloudIds = new Set([
+      ...this.cloudWorks.map((work) => work.id),
+      ...w.works.filter(isSynced).map((work) => work.id),
+    ])
     const favoriteIds = new Set(favorites.map((work) => work.id))
     const byId = new Map(favorites.map((work) => [work.id, { ...work, syncStatus: 'synced' as const, isCloud: true }]))
-    this.cloudWorks = this.cloudWorks.map((work) => byId.get(work.id) ?? { ...work, favoritedAt: undefined })
+    this.cloudWorks = this.cloudWorks.map((work) => byId.get(work.id) ?? { ...work, favoritedAt: undefined, isFavorite: false })
     byId.forEach((work) => { if (!this.cloudWorks.some((item) => item.id === work.id)) this.cloudWorks.unshift(work) })
-    const w = this.getActiveWorkspace(); w.favoriteIds = w.favoriteIds.filter((id) => !this.cloudWorks.some((work) => work.id === id))
-    this.rebuildState([...favoriteIds])
+    w.favoriteIds = unique([
+      ...w.favoriteIds.filter((id) => !knownCloudIds.has(id)),
+      ...favoriteIds,
+    ])
+    this.syncPersistedFavoriteState(w, knownCloudIds, favoriteIds)
+    this.rebuildState(); return this.persist()
   }
 
   setFavorite(workId: string, favorite: boolean, favoritedAt = Date.now()): Promise<void> {
@@ -136,7 +164,28 @@ export class AppStore {
   completeDownload(record: DownloadRecord): number | null { if (this.refreshDownloadQuota() <= 0) return null; const w = this.getActiveWorkspace(); w.downloadQuota -= 1; w.downloadRecords = [record, ...w.downloadRecords.filter((item) => item.id !== record.id)]; this.rebuildState(); void this.persist(); return w.downloadQuota }
 
   private getActiveWorkspace(): Workspace { if (!this.activeUserId) return this.persisted.guest; return this.persisted.accounts[this.activeUserId] ?? (this.persisted.accounts[this.activeUserId] = createWorkspace()) }
-  private rebuildState(cloudFavoriteIds?: string[]): void { const w = this.getActiveWorkspace(); const cloudIds = cloudFavoriteIds ?? this.cloudWorks.filter((work) => work.favoritedAt).map((work) => work.id); this.state = { ...cloneWorkspace(w), currentDraft: this.cloudDraft ?? w.currentDraft, works: mergeWorks(this.cloudWorks, w.works), favoriteIds: unique([...w.favoriteIds, ...cloudIds]) }; this.listeners.forEach((listener) => listener(this.state)) }
+  private updateFavoriteId(workId: string, isFavorite?: boolean): void {
+    if (isFavorite === undefined) return
+    const w = this.getActiveWorkspace()
+    w.favoriteIds = isFavorite ? unique([...w.favoriteIds, workId]) : w.favoriteIds.filter((id) => id !== workId)
+  }
+  private syncPersistedFavoriteState(w: Workspace, knownCloudIds: Set<string>, favoriteIds: Set<string>): void {
+    w.works = w.works.map((work) => {
+      if (!knownCloudIds.has(work.id)) return work
+      const isFavorite = favoriteIds.has(work.id)
+      return { ...work, isFavorite, favoritedAt: isFavorite ? work.favoritedAt : undefined }
+    })
+  }
+  private rebuildState(): void {
+    const w = this.getActiveWorkspace()
+    const favoriteIds = unique(w.favoriteIds)
+    const works = mergeWorks(this.cloudWorks, w.works).map((work) => ({
+      ...work,
+      isFavorite: favoriteIds.includes(work.id),
+    }))
+    this.state = { ...cloneWorkspace(w), currentDraft: this.cloudDraft ?? w.currentDraft, works, favoriteIds }
+    this.listeners.forEach((listener) => listener(this.state))
+  }
   private persist(): Promise<void> {
     const payload = this.persisted
     this.writeTask = this.writeTask.catch(() => undefined).then(() => new Promise<void>((resolve, reject) => wx.setStorage({ key: STORAGE_KEY, data: payload, success: () => resolve(), fail: (error) => reject(new LocalStorageError(storageMessage(error))) })))
@@ -157,7 +206,7 @@ function normalizePersistedState(state: PersistedState): PersistedState { return
 function isPersistedState(value: unknown): value is PersistedState { return typeof value === 'object' && value !== null && (value as { version?: unknown }).version === 2 && typeof (value as { guest?: unknown }).guest === 'object' }
 function isSynced(work: WorkItem): boolean { return work.syncStatus === 'synced' || work.isCloud === true }
 function mergeWorks(first: WorkItem[], second: WorkItem[]): WorkItem[] { const seen = new Set<string>(); return [...first, ...second].filter((work) => !seen.has(work.id) && (seen.add(work.id), true)) }
-function applyFavorite(works: WorkItem[], id: string, favorite: boolean, at: number): WorkItem[] { return works.map((work) => work.id === id ? { ...work, favoritedAt: favorite ? at : undefined } : work) }
+function applyFavorite(works: WorkItem[], id: string, favorite: boolean, at: number): WorkItem[] { return works.map((work) => work.id === id ? { ...work, isFavorite: favorite, favoritedAt: favorite ? at : undefined } : work) }
 function unique(values: string[]): string[] { return [...new Set(values)] }
 function dateKey(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function normalizeQuota(value: number): number { return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : DAILY_FREE_DOWNLOAD_QUOTA }

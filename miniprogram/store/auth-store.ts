@@ -399,9 +399,15 @@ export class AuthStore {
     await appStore.activateAccount(userId)
     if (appStore.getGuestWorkCount() > 0) await appStore.adoptGuestWorks(userId)
     try {
-      const [works, favorites] = await Promise.all([fetchCloudWorks(), fetchCloudFavorites({ pageSize: 50 })])
-      appStore.replaceCloudWorks(works.items.map(cloudSummaryToWorkItem))
-      appStore.replaceCloudFavorites(favorites.items.map(cloudSummaryToWorkItem))
+      const [works, firstFavorites] = await Promise.all([fetchCloudWorks(), fetchCloudFavorites({ pageSize: 50 })])
+      const cloudFavorites = [...firstFavorites.items]
+      let favorites = firstFavorites
+      while (cloudFavorites.length < favorites.total && favorites.items.length > 0) {
+        favorites = await fetchCloudFavorites({ page: favorites.page + 1, pageSize: favorites.pageSize })
+        cloudFavorites.push(...favorites.items)
+      }
+      await appStore.replaceCloudWorks(works.items.map(cloudSummaryToWorkItem))
+      await appStore.replaceCloudFavorites(cloudFavorites.map(cloudSummaryToWorkItem))
       await syncPendingWorks(userId)
     } catch (error) {
       if (isUnauthorized(error)) throw error

@@ -26,7 +26,11 @@ async function performSync(userId: string): Promise<WorkSyncResult> {
       await checkImageContent(await prepareImageForContentSecurity(work.coverPath))
       const summary = await saveNewCloudWork(draft, work.coverPath, work.title)
       const favorite = appStore.getSnapshot().favoriteIds.includes(work.id) ? await setCloudFavorite(summary.id, true) : null
-      await appStore.replaceLocalWorkWithCloud(work.id, { ...cloudSummaryToWorkItem(summary), ...(favorite?.favoritedAt ? { favoritedAt: Date.parse(favorite.favoritedAt) } : {}) })
+      await appStore.replaceLocalWorkWithCloud(work.id, {
+        ...cloudSummaryToWorkItem(summary),
+        isFavorite: favorite?.isFavorite ?? summary.isFavorite,
+        ...(favorite?.favoritedAt ? { favoritedAt: Date.parse(favorite.favoritedAt) } : {}),
+      })
       uploaded += 1
     } catch (error) {
       await appStore.markSyncStatus(work.id, isNetworkError(error) ? 'pending' : 'failed', syncErrorMessage(error))

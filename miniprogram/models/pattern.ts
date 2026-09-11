@@ -50,6 +50,8 @@ export interface WorkItem {
   /** @deprecated 使用 syncStatus 判断，保留以兼容旧缓存。 */
   isCloud?: boolean
   createdAt?: number
+  /** 云端摘要携带的收藏状态；进入 AppStore 后由 favoriteIds 统一派生。 */
+  isFavorite?: boolean
   favoritedAt?: number
 }
 

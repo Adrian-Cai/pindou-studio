@@ -11,6 +11,7 @@ import {
 import {
   cloudSummaryToWorkItem,
   hasCloudSession,
+  fetchCloudWork,
   renameCloudWork,
   setCloudFavorite,
 } from '../../services/work-service'
@@ -43,6 +44,8 @@ interface DownloadRequestEvent extends WechatMiniprogram.CustomEvent {
 }
 
 Page({
+  favoriteRefreshToken: 0,
+
   data: {
     draft: null as PatternDraft | null,
     summary: null as ResultSummary | null,
@@ -135,6 +138,21 @@ Page({
       },
     )
     void this.refreshServerQuota()
+    void this.refreshFavoriteState(work)
+  },
+
+  async refreshFavoriteState(work?: WorkItem) {
+    if (!work?.isCloud || !hasCloudSession()) return
+    const refreshToken = ++this.favoriteRefreshToken
+    try {
+      const detail = await fetchCloudWork(work.id)
+      if (refreshToken !== this.favoriteRefreshToken) return
+      await appStore.saveWork(cloudSummaryToWorkItem(detail))
+      if (this.data.draft?.id !== detail.id) return
+      this.setData({ isFavorite: appStore.getSnapshot().favoriteIds.includes(detail.id) })
+    } catch (error) {
+      console.warn('刷新作品收藏状态失败，继续使用本地缓存', error)
+    }
   },
 
   onReady() {
@@ -186,6 +204,7 @@ Page({
   async toggleFavorite() {
     const draft = this.data.draft
     if (!draft || this.data.favoriteUpdating) return
+    this.favoriteRefreshToken += 1
     if (!hasCloudSession()) {
       wx.showToast({ title: '收藏失败，请先登录', icon: 'none' })
       return

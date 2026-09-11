@@ -57,7 +57,7 @@ Page({
       this.setData({ loading: true })
       try {
         const response = await fetchCloudWorks()
-        appStore.replaceCloudWorks(response.items.map(cloudSummaryToWorkItem))
+        await appStore.replaceCloudWorks(response.items.map(cloudSummaryToWorkItem))
       } catch (error) {
         console.error('读取云端作品失败', error)
         wx.showToast({ title: '云端作品加载失败，已显示本地缓存', icon: 'none' })

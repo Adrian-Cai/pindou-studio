@@ -50,7 +50,7 @@ Page({
           })
           cloudFavorites.push(...response.items)
         }
-        appStore.replaceCloudFavorites(cloudFavorites.map(cloudSummaryToWorkItem))
+        await appStore.replaceCloudFavorites(cloudFavorites.map(cloudSummaryToWorkItem))
       } catch (error) {
         console.error('读取云端收藏失败', error)
         wx.showToast({ title: '云端收藏加载失败，已显示本地缓存', icon: 'none' })
