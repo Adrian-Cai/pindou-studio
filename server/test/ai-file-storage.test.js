@@ -29,3 +29,27 @@ test("AI file storage separates input/output object keys and serves only generat
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("AI file storage enforces byte limits and does not trust the filename extension", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pindou-ai-file-limit-test-"));
+  try {
+    const storage = new FileSystemAiFileStorage(directory, "https://cdn.example/ai", {
+      maximumBytes: PNG.length - 1,
+      maximumWidth: 1,
+      maximumHeight: 1,
+      maximumPixels: 1,
+    });
+    await assert.rejects(
+      () => storage.save("ai_input", PNG, "input.png", "image/png"),
+      (error) => error.code === "PAYLOAD_TOO_LARGE",
+    );
+
+    const regularStorage = new FileSystemAiFileStorage(directory, "https://cdn.example/ai");
+    await assert.rejects(
+      () => regularStorage.save("ai_input", PNG, "input.jpg", "image/png"),
+      (error) => error.code === "INVALID_ARGUMENT",
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

@@ -9,6 +9,7 @@
       "root": "pages-sub",
       "pages": [
         "editor/index",
+        "ai-generation/index",
         "result/index",
         "downloads/index",
         "favorites/index",

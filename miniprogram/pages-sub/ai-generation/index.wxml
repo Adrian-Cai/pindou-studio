@@ -1,0 +1,63 @@
+<page-layout title="AI 生成" back show-main-nav selected-tab="0">
+  <view class="ai-generation-page">
+    <view
+      class="ai-compliance-notice"
+      role="note"
+      aria-label="当前生成结果由人工智能生成"
+    >当前生成结果由人工智能生成</view>
+
+    <view wx:if="{{sourceImagePath}}" class="ai-generation-source">
+      <image
+        wx:if="{{!sourceImageError}}"
+        class="ai-generation-source__image"
+        src="{{sourceImagePath}}"
+        mode="aspectFill"
+        binderror="handleImageError"
+        aria-label="待生成图片"
+      />
+      <view wx:else class="ai-generation-source__fallback">原图暂时无法预览</view>
+    </view>
+
+    <view class="ai-generation-card">
+      <view class="ai-generation-card__eyebrow">AI 精致生成</view>
+      <view class="ai-generation-card__title">{{stateTitle}}</view>
+      <view class="ai-generation-card__hint">{{stateDescription}}</view>
+      <view wx:if="{{pageState === 'uploading' || pageState === 'submitting' || pageState === 'queued' || pageState === 'processing' || pageState === 'downloading' || pageState === 'converting'}}" class="ai-generation-progress" aria-label="正在处理">
+        <view class="ai-generation-progress__bar"></view>
+      </view>
+      <view wx:if="{{statusMessage}}" class="ai-generation-card__status">{{statusMessage}}</view>
+    </view>
+
+    <view wx:if="{{waitingLong}}" class="ai-generation-waiting" role="status">
+      处理时间比平时长一些，你可以暂时离开，之后回来继续查看。
+    </view>
+
+    <button
+      wx:if="{{pageState === 'failed' && showPurchase}}"
+      class="button-primary ai-generation-retry"
+      bindtap="purchaseAiGeneration"
+    >购买 AI 生成次数</button>
+
+    <button
+      wx:if="{{pageState === 'failed' && !showPurchase}}"
+      class="button-primary ai-generation-retry"
+      bindtap="retry"
+    >{{retryMode === 'generation' ? '重新生成' : retryMode === 'query' ? '重新查询' : '重试'}}</button>
+
+    <button
+      wx:if="{{pageState === 'failed'}}"
+      class="button-secondary ai-generation-back"
+      bindtap="backHome"
+    >返回首页</button>
+
+    <button
+      wx:if="{{pageState === 'loading' || pageState === 'uploading' || pageState === 'submitting' || pageState === 'queued' || pageState === 'processing' || pageState === 'downloading' || pageState === 'converting'}}"
+      class="button-secondary ai-generation-back"
+      bindtap="backHome"
+    >返回首页</button>
+
+    <view class="ai-generation-note">
+      AI 输出会先通过服务端图片内容安全审核，再交给标准模式转换为拼豆图。
+    </view>
+  </view>
+</page-layout>

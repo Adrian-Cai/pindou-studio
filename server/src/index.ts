@@ -9,6 +9,7 @@ import {
 } from "./db/schema-inspector";
 import { createHttpApplication } from "./http/app";
 import { startHttpServer, type RunningHttpServer } from "./http/server";
+import { InMemoryRateLimiter } from "./http/rate-limit";
 import { PostgresAuthRepository } from "./modules/auth/auth-repository";
 import { AuthService } from "./modules/auth/auth-service";
 import { BearerTokenAuthenticator } from "./modules/auth/authenticator";
@@ -50,6 +51,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
     const aiFiles = new FileSystemAiFileStorage(
       config.aiFiles.storageDirectory,
       config.aiFiles.publicBaseUrl,
+      config.aiFiles,
     );
     const users = new PostgresUserProfileService(pool, config.quota, () => new Date(), {
       avatars,
@@ -74,6 +76,24 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.contentSecurity.asyncMediaCheckEnabled,
     );
     const qwenImage = new QwenImageProvider(config.qwenImage);
+    const aiGenerations = new PostgresAiGenerationService(
+      pool,
+      qwenImage,
+      aiFiles,
+      config.quota,
+      () => new Date(),
+      contentSecurity,
+      config.aiFiles.retentionMs,
+    );
+    const aiRateLimiter = new InMemoryRateLimiter(
+      config.aiRateLimit.maximumRequests,
+      config.aiRateLimit.windowMs,
+    );
+    void aiGenerations.cleanupExpired().catch(() => undefined);
+    const aiCleanupTimer = setInterval(() => {
+      void aiGenerations.cleanupExpired().catch(() => undefined);
+    }, Math.min(config.aiFiles.retentionMs, 60 * 60 * 1_000));
+    aiCleanupTimer.unref();
     const http = await startHttpServer(
       createHttpApplication({
         database,
@@ -98,14 +118,10 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         ),
         coverMaximumBytes: config.covers.maximumBytes,
         aiFileMaximumBytes: config.aiFiles.maximumBytes,
+        aiRateLimiter,
         contentSecurity,
         contentSecurityMediaMaximumBytes: config.contentSecurity.mediaMaximumBytes,
-        aiGenerations: new PostgresAiGenerationService(
-          pool,
-          qwenImage,
-          aiFiles,
-          config.quota,
-        ),
+        aiGenerations,
         capabilities: {
           wechatPay: paymentGateway.configured,
           aiGeneration: qwenImage.configured,
@@ -123,6 +139,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       inspection,
       http,
       close: async () => {
+        clearInterval(aiCleanupTimer);
         await http.close();
         await database.close();
       },

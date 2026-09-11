@@ -2,6 +2,18 @@ import { DEFAULT_PATTERN_SETTINGS } from '../../config/product'
 import { chooseSourceImage, createDraft, prepareImageForContentSecurity } from '../../services/image-service'
 import { checkImageContent } from '../../services/content-security-service'
 import { ApiError } from '../../services/http-client'
+import {
+  aiGenerationErrorMessage,
+  createAiGeneration,
+  DEFAULT_AI_OPTIONS,
+  uploadAiInput,
+} from '../../services/ai-generation-service'
+import {
+  createIdempotencyKey,
+  loadAiGenerationSession,
+  saveAiGenerationSession,
+} from '../../services/ai-generation-session'
+import type { PatternSettings } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
 
 /** 生成模式 */
@@ -86,6 +98,7 @@ const GENERATION_STEPS = [
 Page({
   data: {
     sourceImagePath: '',
+    aiInputImagePath: '',
     settings: { ...DEFAULT_PATTERN_SETTINGS, width: 64, height: 64, colorLimit: 32 },
     sizeOptions: [32, 48, 64, 96, 128],
     colorOptions: [16, 32, 64, 96],
@@ -152,6 +165,7 @@ Page({
     try {
       const securityImagePath = await prepareImageForContentSecurity(sourceImagePath)
       if (requestId !== currentUploadRequestId) return
+      this.setData({ aiInputImagePath: securityImagePath })
       await checkImageContent(securityImagePath, (progress) => {
         if (requestId !== currentUploadRequestId) return
         if (progress >= 100) {
@@ -185,6 +199,7 @@ Page({
     currentUploadRequestId += 1
     this.setData({
       sourceImagePath: '',
+      aiInputImagePath: '',
       uploadStatus: 'error',
       uploadProgress: -1,
       currentStep: 1,
@@ -219,9 +234,8 @@ Page({
       return
     }
 
-    // Ai 模式暂未上线，明确提示用户，不伪执行标准流程
     if (this.data.generationMode === 'ai') {
-      wx.showToast({ title: 'Ai 模式即将上线，敬请期待', icon: 'none', duration: 2000 })
+      await this.startAiCreating()
       return
     }
 
@@ -242,7 +256,148 @@ Page({
       this.setData({ generating: false })
     }
   },
+
+  async startAiCreating(): Promise<void> {
+    if (this.data.generating) return
+    if (!this.data.sourceImagePath) {
+      wx.showToast({ title: '请先上传图片', icon: 'none' })
+      return
+    }
+    if (this.data.uploadStatus !== 'success') {
+      wx.showToast({
+        title: this.data.uploadStatus === 'uploading' || this.data.uploadStatus === 'checking'
+          ? '图片正在检测，请稍候'
+          : '请先通过图片安全检测',
+        icon: 'none',
+      })
+      return
+    }
+
+    this.setData({ generating: true, currentStep: 3, uploadStatus: 'uploading', uploadProgress: -1 })
+    const existingSession = loadAiGenerationSession()
+    if (
+      existingSession
+      && existingSession.sourceImagePath === this.data.sourceImagePath
+      && existingSession.jobId
+      && (existingSession.status === 'processing' || existingSession.status === 'succeeded')
+    ) {
+      try {
+        await navigateToAiGenerationPage()
+      } catch (error) {
+        wx.showToast({ title: aiGenerationErrorMessage(error), icon: 'none' })
+      } finally {
+        this.setData({ generating: false, uploadStatus: 'success', uploadProgress: -1, currentStep: 2 })
+      }
+      return
+    }
+    let session = loadReusableAiSession(this.data.sourceImagePath, this.data.settings)
+    if (!session) {
+      session = {
+        idempotencyKey: createIdempotencyKey(),
+        jobId: null,
+        inputFileId: null,
+        sourceImagePath: this.data.sourceImagePath,
+        outputImagePath: '',
+        settings: { ...this.data.settings } as PatternSettings,
+        ...DEFAULT_AI_OPTIONS,
+        status: 'uploading',
+        createdAt: Date.now(),
+      }
+    } else {
+      session = { ...session, status: session.inputFileId ? 'creating' : 'uploading' }
+    }
+    try {
+      saveAiGenerationSession(session)
+    } catch (error) {
+      this.setData({ generating: false, uploadStatus: 'success', uploadProgress: -1, currentStep: 2 })
+      wx.showToast({ title: aiGenerationErrorMessage(error), icon: 'none' })
+      return
+    }
+
+    try {
+      if (!session.inputFileId) {
+        const aiInputImagePath = this.data.aiInputImagePath || await prepareImageForContentSecurity(this.data.sourceImagePath)
+        const uploaded = await uploadAiInput(aiInputImagePath, (progress) => {
+          this.setData({ uploadProgress: progress })
+        })
+        session = { ...session, inputFileId: uploaded.id, status: 'creating' }
+        saveAiGenerationSession(session)
+      }
+
+      const inputFileId = session.inputFileId
+      if (!inputFileId) {
+        this.setData({ generating: false, uploadStatus: 'success', uploadProgress: -1, currentStep: 2 })
+        wx.showToast({ title: '输入图片已失效，请重新上传', icon: 'none' })
+        return
+      }
+      const generation = await createAiGeneration({
+        inputFileId,
+        style: session.style,
+        detailLevel: session.detailLevel,
+        backgroundMode: session.backgroundMode,
+        idempotencyKey: session.idempotencyKey,
+      })
+      saveAiGenerationSession({
+        ...session,
+        jobId: generation.id,
+        status: generation.status === 'succeeded' ? 'succeeded' : 'processing',
+      })
+      await navigateToAiGenerationPage()
+    } catch (error) {
+      logHomeError('ai_generation_start_failed', error)
+      this.setData({ generating: false, uploadStatus: 'success', uploadProgress: -1, currentStep: 2 })
+      if (error instanceof ApiError && error.code === 'QUOTA_INSUFFICIENT') {
+        showAiQuotaModal()
+        return
+      }
+      wx.showToast({ title: aiGenerationErrorMessage(error), icon: 'none', duration: 2_000 })
+    } finally {
+      this.setData({ generating: false })
+    }
+  },
 })
+
+function loadReusableAiSession(sourceImagePath: string, settings: PatternSettings) {
+  const session = loadAiGenerationSession()
+  if (
+    !session
+    || session.sourceImagePath !== sourceImagePath
+    || session.jobId
+    || session.status !== 'creating'
+    || !session.inputFileId
+    || session.settings.width !== settings.width
+    || session.settings.height !== settings.height
+    || session.settings.colorLimit !== settings.colorLimit
+    || session.settings.brand !== settings.brand
+  ) return null
+  return session
+}
+
+function createIdempotentNavigationError(): ApiError {
+  return new ApiError('任务页面打开失败，请稍后重试', { code: 'NAVIGATION_ERROR' })
+}
+
+function navigateToAiGenerationPage(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    wx.navigateTo({
+      url: '/pages-sub/ai-generation/index',
+      success: () => resolve(),
+      fail: () => reject(createIdempotentNavigationError()),
+    })
+  })
+}
+
+function showAiQuotaModal(): void {
+  wx.showModal({
+    title: 'AI 生成次数不足',
+    content: '购买 AI 生成次数后，可以继续使用当前图片生成。',
+    confirmText: '购买次数',
+    cancelText: '稍后再说',
+    success: ({ confirm }) => {
+      if (confirm) wx.navigateTo({ url: '/pages-sub/recharge/index' })
+    },
+  })
+}
 
 function imageErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) return '上传失败，请稍后重试'

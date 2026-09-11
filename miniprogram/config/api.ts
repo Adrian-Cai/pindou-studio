@@ -13,6 +13,10 @@ export class ApiConfigurationError extends Error {
   }
 }
 
+/** AI 输出只能从项目自己的持久化媒体路径读取，不能直接使用 Provider 临时地址。 */
+export const AI_FILE_PUBLIC_BASE_URL = '/api/media/ai'
+const AI_FILE_NAME_PATTERN = /^(?:ai_input|ai_output)_[A-Za-z0-9]{32}\.(?:jpg|png|webp)$/u
+
 export function getApiBaseUrl(): string {
   const environment = getMiniProgramEnvironment()
   const baseUrl = API_BASE_URLS[environment].trim().replace(/\/$/, '')
@@ -27,6 +31,25 @@ export function getApiBaseUrl(): string {
 export function buildApiUrl(path: string): string {
   if (!path.startsWith('/')) throw new ApiConfigurationError('API path 必须以 / 开头')
   return `${getApiBaseUrl()}${path}`
+}
+
+export function buildAiFileUrl(value: string): string {
+  const url = value.trim()
+  if (!url) throw new ApiConfigurationError('AI 输出地址不能为空')
+
+  const relativePrefix = `${AI_FILE_PUBLIC_BASE_URL}/`
+  if (url.startsWith('/')) {
+    if (!url.startsWith(relativePrefix) || !AI_FILE_NAME_PATTERN.test(url.slice(relativePrefix.length))) {
+      throw new ApiConfigurationError('AI 输出地址不是项目媒体地址')
+    }
+    return buildApiUrl(url)
+  }
+
+  const publicBaseUrl = `${getApiBaseUrl()}${AI_FILE_PUBLIC_BASE_URL}`
+  if (!url.startsWith(`${publicBaseUrl}/`) || !AI_FILE_NAME_PATTERN.test(url.slice(`${publicBaseUrl}/`.length))) {
+    throw new ApiConfigurationError('AI 输出地址不是项目媒体地址')
+  }
+  return url
 }
 
 const LOCAL_COVER_URL_PATTERN = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(\/api\/media\/covers\/[^?#]+)$/u

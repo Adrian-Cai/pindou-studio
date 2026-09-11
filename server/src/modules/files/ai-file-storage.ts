@@ -27,6 +27,13 @@ export interface AiFileStorage {
   remove(objectKey: string): Promise<void>;
 }
 
+export interface AiFileStorageLimits {
+  readonly maximumBytes: number;
+  readonly maximumWidth: number;
+  readonly maximumHeight: number;
+  readonly maximumPixels: number;
+}
+
 const ROUTE_PREFIX = "/api/media/ai/";
 const FILE_PATTERN = /^(ai_input|ai_output)_[a-f0-9]{32}\.(jpg|png|webp)$/u;
 
@@ -34,6 +41,12 @@ export class FileSystemAiFileStorage implements AiFileStorage {
   public constructor(
     private readonly directory: string,
     private readonly publicBaseUrl: string,
+    private readonly limits: AiFileStorageLimits = {
+      maximumBytes: 10 * 1_024 * 1_024,
+      maximumWidth: 4_096,
+      maximumHeight: 4_096,
+      maximumPixels: 16 * 1_024 * 1_024,
+    },
   ) {
     if (!publicBaseUrl.trim()) throw invalidArgument("AI 文件公开地址未配置");
   }
@@ -44,7 +57,17 @@ export class FileSystemAiFileStorage implements AiFileStorage {
     filename: string,
     declaredContentType: string,
   ): Promise<StoredAiFile> {
+    if (buffer.length > this.limits.maximumBytes) {
+      throw new AppError(413, "PAYLOAD_TOO_LARGE", "AI 图片超过大小限制");
+    }
     const image = validateCoverImage(buffer, filename, declaredContentType);
+    if (
+      image.width > this.limits.maximumWidth
+      || image.height > this.limits.maximumHeight
+      || image.width * image.height > this.limits.maximumPixels
+    ) {
+      throw new AppError(413, "AI_IMAGE_DIMENSIONS_TOO_LARGE", "AI 图片尺寸超过限制");
+    }
     if (kind === "ai_output" && image.extension !== "png") {
       throw invalidArgument("AI 输出必须是 PNG 图片");
     }
@@ -94,9 +117,22 @@ export class FileSystemAiFileStorage implements AiFileStorage {
     const extension = filename.match(FILE_PATTERN)?.[2];
     if (!extension) return null;
     try {
+      const buffer = await readFile(join(this.directory, filename));
+      if (buffer.length > this.limits.maximumBytes) {
+        throw new AppError(413, "PAYLOAD_TOO_LARGE", "AI 图片超过大小限制");
+      }
+      const contentType = extension === "jpg" ? "image/jpeg" : `image/${extension}`;
+      const image = validateCoverImage(buffer, filename, contentType);
+      if (
+        image.width > this.limits.maximumWidth
+        || image.height > this.limits.maximumHeight
+        || image.width * image.height > this.limits.maximumPixels
+      ) {
+        throw new AppError(413, "AI_IMAGE_DIMENSIONS_TOO_LARGE", "AI 图片尺寸超过限制");
+      }
       return {
-        buffer: await readFile(join(this.directory, filename)),
-        contentType: extension === "jpg" ? "image/jpeg" : `image/${extension}`,
+        buffer,
+        contentType: image.contentType,
       };
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;

@@ -4,7 +4,7 @@ import { AppError } from "../../shared/app-error";
 export type ProviderTaskResult =
   | { readonly status: "pending" }
   | { readonly status: "succeeded"; readonly outputUrl: string }
-  | { readonly status: "failed"; readonly errorCode: string };
+  | { readonly status: "failed" };
 
 export interface AiGenerationProvider {
   readonly configured: boolean;
@@ -27,17 +27,8 @@ function string(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function providerErrorCode(body: JsonObject | null): string {
-  const output = object(body?.output);
-  const raw = string(output?.code) ?? string(body?.code) ?? "UNKNOWN";
-  return raw.replace(/[^A-Za-z0-9_.-]/gu, "_").slice(0, 60) || "UNKNOWN";
-}
-
-function providerFailure(body: JsonObject | null, status: number): AppError {
-  return new AppError(502, "AI_PROVIDER_ERROR", "AI 图像服务请求失败", {
-    providerCode: providerErrorCode(body),
-    providerStatus: status,
-  });
+function providerFailure(): AppError {
+  return new AppError(502, "AI_PROVIDER_ERROR", "AI 图像服务请求失败");
 }
 
 export class QwenImageProvider implements AiGenerationProvider {
@@ -83,7 +74,7 @@ export class QwenImageProvider implements AiGenerationProvider {
       },
     );
     const taskId = string(object(body.output)?.task_id);
-    if (!taskId || taskId.length > 128) throw providerFailure(body, 200);
+    if (!taskId || taskId.length > 128) throw providerFailure();
     return taskId;
   }
 
@@ -100,15 +91,15 @@ export class QwenImageProvider implements AiGenerationProvider {
     const status = string(output?.task_status);
     if (status === "PENDING" || status === "RUNNING") return { status: "pending" };
     if (status === "FAILED" || status === "CANCELED" || status === "UNKNOWN") {
-      return { status: "failed", errorCode: providerErrorCode(body) };
+      return { status: "failed" };
     }
-    if (status !== "SUCCEEDED") throw providerFailure(body, 200);
+    if (status !== "SUCCEEDED") throw providerFailure();
     const choices = Array.isArray(output?.choices) ? output.choices : [];
     const firstChoice = object(choices[0]);
     const message = object(firstChoice?.message);
     const content = Array.isArray(message?.content) ? message.content : [];
     const outputUrl = string(object(content[0])?.image);
-    if (!outputUrl) throw providerFailure(body, 200);
+    if (!outputUrl) throw providerFailure();
     return { status: "succeeded", outputUrl };
   }
 
@@ -120,10 +111,20 @@ export class QwenImageProvider implements AiGenerationProvider {
     } catch {
       throw new AppError(502, "AI_PROVIDER_OUTPUT_INVALID", "AI 服务返回了无效图片地址");
     }
-    if (parsed.protocol !== "https:" || !parsed.hostname.toLowerCase().endsWith(".aliyuncs.com")) {
+    if (!isTrustedOutputUrl(parsed)) {
       throw new AppError(502, "AI_PROVIDER_OUTPUT_INVALID", "AI 服务返回了不受信任的图片地址");
     }
-    const response = await this.fetchWithTimeout(parsed.href, { method: "GET" });
+    const response = await this.fetchWithTimeout(parsed.href, { method: "GET", redirect: "error" });
+    if (response.url) {
+      try {
+        if (!isTrustedOutputUrl(new URL(response.url))) {
+          throw new AppError(502, "AI_PROVIDER_OUTPUT_INVALID", "AI 服务输出图片地址不受信任");
+        }
+      } catch (error: unknown) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(502, "AI_PROVIDER_OUTPUT_INVALID", "AI 服务输出图片地址不受信任");
+      }
+    }
     if (!response.ok || response.headers.get("content-type")?.split(";", 1)[0] !== "image/png") {
       throw new AppError(502, "AI_PROVIDER_OUTPUT_INVALID", "AI 服务输出图片不可用");
     }
@@ -161,7 +162,7 @@ export class QwenImageProvider implements AiGenerationProvider {
     } catch {
       // 非 JSON 响应统一映射为稳定的上游错误
     }
-    if (!response.ok || !body) throw providerFailure(body, response.status);
+    if (!response.ok || !body) throw providerFailure();
     return body;
   }
 
@@ -179,4 +180,14 @@ export class QwenImageProvider implements AiGenerationProvider {
       throw new AppError(502, "AI_PROVIDER_UNAVAILABLE", "AI 图像服务暂时不可用");
     }
   }
+}
+
+function isTrustedOutputUrl(value: URL): boolean {
+  const hostname = value.hostname.toLowerCase();
+  return value.protocol === "https:"
+    && !value.username
+    && !value.password
+    && !value.port
+    && hostname.endsWith(".aliyuncs.com")
+    && hostname.length > ".aliyuncs.com".length;
 }

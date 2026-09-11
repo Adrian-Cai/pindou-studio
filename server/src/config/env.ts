@@ -76,6 +76,14 @@ export interface ServerConfig {
     readonly storageDirectory: string;
     readonly publicBaseUrl: string;
     readonly maximumBytes: number;
+    readonly maximumWidth: number;
+    readonly maximumHeight: number;
+    readonly maximumPixels: number;
+    readonly retentionMs: number;
+  };
+  readonly aiRateLimit: {
+    readonly maximumRequests: number;
+    readonly windowMs: number;
   };
   readonly contentSecurity: {
     readonly messageToken: string;
@@ -331,6 +339,14 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       ),
       publicBaseUrl: env.AI_FILE_PUBLIC_BASE_URL?.trim() || "http://127.0.0.1:4000/api/media/ai",
       maximumBytes: integer(env, "AI_FILE_MAX_BYTES", 10 * 1_024 * 1_024, 64 * 1_024, 20 * 1_024 * 1_024, issues),
+      maximumWidth: integer(env, "AI_IMAGE_MAX_WIDTH", 4_096, 1, 16_384, issues),
+      maximumHeight: integer(env, "AI_IMAGE_MAX_HEIGHT", 4_096, 1, 16_384, issues),
+      maximumPixels: integer(env, "AI_IMAGE_MAX_PIXELS", 16 * 1_024 * 1_024, 1, 256 * 1_024 * 1_024, issues),
+      retentionMs: integer(env, "AI_FILE_RETENTION_HOURS", 24, 1, 168, issues) * 60 * 60 * 1_000,
+    },
+    aiRateLimit: {
+      maximumRequests: integer(env, "AI_RATE_LIMIT_MAX_REQUESTS", 5, 1, 100, issues),
+      windowMs: integer(env, "AI_RATE_LIMIT_WINDOW_MS", 10 * 60 * 1_000, 1_000, 24 * 60 * 60 * 1_000, issues),
     },
     contentSecurity: {
       messageToken: env.WECHAT_CONTENT_SECURITY_TOKEN?.trim() || "",

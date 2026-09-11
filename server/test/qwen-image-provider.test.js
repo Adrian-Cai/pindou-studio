@@ -46,8 +46,22 @@ test("Qwen provider submits and polls the official async image API without expos
   assert.equal(requests[0].init.headers["x-dashscope-async"], "enable");
   const requestBody = JSON.parse(requests[0].init.body);
   assert.equal(requestBody.model, "qwen-image-3.0");
+  assert.equal(requestBody.input.messages[0].role, "user");
+  assert.equal(requestBody.input.messages[0].content.length, 2);
+  assert.match(requestBody.input.messages[0].content[0].image, /^data:image\/png;base64,/);
+  assert.equal(requestBody.input.messages[0].content[1].text, "生成精致图片");
   assert.equal(requestBody.parameters.n, 1);
+  assert.equal(requestBody.parameters.prompt_extend_mode, "direct");
+  assert.equal(requestBody.parameters.enable_thinking, true);
   assert.equal(JSON.stringify({ taskId, result }).includes(config.apiKey), false);
+});
+
+test("Qwen provider maps terminal task statuses to stable provider results", async () => {
+  for (const status of ["FAILED", "CANCELED", "UNKNOWN"]) {
+    const provider = new QwenImageProvider(config, async () => Response.json({ output: { task_status: status } }));
+    const result = await provider.getTask("task_123");
+    assert.deepEqual(result, { status: "failed" });
+  }
 });
 
 test("Qwen provider is safely disabled and rejects untrusted output URLs", async () => {
@@ -62,6 +76,37 @@ test("Qwen provider is safely disabled and rejects untrusted output URLs", async
   });
   await assert.rejects(
     () => provider.downloadOutput("https://attacker.example/output.png"),
+    (error) => error.code === "AI_PROVIDER_OUTPUT_INVALID",
+  );
+
+  await assert.rejects(
+    () => provider.downloadOutput("https://result.aliyuncs.com.evil.example/output.png"),
+    (error) => error.code === "AI_PROVIDER_OUTPUT_INVALID",
+  );
+});
+
+test("Qwen output downloads do not follow redirects", async () => {
+  let requestInit;
+  const provider = new QwenImageProvider(config, async (_url, init) => {
+    requestInit = init;
+    return new Response(null, { status: 302, headers: { location: "https://attacker.example/output.png" } });
+  });
+
+  await assert.rejects(
+    () => provider.downloadOutput("https://result.oss-cn-shanghai.aliyuncs.com/result.png"),
+    (error) => error.code === "AI_PROVIDER_OUTPUT_INVALID",
+  );
+  assert.equal(requestInit.redirect, "error");
+});
+
+test("Qwen provider rejects output that is not PNG", async () => {
+  const provider = new QwenImageProvider(config, async () => new Response(Buffer.from([1, 2, 3]), {
+    status: 200,
+    headers: { "content-type": "image/jpeg", "content-length": "3" },
+  }));
+
+  await assert.rejects(
+    () => provider.downloadOutput("https://result.oss-cn-shanghai.aliyuncs.com/result.jpg"),
     (error) => error.code === "AI_PROVIDER_OUTPUT_INVALID",
   );
 });

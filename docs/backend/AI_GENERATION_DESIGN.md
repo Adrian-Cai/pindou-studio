@@ -1,8 +1,8 @@
 # 一起拼豆吧 · Ai 模式接入设计
 
-> 状态：预研设计，不代表当前已上线能力
+> 状态：服务端 AI 生成链路、Prompt v2 与小程序 Phase 3 接入已实现，待预发布环境和真机验收
 >
-> 当前标准模式继续使用本地 Standard Pattern EngineAi 模式作为独立上游图像处理能力接入，不替换现有 Pattern Schema
+> 当前标准模式继续使用本地 Standard Pattern Engine；Ai 模式作为独立上游图像处理能力接入，不替换现有 Pattern Schema
 
 ## 1. 目标
 
@@ -69,6 +69,21 @@ AI 的输出应该针对后续 Pattern Engine，而不是追求摄影级细节
 
 服务端根据这些参数组装版本化 Prompt
 
+### 3.1 Prompt v2 约束
+
+当前生产模板版本为 `v2`，由服务端生成，客户端不能提交或覆盖 Prompt。模板包含：
+
+- 保留输入图片的主要主体、身份、姿态、比例和核心构图
+- 减少细碎纹理、无关小物体和复杂噪声
+- 强化主体轮廓、明暗关系和主体与背景的色块对比
+- 根据 `natural`、`cartoon`、`minimal` 选择视觉风格
+- 根据 `low`、`medium`、`high` 控制细节保留程度
+- 根据 `keep`、`simplify`、`remove` 控制背景处理方式
+- 禁止生成拼豆网格、材料标记、施工图、边框、Logo、水印或额外文字
+- 要求输出完整 PNG，供 Standard Pattern Engine 继续处理
+
+Prompt 版本写入 `pindou_ai_generation_jobs.prompt_version`。修改模板必须升级版本，不回写历史任务。
+
 ## 4. 推荐架构
 
 ```mermaid
@@ -110,7 +125,7 @@ flowchart LR
 - 后续切换异步模型时无需修改客户端业务协议
 - 用户退出页面后仍可以恢复任务状态
 
-小程序不应保持一个很长的 HTTP 请求等待生成完成
+小程序不应保持一个很长的 HTTP 请求等待生成完成。当前客户端首次进入页面立即查询，之后默认每 4 秒查询一次；连续网络失败时按 8 秒、15 秒、30 秒退避，页面隐藏或卸载时清理计时器。
 
 ## 6. 数据库改动
 
@@ -241,9 +256,12 @@ GET /api/ai/generations/{id}
 {
   "id": "aij_xxx",
   "status": "succeeded",
-  "output": {
-    "fileId": "file_xxx",
-    "url": "https://..."
+  "inputFileId": "file_input_xxx",
+  "outputFile": {
+    "id": "file_output_xxx",
+    "url": "https://api.example.com/api/media/ai/ai_output_xxx.png",
+    "contentType": "image/png",
+    "size": 123456
   }
 }
 ```
@@ -254,9 +272,7 @@ GET /api/ai/generations/{id}
 {
   "id": "aij_xxx",
   "status": "failed",
-  "error": {
-    "code": "AI_GENERATION_FAILED"
-  }
+  "errorCode": "AI_PROVIDER_ERROR"
 }
 ```
 
@@ -287,6 +303,18 @@ AI 模式流程建议：
 → 交给现有 Standard Pattern Engine
 → 进入编辑器
 ```
+
+小程序通过 `pindou-ai-generation-session-v1` 保存幂等键、任务 ID、输入文件 ID、原图临时路径、输出临时路径和首页 Pattern Settings。页面返回、切后台或请求丢失后，优先查询已有任务；输出已下载时优先复用本地文件。只有输出下载成功、本地 `createDraft()` 成功、当前草稿写入 AppStore 且成功跳转编辑器后才清理会话。
+
+创建请求失败使用同一幂等键重试；明确失败后重新生成时复用 `inputFileId` 但生成新的幂等键；下载失败只重试下载；本地转换失败只重试 `createDraft()`。这些重试都不会重复消耗 AI 次数。
+
+### 8.1 上线安全门槛
+
+- Qwen API Key 只在服务端环境变量中读取；客户端只获得本项目的任务状态和持久化媒体地址。
+- 输入和输出都执行服务端真实格式、大小、尺寸及像素数校验；输出地址只允许 HTTPS `*.aliyuncs.com`，并以禁止跳转的方式下载。
+- AI 输入上传和任务创建按用户限流；输入、输出默认 24 小时过期，过期任务和孤立输入由定时清理任务软删除并物理清理。
+- Qwen 输出在写入 `ai_output` 前再次通过微信图片内容安全同步检测；生产异步媒体检测作为补充证据和回调记录，不能替代同步拦截。
+- 客户端只收到稳定错误码；Provider 原始响应、内部堆栈和敏感配置只进入受控服务端日志，且当前实现日志只记录稳定错误码。
 
 这样编辑器、结果页、作品保存、Pattern Schema、材料清单和下载链路都不需要因为 AI 模式复制一套
 
@@ -356,11 +384,13 @@ server/src/modules/ai/
 - 新增创建 / 查询任务 API
 - 不接支付
 
-### Phase C：小程序接入
+### Phase C：小程序接入（已实现，待环境验收）
 
 - 打通 AI 模式真实流程
 - AI 输出继续复用 Standard Pattern Engine 和现有编辑器
 - 加失败、重试、超时 UI
+- 小程序不接触 Provider、Model、Prompt 或 API Key
+- 任务页支持后台恢复、下载复用和本地转换重试
 
 ### Phase D：商业化
 

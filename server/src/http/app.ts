@@ -9,24 +9,29 @@ import type { FileAssetService } from "../modules/files/file-asset-service";
 import type { CoverStorage } from "../modules/files/cover-storage";
 import type { AiFileStorage } from "../modules/files/ai-file-storage";
 import type { ContentSecurityService } from "../modules/content-security/content-security-service";
-import type {
-  AiGenerationBackgroundMode,
-  AiGenerationDetailLevel,
-  AiGenerationStyle,
-  PostgresAiGenerationService,
-} from "../modules/ai/ai-generation-service";
-import type {
-  DownloadFileType,
-  DownloadListOptions,
-  PostgresQuotaDownloadService,
-} from "../modules/downloads/quota-download-service";
+import type { PostgresAiGenerationService } from "../modules/ai/ai-generation-service";
+import type { DownloadListOptions, PostgresQuotaDownloadService } from "../modules/downloads/quota-download-service";
 import type { OrderListOptions, PaymentService } from "../modules/payments/payment-service";
 import { getLegalDocument } from "../modules/legal/legal-document-service";
-import type { PrivacyPreferencesPatch } from "../modules/users/user-profile-service";
-import { validatePersistedPattern, type PersistedPattern } from "../modules/works/pattern";
-import type { FavoriteListOptions, PostgresWorkService, UpdateWorkInput, WorkStatus } from "../modules/works/work-service";
+import type { FavoriteListOptions, PostgresWorkService } from "../modules/works/work-service";
+import type { WorkStatus } from "../modules/works/work-service";
+import { validatePersistedPattern } from "../modules/works/pattern";
 import { AppError, invalidArgument } from "../shared/app-error";
+import type { InMemoryRateLimiter } from "./rate-limit";
 import { readJsonObject, readRawJsonObject, readSingleUploadedFile } from "./request-body";
+import {
+  idempotencyKey,
+  validateContentSecurityTextBody,
+  validateCreateAiGenerationBody,
+  validateCreatePaymentBody,
+  validateDownloadBody,
+  validateFavoriteBody,
+  validateLoginBody,
+  validateNicknameBody,
+  validatePrivacyPatch,
+  validateWorkBody,
+  validateWorkUpdateBody,
+} from "./request-validation";
 
 const SERVICE_NAME = "pindou-studio-server";
 
@@ -53,11 +58,12 @@ function sendJson(response: ServerResponse, statusCode: number, payload: unknown
 function sendImage(
   response: ServerResponse,
   avatar: { readonly buffer: Buffer; readonly contentType: string },
+  cacheControl = "public, max-age=31536000, immutable",
 ): void {
   response.statusCode = 200;
   response.setHeader("content-type", avatar.contentType);
   response.setHeader("content-length", avatar.buffer.length);
-  response.setHeader("cache-control", "public, max-age=31536000, immutable");
+  response.setHeader("cache-control", cacheControl);
   response.setHeader("x-content-type-options", "nosniff");
   response.end(avatar.buffer);
 }
@@ -88,6 +94,7 @@ export interface HttpApplicationDependencies {
   readonly payments: PaymentService;
   readonly coverMaximumBytes: number;
   readonly aiFileMaximumBytes: number;
+  readonly aiRateLimiter?: InMemoryRateLimiter;
   readonly aiGenerations: PostgresAiGenerationService;
   /** 作品标题保存前必须经过内容安全校验；缺失时应 fail closed */
   readonly contentSecurity: ContentSecurityService;
@@ -109,185 +116,11 @@ function sendText(response: ServerResponse, value: string): void {
   response.end(value);
 }
 
-function validateLoginBody(body: Record<string, unknown>): string {
-  const keys = Object.keys(body);
-  if (keys.length !== 1 || keys[0] !== "code" || typeof body.code !== "string") {
-    throw invalidArgument("请求体只能包含字符串字段 code");
-  }
-  return body.code;
-}
-
-function validateContentSecurityTextBody(body: Record<string, unknown>): string {
-  const keys = Object.keys(body);
-  if (keys.length !== 1 || keys[0] !== "content" || typeof body.content !== "string") {
-    throw invalidArgument("内容安全文本请求体只能包含字符串字段 content");
-  }
-  return body.content;
-}
-
 function requireContentSecurity(dependencies: HttpApplicationDependencies): ContentSecurityService {
   if (!dependencies.contentSecurity) {
     throw new AppError(503, "CONTENT_SECURITY_NOT_CONFIGURED", "内容安全服务尚未配置");
   }
   return dependencies.contentSecurity;
-}
-
-function validateNicknameBody(body: Record<string, unknown>): string {
-  const keys = Object.keys(body);
-  if (keys.length !== 1 || keys[0] !== "nickname" || typeof body.nickname !== "string") {
-    throw invalidArgument("请求体只能包含字符串字段 nickname");
-  }
-  const nickname = body.nickname.trim().normalize("NFC");
-  const length = Array.from(nickname).length;
-  if (length < 1 || length > 80 || /[\u0000-\u001f\u007f]/u.test(nickname)) {
-    throw invalidArgument("昵称长度必须为 1 到 80 个字符，且不能包含控制字符");
-  }
-  return nickname;
-}
-
-function validatePrivacyPatch(body: Record<string, unknown>): PrivacyPreferencesPatch {
-  const allowed = [
-    "localOnly",
-    "cloudSync",
-    "serviceNotices",
-    "personalizedRecommendations",
-  ] as const;
-  const keys = Object.keys(body);
-  if (keys.length < 1 || !keys.every((key) => allowed.includes(key as typeof allowed[number]))) {
-    throw invalidArgument("隐私偏好只能包含允许的字段，且至少包含一项");
-  }
-  for (const key of keys) {
-    if (typeof body[key] !== "boolean") throw invalidArgument(`隐私偏好字段 ${key} 必须是布尔值`);
-  }
-  return {
-    ...(body.localOnly === undefined ? {} : { localOnly: body.localOnly }),
-    ...(body.cloudSync === undefined ? {} : { cloudSync: body.cloudSync }),
-    ...(body.serviceNotices === undefined ? {} : { serviceNotices: body.serviceNotices }),
-    ...(body.personalizedRecommendations === undefined ? {} : { personalizedRecommendations: body.personalizedRecommendations }),
-  } as PrivacyPreferencesPatch;
-}
-
-function idempotencyKey(request: IncomingMessage): string {
-  const value = request.headers["idempotency-key"];
-  if (typeof value !== "string" || value.length < 1 || value.length > 128 || !/^[\x21-\x7e]+$/u.test(value)) {
-    throw invalidArgument("请求必须包含合法的 Idempotency-Key");
-  }
-  return value;
-}
-
-function validateWorkBody(body: Record<string, unknown>): {
-  readonly title: string;
-  readonly coverFileId: string;
-  readonly status: WorkStatus;
-  readonly pattern: PersistedPattern;
-} {
-  const allowed = ["title", "coverFileId", "status", "pattern"];
-  if (!Object.keys(body).every((key) => allowed.includes(key)) || typeof body.coverFileId !== "string" || !body.coverFileId.trim()) {
-    throw invalidArgument("作品请求只能包含 title、coverFileId、status 和 pattern");
-  }
-  const title = body.title === undefined ? "未命名作品" : body.title;
-  if (typeof title !== "string" || title.trim().length < 1 || Array.from(title.trim()).length > 120 || /[\u0000-\u001f\u007f]/u.test(title)) {
-    throw invalidArgument("作品标题长度必须为 1 到 120 个字符，且不能包含控制字符");
-  }
-  const status = body.status === undefined ? "completed" : body.status;
-  if (status !== "draft" && status !== "completed") throw invalidArgument("作品 status 只能是 draft 或 completed");
-  const validated = validatePersistedPattern(body.pattern);
-  return { title: title.trim(), coverFileId: body.coverFileId.trim(), status, pattern: validated.pattern };
-}
-
-function validateWorkUpdateBody(body: Record<string, unknown>): Omit<UpdateWorkInput, "userId" | "workId"> {
-  const allowed = ["title", "coverFileId", "status", "pattern"];
-  const keys = Object.keys(body);
-  if (keys.length < 1 || !keys.every((key) => allowed.includes(key))) {
-    throw invalidArgument("作品更新只能包含 title、coverFileId、status 和 pattern，且至少包含一项");
-  }
-  const result: {
-    title?: string;
-    coverFileId?: string;
-    status?: WorkStatus;
-    validatedPattern?: ReturnType<typeof validatePersistedPattern>;
-  } = {};
-  if ("title" in body) {
-    if (typeof body.title !== "string" || body.title.trim().length < 1 || Array.from(body.title.trim()).length > 120 || /[\u0000-\u001f\u007f]/u.test(body.title)) {
-      throw invalidArgument("作品标题长度必须为 1 到 120 个字符，且不能包含控制字符");
-    }
-    result.title = body.title.trim();
-  }
-  if ("coverFileId" in body) {
-    if (typeof body.coverFileId !== "string" || !body.coverFileId.trim()) {
-      throw invalidArgument("coverFileId 必须是非空字符串");
-    }
-    result.coverFileId = body.coverFileId.trim();
-  }
-  if ("status" in body) {
-    if (body.status !== "draft" && body.status !== "completed") {
-      throw invalidArgument("作品 status 只能是 draft 或 completed");
-    }
-    result.status = body.status;
-  }
-  if ("pattern" in body) result.validatedPattern = validatePersistedPattern(body.pattern);
-  return result;
-}
-
-function validateFavoriteBody(body: Record<string, unknown>): boolean {
-  const keys = Object.keys(body);
-  if (keys.length !== 1 || keys[0] !== "favorite" || typeof body.favorite !== "boolean") {
-    throw invalidArgument("收藏请求体只能包含布尔字段 favorite");
-  }
-  return body.favorite;
-}
-
-function validateDownloadBody(body: Record<string, unknown>): {
-  readonly workId: string;
-  readonly fileType: DownloadFileType;
-} {
-  const keys = Object.keys(body);
-  if (
-    keys.length !== 2
-    || !keys.every((key) => key === "workId" || key === "fileType")
-    || typeof body.workId !== "string"
-    || !body.workId.trim()
-    || (body.fileType !== "preview" && body.fileType !== "chart" && body.fileType !== "materials" && body.fileType !== "palette")
-  ) {
-    throw invalidArgument("下载请求体只能包含非空 workId 和合法 fileType");
-  }
-  return { workId: body.workId.trim(), fileType: body.fileType };
-}
-
-function validateCreatePaymentBody(body: Record<string, unknown>): string {
-  const keys = Object.keys(body);
-  if (keys.length !== 1 || keys[0] !== "packageId" || typeof body.packageId !== "string") {
-    throw invalidArgument("支付创建请求体只能包含字符串字段 packageId");
-  }
-  const packageId = body.packageId.trim();
-  if (!packageId || packageId.length > 40) throw invalidArgument("packageId 无效");
-  return packageId;
-}
-
-function validateCreateAiGenerationBody(body: Record<string, unknown>): {
-  readonly inputFileId: string;
-  readonly style: AiGenerationStyle;
-  readonly detailLevel: AiGenerationDetailLevel;
-  readonly backgroundMode: AiGenerationBackgroundMode;
-} {
-  const keys = Object.keys(body);
-  if (
-    keys.length !== 4
-    || !keys.every((key) => ["inputFileId", "style", "detailLevel", "backgroundMode"].includes(key))
-    || typeof body.inputFileId !== "string"
-    || !body.inputFileId.trim()
-    || (body.style !== "natural" && body.style !== "cartoon" && body.style !== "minimal")
-    || (body.detailLevel !== "low" && body.detailLevel !== "medium" && body.detailLevel !== "high")
-    || (body.backgroundMode !== "keep" && body.backgroundMode !== "simplify" && body.backgroundMode !== "remove")
-  ) {
-    throw invalidArgument("AI 生成请求必须包含合法的 inputFileId、style、detailLevel 和 backgroundMode");
-  }
-  return {
-    inputFileId: body.inputFileId.trim(),
-    style: body.style,
-    detailLevel: body.detailLevel,
-    backgroundMode: body.backgroundMode,
-  };
 }
 
 function wechatPaymentHeaders(request: IncomingMessage): Readonly<Record<string, string | undefined>> {
@@ -456,7 +289,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         if (url.searchParams.size > 0) throw invalidArgument("AI 文件地址不接受查询参数");
         const file = await dependencies.aiFiles.read(url.pathname);
         if (file) {
-          sendImage(response, file);
+          sendImage(response, file, "private, no-store");
           return;
         }
       }
@@ -484,6 +317,14 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         if (upload.buffer.length > maximumBytes) {
           throw new AppError(413, "PAYLOAD_TOO_LARGE", "图片文件超过大小限制");
         }
+        if (type === "ai_input") {
+          dependencies.aiRateLimiter?.check(`${currentUser.id}:upload`);
+          await requireContentSecurity(dependencies).checkMedia(currentUser.id, {
+            buffer: upload.buffer,
+            filename: upload.filename,
+            contentType: upload.declaredContentType,
+          });
+        }
         sendJson(response, 201, {
           file: await dependencies.files.upload(currentUser.id, {
             type,
@@ -510,7 +351,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         }
         const media = await dependencies.contentSecurity.readMedia(url.pathname);
         if (media) {
-          sendImage(response, media);
+          sendImage(response, media, "private, no-store");
           return;
         }
       }
@@ -632,6 +473,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         if (url.searchParams.size > 0) throw invalidArgument("AI 生成接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         const body = validateCreateAiGenerationBody(await readJsonObject(request));
+        dependencies.aiRateLimiter?.check(`${currentUser.id}:generation`);
         sendJson(response, 201, await dependencies.aiGenerations.create({
           userId: currentUser.id,
           idempotencyKey: idempotencyKey(request),
@@ -817,7 +659,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           sendJson(
             response,
             error.statusCode,
-            errorPayload(error.code, error.message, id, error.details),
+            errorPayload(error.code, error.message, id, publicErrorDetails(error)),
           );
         } else {
           console.error(JSON.stringify({
@@ -833,4 +675,12 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       }
     });
   };
+}
+
+function publicErrorDetails(error: AppError): Readonly<Record<string, unknown>> {
+  if (error.code !== "RATE_LIMITED") return {};
+  const retryAfterSeconds = error.details.retryAfterSeconds;
+  return typeof retryAfterSeconds === "number" && Number.isSafeInteger(retryAfterSeconds)
+    ? { retryAfterSeconds }
+    : {};
 }

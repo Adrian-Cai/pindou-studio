@@ -28,6 +28,12 @@ test("readConfig loads validated server and database settings", () => {
   assert.deepEqual(config.qwenImage, { enabled: false });
   assert.deepEqual(config.wechatPay, { enabled: false });
   assert.equal(config.avatars.maximumBytes, 2 * 1024 * 1024);
+  assert.equal(config.aiFiles.maximumBytes, 10 * 1024 * 1024);
+  assert.equal(config.aiFiles.maximumWidth, 4096);
+  assert.equal(config.aiFiles.maximumHeight, 4096);
+  assert.equal(config.aiFiles.maximumPixels, 16 * 1024 * 1024);
+  assert.equal(config.aiFiles.retentionMs, 24 * 60 * 60 * 1000);
+  assert.deepEqual(config.aiRateLimit, { maximumRequests: 5, windowMs: 10 * 60 * 1000 });
   assert.match(config.avatars.storageDirectory, /data[\\/]avatars$/);
   assert.equal(config.deployment.persistentStorageMounted, false);
   assert.equal(config.deployment.monitoringAlertsConfigured, false);
