@@ -4,7 +4,7 @@
 
 - 调整 Jenkins 部署流程：Jenkins 不再按 Git 提交短 SHA 选择镜像，改为在 `162.14.123.*` 上直接拉取 `docker.cnb.cool/imacaiy/pindou-studio:latest` 并重启 API 容器。
 - Jenkins 不管理数据库，也不执行 SQL 迁移；`config/api.env` 仅作为 API 容器的运行时配置，数据库仍位于 `120.53.19.*`。
-- Jenkins 任务改为固定使用安装 Docker 的 `production-docker` Agent，并增加 Docker、Compose、数据库客户端和 Docker Daemon 的部署前检查。
+- Jenkins 任务改为固定使用 `master` 节点上的 `production-docker` 标签，并增加 Docker、Compose 和 Docker Daemon 的部署前检查。
 - CNB 的 `master` 推送构建改为串行执行，避免多个构建同时更新 `latest` 时出现旧镜像覆盖新镜像。
 
 ## 0.28.11

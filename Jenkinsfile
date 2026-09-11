@@ -1,7 +1,6 @@
 pipeline {
-    // 将 Jenkins 任务固定到 162.14.123.* 上安装 Docker 的 Agent。
-    // 如果该节点使用其它标签，请把 production-docker 改成实际标签。
-    agent { label 'production-docker' }
+    // 使用名为 master 且带有 production-docker 标签的节点。
+    agent { label 'master && production-docker' }
 
     options {
         timestamps()
