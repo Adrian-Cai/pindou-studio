@@ -85,11 +85,6 @@ export interface ServerConfig {
     readonly maximumRequests: number;
     readonly windowMs: number;
   };
-  readonly aiQueue: {
-    readonly maximumConcurrent: number;
-    readonly maximumQueued: number;
-    readonly requestsPerMinute: number;
-  };
   readonly contentSecurity: {
     readonly messageToken: string;
     readonly mediaStorageDirectory: string;
@@ -352,11 +347,6 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     aiRateLimit: {
       maximumRequests: integer(env, "AI_RATE_LIMIT_MAX_REQUESTS", 5, 1, 100, issues),
       windowMs: integer(env, "AI_RATE_LIMIT_WINDOW_MS", 10 * 60 * 1_000, 1_000, 24 * 60 * 60 * 1_000, issues),
-    },
-    aiQueue: {
-      maximumConcurrent: integer(env, "AI_QUEUE_MAX_CONCURRENT", 5, 1, 10, issues),
-      maximumQueued: integer(env, "AI_QUEUE_MAX_QUEUED", 50, 0, 200, issues),
-      requestsPerMinute: integer(env, "AI_PROVIDER_RPM", 20, 1, 20, issues),
     },
     contentSecurity: {
       messageToken: env.WECHAT_CONTENT_SECURITY_TOKEN?.trim() || "",

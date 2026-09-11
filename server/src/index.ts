@@ -84,17 +84,12 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       () => new Date(),
       contentSecurity,
       config.aiFiles.retentionMs,
-      config.aiQueue,
     );
     const aiRateLimiter = new InMemoryRateLimiter(
       config.aiRateLimit.maximumRequests,
       config.aiRateLimit.windowMs,
     );
     void aiGenerations.cleanupExpired().catch(() => undefined);
-    const aiQueueTimer = setInterval(() => {
-      aiGenerations.pumpQueue();
-    }, 1_000);
-    aiQueueTimer.unref();
     const aiCleanupTimer = setInterval(() => {
       void aiGenerations.cleanupExpired().catch(() => undefined);
     }, Math.min(config.aiFiles.retentionMs, 60 * 60 * 1_000));
@@ -144,7 +139,6 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       inspection,
       http,
       close: async () => {
-        clearInterval(aiQueueTimer);
         clearInterval(aiCleanupTimer);
         await http.close();
         await database.close();

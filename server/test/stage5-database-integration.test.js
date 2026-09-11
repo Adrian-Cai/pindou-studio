@@ -146,7 +146,7 @@ test("stage 5 real database flow: package snapshot, tamper rejection, verified g
     assert.equal(finalState.rows[0].status, "paid");
     assert.equal(finalState.rows[0].wx_transaction_id, `wx_tx_${suffix}`);
     assert.equal(finalState.rows[0].grant_count, 1);
-    assert.equal(finalState.rows[0].granted_quota, 3);
+    assert.equal(finalState.rows[0].granted_quota, 30);
   } finally {
     await pool.query("DELETE FROM pindou_quota_transactions WHERE user_id = $1", [userId]);
     await pool.query("DELETE FROM pindou_orders WHERE user_id = $1", [userId]);

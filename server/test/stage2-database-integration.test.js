@@ -78,6 +78,7 @@ test("stage 2 real database flow: upload, create, list, detail, update, media re
       coverMaximumBytes: config.covers.maximumBytes,
       files: new PostgresFileAssetService(pool, covers),
       works: new PostgresWorkService(pool),
+      contentSecurity: { async checkText() { return { safe: true, traceId: null }; } },
     }), config.host, 0);
     const baseUrl = `http://${config.host}:${running.port}`;
     activeCovers = new FileSystemCoverStorage(
