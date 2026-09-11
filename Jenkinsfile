@@ -1,6 +1,6 @@
 pipeline {
-    // 使用名为 master 且带有 production-docker 标签的节点。
-    agent { label 'master && production-docker' }
+    // 使用 master 节点上配置的 production-docker 标签。
+    agent { label 'production-docker' }
 
     options {
         timestamps()
