@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.28.13
+
+- 调整 Jenkins 健康检查流程：Compose 先启动 API，再由独立健康检查确认服务状态；检查失败时自动输出容器状态和最近 100 行 API 日志。
+- 明确 Jenkins 不使用 `--remove-orphans`，避免清理与 API 项目无关的数据库容器。
+
 ## 0.28.12
 
 - 调整 Jenkins 部署流程：Jenkins 不再按 Git 提交短 SHA 选择镜像，改为在 `162.14.123.*` 上直接拉取 `docker.cnb.cool/imacaiy/pindou-studio:latest` 并重启 API 容器。

@@ -60,7 +60,7 @@ pipeline {
                     docker compose --env-file "$RUNTIME_ENV_FILE" config --quiet
                     IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" \
                       docker compose --env-file "$RUNTIME_ENV_FILE" \
-                        up -d --wait --wait-timeout 120 api
+                        up -d api
                 '''
             }
         }
@@ -69,9 +69,18 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    curl --fail --silent --show-error \
-                      --retry 20 --retry-delay 3 --retry-connrefused \
-                      http://127.0.0.1:3100/health > /dev/null
+                    if ! curl --fail --silent --show-error \
+                        --retry 20 --retry-delay 3 --retry-connrefused \
+                        http://127.0.0.1:3100/health > /dev/null; then
+                        echo "API 健康检查失败，输出容器状态和最近日志"
+                        cd "$DEPLOY_DIR"
+                        IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" \
+                          docker compose --env-file "$RUNTIME_ENV_FILE" ps || true
+                        IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" \
+                          docker compose --env-file "$RUNTIME_ENV_FILE" \
+                            logs --tail=100 api || true
+                        exit 1
+                    fi
                 '''
             }
         }
