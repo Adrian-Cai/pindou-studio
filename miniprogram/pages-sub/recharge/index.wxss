@@ -16,9 +16,12 @@
 .recharge-option__label { flex: 1; margin-left: 18rpx; font-size: 28rpx; }
 .recharge-option__price { font-size: 31rpx; font-weight: 600; }
 .recharge-option--active .recharge-option__price { color: var(--color-primary); }
-.recharge-option__check { display: flex; width: 36rpx; height: 36rpx; align-items: center; justify-content: center; margin-left: 18rpx; border-radius: 50%; background: var(--color-primary); color: #fff; font-size: 22rpx; }
+.recharge-option__check { display: flex; width: 36rpx; height: 36rpx; align-items: center; justify-content: center; margin-left: 18rpx; border-radius: 50%; background: var(--color-primary); }
+.recharge-option__check image { width: 24rpx; height: 24rpx; }
 
 .payment-method { display: flex; height: 88rpx; align-items: center; justify-content: space-between; margin-top: 24rpx; padding: 0 28rpx; border-radius: var(--radius-card-small); box-shadow: var(--shadow-card); font-size: 27rpx; }
-.payment-method view text { color: var(--color-primary); }
+.payment-method view { display: flex; align-items: center; gap: 10rpx; }
+.payment-method view image { width: 32rpx; height: 32rpx; }
+.payment-method view .payment-method__arrow { margin-left: 4rpx; }
 .recharge-button { width: 100%; margin-top: 24rpx; }
 .recharge-notes { margin-top: 22rpx; color: var(--color-text-tertiary); font-size: 21rpx; line-height: 34rpx; text-align: center; }

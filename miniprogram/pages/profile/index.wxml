@@ -46,7 +46,7 @@
     <view class="user-card ui-card" bindtap="openUserPanel">
       <image class="user-card__avatar" src="{{avatarPath}}" mode="aspectFill" />
       <view class="user-card__name">{{accountName}}</view>
-      <view class="user-card__arrow">›</view>
+      <image class="user-card__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
     </view>
 
     <!-- B. 权益卡 -->
@@ -63,7 +63,7 @@
             <text class="benefit-card__quota-unit"> / {{dailyFreeAiGenerationQuota}} 次</text>
           </view>
         </view>
-        <view class="benefit-card__action" bindtap="showRechargeSheet">购买 AI 生成次数 ›</view>
+        <view class="benefit-card__action" bindtap="showRechargeSheet">购买 AI 生成次数 <image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
       </view>
     </view>
 
@@ -72,38 +72,38 @@
         <view class="order-entry__title">我的订单</view>
         <view class="order-entry__description">查看支付记录、套餐和订单状态</view>
       </view>
-      <text class="order-entry__arrow">›</text>
+      <image class="order-entry__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
     </view>
 
     <!-- C. 2×2 功能宫格 -->
     <view class="profile-grid">
       <view class="profile-grid__item ui-card" bindtap="openProjects">
         <view class="profile-grid__body">
-          <image class="profile-grid__icon" src="/assets/icons/profile-stat-gallery.svg" mode="aspectFit" />
+          <image class="profile-grid__icon" src="/assets/icons/iconsax/gallery.svg" mode="aspectFit" aria-hidden="true" />
           <text class="profile-grid__title">我的作品</text>
         </view>
-        <text class="profile-grid__arrow">›</text>
+        <image class="profile-grid__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
       </view>
       <view class="profile-grid__item ui-card" bindtap="openFavorites">
         <view class="profile-grid__body">
-          <image class="profile-grid__icon" src="/assets/icons/profile-stat-star.svg" mode="aspectFit" />
+          <image class="profile-grid__icon" src="/assets/icons/iconsax/heart.svg" mode="aspectFit" aria-hidden="true" />
           <text class="profile-grid__title">我的收藏</text>
         </view>
-        <text class="profile-grid__arrow">›</text>
+        <image class="profile-grid__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
       </view>
       <view class="profile-grid__item ui-card" bindtap="openDownloads">
         <view class="profile-grid__body">
-          <image class="profile-grid__icon" src="/assets/icons/profile-stat-download.svg" mode="aspectFit" />
+          <image class="profile-grid__icon" src="/assets/icons/iconsax/document-download.svg" mode="aspectFit" aria-hidden="true" />
           <text class="profile-grid__title">下载记录</text>
         </view>
-        <text class="profile-grid__arrow">›</text>
+        <image class="profile-grid__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
       </view>
       <view class="profile-grid__item ui-card" bindtap="openSettings">
         <view class="profile-grid__body">
-          <image class="profile-grid__icon" src="/assets/icons/profile-stat-settings.svg" mode="aspectFit" />
+          <image class="profile-grid__icon" src="/assets/icons/iconsax/setting-2.svg" mode="aspectFit" aria-hidden="true" />
           <text class="profile-grid__title">设置</text>
         </view>
-        <text class="profile-grid__arrow">›</text>
+        <image class="profile-grid__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
       </view>
     </view>
   </view>
@@ -139,7 +139,7 @@
       <text>支付方式</text>
       <view class="payment-row__method">
         <text>微信支付</text>
-        <text class="payment-row__arrow">›</text>
+        <image class="payment-row__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
       </view>
     </view>
     <button class="button-primary recharge-sheet__pay" style="width: 100%;" disabled="{{packagesLoading || packages.length === 0}}" bindtap="purchase">立即支付</button>
@@ -193,7 +193,7 @@
 <view wx:if="{{activeSheet === 'profile'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
   <view class="profile-sheet profile-editor" catchtap="stopPropagation">
     <view class="profile-sheet__handle"></view>
-    <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭个人资料编辑">×</view>
+    <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭个人资料编辑"><image src="/assets/icons/iconsax/close.svg" mode="aspectFit" aria-hidden="true" /></view>
     <view class="profile-editor__title">完善个人资料</view>
     <view class="profile-editor__subtitle">头像使用默认品牌图，昵称保存到账号</view>
     <view class="profile-editor__avatar-button" aria-label="默认头像">

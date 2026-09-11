@@ -10,7 +10,7 @@
           class="step {{currentStep === item.id ? 'step--active' : ''}} {{currentStep > item.id ? 'step--complete' : ''}}"
           role="listitem"
         >
-          <view class="step-number">{{currentStep > item.id ? '✓' : item.id}}</view>
+          <view class="step-number"><image wx:if="{{currentStep > item.id}}" src="/assets/icons/iconsax/check.svg" mode="aspectFit"/><text wx:else>{{item.id}}</text></view>
           <text>{{item.label}}</text>
         </view>
         <view wx:if="{{index < generationSteps.length - 1}}" class="step-line" aria-hidden="true"></view>
@@ -52,7 +52,7 @@
         <view
           wx:if="{{generationMode === item.id}}"
           class="mode-card__check mode-card__check--{{item.id}}"
-        >✓</view>
+        ><image src="/assets/icons/iconsax/check.svg" mode="aspectFit" /></view>
 
         <!-- 图标 -->
         <image class="mode-card__icon" src="{{item.icon}}" mode="aspectFit" />

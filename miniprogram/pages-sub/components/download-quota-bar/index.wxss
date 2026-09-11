@@ -55,11 +55,8 @@
   justify-content: center;
   border: 2rpx solid var(--color-text-tertiary);
   border-radius: 50%;
-  color: var(--color-text-secondary);
-  font-size: 22rpx;
-  font-weight: 600;
-  line-height: 1;
 }
+.quota-strip__help image { width: 28rpx; height: 28rpx; }
 
 .quota-strip__link {
   flex: 0 0 auto;
@@ -67,8 +64,8 @@
 }
 
 .quota-strip__arrow {
-  font-size: 30rpx;
-  line-height: 1;
+  width: 28rpx;
+  height: 28rpx;
 }
 
 .quota-tips {

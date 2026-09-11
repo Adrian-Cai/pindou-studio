@@ -1,6 +1,6 @@
 <page-layout title="支付成功" showMainNav selectedTab="2">
   <view class="payment-success">
-    <view class="success-mark"><view>✓</view></view>
+    <view class="success-mark"><view><image src="/assets/icons/iconsax/check.svg" mode="aspectFit" /></view></view>
     <view class="payment-success__title">已成功购买 AI 生成次数</view>
 
     <view class="payment-detail ui-card">

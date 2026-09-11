@@ -323,10 +323,7 @@
   text-align: center;
 }
 
-.result-empty__mark {
-  color: var(--color-primary);
-  font-size: 72rpx;
-}
+.result-empty__mark { display: block; width: 72rpx; height: 72rpx; margin: 0 auto; }
 
 .result-empty__title {
   margin-top: 16rpx;

@@ -2,20 +2,20 @@ const items = [
   {
     pagePath: '/pages/home/index',
     text: '首页',
-    icon: '/assets/icons/home.svg',
-    activeIcon: '/assets/icons/home-active.svg',
+    icon: '/assets/icons/iconsax/home-2.svg',
+    activeIcon: '/assets/icons/iconsax/home-2-active.svg',
   },
   {
     pagePath: '/pages/projects/index',
     text: '作品',
-    icon: '/assets/icons/projects.svg',
-    activeIcon: '/assets/icons/projects-active.svg',
+    icon: '/assets/icons/iconsax/gallery-muted.svg',
+    activeIcon: '/assets/icons/iconsax/gallery.svg',
   },
   {
     pagePath: '/pages/profile/index',
     text: '我的',
-    icon: '/assets/icons/profile.svg',
-    activeIcon: '/assets/icons/profile-active.svg',
+    icon: '/assets/icons/iconsax/profile-circle.svg',
+    activeIcon: '/assets/icons/iconsax/profile-circle-active.svg',
   },
 ]
 

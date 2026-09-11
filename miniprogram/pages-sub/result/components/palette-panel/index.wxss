@@ -126,8 +126,8 @@
 }
 
 .palette-toggle__arrow-up {
-  font-size: 26rpx;
-  line-height: 36rpx;
+  width: 32rpx;
+  height: 32rpx;
 }
 
 .palette-card {

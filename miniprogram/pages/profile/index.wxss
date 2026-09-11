@@ -35,11 +35,9 @@
   white-space: nowrap;
 }
 .user-card__arrow {
+  width: 36rpx;
+  height: 36rpx;
   flex-shrink: 0;
-  color: var(--color-text-tertiary);
-  font-size: 40rpx;
-  font-weight: 300;
-  line-height: 1;
 }
 
 /* ── 权益卡 ── */
@@ -122,6 +120,7 @@
   opacity: 0.76;
   transform: scale(0.97);
 }
+.benefit-card__action image { width: 28rpx; height: 28rpx; margin-left: 6rpx; }
 
 /* ── 订单入口 ── */
 .order-entry {
@@ -155,12 +154,10 @@
   line-height: 34rpx;
 }
 .order-entry__arrow {
+  width: 36rpx;
+  height: 36rpx;
   flex-shrink: 0;
   margin-left: 24rpx;
-  color: var(--color-text-tertiary);
-  font-size: 40rpx;
-  font-weight: 300;
-  line-height: 1;
 }
 
 /* ── 2×2 功能宫格 ── */
@@ -205,11 +202,9 @@
   line-height: 1.2;
 }
 .profile-grid__arrow {
+  width: 36rpx;
+  height: 36rpx;
   flex-shrink: 0;
-  color: var(--color-text-tertiary);
-  font-size: 40rpx;
-  font-weight: 300;
-  line-height: 1;
 }
 
 /* ── 未登录状态 ── */
@@ -232,7 +227,8 @@
 .sheet-mask { position: fixed; z-index: 300; inset: 0; background: rgba(15, 18, 17, 0.48); }
 .profile-sheet { position: absolute; right: 0; bottom: 0; left: 0; box-sizing: border-box; padding: 16rpx 32rpx calc(32rpx + env(safe-area-inset-bottom)); border-radius: var(--radius-card-large) var(--radius-card-large) 0 0; background: var(--color-surface); box-shadow: var(--shadow-card); }
 .profile-sheet__handle { width: 80rpx; height: 8rpx; margin: 0 auto 24rpx; border-radius: 8rpx; background: var(--color-disabled); }
-.profile-sheet__close { position: absolute; top: 24rpx; right: 28rpx; display: flex; width: 88rpx; height: 88rpx; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); color: var(--color-text-secondary); font-size: 40rpx; font-weight: 300; line-height: 1; transition: var(--transition-press); }
+.profile-sheet__close { position: absolute; top: 24rpx; right: 28rpx; display: flex; width: 88rpx; height: 88rpx; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); transition: var(--transition-press); }
+.profile-sheet__close image { width: 36rpx; height: 36rpx; }
 .profile-sheet__close:active { background: var(--strong-overlay); transform: scale(0.97); }
 
 /* ── Recharge Sheet ── */
@@ -254,7 +250,7 @@
 .package-radio--selected::after { width: 14rpx; height: 14rpx; border-radius: 50%; background: var(--color-primary); content: ""; }
 .payment-row { display: flex; height: 88rpx; align-items: center; justify-content: space-between; padding: 0 24rpx; border: 0; border-radius: var(--radius-card-small); background: var(--color-surface); box-shadow: var(--shadow-card); font-size: 26rpx; }
 .payment-row__method { display: flex; align-items: center; gap: 16rpx; color: var(--color-text); }
-.payment-row__arrow { color: var(--color-text-secondary); font-size: 40rpx; font-weight: 300; line-height: 1; }
+.payment-row__arrow { width: 36rpx; height: 36rpx; }
 .recharge-sheet__pay { width: calc(100vw - 64rpx); margin-top: 24rpx; }
 .recharge-sheet__cancel { padding-top: 28rpx; color: var(--color-text-secondary); font-size: 27rpx; text-align: center; }
 

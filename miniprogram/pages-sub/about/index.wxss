@@ -14,15 +14,13 @@
 .about-menu { margin-top: 28rpx; padding: 0 32rpx; text-align: left; }
 .about-menu__item { display: flex; height: 94rpx; align-items: center; border-bottom: 1rpx solid var(--color-border); }
 .about-menu__item:last-child { border-bottom: 0; }
-.about-menu__icon { width: 64rpx; font-size: 36rpx; }
-.about-menu__icon--green { color: var(--color-primary); }
-.about-menu__icon--blue { color: #4c8df6; }
-.about-menu__icon--yellow { color: #f4a11f; }
+.about-menu__icon { width: 40rpx; height: 40rpx; flex-shrink: 0; margin-right: 24rpx; }
 .about-menu__item view { flex: 1; font-size: 28rpx; }
-.about-menu__arrow { color: var(--color-text-secondary); font-size: 40rpx; line-height: 1; }
-.about-menu__meta { color: var(--color-text-secondary); font-size: 24rpx; line-height: 36rpx; white-space: nowrap; }
+.about-menu__arrow { width: 32rpx; height: 32rpx; flex-shrink: 0; }
+.about-menu__meta { flex: 0 0 auto !important; margin-left: 12rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 36rpx; white-space: nowrap; }
 .about-footer { padding: 36rpx 0 8rpx; color: var(--color-text-secondary); font-size: 23rpx; line-height: 40rpx; }
 .about-footer text { color: var(--color-primary); }
+.about-footer image { display: inline-block; width: 24rpx; height: 24rpx; vertical-align: -4rpx; }
 
 @media (max-width: 340px) {
   .about-intro__body { max-width: 72%; }

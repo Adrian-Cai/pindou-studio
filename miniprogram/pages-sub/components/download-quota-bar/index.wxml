@@ -8,7 +8,7 @@
       role="button"
       aria-label="免费下载次数说明"
       aria-expanded="{{tipsOpen}}"
-    >?</view>
+    ><image src="/assets/icons/iconsax/info-circle.svg" mode="aspectFit" aria-hidden="true" /></view>
   </view>
 
   <view
@@ -18,7 +18,7 @@
     aria-label="开通会员享无限下载"
   >
     <text>开通会员享无限下载</text>
-    <text class="quota-strip__arrow">›</text>
+    <image class="quota-strip__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
   </view>
 
   <view wx:if="{{tipsOpen}}" class="quota-tips" catchtap="keepTipsOpen" role="tooltip">

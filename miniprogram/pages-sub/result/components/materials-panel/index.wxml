@@ -43,7 +43,7 @@
   >
     <text wx:if="{{expanded}}">收起颜色列表</text>
     <text wx:else>展开全部 {{materials.length}} 种颜色</text>
-    <text class="material-list__toggle-icon">{{expanded ? '↑' : '↓'}}</text>
+    <image class="material-list__toggle-icon" src="{{expanded ? '/assets/icons/iconsax/chevron-up.svg' : '/assets/icons/iconsax/chevron-down.svg'}}" mode="aspectFit" aria-hidden="true" />
   </button>
   <view wx:if="{{materials.length}}" class="download-action">
     <result-download-button

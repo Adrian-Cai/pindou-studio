@@ -5,4 +5,4 @@
 .settings-item:active { opacity: 0.72; }
 .settings-item__icon { width: 40rpx; height: 40rpx; flex-shrink: 0; margin-right: 20rpx; }
 .settings-item__title { flex: 1; font-size: 28rpx; }
-.settings-item__arrow { color: var(--color-text-secondary); font-size: 44rpx; font-weight: 300; }
+.settings-item__arrow { width: 36rpx; height: 36rpx; }

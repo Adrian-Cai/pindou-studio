@@ -33,7 +33,7 @@
       </view>
       <view class="palette-toggle palette-toggle--collapse" hover-class="palette-toggle--pressed" bindtap="togglePalette" role="button" aria-label="收起色板" aria-expanded="true">
         <text>收起色板</text>
-        <text class="palette-toggle__arrow-up">↑</text>
+        <image class="palette-toggle__arrow-up" src="/assets/icons/iconsax/chevron-up.svg" mode="aspectFit" aria-hidden="true" />
       </view>
     </block>
   </block>

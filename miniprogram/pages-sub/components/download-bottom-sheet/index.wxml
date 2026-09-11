@@ -23,14 +23,14 @@
           <image
             wx:if="{{config.iconType === 'image'}}"
             class="download-sheet__icon-img"
-            src="/assets/icons/project-summary-gallery.svg"
+            src="/assets/icons/iconsax/gallery.svg"
             mode="aspectFit"
           />
           <!-- 材料清单图标 -->
           <image
             wx:elif="{{config.iconType === 'document'}}"
             class="download-sheet__icon-img"
-            src="/assets/icons/project-summary-document.svg"
+            src="/assets/icons/iconsax/document-text.svg"
             mode="aspectFit"
           />
           <!-- 施工图图标 -->
@@ -55,7 +55,7 @@
         </view>
 
         <view class="download-sheet__file-check">
-          <text class="download-sheet__check-symbol">✓</text>
+          <image class="download-sheet__check-symbol" src="/assets/icons/iconsax/check.svg" mode="aspectFit" />
         </view>
       </view>
 
@@ -108,7 +108,7 @@
       <view class="download-sheet__success-badge">
         <view class="download-sheet__success-halo">
           <view class="download-sheet__success-circle">
-            <text class="download-sheet__success-check">✓</text>
+            <image class="download-sheet__success-check" src="/assets/icons/iconsax/check.svg" mode="aspectFit" />
           </view>
         </view>
       </view>
@@ -141,7 +141,7 @@
       >
         <image
           class="download-sheet__cta-icon"
-          src="/assets/icons/project-summary-gallery.svg"
+          src="/assets/icons/iconsax/gallery.svg"
           mode="aspectFit"
         />
         <text>{{config.primaryActionLabel || '查看图片'}}</text>

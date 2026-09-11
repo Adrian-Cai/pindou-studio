@@ -148,8 +148,8 @@
 }
 
 .favorite__heart {
-  font-size: 32rpx;
-  line-height: 1;
+  width: 36rpx;
+  height: 36rpx;
 }
 
 @media (max-width: 340px) {

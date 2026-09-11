@@ -94,6 +94,8 @@ page {
   font-size: 22rpx;
 }
 
+.step-number image { width: 24rpx; height: 24rpx; }
+
 .step--active .step-number {
   background: #52b96c;
   box-shadow: 0 6rpx 16rpx rgba(82, 185, 108, 0.28);
@@ -288,7 +290,7 @@ page {
   color: #fff;
 }
 
-/* 右上角选中 ✓ */
+/* 右上角选中标记 */
 .mode-card__check {
   position: absolute;
   top: 8rpx;
@@ -313,6 +315,8 @@ page {
   background: var(--color-ai);
   color: #fff;
 }
+
+.mode-card__check image { width: 22rpx; height: 22rpx; }
 
 /* badge 存在时，check 位置让位 */
 .mode-card__badge ~ .mode-card__check {

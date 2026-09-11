@@ -2,27 +2,27 @@
   <view class="subpage projects-page">
     <view class="project-summary ui-card">
       <view class="project-summary__item">
-        <image class="project-summary__icon" src="/assets/icons/project-summary-gallery.svg" mode="aspectFit" />
+        <image class="project-summary__icon" src="/assets/icons/iconsax/gallery.svg" mode="aspectFit" aria-hidden="true" />
         <view class="project-summary__content"><view class="project-summary__label">全部作品</view><view class="project-summary__value project-summary__value--green">{{allWorks.length}}</view></view>
       </view>
       <view class="project-summary__line"></view>
       <view class="project-summary__item">
-        <image class="project-summary__icon" src="/assets/icons/project-summary-clock.svg" mode="aspectFit" />
+        <image class="project-summary__icon" src="/assets/icons/iconsax/clock.svg" mode="aspectFit" aria-hidden="true" />
         <view class="project-summary__content"><view class="project-summary__label">最近更新</view><view class="project-summary__value">{{recentCount}}</view></view>
       </view>
       <view class="project-summary__line"></view>
       <view class="project-summary__item">
-        <image class="project-summary__icon" src="/assets/icons/project-summary-document.svg" mode="aspectFit" />
+        <image class="project-summary__icon" src="/assets/icons/iconsax/document-text.svg" mode="aspectFit" aria-hidden="true" />
         <view class="project-summary__content"><view class="project-summary__label">草稿</view><view class="project-summary__value">{{draftCount}}</view></view>
       </view>
     </view>
 
     <view class="search-row">
       <view class="search-box">
-        <view class="search-box__icon"></view>
+        <image class="search-box__icon" src="/assets/icons/iconsax/search.svg" mode="aspectFit" aria-hidden="true" />
         <input class="search-box__input" placeholder-class="search-box__placeholder" placeholder="搜索作品名称" value="{{query}}" bindinput="changeSearch" />
       </view>
-      <view class="filter-button" bindtap="showFilter"><text class="filter-button__symbol">▽</text><text>筛选</text></view>
+      <view class="filter-button" bindtap="showFilter"><image class="filter-button__symbol" src="/assets/icons/iconsax/filter.svg" mode="aspectFit" aria-hidden="true" /><text>筛选</text></view>
     </view>
 
     <view class="segmented">
@@ -58,15 +58,15 @@
           </view>
           <view class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
             <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="startRename" aria-role="button" aria-label="重命名作品 {{item.title}}">
-              <image class="project-card__action-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
+              <image class="project-card__action-icon" src="/assets/icons/iconsax/edit-2.svg" mode="aspectFit" aria-hidden="true" />
               <text>重命名</text>
             </view>
             <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="downloadWork" aria-role="button" aria-label="下载作品 {{item.title}}">
-              <image class="project-card__action-icon" src="/assets/icons/profile-menu-download.svg" mode="aspectFit" />
+              <image class="project-card__action-icon" src="/assets/icons/iconsax/download.svg" mode="aspectFit" aria-hidden="true" />
               <text>下载</text>
             </view>
             <view class="project-card__action-inline project-card__action-inline--danger" data-id="{{item.id}}" catchtap="deleteWork" aria-role="button" aria-label="删除作品 {{item.title}}">
-              <image class="project-card__action-icon" src="/assets/icons/work-delete.svg" mode="aspectFit" />
+              <image class="project-card__action-icon" src="/assets/icons/iconsax/trash.svg" mode="aspectFit" aria-hidden="true" />
               <text>删除</text>
             </view>
           </view>
@@ -78,7 +78,7 @@
             aria-role="button"
             aria-label="继续编辑 {{item.title}}"
           >
-            <image class="project-card__continue-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
+            <image class="project-card__continue-icon" src="/assets/icons/iconsax/edit-2.svg" mode="aspectFit" aria-hidden="true" />
             <text>继续编辑</text>
           </view>
         </view>

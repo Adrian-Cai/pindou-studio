@@ -35,26 +35,10 @@
 }
 
 .search-box__icon {
-  position: relative;
-  box-sizing: border-box;
   width: 32rpx;
   height: 32rpx;
   flex-shrink: 0;
   margin-right: 18rpx;
-  border: 4rpx solid var(--color-text-secondary);
-  border-radius: 50%;
-}
-
-.search-box__icon::after {
-  position: absolute;
-  right: -12rpx;
-  bottom: -8rpx;
-  width: 16rpx;
-  height: 4rpx;
-  border-radius: 2rpx;
-  background: var(--color-text-secondary);
-  content: "";
-  transform: rotate(45deg);
 }
 
 .search-box__input {
@@ -88,8 +72,8 @@
 }
 
 .filter-button__symbol {
-  color: var(--color-text-secondary);
-  font-size: 28rpx;
+  width: 32rpx;
+  height: 32rpx;
 }
 
 .segmented {

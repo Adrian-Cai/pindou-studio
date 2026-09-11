@@ -28,14 +28,14 @@
           bindtap="zoomOut"
           disabled="{{scale <= 1}}"
           aria-label="缩小"
-        >−</button>
+        ><image src="/assets/icons/iconsax/minus.svg" mode="aspectFit" /></button>
         <text class="zoom-control__value">{{scalePercent}}%</text>
         <button
           class="zoom-control__button"
           bindtap="zoomIn"
           disabled="{{scale >= 3}}"
           aria-label="放大"
-        >＋</button>
+        ><image src="/assets/icons/iconsax/add.svg" mode="aspectFit" /></button>
       </view>
 
       <!-- ── 信息卡 ── -->
@@ -76,7 +76,7 @@
             bindtap="selectPaletteColor"
             aria-label="选择颜色 {{item}}"
           >
-            <text wx:if="{{selectedColor === item}}" class="palette__check">✓</text>
+            <image wx:if="{{selectedColor === item}}" class="palette__check" src="/assets/icons/iconsax/check.svg" mode="aspectFit" />
           </button>
         </view>
       </view>

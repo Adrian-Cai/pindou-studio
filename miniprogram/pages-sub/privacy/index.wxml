@@ -1,23 +1,23 @@
 <page-layout title="隐私设置" back showMainNav selectedTab="2">
   <view class="subpage privacy-page">
-    <view class="privacy-intro">◇　我们重视您的隐私与数据安全，您可以在这里管理个人信息与隐私偏好</view>
+    <view class="privacy-intro"><image src="/assets/icons/iconsax/shield-tick.svg" mode="aspectFit" aria-hidden="true" />我们重视您的隐私与数据安全，您可以在这里管理个人信息与隐私偏好</view>
 
     <view class="privacy-card ui-card">
-      <view class="privacy-card__title"><text>☁</text> 数据与同步</view>
+      <view class="privacy-card__title"><image src="/assets/icons/iconsax/cloud.svg" mode="aspectFit" aria-hidden="true" /> 数据与同步</view>
       <view class="privacy-setting privacy-setting--notice">
-        <view class="privacy-setting__icon">▱</view>
+        <image class="privacy-setting__icon" src="/assets/icons/iconsax/cloud.svg" mode="aspectFit" aria-hidden="true" />
         <view class="privacy-setting__content"><view>作品自动备份</view><text>已登录后，作品会自动安全备份至当前账号。网络不可用时，作品将暂存本机并在网络恢复后继续同步。</text></view>
       </view>
     </view>
 
     <view class="privacy-card ui-card privacy-documents">
-      <view class="privacy-card__title"><text>◇</text> 隐私与协议</view>
-      <view class="privacy-document" data-key="privacy-policy" bindtap="openDocument"><text>▤</text><view>小露拼豆隐私政策</view><text>›</text></view>
-      <view class="privacy-document" data-key="personal-information" bindtap="openDocument"><text>▤</text><view>个人信息收集清单</view><text>›</text></view>
-      <view class="privacy-document" data-key="third-party-sharing" bindtap="openDocument"><text>▤</text><view>第三方信息共享清单</view><text>›</text></view>
+      <view class="privacy-card__title"><image src="/assets/icons/iconsax/shield-tick.svg" mode="aspectFit" aria-hidden="true" /> 隐私与协议</view>
+      <view class="privacy-document" data-key="privacy-policy" bindtap="openDocument"><image src="/assets/icons/iconsax/document-text.svg" mode="aspectFit" aria-hidden="true" /><view>小露拼豆隐私政策</view><image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
+      <view class="privacy-document" data-key="personal-information" bindtap="openDocument"><image src="/assets/icons/iconsax/document-text.svg" mode="aspectFit" aria-hidden="true" /><view>个人信息收集清单</view><image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
+      <view class="privacy-document" data-key="third-party-sharing" bindtap="openDocument"><image src="/assets/icons/iconsax/document-text.svg" mode="aspectFit" aria-hidden="true" /><view>第三方信息共享清单</view><image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
     </view>
 
-    <view class="cancel-account ui-card {{isDeleting ? 'cancel-account--loading' : ''}}" bindtap="cancelAccount"><view class="cancel-account__icon">◯</view><view><view>{{isDeleting ? '正在注销…' : '注销账号'}}</view><text>注销后将无法恢复，请谨慎操作</text></view><text>›</text></view>
-    <view class="privacy-safe">♙　您的隐私安全，我们全力守护</view>
+    <view class="cancel-account ui-card {{isDeleting ? 'cancel-account--loading' : ''}}" bindtap="cancelAccount"><image class="cancel-account__icon" src="/assets/icons/iconsax/close-circle.svg" mode="aspectFit" aria-hidden="true" /><view><view>{{isDeleting ? '正在注销…' : '注销账号'}}</view><text>注销后将无法恢复，请谨慎操作</text></view><image class="cancel-account__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
+    <view class="privacy-safe"><image src="/assets/icons/iconsax/shield-tick.svg" mode="aspectFit" aria-hidden="true" />您的隐私安全，我们全力守护</view>
   </view>
 </page-layout>

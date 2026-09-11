@@ -67,8 +67,8 @@
 }
 
 .account-card__badge-check {
-  font-size: 20rpx;
-  font-weight: 700;
+  width: 22rpx;
+  height: 22rpx;
 }
 
 .account-card__desc {
@@ -183,10 +183,9 @@
 }
 
 .account-item__arrow {
+  width: 36rpx;
+  height: 36rpx;
   color: #A5A9B4;
-  font-size: 44rpx;
-  font-weight: 300;
-  line-height: 1;
 }
 
 .account-item__arrow--danger {

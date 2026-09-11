@@ -14,12 +14,12 @@
           <image src="/assets/icons/bead-stack.svg" mode="aspectFit" />
           <view class="recharge-option__label">{{item.label}}</view>
           <view class="recharge-option__price">¥ {{item.price}}</view>
-          <view class="recharge-option__check">{{selected === index ? '✓' : ''}}</view>
+          <view class="recharge-option__check"><image wx:if="{{selected === index}}" src="/assets/icons/iconsax/check.svg" mode="aspectFit" /></view>
         </view>
       </block>
     </view>
 
-    <view class="payment-method ui-card"><text>支付方式</text><view><text>●</text> 微信支付　›</view></view>
+    <view class="payment-method ui-card"><text>支付方式</text><view><image src="/assets/icons/login/wechat.svg" mode="aspectFit"/>微信支付<image class="payment-method__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit"/></view></view>
     <button class="button-primary recharge-button" style="width: 100%;" disabled="{{packagesLoading || packages.length === 0}}" bindtap="purchase">立即支付</button>
     <view class="recharge-notes"><view>支付即表示同意《付费服务协议》</view><view>支付能力接入前不会产生任何费用</view></view>
   </view>

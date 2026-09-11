@@ -92,7 +92,7 @@
     </view>
 
     <view wx:else class="result-empty">
-      <view class="result-empty__mark">◇</view>
+      <image class="result-empty__mark" src="/assets/icons/iconsax/document-text.svg" mode="aspectFit" />
       <view class="result-empty__title">当前没有可查看的作品</view>
       <view class="result-empty__hint">先上传图片并保存作品，这里会生成完整的制作资料</view>
       <button class="start-btn" bindtap="goCreate">开始制作</button>

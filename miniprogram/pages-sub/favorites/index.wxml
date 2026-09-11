@@ -12,16 +12,16 @@
 
     <view class="search-row">
       <view class="search-box">
-        <view class="search-box__icon"></view>
+        <image class="search-box__icon" src="/assets/icons/iconsax/search.svg" mode="aspectFit" aria-hidden="true" />
         <input class="search-box__input" placeholder-class="search-box__placeholder" placeholder="搜索收藏作品" value="{{query}}" bindinput="changeSearch" />
       </view>
-      <view class="filter-button" bindtap="showSort"><text class="filter-button__symbol">▽</text><text>排序</text></view>
+      <view class="filter-button" bindtap="showSort"><image class="filter-button__symbol" src="/assets/icons/iconsax/filter.svg" mode="aspectFit" aria-hidden="true" /><text>排序</text></view>
     </view>
 
     <view class="favorite-summary ui-card">
-      <view class="favorite-summary__item"><view class="favorite-summary__badge">★</view><view><view>收藏总数</view><text>{{allWorks.length}}</text> 个</view></view>
+      <view class="favorite-summary__item"><view class="favorite-summary__badge"><image src="/assets/icons/iconsax/heart-active.svg" mode="aspectFit" aria-hidden="true" /></view><view><view>收藏总数</view><text>{{allWorks.length}}</text> 个</view></view>
       <view class="favorite-summary__line"></view>
-      <view class="favorite-summary__item"><view class="favorite-summary__badge favorite-summary__badge--yellow">☆</view><view><view>最近新增</view><text>{{recentCount}}</text> 个</view></view>
+      <view class="favorite-summary__item"><view class="favorite-summary__badge favorite-summary__badge--yellow"><image src="/assets/icons/iconsax/heart.svg" mode="aspectFit" aria-hidden="true" /></view><view><view>最近新增</view><text>{{recentCount}}</text> 个</view></view>
     </view>
 
     <view wx:if="{{works.length}}" class="favorite-grid">
@@ -34,15 +34,15 @@
             <view class="favorite-card__date">收藏于 {{item.dateText}}</view>
             <view class="favorite-card__actions" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
               <view class="favorite-card__action favorite-card__action--primary" data-id="{{item.id}}" catchtap="openWork" aria-role="button" aria-label="查看作品 {{item.title}}">
-                <image class="favorite-card__action-icon" src="/assets/icons/work-view.svg" mode="aspectFit" />
+                <image class="favorite-card__action-icon" src="/assets/icons/iconsax/eye.svg" mode="aspectFit" aria-hidden="true" />
                 <text>查看作品</text>
               </view>
               <view class="favorite-card__action" catchtap="downloadWork" aria-role="button" aria-label="下载作品 {{item.title}}">
-                <image class="favorite-card__action-icon" src="/assets/icons/profile-menu-download.svg" mode="aspectFit" />
+                <image class="favorite-card__action-icon" src="/assets/icons/iconsax/download.svg" mode="aspectFit" aria-hidden="true" />
                 <text>下载</text>
               </view>
               <view class="favorite-card__action favorite-card__action--danger" data-id="{{item.id}}" catchtap="removeFavorite" aria-role="button" aria-label="取消收藏 {{item.title}}">
-                <image class="favorite-card__action-icon" src="/assets/icons/work-heart-off.svg" mode="aspectFit" />
+                <image class="favorite-card__action-icon" src="/assets/icons/iconsax/heart.svg" mode="aspectFit" aria-hidden="true" />
                 <text>取消收藏</text>
               </view>
             </view>
@@ -52,7 +52,7 @@
     </view>
 
     <view wx:else class="empty-state">
-      <view class="empty-state__icon">♡</view>
+      <view class="empty-state__icon"><image src="/assets/icons/iconsax/heart.svg" mode="aspectFit" aria-hidden="true" /></view>
       <view class="empty-state__title">{{allWorks.length ? '没有匹配的收藏' : '还没有收藏'}}</view>
       <view class="empty-state__desc">{{allWorks.length ? '换个关键词或分类试试' : '在作品结果页点一下爱心，喜欢的图纸就会留在这里'}}</view>
     </view>

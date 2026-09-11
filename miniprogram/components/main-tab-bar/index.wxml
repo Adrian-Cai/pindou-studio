@@ -10,6 +10,7 @@
       class="main-tab-bar__icon"
       src="{{currentSelected === index ? item.activeIcon : item.icon}}"
       mode="aspectFit"
+      aria-hidden="true"
     />
     <text class="main-tab-bar__label">{{item.text}}</text>
   </view>

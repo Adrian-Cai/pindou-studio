@@ -1,11 +1,11 @@
 <page-layout title="下载记录" back showMainNav selectedTab="2">
   <view class="subpage downloads-page">
     <view class="download-summary ui-card">
-      <view class="download-summary__item"><view class="download-summary__icon download-summary__icon--green">☁</view><view><view>本月下载</view><text>{{monthCount}}</text></view></view>
+      <view class="download-summary__item"><image class="download-summary__icon" src="/assets/icons/iconsax/download.svg" mode="aspectFit"/><view><view>本月下载</view><text>{{monthCount}}</text></view></view>
       <view class="download-summary__line"></view>
-      <view class="download-summary__item"><view class="download-summary__icon download-summary__icon--blue">◷</view><view><view>最近下载</view><text class="download-summary__text">{{recentText}}</text></view></view>
+      <view class="download-summary__item"><image class="download-summary__icon" src="/assets/icons/iconsax/clock.svg" mode="aspectFit"/><view><view>最近下载</view><text class="download-summary__text">{{recentText}}</text></view></view>
       <view class="download-summary__line"></view>
-      <view class="download-summary__item" bindtap="openRecharge"><view class="download-summary__icon download-summary__icon--yellow">◆</view><view><view>剩余免费次数</view><text>{{quota}} / {{dailyFreeDownloadQuota}}</text></view></view>
+      <view class="download-summary__item" bindtap="openRecharge"><image class="download-summary__icon" src="/assets/icons/iconsax/element-yellow.svg" mode="aspectFit"/><view><view>剩余免费次数</view><text>{{quota}} / {{dailyFreeDownloadQuota}}</text></view></view>
     </view>
 
     <view class="segmented download-tabs">
@@ -20,10 +20,10 @@
 
     <view class="search-row">
       <view class="search-box">
-        <view class="search-box__icon"></view>
+        <image class="search-box__icon" src="/assets/icons/iconsax/search.svg" mode="aspectFit" />
         <input class="search-box__input" placeholder-class="search-box__placeholder" placeholder="搜索作品名称" value="{{query}}" bindinput="changeSearch" />
       </view>
-      <view class="filter-button" bindtap="showFilter"><text class="filter-button__symbol">▽</text><text>筛选</text></view>
+      <view class="filter-button" bindtap="showFilter"><image class="filter-button__symbol" src="/assets/icons/iconsax/filter.svg" mode="aspectFit"/><text>筛选</text></view>
     </view>
 
     <view wx:if="{{records.length}}" class="download-list">
@@ -37,18 +37,18 @@
         </view>
         <view class="download-card__side">
           <view class="status-pill">已下载</view>
-          <view class="download-card__again" bindtap="redownload">⇩　再次下载</view>
+          <view class="download-card__again" bindtap="redownload"><image src="/assets/icons/iconsax/download.svg" mode="aspectFit"/>再次下载</view>
         </view>
       </view>
     </view>
 
     <view wx:else class="empty-state">
-      <view class="empty-state__icon">⇩</view>
+      <image class="empty-state__icon" src="/assets/icons/iconsax/download.svg" mode="aspectFit" />
       <view class="empty-state__title">{{allRecords.length ? '没有匹配的下载记录' : '还没有下载记录'}}</view>
       <view class="empty-state__desc">下载成品图、材料清单、施工图或色板参考后，记录会保留在这里</view>
       <button wx:if="{{!allRecords.length}}" class="button-primary empty-state__button" bindtap="openProjects">查看我的作品</button>
     </view>
 
-    <view class="download-retention">ⓘ　记录仅保留 180 天，过期将自动清理</view>
+    <view class="download-retention"><image src="/assets/icons/iconsax/info-circle.svg" mode="aspectFit"/>记录仅保留 180 天，过期将自动清理</view>
   </view>
 </page-layout>

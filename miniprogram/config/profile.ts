@@ -1,9 +1,9 @@
 export const PROFILE_MENU_ITEMS = [
-  { id: 'downloads', icon: '/assets/icons/profile-menu-download.svg', title: '下载记录', url: '/pages-sub/downloads/index' },
-  { id: 'help', icon: '/assets/icons/profile-menu-help.svg', title: '使用帮助', url: '/pages-sub/help/index' },
-  { id: 'feedback', icon: '/assets/icons/profile-menu-feedback.svg', title: '意见反馈', url: '/pages-sub/feedback/index' },
-  { id: 'privacy', icon: '/assets/icons/profile-menu-settings.svg', title: '隐私设置', url: '/pages-sub/privacy/index' },
-  { id: 'about', icon: '/assets/icons/profile-menu-info.svg', title: '关于我们', url: '/pages-sub/about/index' },
+  { id: 'downloads', icon: '/assets/icons/iconsax/download.svg', title: '下载记录', url: '/pages-sub/downloads/index' },
+  { id: 'help', icon: '/assets/icons/iconsax/message-question.svg', title: '使用帮助', url: '/pages-sub/help/index' },
+  { id: 'feedback', icon: '/assets/icons/iconsax/message-text.svg', title: '意见反馈', url: '/pages-sub/feedback/index' },
+  { id: 'privacy', icon: '/assets/icons/iconsax/setting-2.svg', title: '隐私设置', url: '/pages-sub/privacy/index' },
+  { id: 'about', icon: '/assets/icons/iconsax/info-circle.svg', title: '关于我们', url: '/pages-sub/about/index' },
 ] as const
 
 export const HELP_QUESTIONS = [
@@ -30,8 +30,8 @@ export const HELP_QUESTIONS = [
 ] as const
 
 export const FEEDBACK_CATEGORIES = [
-  { id: 'feature', symbol: '◇', label: '功能建议' },
-  { id: 'bug', symbol: '※', label: '问题反馈' },
-  { id: 'payment', symbol: '▣', label: '支付问题' },
-  { id: 'experience', symbol: '○', label: '体验吐槽' },
+  { id: 'feature', icon: '/assets/icons/iconsax/element.svg', label: '功能建议' },
+  { id: 'bug', icon: '/assets/icons/iconsax/message-question.svg', label: '问题反馈' },
+  { id: 'payment', icon: '/assets/icons/iconsax/document-text.svg', label: '支付问题' },
+  { id: 'experience', icon: '/assets/icons/iconsax/message-text.svg', label: '体验吐槽' },
 ] as const
