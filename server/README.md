@@ -26,7 +26,7 @@ node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'
 
 服务在监听端口前会开启 `READ ONLY` 事务，检查数据库产品、版本、12 张表、字段、索引、外键、CHECK 约束和注释发现任何结构差异时会拒绝启动，不会自动修复数据库
 
-已有数据库部署本版本前，先由 `pindou_*` 表 owner 按编号顺序执行 `sql/` 下的迁移脚本，再执行 `npm run db:inspect`：
+已有数据库部署本版本前，先由 `pindou_*` 表 owner 按编号顺序执行 `sql/` 下的迁移脚本，再执行 `npm run db:inspect`。**必须用表 owner 或超级用户执行**：迁移含 `ALTER TABLE` / `COMMENT ON` / `CREATE INDEX`，PostgreSQL 只允许 owner 改表，仅有表级 `GRANT` 会报 `ERROR: must be owner of table pindou_*`：
 
 ```powershell
 $connection = "<由运维安全提供的迁移连接>"
@@ -36,7 +36,7 @@ Get-ChildItem sql/*.sql | Sort-Object Name | ForEach-Object {
 }
 ```
 
-迁移连接必须是 **API 实际使用的那个库**（即 `config/api.env` 中 `DB_HOST` 指向的实例），迁移到别的库不会生效。`001` 增加双额度字段、AI 任务表、三档 AI 套餐并停用历史下载/无限会员套餐；`002` 增加 `palette` 下载类型；`003` 增加微信内容安全审核表；`004` 增加隐私偏好字段；`005` 允许注销账号后清空 OpenID；`006` 回填历史收藏时间并增加收藏软删除字段与有效收藏时间索引；`007` 停用历史下载/无限会员套餐；`008` 增加订单用户时间索引。部署代码前必须先完成结构迁移，否则结构校验会阻止服务启动。
+迁移连接必须是 **API 实际使用的那个库**（即 `config/api.env` 中 `DB_HOST` 指向的实例），迁移到别的库不会生效；部署流水线会在启动迁移前校验 `DB_USER` 对全部 `pindou_*` 表的 owner 权限，不满足时直接报错并列出缺权限的表。`001` 增加双额度字段、AI 任务表、三档 AI 套餐并停用历史下载/无限会员套餐；`002` 增加 `palette` 下载类型；`003` 增加微信内容安全审核表；`004` 增加隐私偏好字段；`005` 允许注销账号后清空 OpenID；`006` 回填历史收藏时间并增加收藏软删除字段与有效收藏时间索引；`007` 停用历史下载/无限会员套餐；`008` 增加订单用户时间索引。部署代码前必须先完成结构迁移，否则结构校验会阻止服务启动。
 
 健康检查：
 
