@@ -2,6 +2,11 @@ master:
   push:
     - services:
         - docker
+      # latest 标签由多个提交共享，串行构建避免旧构建后完成时覆盖新镜像。
+      lock:
+        key: build-pindou-studio
+        wait: true
+        cancel-in-wait: true
       stages:
         - name: 构建 Docker 镜像
           script: |

@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.28.12
+
+- 调整 Jenkins 部署流程：Jenkins 不再按 Git 提交短 SHA 选择镜像，改为在 `162.14.123.*` 上直接拉取 `docker.cnb.cool/imacaiy/pindou-studio:latest` 并重启 API 容器。
+- Jenkins 不管理数据库，也不执行 SQL 迁移；`config/api.env` 仅作为 API 容器的运行时配置，数据库仍位于 `120.53.19.*`。
+- Jenkins 任务改为固定使用安装 Docker 的 `production-docker` Agent，并增加 Docker、Compose、数据库客户端和 Docker Daemon 的部署前检查。
+- CNB 的 `master` 推送构建改为串行执行，避免多个构建同时更新 `latest` 时出现旧镜像覆盖新镜像。
+
 ## 0.28.11
 
 - 修复 CNB 流水线生产部署失败（日志 `BEGIN` 后紧跟 `psql:...001_ai_quota_and_jobs.sql:5: ERROR: must be owner of table pindou_quota_transactions`，Stage「SSH 部署到生产服务器」返回码 3，健康检查被跳过）：根因是**迁移账号不是被改表的 owner**。`001` 起的所有迁移都包含 `ALTER TABLE` / `COMMENT ON` / `CREATE INDEX`，PostgreSQL 要求执行者是被改表的 owner 或超级用户，只有表级 `GRANT` 不够；`config/api.env` 里的 `DB_USER` 没有 `pindou_quota_transactions` 的 owner 权限，于是执行到 `001` 第 5 行第一条 `ALTER TABLE ... ADD COLUMN` 就被拒绝。
