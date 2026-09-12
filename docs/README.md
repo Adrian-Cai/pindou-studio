@@ -10,7 +10,7 @@
 | 当前系统怎样运行 | [当前系统架构](architecture/CURRENT_ARCHITECTURE.md) |
 | 小程序 UI 与页面实现规则 | [根目录设计规范](../design.md)、[UI 开发规则](frontend/UI_RULES.md) |
 | 微信小程序专项要求 | [小程序开发规则](frontend/MINI_PROGRAM_RULES.md) |
-| 后端接口与数据结构 | [API 规范](backend/API_SPEC.md)、[数据库结构](backend/database/DATABASE_SCHEMA.md) |
+| 后端接口与数据结构 | [API 规范](backend/API_SPEC.md)、[OpenAPI 文件](backend/openapi.yaml)、[数据库结构](backend/database/DATABASE_SCHEMA.md) |
 | 本地开发与代码约束 | [代码质量规范](development/CODE_RULES.md) |
 | 当前版本与历史变更 | [版本记录](releases/CHANGELOG.md) |
 | 登录、支付和生产验收 | [微信登录配置](backend/operations/WECHAT_LOGIN_SETUP.md)、[支付与 AI 生产验收](backend/operations/PRODUCTION_PAYMENT_AI_ACCEPTANCE.md) |
@@ -33,6 +33,7 @@ UI 设计稿、运行截图和对比资料保存在 [`ui/`](ui/) 与 [`ui-compar
 ### `backend/`：服务端、接口与数据
 
 - [API_SPEC.md](backend/API_SPEC.md)：后端接口范围和请求响应约束
+- [openapi.yaml](backend/openapi.yaml)：可导入 Apifox 的 OpenAPI 3.1 机器可读接口规范
 - [FAVORITES_BACKEND_DESIGN.md](backend/FAVORITES_BACKEND_DESIGN.md)：收藏软删除、收藏时间语义、接口幂等与迁移设计基线
 - [AI_GENERATION_DESIGN.md](backend/AI_GENERATION_DESIGN.md)：Ai 模式的接入设计
 - [PRIVACY_API_PLAN.md](backend/PRIVACY_API_PLAN.md)：隐私相关接口规划

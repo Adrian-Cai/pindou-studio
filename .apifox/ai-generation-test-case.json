@@ -1,0 +1,85 @@
+{
+  "name": "创建 AI 生成任务 - 正向",
+  "categoryId": 13507953,
+  "apiDetailId": 514303105,
+  "responseId": "125569984",
+  "method": "post",
+  "path": "/api/ai/generations",
+  "parameters": {
+    "path": [],
+    "query": [],
+    "header": [
+      {
+        "id": "Idempotency-Key#0",
+        "name": "Idempotency-Key",
+        "value": "{{idempotencyKey}}",
+        "type": "string",
+        "enable": true
+      }
+    ],
+    "cookie": []
+  },
+  "commonParameters": {},
+  "requestBody": {
+    "type": "application/json",
+    "data": "{\n  \"inputFileId\": \"{{inputFileId}}\",\n  \"style\": \"natural\",\n  \"detailLevel\": \"medium\",\n  \"backgroundMode\": \"simplify\"\n}"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": {
+      "token": "{{apiToken}}"
+    }
+  },
+  "preProcessors": [],
+  "postProcessors": [
+    {
+      "id": "postProcessors.0.httpCode201",
+      "type": "assertion",
+      "data": {
+        "name": "HTTP 状态码为 201",
+        "subject": "httpCode",
+        "comparison": "equal",
+        "value": "201",
+        "path": ""
+      },
+      "defaultEnable": true,
+      "enable": true
+    },
+    {
+      "id": "postProcessors.1.jobIdExists",
+      "type": "assertion",
+      "data": {
+        "name": "返回任务 ID",
+        "subject": "responseJson",
+        "comparison": "exists",
+        "path": "$.id"
+      },
+      "defaultEnable": true,
+      "enable": true
+    },
+    {
+      "id": "postProcessors.2.statusExists",
+      "type": "assertion",
+      "data": {
+        "name": "返回任务状态",
+        "subject": "responseJson",
+        "comparison": "exists",
+        "path": "$.status"
+      },
+      "defaultEnable": true,
+      "enable": true
+    },
+    {
+      "id": "postProcessors.3.extractJobId",
+      "type": "extractor",
+      "data": {
+        "variableName": "jobId",
+        "variableType": "local",
+        "subject": "responseJson",
+        "expression": "$.id"
+      },
+      "defaultEnable": true,
+      "enable": true
+    }
+  ]
+}

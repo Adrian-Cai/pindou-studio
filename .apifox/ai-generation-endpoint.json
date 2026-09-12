@@ -1,0 +1,56 @@
+{
+  "name": "创建 AI 图片生成任务",
+  "type": "http",
+  "method": "post",
+  "path": "/api/ai/generations",
+  "status": "testing",
+  "operationId": "createAiGeneration",
+  "description": "创建 AI 图片生成任务。请求体只允许 inputFileId、style、detailLevel、backgroundMode 四个字段。",
+  "tags": ["AI 生成"],
+  "folderId": 95695452,
+  "parameters": {
+    "query": [],
+    "path": [],
+    "header": [
+      {
+        "id": "Idempotency-Key#0",
+        "name": "Idempotency-Key",
+        "required": true,
+        "description": "同一次业务重试复用；新图片或参数必须使用新的键。",
+        "type": "string",
+        "example": "{{idempotencyKey}}"
+      }
+    ],
+    "cookie": []
+  },
+  "requestBody": {
+    "type": "application/json",
+    "required": true,
+    "jsonSchema": {
+      "$ref": "#/definitions/313241125"
+    },
+    "data": "{\n  \"inputFileId\": \"{{inputFileId}}\",\n  \"style\": \"natural\",\n  \"detailLevel\": \"medium\",\n  \"backgroundMode\": \"simplify\"\n}"
+  },
+  "responses": [
+    {
+      "name": "任务创建成功",
+      "code": 201,
+      "contentType": "json",
+      "description": "任务已创建，通常为 queued 状态。",
+      "jsonSchema": {
+        "$ref": "#/definitions/313241127"
+      }
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": {
+      "token": "{{apiToken}}"
+    }
+  },
+  "commonParameters": {},
+  "advancedSettings": {
+    "SSLValidate": true,
+    "followRedirects": true
+  }
+}
