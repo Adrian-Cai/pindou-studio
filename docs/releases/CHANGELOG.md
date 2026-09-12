@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.29.6
+
+- 修复代码质量扫描「图片和音频资源大小应不超过 200K」告警：删除无任何引用的 `assets/animations/ai-generation-loading.gif`（835KB），主包体积减少约 835KB。
+- 该 GIF 为旧版 AI 加载动画遗留资源；现行加载态由 `generating-preview-card` 的 CSS 动效与内联 SVG 实现，不依赖该文件。
+- 复核包内全部图片/音频资源，除该 GIF 外无超过 200KB 的文件；`typecheck` 通过。
+
 ## 0.29.5
 
 - 修复微信小程序代码质量扫描「主包内不应存在主包未使用的 JS 文件」问题：`config/profile.js`、`services/ai-generation-flow.js`、`services/order-service.js` 均只被分包页面使用，已迁移出主包。
