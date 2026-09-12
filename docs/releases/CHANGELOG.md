@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.29.9
+
+- 修复「编辑拼豆图」页面 AI 生成次数不足时，点击「购买 AI 生成次数」按钮无跳转的问题。
+- 根因：后端实际返回错误码为 `USER_AI_QUOTA_EXHAUSTED`，而前端 `showPurchase` 条件仅检查 `QUOTA_INSUFFICIENT`，导致购买按钮的 `wx:if="{{aiShowPurchase}}"` 始终为 `false`，按钮不渲染，页面只显示「重新生成」。
+- 修复 `aiGenerationErrorMessage()` 中缺失 `USER_AI_QUOTA_EXHAUSTED` 的分支映射，补充 `case 'USER_AI_QUOTA_EXHAUSTED'`，文案与 `QUOTA_INSUFFICIENT` 一致。
+- 修复 `ai-generation-flow.ts` 的 `handleGeneration()` 和 `retryGeneration()` 中 `showPurchase` 判断条件，将 `QUOTA_INSUFFICIENT` 单条件扩展为同时支持 `USER_AI_QUOTA_EXHAUSTED`。
+- 编辑页 `onShow()` 新增购买返回后刷新逻辑：当页面处于 `aiShowPurchase` 错误状态时，返回编辑页会自动调用 `authStore.refreshAiQuota()`，次数充足后清除错误状态（`aiFailed: false, aiShowPurchase: false`），页面恢复可生成状态，不再继续显示「AI 生成次数不足」。
+- 跳转目标为现有 `/pages-sub/recharge/index` 页面，已注册于 `app.json` 分包，无新增页面。
+- 影响范围：`miniprogram/services/ai-generation-service.ts`、`miniprogram/pages-sub/services/ai-generation-flow.ts`、`miniprogram/pages-sub/editor/index.ts`；不改变任何 UI 视觉效果、其他 AI 错误处理流程和已有业务逻辑。
+
 ## 0.29.8
 
 - 优化 AI 图片生成失败状态：当供应商返回 403-AllocationQuota.FreeTierOnly 时，后端统一映射为业务错误码 `AI_SERVICE_UNAVAILABLE`，不将供应商、额度不足、FreeTierOnly 等内部信息暴露给前端。

@@ -1,5 +1,6 @@
 import type { PatternCell, PatternDraft } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
+import { authStore } from '../../store/auth-store'
 import {
   cloudSummaryToWorkItem,
   hasCloudSession,
@@ -175,6 +176,25 @@ Page({
 
   onShow() {
     this._aiFlow?.onShow()
+    if (this.data.aiShowPurchase) {
+      void this._refreshQuotaAfterPurchase()
+    }
+  },
+
+  async _refreshQuotaAfterPurchase(): Promise<void> {
+    try {
+      const quota = await authStore.refreshAiQuota()
+      if (quota && quota.aiGeneration.remaining > 0) {
+        this.setData({
+          aiFailed: false,
+          aiShowPurchase: false,
+          aiStateTitle: '',
+          aiStateDescription: '',
+        })
+      }
+    } catch (error) {
+      console.error('刷新 AI 次数失败', error)
+    }
   },
 
   onHide() {
