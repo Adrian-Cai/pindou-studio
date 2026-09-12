@@ -46,7 +46,7 @@
   background: var(--color-surface-muted);
 }
 
-.upload-status-card__preview-placeholder image {
+.upload-status-card__preview-placeholder-icon {
   width: 80rpx;
   height: 80rpx;
   opacity: 0.6;
@@ -273,7 +273,7 @@
   border: 0;
 }
 
-.upload-status-card__reselect-action image {
+.upload-status-card__reselect-icon {
   width: 28rpx;
   height: 28rpx;
 }
@@ -314,7 +314,7 @@
   background: var(--color-primary-soft);
 }
 
-.upload-status-card__empty[disabled] {
+.upload-status-card__empty--disabled {
   opacity: 0.72;
 }
 

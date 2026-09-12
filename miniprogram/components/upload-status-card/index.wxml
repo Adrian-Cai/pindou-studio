@@ -11,7 +11,7 @@
         binderror="handlePreviewError"
       />
       <view wx:else class="upload-status-card__preview-placeholder" aria-label="图片占位">
-        <image src="/assets/icons/image-upload.svg" mode="aspectFit" />
+        <image class="upload-status-card__preview-placeholder-icon" src="/assets/icons/image-upload.svg" mode="aspectFit" />
       </view>
       <view wx:if="{{uploadStatus === 'rejected'}}" class="upload-status-card__preview-mask">
         <view class="upload-status-card__blocked-icon" aria-hidden="true"></view>
@@ -73,7 +73,7 @@
         bindtap="handleChooseImage"
         disabled="{{choosing}}"
       >
-        <image src="/assets/icons/image-reselect.svg" mode="aspectFit" />
+        <image class="upload-status-card__reselect-icon" src="/assets/icons/image-reselect.svg" mode="aspectFit" />
         <text>重新选择图片</text>
       </button>
     </view>
@@ -81,7 +81,7 @@
 
   <button
     wx:else
-    class="upload-status-card__empty"
+    class="upload-status-card__empty{{choosing ? ' upload-status-card__empty--disabled' : ''}}"
     bindtap="handleChooseImage"
     disabled="{{choosing}}"
     aria-label="选择一张图片"

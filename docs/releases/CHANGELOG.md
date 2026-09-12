@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.29.7
+
+- 修复开发者工具警告「组件 wxss 中不允许使用标签名、ID 和属性选择器」：`upload-status-card` 内 `[disabled]` 及两处 `image` 标签选择器改为普通类选择器（`--disabled`、`__preview-placeholder-icon`、`__reselect-icon`），样式效果逐条等价迁移，视觉与交互不变。
+- 全量复查其余组件 wxss，无其他禁用选择器残留；`generating-preview-card` 的 `:host` 为组件合法用法。
+- 模拟器中 `__dev__/WAServiceMainContext.js` 的 link preload 提示来自开发者工具内部脚本，与项目代码无关，无需处理。
+
 ## 0.29.6
 
 - 修复代码质量扫描「图片和音频资源大小应不超过 200K」告警：删除无任何引用的 `assets/animations/ai-generation-loading.gif`（835KB），主包体积减少约 835KB。
