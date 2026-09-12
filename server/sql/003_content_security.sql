@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS pindou_content_security_checks (
   label int4,
   error_code int4,
   media_object_key varchar(512),
+  media_sha256 varchar(64),
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   expires_at timestamptz,
@@ -15,7 +16,9 @@ CREATE TABLE IF NOT EXISTS pindou_content_security_checks (
   CONSTRAINT ck_pindou_content_security_checks_type
     CHECK (check_type IN ('text', 'media')),
   CONSTRAINT ck_pindou_content_security_checks_status
-    CHECK (status IN ('pending', 'pass', 'review', 'risky', 'failed'))
+    CHECK (status IN ('pending', 'pass', 'review', 'risky', 'failed')),
+  CONSTRAINT ck_pindou_content_security_checks_media_sha256
+    CHECK (media_sha256 IS NULL OR media_sha256 ~ '^[0-9a-f]{64}$')
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_pindou_content_security_checks_trace
@@ -37,6 +40,7 @@ COMMENT ON COLUMN pindou_content_security_checks.status IS '审核状态：pendi
 COMMENT ON COLUMN pindou_content_security_checks.label IS '微信返回的风险标签编号，不向小程序用户展示';
 COMMENT ON COLUMN pindou_content_security_checks.error_code IS '微信审核错误码，仅用于服务端排查';
 COMMENT ON COLUMN pindou_content_security_checks.media_object_key IS '临时审核图片对象键，回调或过期后清理';
+COMMENT ON COLUMN pindou_content_security_checks.media_sha256 IS '审核图片 SHA-256，用于短期内校验并复用同一图片的检测结果';
 COMMENT ON COLUMN pindou_content_security_checks.created_at IS '审核记录创建时间';
 COMMENT ON COLUMN pindou_content_security_checks.updated_at IS '审核记录最近更新时间';
 COMMENT ON COLUMN pindou_content_security_checks.expires_at IS '临时媒体和未完成审核记录的过期时间';

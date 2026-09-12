@@ -23,11 +23,13 @@ interface UserIdentityRow extends QueryResultRow {
 
 interface CheckRow extends QueryResultRow {
   readonly media_object_key: string | null;
+  readonly media_sha256: string | null;
 }
 
 export interface ContentSecurityService {
   checkText(userId: string, content: string): Promise<{ readonly safe: true; readonly traceId: string | null }>;
   checkMedia(userId: string, input: { readonly buffer: Buffer; readonly filename: string; readonly contentType: string }): Promise<{ readonly safe: true; readonly checkId: string; readonly traceId: string | null }>;
+  assertMediaCheck(userId: string, checkId: string, buffer: Buffer): Promise<void>;
   readMedia(path: string): Promise<{ readonly buffer: Buffer; readonly contentType: string } | null>;
   verifyCallback(signature: string | undefined, timestamp: string | undefined, nonce: string | undefined): boolean;
   handleCallback(payload: Record<string, unknown>): Promise<void>;
@@ -63,6 +65,7 @@ export class PostgresContentSecurityService implements ContentSecurityService {
     const openid = await this.openid(userId);
     const stored = await this.mediaStorage.save(input.buffer, input.filename, input.contentType);
     const checkId = createEntityId("sec");
+    const mediaSha256 = hashMedia(input.buffer);
     let traceId: string | null = null;
     let recorded = false;
     try {
@@ -78,6 +81,7 @@ export class PostgresContentSecurityService implements ContentSecurityService {
           label: synchronous.label,
           errorCode: null,
           mediaObjectKey: stored.objectKey,
+          mediaSha256,
           expiresAt: null,
         });
         recorded = true;
@@ -95,7 +99,8 @@ export class PostgresContentSecurityService implements ContentSecurityService {
           label: synchronous.label,
           errorCode: null,
           mediaObjectKey: stored.objectKey,
-          expiresAt: null,
+          mediaSha256,
+          expiresAt: new Date(this.now().getTime() + MEDIA_EXPIRY_MS),
         });
         recorded = true;
         await this.releaseMedia(checkId, stored.objectKey);
@@ -113,6 +118,7 @@ export class PostgresContentSecurityService implements ContentSecurityService {
         label: null,
         errorCode: null,
         mediaObjectKey: stored.objectKey,
+        mediaSha256,
         expiresAt: new Date(this.now().getTime() + MEDIA_EXPIRY_MS),
       });
       recorded = true;
@@ -129,6 +135,27 @@ export class PostgresContentSecurityService implements ContentSecurityService {
         await this.mediaStorage.remove(stored.objectKey);
       }
       throw error;
+    }
+  }
+
+  public async assertMediaCheck(userId: string, checkId: string, buffer: Buffer): Promise<void> {
+    if (!/^sec_[A-Za-z0-9_-]{20}$/u.test(checkId)) {
+      throw invalidArgument("图片检测标识无效");
+    }
+    const result = await this.pool.query<CheckRow>(
+      `SELECT media_sha256
+         FROM pindou_content_security_checks
+        WHERE id = $1
+          AND user_id = $2
+          AND check_type = 'media'
+          AND status IN ('pending', 'pass')
+          AND media_sha256 IS NOT NULL
+          AND expires_at > $3
+        LIMIT 1`,
+      [checkId, userId, this.now()],
+    );
+    if (result.rows[0]?.media_sha256 !== hashMedia(buffer)) {
+      throw new AppError(409, "CONTENT_SECURITY_CHECK_INVALID", "图片检测结果已失效，请重新选择图片");
     }
   }
 
@@ -185,14 +212,15 @@ export class PostgresContentSecurityService implements ContentSecurityService {
     label: number | null;
     errorCode: number | null;
     mediaObjectKey: string | null;
+    mediaSha256?: string | null;
     expiresAt: Date | null;
   }): Promise<void> {
     const current = this.now();
     await this.pool.query(
       `INSERT INTO pindou_content_security_checks
-        (id, user_id, check_type, trace_id, status, label, error_code, media_object_key, created_at, updated_at, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10)`,
-      [input.id ?? createEntityId("sec"), input.userId, input.kind, input.traceId, input.status, input.label, input.errorCode, input.mediaObjectKey, current, input.expiresAt],
+        (id, user_id, check_type, trace_id, status, label, error_code, media_object_key, media_sha256, created_at, updated_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11)`,
+      [input.id ?? createEntityId("sec"), input.userId, input.kind, input.traceId, input.status, input.label, input.errorCode, input.mediaObjectKey, input.mediaSha256 ?? null, current, input.expiresAt],
     );
   }
 
@@ -252,4 +280,8 @@ function isLocallyRiskyText(value: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hashMedia(buffer: Buffer): string {
+  return createHash("sha256").update(buffer).digest("hex");
 }

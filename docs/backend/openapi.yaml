@@ -301,6 +301,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '415':
@@ -1462,6 +1464,9 @@ components:
         type:
           type: string
           enum: [cover, ai_input]
+        securityCheckId:
+          type: string
+          description: 可选。上传 ai_input 时携带同一用户、同一图片的有效内容安全检测标识，可复用已完成的检测；上传 cover 时不得携带。
     FileUploadResponse:
       type: object
       required: [file]

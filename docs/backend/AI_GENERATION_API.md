@@ -26,7 +26,7 @@
 小程序选择图片
     │
     ├─ POST /api/files/upload
-    │    multipart: file + type=ai_input
+    │    multipart: file + type=ai_input + securityCheckId（已有检测时）
     │
     └─ 返回 file.id
          │
@@ -65,7 +65,7 @@
 | 千问临时图片 URL | 服务端下载，不向客户端透传 | 项目 `ai_output` 文件 |
 | 项目 `outputFile.url` | 客户端下载并进入本地拼豆算法 | 最终 AI 中间图 |
 
-安全审核边界：AI 输入图片在 `POST /api/files/upload` 上传阶段执行一次项目配置的微信内容安全审核；千问生成结果不再调用本项目的微信内容安全接口，生成结果的安全审核由千问服务商负责。服务端仍会校验千问输出地址、真实图片格式、大小、尺寸和像素数，再将结果保存为 `ai_output`。
+安全审核边界：AI 输入图片只执行一次项目配置的微信内容安全审核。首页已检测过同一图片时，`POST /api/files/upload` 通过 `securityCheckId` 复用结果；旧客户端未携带标识时仍在 AI 输入上传阶段检测。千问生成结果不再调用本项目的微信内容安全接口，生成结果的安全审核由千问服务商负责。服务端仍会校验千问输出地址、真实图片格式、大小、尺寸和像素数，再将结果保存为 `ai_output`。
 
 ## 3. 公共约定
 
@@ -126,12 +126,13 @@ Authorization: Bearer <token>
 Content-Type: multipart/form-data
 ```
 
-表单字段必须只有以下两个：
+表单字段如下：
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `file` | 文件 | 是 | JPG、PNG 或 WEBP 图片 |
 | `type` | 字符串 | 是 | 固定值 `ai_input` |
+| `securityCheckId` | 字符串 | 否 | 首页已完成同一张图片的内容安全检测时传入；服务端核对用户、有效期和图片字节后复用该结果，不重复检测 |
 
 示例：
 
@@ -139,7 +140,8 @@ Content-Type: multipart/form-data
 curl -X POST "http://127.0.0.1:4000/api/files/upload" \
   -H "Authorization: Bearer <token>" \
   -F "file=@./input.png;type=image/png" \
-  -F "type=ai_input"
+  -F "type=ai_input" \
+  -F "securityCheckId=sec_xxx"
 ```
 
 ### 4.2 成功响应
@@ -168,6 +170,7 @@ HTTP 状态码：`201 Created`
 | 400 | `INVALID_ARGUMENT` | 表单字段不完整、`type` 不是 `ai_input` 或图片格式无效 |
 | 400 | `CONTENT_RISKY` | 输入图片未通过内容安全检查 |
 | 401 | `UNAUTHORIZED` | Token 缺失、无效或过期 |
+| 409 | `CONTENT_SECURITY_CHECK_INVALID` | 检测标识已失效、用户不匹配或图片内容与已检测图片不一致 |
 | 413 | `PAYLOAD_TOO_LARGE` | 文件超过大小限制 |
 | 413 | `AI_IMAGE_DIMENSIONS_TOO_LARGE` | 图片宽高或像素数超过限制 |
 | 429 | `RATE_LIMITED` | AI 上传频率超过限制 |

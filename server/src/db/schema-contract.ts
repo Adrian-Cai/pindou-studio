@@ -173,6 +173,7 @@ export const EXPECTED_SCHEMA = {
     label: column("int4", true),
     error_code: column("int4", true),
     media_object_key: column("varchar", true, 512),
+    media_sha256: column("varchar", true, 64),
     created_at: column("timestamptz"),
     updated_at: column("timestamptz"),
     expires_at: column("timestamptz", true),
@@ -292,5 +293,6 @@ export const REQUIRED_CONSTRAINTS: readonly RequiredDatabaseObject[] = [
   { table: "pindou_ai_generation_jobs", label: "AI 背景 CHECK", type: "c", includes: ["background_mode", "keep", "simplify", "remove"] },
   { table: "pindou_content_security_checks", label: "审核类型 CHECK", type: "c", includes: ["check_type", "text", "media"] },
   { table: "pindou_content_security_checks", label: "审核状态 CHECK", type: "c", includes: ["status", "pending", "pass", "review", "risky", "failed"] },
+  { table: "pindou_content_security_checks", label: "审核图片哈希 CHECK", type: "c", includes: ["media_sha256", "0-9a-f", "64"] },
   { table: "pindou_users", label: "隐私存储方式互斥 CHECK", type: "c", includes: ["privacy_local_only", "privacy_cloud_sync", "not"] },
 ];

@@ -304,11 +304,17 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
             dependencies.coverMaximumBytes,
             dependencies.aiFileMaximumBytes ?? dependencies.coverMaximumBytes,
           ),
-          ["type"],
+          ["type", "securityCheckId"],
           "图片文件",
         );
         const type = upload.fields.type;
-        if ((type !== "cover" && type !== "ai_input") || Object.keys(upload.fields).length !== 1) {
+        const securityCheckId = upload.fields.securityCheckId;
+        const fieldCount = Object.keys(upload.fields).length;
+        if (
+          (type !== "cover" && type !== "ai_input")
+          || (type === "cover" && fieldCount !== 1)
+          || (type === "ai_input" && fieldCount !== (securityCheckId ? 2 : 1))
+        ) {
           throw invalidArgument("文件上传的 type 只能是 cover 或 ai_input");
         }
         const maximumBytes = type === "cover"
@@ -319,11 +325,16 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         }
         if (type === "ai_input") {
           dependencies.aiRateLimiter?.check(`${currentUser.id}:upload`);
-          await requireContentSecurity(dependencies).checkMedia(currentUser.id, {
-            buffer: upload.buffer,
-            filename: upload.filename,
-            contentType: upload.declaredContentType,
-          });
+          const contentSecurity = requireContentSecurity(dependencies);
+          if (securityCheckId) {
+            await contentSecurity.assertMediaCheck(currentUser.id, securityCheckId, upload.buffer);
+          } else {
+            await contentSecurity.checkMedia(currentUser.id, {
+              buffer: upload.buffer,
+              filename: upload.filename,
+              contentType: upload.declaredContentType,
+            });
+          }
         }
         sendJson(response, 201, {
           file: await dependencies.files.upload(currentUser.id, {

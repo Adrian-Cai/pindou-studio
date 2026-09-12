@@ -99,6 +99,7 @@ Page({
   data: {
     sourceImagePath: '',
     aiInputImagePath: '',
+    securityCheckId: '',
     settings: { ...DEFAULT_PATTERN_SETTINGS, width: 64, height: 64, colorLimit: 32 },
     sizeOptions: [32, 48, 64, 96, 128],
     colorOptions: [16, 32, 64, 96],
@@ -163,6 +164,8 @@ Page({
     const requestId = ++currentUploadRequestId
     this.setData({
       sourceImagePath,
+      aiInputImagePath: '',
+      securityCheckId: '',
       uploadStatus: 'uploading',
       uploadProgress: -1,
       currentStep: 1,
@@ -172,7 +175,7 @@ Page({
       const securityImagePath = await prepareImageForContentSecurity(sourceImagePath)
       if (requestId !== currentUploadRequestId) return
       this.setData({ aiInputImagePath: securityImagePath })
-      await checkImageContent(securityImagePath, (progress) => {
+      const securityCheck = await checkImageContent(securityImagePath, (progress) => {
         if (requestId !== currentUploadRequestId) return
         if (progress >= 100) {
           this.setData({ uploadStatus: 'checking', uploadProgress: -1 })
@@ -187,6 +190,7 @@ Page({
       })
       this.setData({
         uploadStatus: 'success',
+        securityCheckId: securityCheck.checkId,
         currentStep: 2,
       })
     } catch (error) {
@@ -206,6 +210,7 @@ Page({
     this.setData({
       sourceImagePath: '',
       aiInputImagePath: '',
+      securityCheckId: '',
       uploadStatus: 'error',
       uploadProgress: -1,
       currentStep: 1,
@@ -323,7 +328,7 @@ Page({
     try {
       if (!session.inputFileId) {
         const aiInputImagePath = this.data.aiInputImagePath || await prepareImageForContentSecurity(this.data.sourceImagePath)
-        const uploaded = await uploadAiInput(aiInputImagePath)
+        const uploaded = await uploadAiInput(aiInputImagePath, this.data.securityCheckId)
         session = { ...session, inputFileId: uploaded.id, status: 'creating' }
         saveAiGenerationSession(session)
       }
@@ -340,6 +345,9 @@ Page({
     } catch (error) {
       logHomeError('ai_generation_start_failed', error)
       this.setData({ generating: false, currentStep: 2 })
+      if (error instanceof ApiError && error.code === 'CONTENT_SECURITY_CHECK_INVALID') {
+        this.setData({ securityCheckId: '', uploadStatus: 'error', currentStep: 1 })
+      }
       if (error instanceof ApiError && error.code === 'QUOTA_INSUFFICIENT') {
         showAiQuotaModal()
         return

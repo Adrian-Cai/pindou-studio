@@ -86,6 +86,39 @@ test("cover upload authenticates and accepts only type=cover", async () => {
   });
 });
 
+test("AI input upload reuses the matching completed content-security check", async () => {
+  const calls = [];
+  await withApplication(dependencies({
+    aiFileMaximumBytes: 10 * 1024 * 1024,
+    contentSecurity: {
+      async assertMediaCheck(userId, checkId, buffer) {
+        calls.push({ method: "reuse", userId, checkId, buffer });
+      },
+      async checkMedia() { throw new Error("must not repeat content security"); },
+    },
+    files: {
+      async upload(userId, input) {
+        calls.push({ method: "upload", userId, input });
+        return { id: "file_ai", type: "ai_input", url: "/api/media/ai/input.png", contentType: "image/png", size: PNG.length, createdAt: "2026-08-27T01:00:00.000Z" };
+      },
+    },
+  }), async (baseUrl) => {
+    const form = new FormData();
+    form.append("file", new Blob([PNG], { type: "image/png" }), "client.png");
+    form.append("type", "ai_input");
+    form.append("securityCheckId", "sec_0123456789abcdefghij");
+    const response = await fetch(`${baseUrl}/api/files/upload`, { method: "POST", headers: { authorization: "Bearer token" }, body: form });
+    const body = await response.json();
+
+    assert.equal(response.status, 201, JSON.stringify(body));
+    assert.equal(body.file.id, "file_ai");
+    assert.deepEqual(calls.map((call) => call.method), ["reuse", "upload"]);
+    assert.equal(calls[0].userId, "usr_current");
+    assert.equal(calls[0].checkId, "sec_0123456789abcdefghij");
+    assert.deepEqual(calls[0].buffer, PNG);
+  });
+});
+
 test("GET /api/media/covers serves an uploaded cover path", async () => {
   await withApplication(dependencies({
     covers: {

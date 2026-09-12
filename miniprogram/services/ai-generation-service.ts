@@ -66,6 +66,7 @@ export { parseAiGeneration }
 
 export async function uploadAiInput(
   filePath: string,
+  securityCheckId?: string,
   onProgress?: (progress: number) => void,
 ): Promise<AiInputFile> {
   if (!filePath.trim()) throw new ApiError('图片路径无效', { code: 'IMAGE_DECODE_ERROR' })
@@ -75,7 +76,9 @@ export async function uploadAiInput(
       path: '/api/files/upload',
       filePath,
       name: 'file',
-      formData: { type: 'ai_input' },
+      formData: securityCheckId
+        ? { type: 'ai_input', securityCheckId }
+        : { type: 'ai_input' },
       token: session.token,
       timeoutMs: 60_000,
       onProgress,
@@ -190,6 +193,8 @@ export function aiGenerationErrorMessage(error: unknown): string {
       return 'AI 处理超时，请稍后重试'
     case 'AI_INPUT_FILE_UNAVAILABLE':
       return '输入图片已失效，请重新上传'
+    case 'CONTENT_SECURITY_CHECK_INVALID':
+      return '图片检测结果已失效，请重新选择图片'
     case 'AI_TASK_EXPIRED':
       return '任务已过期，请重新生成'
     case 'AI_OUTPUT_INVALID':
