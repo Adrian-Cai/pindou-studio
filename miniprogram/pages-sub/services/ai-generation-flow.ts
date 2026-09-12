@@ -1,4 +1,4 @@
-import { createDraft } from './image-service'
+import { createDraft } from '../../services/image-service'
 import {
   aiGenerationErrorMessage,
   createAiGeneration,
@@ -6,15 +6,15 @@ import {
   getAiGeneration,
   isAiOutputImageAvailable,
   type AiGeneration,
-} from './ai-generation-service'
+} from '../../services/ai-generation-service'
 import {
   clearAiGenerationSession,
   createIdempotencyKey,
   loadAiGenerationSession,
   saveAiGenerationSession,
   type AiGenerationSession,
-} from './ai-generation-session'
-import { ApiError } from './http-client'
+} from '../../services/ai-generation-session'
+import { ApiError } from '../../services/http-client'
 
 export type AiGenerationFlowPageState =
   | 'loading'

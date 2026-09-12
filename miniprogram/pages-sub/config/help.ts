@@ -1,11 +1,3 @@
-export const PROFILE_MENU_ITEMS = [
-  { id: 'downloads', icon: '/assets/icons/iconsax/download.svg', title: '下载记录', url: '/pages-sub/downloads/index' },
-  { id: 'help', icon: '/assets/icons/iconsax/message-question.svg', title: '使用帮助', url: '/pages-sub/help/index' },
-  { id: 'feedback', icon: '/assets/icons/iconsax/message-text.svg', title: '意见反馈', url: '/pages-sub/feedback/index' },
-  { id: 'privacy', icon: '/assets/icons/iconsax/setting-2.svg', title: '隐私设置', url: '/pages-sub/privacy/index' },
-  { id: 'about', icon: '/assets/icons/iconsax/info-circle.svg', title: '关于我们', url: '/pages-sub/about/index' },
-] as const
-
 export const HELP_QUESTIONS = [
   {
     title: '如何上传图片生成拼豆图？',

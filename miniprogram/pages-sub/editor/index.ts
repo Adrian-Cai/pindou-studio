@@ -11,7 +11,7 @@ import { createPendingDraft } from '../../services/image-service'
 import {
   AiGenerationFlow,
   type AiGenerationFlowState,
-} from '../../services/ai-generation-flow'
+} from '../services/ai-generation-flow'
 import { loadAiGenerationSession } from '../../services/ai-generation-session'
 import {
   calculateFittedImageSize,

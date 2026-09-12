@@ -1,4 +1,4 @@
-import { HELP_QUESTIONS } from '../../config/profile'
+import { HELP_QUESTIONS } from '../config/help'
 
 Page({
   data: {

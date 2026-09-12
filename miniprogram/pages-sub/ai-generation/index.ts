@@ -1,7 +1,7 @@
 import {
   AiGenerationFlow,
   type AiGenerationFlowState,
-} from '../../services/ai-generation-flow'
+} from '../services/ai-generation-flow'
 import { ApiError } from '../../services/http-client'
 import { appStore } from '../../store/app-store'
 

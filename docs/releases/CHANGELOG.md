@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.29.5
+
+- 修复微信小程序代码质量扫描「主包内不应存在主包未使用的 JS 文件」问题：`config/profile.js`、`services/ai-generation-flow.js`、`services/order-service.js` 均只被分包页面使用，已迁移出主包。
+- `services/ai-generation-flow.ts` 与 `services/order-service.ts` 迁移至 `pages-sub/services/`，仅调整 import 路径；其依赖的 `image-service`、`ai-generation-service`、`ai-generation-session`、`token-storage`、`http-client` 仍被主包页面使用，保留在主包。
+- 拆分 `config/profile.ts`：`HELP_QUESTIONS` 迁移为 `pages-sub/config/help.ts`；删除无任何引用的死代码 `PROFILE_MENU_ITEMS`（我的页菜单为 WXML 硬编码）。
+- 本次为分包结构调整，不改变 AI 生成流程、订单列表和使用帮助页的功能与业务流程；`typecheck` 与 54 项 pattern 测试全部通过。
+
 ## 0.29.4
 
 - 修复首页图片已经通过安全检测后，切换 Ai 模式并点击生成时，AI 输入上传仍触发第二次内容安全检测的问题。

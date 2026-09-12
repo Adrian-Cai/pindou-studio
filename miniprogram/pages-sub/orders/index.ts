@@ -1,5 +1,5 @@
 import type { OrderItem, OrderStatus } from '../../models/order'
-import { fetchOrders } from '../../services/order-service'
+import { fetchOrders } from '../services/order-service'
 import { hasCloudSession } from '../../services/work-service'
 
 type OrdersLoadState = 'loading' | 'ready' | 'error' | 'unauthorized'
