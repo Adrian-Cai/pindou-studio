@@ -6,7 +6,6 @@ import { createEntityId } from "../../shared/identity";
 import { shanghaiDate } from "../../shared/shanghai-time";
 import { rollbackTransaction } from "../../shared/transaction";
 import type { AiFileStorage, StoredAiFile } from "../files/ai-file-storage";
-import type { ContentSecurityService } from "../content-security/content-security-service";
 import {
   availableQuota,
   debitBucket,
@@ -103,7 +102,6 @@ const PUBLIC_FAILURE_CODES = new Set([
   "AI_PROVIDER_UNAVAILABLE",
   "AI_PROVIDER_OUTPUT_INVALID",
   "AI_PROVIDER_OUTPUT_TOO_LARGE",
-  "AI_OUTPUT_CONTENT_RISKY",
   "AI_QUOTA_UNAVAILABLE_AT_COMPLETION",
 ]);
 
@@ -179,7 +177,6 @@ export class PostgresAiGenerationService {
     private readonly storage: AiFileStorage,
     private readonly quotaConfig: ServerConfig["quota"],
     private readonly now: () => Date = () => new Date(),
-    private readonly contentSecurity?: ContentSecurityService,
     private readonly retentionMs = DEFAULT_RETENTION_MS,
   ) {}
 
@@ -323,19 +320,6 @@ export class PostgresAiGenerationService {
       output = await this.provider.downloadOutput(providerResult.outputUrl);
     } catch (error: unknown) {
       return mapJob(await this.markFailed(job.user_id, job.id, failureCode(error)));
-    }
-    if (this.contentSecurity) {
-      try {
-        await this.contentSecurity.checkMedia(job.user_id, {
-          buffer: output,
-          filename: "ai-output.png",
-          contentType: "image/png",
-        });
-      } catch (error: unknown) {
-        return mapJob(await this.markFailed(job.user_id, job.id, error instanceof AppError && error.code === "CONTENT_RISKY"
-          ? "AI_OUTPUT_CONTENT_RISKY"
-          : failureCode(error)));
-      }
     }
     let stored: StoredAiFile;
     try {

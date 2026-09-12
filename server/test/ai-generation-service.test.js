@@ -14,7 +14,6 @@ function harness({
   inputFileType = "ai_input",
   downloadError = null,
   saveError = null,
-  contentSecurity = null,
 } = {}) {
   let job = null;
   let outputFile = null;
@@ -139,7 +138,6 @@ function harness({
     storage,
     { dailyStandardDownloads: 9, dailyAiGenerations: 3 },
     () => NOW,
-    contentSecurity,
   );
   return {
     service,
@@ -199,29 +197,14 @@ test("AI state machine persists output and debits ai_generation exactly once aft
   assert.equal(debit.parameters[4], `ai-generation:${result.id}`);
 });
 
-test("AI output passes synchronous image content security before persistence", async () => {
-  const checks = [];
-  const state = harness({
-    contentSecurity: {
-      async checkMedia(userId, input) {
-        checks.push({ userId, input });
-        state.events.push({ type: "content_security" });
-        return { safe: true, checkId: "sec_output", traceId: "trace_output" };
-      },
-    },
-  });
+test("AI output is persisted without a second content security check", async () => {
+  const state = harness();
   const created = await state.service.create(REQUEST);
   const result = await advanceUntilTerminal(state, created.id);
 
   assert.equal(result.status, "succeeded");
-  assert.equal(checks.length, 1);
-  assert.equal(checks[0].userId, REQUEST.userId);
-  assert.equal(checks[0].input.filename, "ai-output.png");
-  assert.equal(checks[0].input.contentType, "image/png");
-  assert.ok(
-    state.events.findIndex((event) => event.type === "content_security")
-      < state.events.findIndex((event) => event.type === "storage_save"),
-  );
+  assert.equal(state.events.some((event) => event.type === "content_security"), false);
+  assert.ok(state.events.findIndex((event) => event.type === "storage_save") >= 0);
 });
 
 test("AI provider failure enters a failed terminal state without output or quota debit", async () => {

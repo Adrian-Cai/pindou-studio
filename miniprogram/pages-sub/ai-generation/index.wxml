@@ -57,7 +57,7 @@
     >返回首页</button>
 
     <view class="ai-generation-note">
-      AI 输出会先通过服务端图片内容安全审核，再交给标准模式转换为拼豆图。
+      AI 输入图片已在上传时完成内容安全审核；生成结果经服务端格式校验后交给标准模式转换为拼豆图。
     </view>
   </view>
 </page-layout>

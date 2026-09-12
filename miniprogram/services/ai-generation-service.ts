@@ -195,8 +195,6 @@ export function aiGenerationErrorMessage(error: unknown): string {
     case 'AI_OUTPUT_INVALID':
     case 'AI_PROVIDER_OUTPUT_INVALID':
       return 'AI 返回的图片无法使用'
-    case 'AI_OUTPUT_CONTENT_RISKY':
-      return 'AI 生成结果未通过内容安全检测，请重新生成'
     case 'AI_IMAGE_DIMENSIONS_TOO_LARGE':
     case 'PAYLOAD_TOO_LARGE':
       return '图片过大，请更换图片'

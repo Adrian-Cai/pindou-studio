@@ -45,7 +45,7 @@
               └─ GET /api/ai/generations/{id}
                    ├─ 查询千问任务状态
                    ├─ 成功后下载千问临时 PNG 地址
-                   ├─ 校验、内容安全审核并保存为 ai_output
+                   ├─ 校验并保存为 ai_output
                    ├─ 成功完成额度扣减
                    └─ 返回项目自己的 outputFile.url
 ```
@@ -64,6 +64,8 @@
 | 千问 `output.task_id` | 保存到任务记录 | 后续查询千问任务 |
 | 千问临时图片 URL | 服务端下载，不向客户端透传 | 项目 `ai_output` 文件 |
 | 项目 `outputFile.url` | 客户端下载并进入本地拼豆算法 | 最终 AI 中间图 |
+
+安全审核边界：AI 输入图片在 `POST /api/files/upload` 上传阶段执行一次项目配置的微信内容安全审核；千问生成结果不再调用本项目的微信内容安全接口，生成结果的安全审核由千问服务商负责。服务端仍会校验千问输出地址、真实图片格式、大小、尺寸和像素数，再将结果保存为 `ai_output`。
 
 ## 3. 公共约定
 
@@ -344,12 +346,12 @@ HTTP 状态码：`200 OK`
 | `queued` | 任务已落库，尚未完成上游提交 | 继续查询 |
 | `processing` | 正在提交或查询千问 | 继续查询 |
 | `succeeded` | 图片已下载、校验、持久化并完成额度扣减 | 下载 `outputFile.url` |
-| `failed` | 输入、Provider、输出、安全审核或额度完成阶段失败 | 展示错误并允许新建任务 |
+| `failed` | 输入、Provider、输出校验、文件存储或额度完成阶段失败 | 展示错误并允许新建任务 |
 | `canceled` | 预留状态，当前没有取消接口 | 按失败处理 |
 
 失败任务的 `errorCode` 可能包括：
 
-`AI_INPUT_FILE_UNAVAILABLE`、`AI_SUBMISSION_TIMEOUT`、`AI_TASK_EXPIRED`、`AI_PROVIDER_TASK_FAILED`、`AI_PROVIDER_ERROR`、`AI_PROVIDER_TIMEOUT`、`AI_PROVIDER_UNAVAILABLE`、`AI_PROVIDER_OUTPUT_INVALID`、`AI_PROVIDER_OUTPUT_TOO_LARGE`、`AI_OUTPUT_CONTENT_RISKY`、`AI_QUOTA_UNAVAILABLE_AT_COMPLETION`。
+`AI_INPUT_FILE_UNAVAILABLE`、`AI_SUBMISSION_TIMEOUT`、`AI_TASK_EXPIRED`、`AI_PROVIDER_TASK_FAILED`、`AI_PROVIDER_ERROR`、`AI_PROVIDER_TIMEOUT`、`AI_PROVIDER_UNAVAILABLE`、`AI_PROVIDER_OUTPUT_INVALID`、`AI_PROVIDER_OUTPUT_TOO_LARGE`、`AI_QUOTA_UNAVAILABLE_AT_COMPLETION`。
 
 ### 6.5 查询接口的 HTTP 错误
 
@@ -474,7 +476,7 @@ Authorization: Bearer {QWEN_IMAGE_API_KEY}
 1. 创建任务前，服务端检查当前用户的 AI 额度和活动任务数量。
 2. 相同 `Idempotency-Key`、相同参数重复请求，不创建新任务。
 3. 相同 `Idempotency-Key` 但输入文件或参数不同，返回 `409 IDEMPOTENCY_CONFLICT`。
-4. Provider 提交失败、查询失败、输出无效或内容安全不通过，不扣 AI 生成额度。
+4. Provider 提交失败、查询失败、输出无效或文件存储失败，不扣 AI 生成额度。
 5. 只有输出文件成功保存、任务成功更新后，才扣除一次 `ai_generation` 额度。
 6. 任务和 AI 文件默认 24 小时后清理；过期任务不能继续使用。
 

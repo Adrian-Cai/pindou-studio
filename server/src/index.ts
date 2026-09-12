@@ -82,7 +82,6 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       aiFiles,
       config.quota,
       () => new Date(),
-      contentSecurity,
       config.aiFiles.retentionMs,
     );
     const aiRateLimiter = new InMemoryRateLimiter(
