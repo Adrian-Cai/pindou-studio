@@ -16,6 +16,7 @@ Page({
     waitingLong: false,
     showPurchase: false,
     retryMode: 'generation',
+    retryable: true,
   },
 
   _aiFlow: null as AiGenerationFlow | null,

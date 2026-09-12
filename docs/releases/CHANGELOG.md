@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.29.8
+
+- 优化 AI 图片生成失败状态：当供应商返回 403-AllocationQuota.FreeTierOnly 时，后端统一映射为业务错误码 `AI_SERVICE_UNAVAILABLE`，不将供应商、额度不足、FreeTierOnly 等内部信息暴露给前端。
+- 失败页面 UI：`AI_SERVICE_UNAVAILABLE` 错误标题改为「AI 生成暂时不可用」，说明文案为「当前暂时无法完成 AI 生成，请稍后再试，本次不会消耗生成次数」。
+- 按钮逻辑：`AI_SERVICE_UNAVAILABLE` 等 `retryable=false` 系统错误只展示主要按钮「返回首页」，不展示「重新生成」，避免重复调用必然失败的 AI 服务；`AI_PROVIDER_TIMEOUT`、`AI_PROVIDER_ERROR` 等可重试错误仍展示「重新生成」。
+- 次数扣减机制确认：当前实现为 AI 成功后才执行 `debitBucket()` 扣次数，失败路径不扣次数，已天然满足「系统原因失败不消耗生成次数」要求，无需修改。
+- 影响范围：`server/src/modules/ai/qwen-image-provider.ts`、`server/src/modules/ai/ai-generation-service.ts`、`miniprogram/services/ai-generation-service.ts`、`miniprogram/pages-sub/services/ai-generation-flow.ts`、`miniprogram/pages-sub/ai-generation/index.ts`、`miniprogram/pages-sub/ai-generation/index.wxml`；不改变 AI 生成成功流程和页面样式。
+
 ## 0.29.7
 
 - 修复开发者工具警告「组件 wxss 中不允许使用标签名、ID 和属性选择器」：`upload-status-card` 内 `[disabled]` 及两处 `image` 标签选择器改为普通类选择器（`--disabled`、`__preview-placeholder-icon`、`__reselect-icon`），样式效果逐条等价迁移，视觉与交互不变。

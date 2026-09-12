@@ -103,6 +103,7 @@ const PUBLIC_FAILURE_CODES = new Set([
   "AI_PROVIDER_OUTPUT_INVALID",
   "AI_PROVIDER_OUTPUT_TOO_LARGE",
   "AI_QUOTA_UNAVAILABLE_AT_COMPLETION",
+  "AI_SERVICE_UNAVAILABLE",
 ]);
 
 function nullableIso(value: Date | string | null): string | null {

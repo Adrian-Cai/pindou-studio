@@ -39,13 +39,19 @@
     >购买 AI 生成次数</button>
 
     <button
-      wx:if="{{pageState === 'failed' && !showPurchase}}"
+      wx:if="{{pageState === 'failed' && !showPurchase && retryable}}"
       class="button-primary ai-generation-retry"
       bindtap="retry"
     >{{retryMode === 'generation' ? '重新生成' : retryMode === 'query' ? '重新查询' : '重试'}}</button>
 
     <button
-      wx:if="{{pageState === 'failed'}}"
+      wx:if="{{pageState === 'failed' && !retryable && !showPurchase}}"
+      class="button-primary ai-generation-retry"
+      bindtap="backHome"
+    >返回首页</button>
+
+    <button
+      wx:if="{{pageState === 'failed' && (showPurchase || retryable)}}"
       class="button-secondary ai-generation-back"
       bindtap="backHome"
     >返回首页</button>

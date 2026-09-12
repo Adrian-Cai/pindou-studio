@@ -180,8 +180,11 @@ export function aiGenerationErrorMessage(error: unknown): string {
   const code = errorCode(error)
   switch (code) {
     case 'QUOTA_INSUFFICIENT':
+    case 'USER_AI_QUOTA_EXHAUSTED':
     case 'AI_QUOTA_UNAVAILABLE_AT_COMPLETION':
       return 'AI 生成次数不足，请购买次数'
+    case 'AI_SERVICE_UNAVAILABLE':
+      return '当前暂时无法完成 AI 生成\n请稍后再试，本次不会消耗生成次数'
     case 'AI_PROVIDER_NOT_CONFIGURED':
     case 'AI_PROVIDER_UNAVAILABLE':
     case 'AI_PROVIDER_ERROR':

@@ -162,7 +162,12 @@ export class QwenImageProvider implements AiGenerationProvider {
     } catch {
       // 非 JSON 响应统一映射为稳定的上游错误
     }
-    if (!response.ok || !body) throw providerFailure();
+    if (!response.ok || !body) {
+      if (response.status === 403 && isAllocationQuotaError(body)) {
+        throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "AI 生成服务暂时不可用");
+      }
+      throw providerFailure();
+    }
     return body;
   }
 
@@ -190,4 +195,9 @@ function isTrustedOutputUrl(value: URL): boolean {
     && !value.port
     && hostname.endsWith(".aliyuncs.com")
     && hostname.length > ".aliyuncs.com".length;
+}
+
+function isAllocationQuotaError(body: JsonObject | null): boolean {
+  // 千问 API 403 额度耗尽错误：code 字段为 "AllocationQuota.FreeTierOnly"
+  return typeof body?.code === "string" && body.code === "AllocationQuota.FreeTierOnly";
 }

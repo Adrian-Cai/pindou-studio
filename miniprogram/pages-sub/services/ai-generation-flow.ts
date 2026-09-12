@@ -36,6 +36,7 @@ export interface AiGenerationFlowState {
   waitingLong: boolean
   retryMode: AiGenerationFlowRetryMode
   showPurchase: boolean
+  retryable: boolean
 }
 
 export interface AiGenerationFlowCallbacks {
@@ -61,6 +62,7 @@ export class AiGenerationFlow {
     waitingLong: false,
     retryMode: 'generation',
     showPurchase: false,
+    retryable: true,
   }
 
   private pollTimer: ReturnType<typeof setTimeout> | null = null
@@ -212,10 +214,14 @@ export class AiGenerationFlow {
     if (generation.status === 'failed' || generation.status === 'canceled') {
       this.session = { ...this.requireSession(), status: 'failed' }
       saveAiGenerationSession(this.session)
+      const isServiceUnavailable = generation.errorCode === 'AI_SERVICE_UNAVAILABLE'
+      const isQuotaExhausted = generation.errorCode === 'QUOTA_INSUFFICIENT'
+        || generation.errorCode === 'USER_AI_QUOTA_EXHAUSTED'
       this.setFailure(
         generation.status === 'canceled' ? '任务已结束，请重新生成' : aiGenerationErrorMessage(generation),
         'generation',
-        generation.errorCode === 'QUOTA_INSUFFICIENT',
+        isQuotaExhausted,
+        !isServiceUnavailable,
       )
       return
     }
@@ -321,7 +327,15 @@ export class AiGenerationFlow {
       await this.handleGeneration(generation, ++this.requestSequence)
     } catch (error) {
       if (this.destroyed || this.hidden) return
-      this.setFailure(aiGenerationErrorMessage(error), 'generation', error instanceof ApiError && error.code === 'QUOTA_INSUFFICIENT')
+      const isServiceUnavailable = error instanceof ApiError && error.code === 'AI_SERVICE_UNAVAILABLE'
+      const isQuotaExhausted = error instanceof ApiError
+        && (error.code === 'QUOTA_INSUFFICIENT' || error.code === 'USER_AI_QUOTA_EXHAUSTED')
+      this.setFailure(
+        aiGenerationErrorMessage(error),
+        'generation',
+        isQuotaExhausted,
+        !isServiceUnavailable,
+      )
     } finally {
       this.submitting = false
       if (this.resumeAfterRequest && !this.destroyed && !this.hidden && !this.finished) {
@@ -343,16 +357,25 @@ export class AiGenerationFlow {
     }
   }
 
-  private setFailure(message: string, retryMode: AiGenerationFlowRetryMode, showPurchase = false): void {
+  private setFailure(message: string, retryMode: AiGenerationFlowRetryMode, showPurchase = false, retryable = true): void {
     this.clearPollTimer()
     this.clearLongWaitTimer()
+    let stateTitle: string
+    if (retryMode === 'converting') {
+      stateTitle = '拼豆图生成失败'
+    } else if (!retryable) {
+      stateTitle = 'AI 生成暂时不可用'
+    } else {
+      stateTitle = 'AI 生成失败'
+    }
     this.updateState({
       pageState: 'failed',
-      stateTitle: retryMode === 'converting' ? '拼豆图生成失败' : 'AI 生成失败',
+      stateTitle,
       stateDescription: message,
       statusMessage: '',
       retryMode,
       showPurchase,
+      retryable,
       waitingLong: false,
     })
   }
