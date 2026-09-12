@@ -1,0 +1,182 @@
+/* ==========================================================================
+   AI 生成中的图片预览区组件 (GeneratingPreviewCard)
+   高保真还原设计稿规范
+   ========================================================================== */
+
+:host {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 外层预览卡片 */
+.generating-card {
+  position: relative;
+  width: 100%;
+  height: 290px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #EEF0FD 0%, #E2DCFE 34%, #ECE7FF 68%, #DCD6FA 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 30px 18px 16px;
+  box-shadow: 0 4px 20px rgba(125, 105, 240, 0.08);
+}
+
+/* 朦胧紫雾氛围层 */
+.generating-card__glow-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 82% 16%, rgba(188, 170, 255, 0.45) 0%, rgba(188, 170, 255, 0) 52%),
+    radial-gradient(circle at 16% 80%, rgba(205, 192, 255, 0.38) 0%, rgba(205, 192, 255, 0) 58%),
+    radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0) 70%);
+  filter: blur(12px);
+  transform: translateZ(0);
+}
+
+/* 中心内容区 */
+.generating-card__center {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+/* 图标容器与轻微呼吸浮动动效 */
+.generating-card__icon-wrap {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: float-breathing 2.8s ease-in-out infinite;
+}
+
+/* 调色盘与灵感四角星星 */
+.generating-card__icon-art {
+  width: 44px;
+  height: 44px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none'%3E%3C!-- Sparkle --%3E%3Cpath d='M38 2C38 5.5 40.5 8 44 8C40.5 8 38 10.5 38 14C38 10.5 35.5 8 32 8C35.5 8 38 5.5 38 2Z' fill='%237057FE'/%3E%3C!-- Palette Body --%3E%3Cpath d='M22 8C12.8 8 5 15.6 5 25C5 34.4 12.6 42 22 42C25.6 42 27.8 39.8 28.8 37.5C29.4 36.2 30.5 35.4 31.9 35.4H33C38.5 35.4 43 30.9 43 25.4C43 15.8 33.5 8 22 8Z' fill='%23968BFF'/%3E%3C!-- Palette Paint Holes --%3E%3Ccircle cx='14' cy='22' r='2.8' fill='%23FFFFFF' fill-opacity='0.95'/%3E%3Ccircle cx='21' cy='16' r='2.8' fill='%23FFFFFF' fill-opacity='0.95'/%3E%3Ccircle cx='29' cy='19' r='2.8' fill='%23FFFFFF' fill-opacity='0.95'/%3E%3C!-- Paintbrush --%3E%3Cpath d='M38 24L26.5 35.5' stroke='%237055FE' stroke-width='3.2' stroke-linecap='round'/%3E%3Cpath d='M24.8 37.2L23 40C22.6 40.7 23.3 41.4 24 41L26.8 39.2' fill='%237055FE'/%3E%3C/svg%3E");
+}
+
+/* 标题 */
+.generating-card__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1F1D38;
+  line-height: 25px;
+  margin-top: 14px;
+  letter-spacing: 0.2px;
+  text-align: center;
+}
+
+/* 副标题 */
+.generating-card__subtitle {
+  font-size: 14px;
+  font-weight: 400;
+  color: #797698;
+  line-height: 20px;
+  margin-top: 6px;
+  text-align: center;
+}
+
+/* 进度条外层容器 */
+.generating-card__progress-wrap {
+  margin-top: 20px;
+  width: 250px;
+  max-width: 82%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 进度条轨道 */
+.generating-card__progress-track {
+  flex: 1;
+  height: 8px;
+  background: rgba(144, 126, 255, 0.18);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 进度条高亮条 */
+.generating-card__progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #745CFF 0%, #9C89FF 100%);
+  transition: width 0.35s ease;
+  position: relative;
+}
+
+/* 进度文本 */
+.generating-card__progress-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: #757294;
+  margin-left: 10px;
+  white-space: nowrap;
+}
+
+/* 底部提示胶囊 */
+.generating-card__tip-capsule {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 44px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 4px 14px rgba(118, 98, 240, 0.06);
+  display: flex;
+  align-items: center;
+}
+
+/* 提示图标 */
+.generating-card__tip-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23745CFF' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 2a5 5 0 0 0-5 5c0 2.2 1.2 3.6 2.2 4.7.5.5.8 1.3.8 2.1h4c0-.8.3-1.6.8-2.1 1-1.1 2.2-2.5 2.2-4.7a5 5 0 0 0-5-5z'/%3E%3Cpath d='M8 17h4'/%3E%3C/svg%3E");
+}
+
+/* 提示文案 */
+.generating-card__tip-text {
+  font-size: 12.5px;
+  color: #535676;
+  margin-left: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+/* 图标呼吸浮动动画 */
+@keyframes float-breathing {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-3px) scale(1.02);
+  }
+}

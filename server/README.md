@@ -150,6 +150,8 @@ Content-Type: application/json
 
 ## 阶段 6 接口
 
+完整的字段定义、响应示例、状态流转、千问上游请求结构和本地联调步骤见 [`../docs/backend/AI_GENERATION_API.md`](../docs/backend/AI_GENERATION_API.md)。
+
 上传 AI 输入图片时复用 `POST /api/files/upload` 并设置 `type=ai_input`随后使用 `Idempotency-Key` 调用 `POST /api/ai/generations`，请求体只包含 `inputFileId`、`style`、`detailLevel` 和 `backgroundMode`；用 `GET /api/ai/generations/:id` 轮询状态
 
 服务端调用千问图像 3.0 异步接口，持久化 Provider 任务 ID，并在输出图片下载、格式校验和文件资产落库成功后才扣除一笔 `ai_generation`Provider 失败、超时或无效输出不伪造成功，也不扣额度

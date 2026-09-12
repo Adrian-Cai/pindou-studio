@@ -76,6 +76,7 @@ Page({
     aiStateDescription: '',
     aiStatusMessage: '',
     aiWaitingLong: false,
+    aiProgress: 60,
     aiRetryMode: 'generation',
     aiShowPurchase: false,
     undoStack: [] as PatternCell[][],
@@ -106,7 +107,7 @@ Page({
   _pinchStartMidX: 0,
   _pinchStartMidY: 0,
 
-  onLoad() {
+  onLoad(options?: Record<string, string | undefined>) {
     const aiSession = loadAiGenerationSession()
     let draft = appStore.getSnapshot().currentDraft
 
@@ -123,6 +124,16 @@ Page({
       void appStore.setCurrentDraft(draft)
     }
     if (!draft) {
+      if (options?.preview === 'generating' || options?.preview === 'ai') {
+        this.setData({
+          aiLocked: true,
+          aiFailed: false,
+          aiProgress: 60,
+          aiStateTitle: 'AI 正在生成拼豆图',
+          aiStateDescription: '预计还需几分钟，请稍候',
+        })
+        return
+      }
       wx.showToast({ title: '请先选择图片', icon: 'none' })
       setTimeout(() => wx.switchTab({ url: '/pages/home/index' }), 500)
       return
@@ -140,6 +151,18 @@ Page({
       selectedColorCode: firstColorCode,
       beadCount: draft.cells.filter((cell) => cell.color !== 'transparent').length,
     })
+
+    if (options?.preview === 'generating' || options?.preview === 'ai') {
+      this.setData({
+        aiLocked: true,
+        aiFailed: false,
+        aiProgress: 60,
+        aiStateTitle: 'AI 正在生成拼豆图',
+        aiStateDescription: '预计还需几分钟，请稍候',
+      })
+      return
+    }
+
     if (aiSession && shouldResumeAiSession && aiSession.sourceImagePath === draft.sourceImagePath && draft.id.startsWith('ai-pending-')) {
       this._aiFlow = new AiGenerationFlow({
         onStateChange: (state) => this.applyAiFlowState(state),
@@ -173,13 +196,24 @@ Page({
 
   applyAiFlowState(state: AiGenerationFlowState) {
     const failed = state.pageState === 'failed'
+    const progressMap: Record<string, number> = {
+      loading: 20,
+      uploading: 35,
+      submitting: 45,
+      queued: 55,
+      processing: 60,
+      downloading: 80,
+      converting: 90,
+      failed: 0,
+    }
     this.setData({
       aiFailed: failed,
       aiLocked: true,
-      aiStateTitle: state.stateTitle,
-      aiStateDescription: state.stateDescription,
+      aiStateTitle: state.stateTitle || 'AI 正在生成拼豆图',
+      aiStateDescription: state.stateDescription || '预计还需几分钟，请稍候',
       aiStatusMessage: state.statusMessage,
       aiWaitingLong: state.waitingLong,
+      aiProgress: progressMap[state.pageState] ?? 60,
       aiRetryMode: state.retryMode,
       aiShowPurchase: state.showPurchase,
     })

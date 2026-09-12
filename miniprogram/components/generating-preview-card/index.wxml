@@ -1,0 +1,33 @@
+<view class="generating-card">
+  <!-- 柔和雾感背景光晕层 -->
+  <view class="generating-card__glow-layer" aria-hidden="true"></view>
+
+  <!-- 中心内容区 -->
+  <view class="generating-card__center">
+    <!-- 调色盘与灵感星星图标 -->
+    <view class="generating-card__icon-wrap">
+      <view class="generating-card__icon-art"></view>
+    </view>
+
+    <!-- 标题与副标题 -->
+    <view class="generating-card__title">{{title}}</view>
+    <view class="generating-card__subtitle">{{subtitle}}</view>
+
+    <!-- 进度条区域 -->
+    <view class="generating-card__progress-wrap">
+      <view class="generating-card__progress-track">
+        <view
+          class="generating-card__progress-bar"
+          style="width: {{progress}}%;"
+        ></view>
+      </view>
+      <text class="generating-card__progress-text">约 {{progress}}%</text>
+    </view>
+  </view>
+
+  <!-- 底部提示胶囊 -->
+  <view class="generating-card__tip-capsule" wx:if="{{showTip && tipText}}">
+    <view class="generating-card__tip-icon"></view>
+    <text class="generating-card__tip-text">{{tipText}}</text>
+  </view>
+</view>

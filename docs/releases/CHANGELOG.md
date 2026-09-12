@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.29.1
+
+- 新增独立 UI 组件 `generating-preview-card`：以浅紫色柔和渐变与微光氛围层实现图片预览区的 AI 生成中加载态，包含调色盘与灵感星星矢量图标、轻微呼吸浮动动效、居中标题与副标题、高精度进度条与右侧对齐百分比文字，以及底部半透明磨砂白提示胶囊。
+- 将 `generating-preview-card` 接入「编辑拼豆图」页面（`pages-sub/editor`），替换旧版临时 GIF 加载层；在 AI 生成期间优雅呈现生成进度与状态，支持动态绑定 `aiProgress`。
+- 编辑页支持 `preview=generating` 查询参数，便于在无真实后端 AI 任务时直接进行前端视觉验收与调试。
+- 移除编辑页不再使用的旧版 ad-hoc loading 样式代码，精简代码体积。
+- 补充完整的 AI 生成接口字段与状态流转文档 [`docs/backend/AI_GENERATION_API.md`](../backend/AI_GENERATION_API.md)。
+
 ## 0.29.0
 
 - 修复图片已通过检测后启动 Ai 模式时上传状态卡重复显示“正在上传图片”的问题；图片检测结果保持成功，AI 输入准备改由生成按钮忙碌态反馈。

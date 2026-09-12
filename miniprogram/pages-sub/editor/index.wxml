@@ -25,29 +25,17 @@
           wx:if="{{aiLocked && !aiFailed}}"
           class="ai-editor-state ai-editor-state--loading"
           role="status"
-          aria-label="{{aiStateTitle}}，{{aiStateDescription}}"
+          aria-label="{{aiStateTitle || 'AI 正在生成拼豆图'}}，{{aiStateDescription || '预计还需几分钟，请稍候'}}"
           catchtouchstart="stopWorkspaceTouch"
           catchtouchmove="stopWorkspaceTouch"
           catchtouchend="stopWorkspaceTouch"
         >
-          <image
-            class="ai-editor-loading-background"
-            src="/assets/animations/ai-generation-loading.gif"
-            mode="aspectFill"
-            aria-hidden="true"
+          <generating-preview-card
+            title="{{aiStateTitle || 'AI 正在生成拼豆图'}}"
+            subtitle="{{aiWaitingLong ? '处理时间比平时长一些，请稍候' : (aiStateDescription || '预计还需几分钟，请稍候')}}"
+            progress="{{aiProgress || 60}}"
+            tipText="正在为你优化图片细节，生成完成后即可开始编辑"
           />
-          <view class="ai-editor-loading-content">
-            <view class="ai-editor-loading-pill" aria-hidden="true">
-              <image
-                class="ai-editor-loading-pill__icon"
-                src="/assets/icons/mode-ai-sparkle.svg"
-                mode="aspectFit"
-              />
-              <text>生成中...</text>
-            </view>
-            <text class="ai-editor-loading-hint">{{aiWaitingLong ? '处理时间比平时长一些，请稍候' : '预计需要几分钟，请稍候'}}</text>
-            <text wx:if="{{aiStatusMessage}}" class="ai-editor-loading-status">{{aiStatusMessage}}</text>
-          </view>
         </view>
 
         <view
