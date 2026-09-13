@@ -26,6 +26,8 @@ pipeline {
                     docker compose version > /dev/null
                     docker info > /dev/null
                     command -v curl > /dev/null
+                    command -v psql > /dev/null
+                    command -v sha256sum > /dev/null
                 '''
             }
         }
@@ -55,6 +57,18 @@ pipeline {
                     set -eu
                     mkdir -p "$DEPLOY_DIR"
                     cp deploy/compose.yaml "$DEPLOY_DIR/compose.yaml"
+                    mkdir -p "$DEPLOY_DIR/sql"
+                    cp server/sql/[0-9][0-9][0-9]_*.sql "$DEPLOY_DIR/sql/"
+
+                    # api.env 只作为 Compose 的 env_file，先提取 DB_* 变量给宿主机 psql 使用。
+                    # 关闭 xtrace，避免数据库密码出现在 Jenkins 日志中。
+                    set +x
+                    set -a
+                    eval "$(grep -E '^DB_[A-Z_]+=' "$RUNTIME_ENV_FILE" \
+                      | sed -E 's/^([A-Z_]+)="?([^\"]*)"?$/\1="\2"/' \
+                      | sed -e 's/\\$/\\\$/g' -e 's/`/\\`/g')"
+                    set +a
+                    sh "$WORKSPACE/deploy/migrate.sh" "$DEPLOY_DIR/sql"
 
                     cd "$DEPLOY_DIR"
                     docker compose --env-file "$RUNTIME_ENV_FILE" config --quiet

@@ -40,6 +40,9 @@ interface ConstraintRow extends QueryResultRow {
   readonly definition: string;
 }
 
+// 迁移记录是部署元数据，不属于 API 的业务 Schema Contract。
+const IGNORED_TABLES = new Set(["pindou_schema_migrations"]);
+
 export interface DatabaseInspection {
   readonly product: "PostgreSQL";
   readonly version: string;
@@ -177,10 +180,10 @@ async function readMetadata(client: PoolClient, schema: string): Promise<{
 
   return {
     version,
-    tables: tables.rows,
-    columns: columns.rows,
-    indexes: indexes.rows,
-    constraints: constraints.rows,
+    tables: tables.rows.filter((item) => !IGNORED_TABLES.has(item.table_name)),
+    columns: columns.rows.filter((item) => !IGNORED_TABLES.has(item.table_name)),
+    indexes: indexes.rows.filter((item) => !IGNORED_TABLES.has(item.table_name)),
+    constraints: constraints.rows.filter((item) => !IGNORED_TABLES.has(item.table_name)),
   };
 }
 

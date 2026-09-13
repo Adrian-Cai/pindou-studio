@@ -12,7 +12,7 @@
 
 ## 1. 当前数据库概览
 
-项目当前使用一套 PostgreSQL 业务数据库，核心包含 12 张业务表：
+项目当前使用一套 PostgreSQL 业务数据库，核心包含 12 张业务表，另有 1 张仅供部署使用的迁移记录表：
 
 | 表名 | 用途 |
 | --- | --- |
@@ -28,6 +28,15 @@
 | `pindou_orders` | 支付订单 |
 | `pindou_ai_generation_jobs` | AI 精致生成任务与状态机 |
 | `pindou_content_security_checks` | 微信内容安全审核任务与回调状态 |
+
+`pindou_schema_migrations` 不是业务表，不参与 API 业务查询。它记录迁移编号、文件名、文件 SHA-256 和成功执行时间；Schema Inspector 会明确忽略这张运维元数据表。
+
+| 字段 | PostgreSQL 类型 | 可空 | 说明 |
+| --- | --- | --- | --- |
+| `version` | `int4` | 否 | 迁移编号，作为主键 |
+| `filename` | `varchar(255)` | 否 | 迁移文件名，必须唯一 |
+| `checksum` | `varchar(64)` | 否 | 迁移文件内容的 SHA-256 小写摘要 |
+| `applied_at` | `timestamptz` | 否 | 迁移成功完成时间 |
 
 关系概览：
 
