@@ -101,7 +101,25 @@ Content-Type: application/json
 }
 ```
 
-`requestId` 用于服务端日志定位。服务端不会向客户端返回千问原始错误、API Key 或内部堆栈。
+`requestId` 用于服务端日志定位。AI 错误还会返回稳定的 `category`、`retryable` 和 `action`；服务端不会向客户端返回千问原始错误、API Key 或内部堆栈。
+
+AI 公开错误结构为：
+
+```json
+{
+  "error": {
+    "code": "AI_SERVICE_UNAVAILABLE",
+    "message": "AI 生成暂时不可用",
+    "category": "PROVIDER",
+    "retryable": false,
+    "action": "USE_STANDARD_MODE",
+    "requestId": "req_xxx",
+    "details": {}
+  }
+}
+```
+
+`action` 只允许 `VIEW_BENEFITS`、`SELECT_IMAGE`、`USE_STANDARD_MODE`、`RETRY`。小程序必须先校验白名单，再决定按钮和跳转。
 
 ### 3.3 文件限制
 
@@ -228,14 +246,11 @@ HTTP 状态码：`201 Created`
   "status": "queued",
   "inputFileId": "file_01JXXXXXXXXXXXX",
   "outputFile": null,
-  "provider": "qwen",
-  "model": "qwen-image-3.0",
-  "promptVersion": "v2",
   "style": "natural",
   "detailLevel": "medium",
   "backgroundMode": "simplify",
   "generationMode": "ai",
-  "errorCode": null,
+  "failure": null,
   "createdAt": "2026-09-12T08:00:00.000Z",
   "updatedAt": "2026-09-12T08:00:00.000Z",
   "completedAt": null
@@ -254,7 +269,7 @@ HTTP 状态码：`201 Created`
 | 404 | `NOT_FOUND` | `inputFileId` 不存在、不属于当前用户或已失效 |
 | 409 | `IDEMPOTENCY_CONFLICT` | 相同幂等键对应了不同输入或不同生成参数 |
 | 429 | `RATE_LIMITED` | AI 创建频率超过限制 |
-| 503 | `AI_PROVIDER_NOT_CONFIGURED` | 千问 Key 或 Base URL 未配置 |
+| 503 | `AI_SERVICE_UNAVAILABLE` | AI 生成服务暂时不可用 |
 
 ## 6. 接口三：查询 AI 任务
 
@@ -279,14 +294,11 @@ HTTP 状态码：`200 OK`
   "status": "processing",
   "inputFileId": "file_01JXXXXXXXXXXXX",
   "outputFile": null,
-  "provider": "qwen",
-  "model": "qwen-image-3.0",
-  "promptVersion": "v2",
   "style": "natural",
   "detailLevel": "medium",
   "backgroundMode": "simplify",
   "generationMode": "ai",
-  "errorCode": null,
+  "failure": null,
   "createdAt": "2026-09-12T08:00:00.000Z",
   "updatedAt": "2026-09-12T08:00:03.000Z",
   "completedAt": null
@@ -308,14 +320,11 @@ HTTP 状态码：`200 OK`
     "contentType": "image/png",
     "size": 512345
   },
-  "provider": "qwen",
-  "model": "qwen-image-3.0",
-  "promptVersion": "v2",
   "style": "natural",
   "detailLevel": "medium",
   "backgroundMode": "simplify",
   "generationMode": "ai",
-  "errorCode": null,
+  "failure": null,
   "createdAt": "2026-09-12T08:00:00.000Z",
   "updatedAt": "2026-09-12T08:00:18.000Z",
   "completedAt": "2026-09-12T08:00:18.000Z"
@@ -334,14 +343,17 @@ HTTP 状态码：`200 OK`
   "status": "failed",
   "inputFileId": "file_01JXXXXXXXXXXXX",
   "outputFile": null,
-  "provider": "qwen",
-  "model": "qwen-image-3.0",
-  "promptVersion": "v2",
   "style": "natural",
   "detailLevel": "medium",
   "backgroundMode": "simplify",
   "generationMode": "ai",
-  "errorCode": "AI_PROVIDER_TASK_FAILED",
+  "failure": {
+    "code": "AI_GENERATION_FAILED",
+    "message": "AI 生成失败，请稍后重试",
+    "category": "INTERNAL",
+    "retryable": true,
+    "action": "RETRY"
+  },
   "createdAt": "2026-09-12T08:00:00.000Z",
   "updatedAt": "2026-09-12T08:00:20.000Z",
   "completedAt": "2026-09-12T08:00:20.000Z"
@@ -358,9 +370,11 @@ HTTP 状态码：`200 OK`
 | `failed` | 输入、Provider、输出校验、文件存储或额度完成阶段失败 | 展示错误并允许新建任务 |
 | `canceled` | 预留状态，当前没有取消接口 | 按失败处理 |
 
-失败任务的 `errorCode` 可能包括：
+失败任务只返回公开错误模型中的以下错误码：
 
-`AI_INPUT_FILE_UNAVAILABLE`、`AI_SUBMISSION_TIMEOUT`、`AI_TASK_EXPIRED`、`AI_PROVIDER_TASK_FAILED`、`AI_PROVIDER_ERROR`、`AI_PROVIDER_TIMEOUT`、`AI_PROVIDER_UNAVAILABLE`、`AI_PROVIDER_OUTPUT_INVALID`、`AI_PROVIDER_OUTPUT_TOO_LARGE`、`AI_QUOTA_UNAVAILABLE_AT_COMPLETION`。
+`USER_AI_QUOTA_EXHAUSTED`、`INVALID_IMAGE`、`AI_INPUT_FILE_UNAVAILABLE`、`CONTENT_REJECTED`、`AI_SERVICE_UNAVAILABLE`、`AI_SERVICE_BUSY`、`AI_TIMEOUT`、`AI_RESULT_INVALID`、`AI_GENERATION_FAILED`。
+
+Provider 原始错误（例如 `AllocationQuota.FreeTierOnly`）只保存在结构化后端日志中，不能出现在任务字段、API message 或小程序日志中。
 
 ### 6.5 查询接口的 HTTP 错误
 
@@ -369,7 +383,7 @@ HTTP 状态码：`200 OK`
 | 401 | `UNAUTHORIZED` | Token 缺失、无效或过期 |
 | 404 | `NOT_FOUND` | 任务不存在或不属于当前用户 |
 
-Provider 查询、输出下载或后处理失败，会被记录到任务的 `errorCode`，而不是把千问原始错误直接返回给客户端。
+Provider 查询阶段的临时网络、429、502 或 503 不会立即将任务置为 `failed`，服务端保持 `processing`，小程序按轮询退避策略继续查询。只有 Provider 明确失败、任务过期或结果确认无效时才进入终态失败。服务端不会把千问原始错误直接返回给客户端。
 
 ## 7. 输出媒体接口
 

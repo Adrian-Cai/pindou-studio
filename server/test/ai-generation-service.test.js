@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { PostgresAiGenerationService } = require("../dist/modules/ai/ai-generation-service.js");
 const { AppError } = require("../dist/shared/app-error.js");
+const { ProviderError } = require("../dist/modules/ai/qwen-image-provider.js");
 
 const NOW = new Date("2026-09-01T04:00:00.000Z");
 
@@ -214,7 +215,8 @@ test("AI provider failure enters a failed terminal state without output or quota
   const created = await state.service.create(REQUEST);
   const result = await advanceUntilTerminal(state, created.id);
   assert.equal(result.status, "failed");
-  assert.equal(result.errorCode, "AI_PROVIDER_TASK_FAILED");
+  assert.equal(result.failure.code, "AI_GENERATION_FAILED");
+  assert.equal(result.failure.category, "INTERNAL");
   assert.equal(result.outputFile, null);
   assert.equal(state.saveCount, 0);
   assert.equal(state.debitCount, 0);
@@ -272,42 +274,64 @@ test("unavailable AI input enters a failed terminal state without calling the pr
   const result = await advanceUntilTerminal(state, created.id);
 
   assert.equal(result.status, "failed");
-  assert.equal(result.errorCode, "AI_INPUT_FILE_UNAVAILABLE");
+  assert.equal(result.failure.code, "AI_INPUT_FILE_UNAVAILABLE");
+  assert.equal(result.failure.action, "SELECT_IMAGE");
   assert.equal(state.createCount, 0);
   assert.equal(state.debitCount, 0);
 });
 
-test("provider polling errors enter a failed terminal state without output or quota debit", async () => {
-  const state = harness({ providerError: new Error("provider unavailable") });
+test("provider polling errors keep the task processing without output or quota debit", async () => {
+  const state = harness({
+    providerError: new ProviderError({
+      provider: "qwen",
+      providerCode: null,
+      httpStatus: 503,
+      kind: "UNAVAILABLE",
+    }),
+  });
   const created = await state.service.create(REQUEST);
   const result = await advanceUntilTerminal(state, created.id);
 
-  assert.equal(result.status, "failed");
-  assert.equal(result.errorCode, "AI_GENERATION_INTERNAL_ERROR");
+  assert.equal(result.status, "processing");
+  assert.equal(result.failure, null);
+  assert.ok(state.pollCount > 0);
   assert.equal(state.saveCount, 0);
   assert.equal(state.debitCount, 0);
 });
 
-test("provider timeout preserves the stable timeout error code", async () => {
+test("provider timeout keeps the task processing for a later poll", async () => {
   const state = harness({ providerError: new AppError(504, "AI_PROVIDER_TIMEOUT", "provider timeout") });
   const created = await state.service.create(REQUEST);
   const result = await advanceUntilTerminal(state, created.id);
 
-  assert.equal(result.status, "failed");
-  assert.equal(result.errorCode, "AI_PROVIDER_TIMEOUT");
+  assert.equal(result.status, "processing");
+  assert.equal(result.failure, null);
+  assert.ok(state.pollCount > 0);
   assert.equal(state.debitCount, 0);
 });
 
-test("output download and storage failures enter a failed terminal state without quota debit", async () => {
-  for (const options of [
-    { downloadError: new Error("output download failed") },
-    { saveError: new Error("output storage failed") },
-  ]) {
-    const state = harness(options);
-    const created = await state.service.create(REQUEST);
-    const result = await advanceUntilTerminal(state, created.id);
+test("temporary output download failures keep the task processing for a later download", async () => {
+  const state = harness({
+    downloadError: new ProviderError({
+      provider: "qwen",
+      providerCode: null,
+      httpStatus: 503,
+      kind: "UNAVAILABLE",
+    }),
+  });
+  const created = await state.service.create(REQUEST);
+  const result = await advanceUntilTerminal(state, created.id);
 
-    assert.equal(result.status, "failed");
-    assert.equal(state.debitCount, 0);
-  }
+  assert.equal(result.status, "processing");
+  assert.equal(state.debitCount, 0);
+});
+
+test("output storage failures enter a failed terminal state without quota debit", async () => {
+  const state = harness({ saveError: new Error("output storage failed") });
+  const created = await state.service.create(REQUEST);
+  const result = await advanceUntilTerminal(state, created.id);
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.failure.code, "AI_GENERATION_FAILED");
+  assert.equal(state.debitCount, 0);
 });

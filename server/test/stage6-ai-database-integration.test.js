@@ -102,7 +102,7 @@ test("stage 6 real database flow: AI success, failure, output asset and idempote
     });
     const failed = await waitForTerminal(service, userId, failedCreated.id);
     assert.equal(failed.status, "failed");
-    assert.equal(failed.errorCode, "AI_PROVIDER_TASK_FAILED");
+    assert.equal(failed.failure.code, "AI_GENERATION_FAILED");
 
     const audit = await pool.query(
       `SELECT jobs.status, jobs.output_file_id, files.file_type,

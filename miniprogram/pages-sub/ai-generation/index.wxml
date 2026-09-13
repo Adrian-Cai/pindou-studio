@@ -39,19 +39,31 @@
     >购买 AI 生成次数</button>
 
     <button
-      wx:if="{{pageState === 'failed' && !showPurchase && retryable}}"
+      wx:if="{{pageState === 'failed' && action === 'USE_STANDARD_MODE'}}"
+      class="button-primary ai-generation-retry"
+      bindtap="useStandardMode"
+    >使用标准模式</button>
+
+    <button
+      wx:if="{{pageState === 'failed' && action === 'SELECT_IMAGE'}}"
+      class="button-primary ai-generation-retry"
+      bindtap="selectNewImage"
+    >重新选择图片</button>
+
+    <button
+      wx:if="{{pageState === 'failed' && action === 'RETRY' && retryable}}"
       class="button-primary ai-generation-retry"
       bindtap="retry"
     >{{retryMode === 'generation' ? '重新生成' : retryMode === 'query' ? '重新查询' : '重试'}}</button>
 
     <button
-      wx:if="{{pageState === 'failed' && !retryable && !showPurchase}}"
+      wx:if="{{pageState === 'failed' && action !== 'USE_STANDARD_MODE' && action !== 'SELECT_IMAGE' && !showPurchase && !retryable}}"
       class="button-primary ai-generation-retry"
       bindtap="backHome"
     >返回首页</button>
 
     <button
-      wx:if="{{pageState === 'failed' && (showPurchase || retryable)}}"
+      wx:if="{{pageState === 'failed' && (showPurchase || retryable || action === 'USE_STANDARD_MODE' || action === 'SELECT_IMAGE')}}"
       class="button-secondary ai-generation-back"
       bindtap="backHome"
     >返回首页</button>

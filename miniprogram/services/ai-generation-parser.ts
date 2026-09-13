@@ -1,5 +1,10 @@
 import { ApiError } from './http-client'
-import type { AiGeneration, AiOutputFile } from './ai-generation-service'
+import {
+  aiGenerationFailure,
+  type AiGeneration,
+  type AiGenerationFailure,
+  type AiOutputFile,
+} from './ai-generation-service'
 
 export function parseAiGeneration(value: unknown): AiGeneration {
   if (!isRecord(value)) throw invalidResponse()
@@ -11,12 +16,17 @@ export function parseAiGeneration(value: unknown): AiGeneration {
   const outputFile = value.outputFile === undefined || value.outputFile === null
     ? null
     : parseAiOutputFile(value.outputFile)
-  const provider = asNonEmptyString(value.provider)
-  const model = asNonEmptyString(value.model)
-  const promptVersion = asNonEmptyString(value.promptVersion)
   const style = parseStyle(value.style)
   const detailLevel = parseDetailLevel(value.detailLevel)
   const backgroundMode = parseBackgroundMode(value.backgroundMode)
+  let failure: AiGenerationFailure | null | undefined
+  if (value.failure === undefined) {
+    failure = typeof value.errorCode === 'string' ? aiGenerationFailure(value) : null
+  } else if (value.failure === null) {
+    failure = null
+  } else if (isRecord(value.failure)) {
+    failure = parseFailure(value.failure)
+  }
 
   if (
     !id
@@ -24,17 +34,16 @@ export function parseAiGeneration(value: unknown): AiGeneration {
     || !status
     || !inputFileId
     || outputFile === undefined
-    || !provider
-    || !model
-    || !promptVersion
     || !style
     || !detailLevel
     || !backgroundMode
     || !isIsoTime(value.createdAt)
     || !isIsoTime(value.updatedAt)
     || !isNullableIsoTime(value.completedAt)
-    || !isNullableString(value.errorCode)
     || (status === 'succeeded' && !outputFile)
+    || failure === undefined
+    || ((status === 'failed' || status === 'canceled') && !failure)
+    || (status !== 'failed' && status !== 'canceled' && failure !== null)
   ) throw invalidResponse()
 
   return {
@@ -43,16 +52,30 @@ export function parseAiGeneration(value: unknown): AiGeneration {
     status,
     inputFileId,
     outputFile,
-    provider,
-    model,
-    promptVersion,
     style,
     detailLevel,
     backgroundMode,
-    errorCode: value.errorCode,
+    failure,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
     completedAt: value.completedAt,
+  }
+}
+
+function parseFailure(value: Record<string, unknown>): AiGenerationFailure | undefined {
+  if (
+    !nonEmptyString(value.code)
+    || !nonEmptyString(value.message)
+    || !isCategory(value.category)
+    || typeof value.retryable !== 'boolean'
+    || !isAction(value.action)
+  ) return undefined
+  return {
+    code: value.code.trim(),
+    message: value.message.trim(),
+    category: value.category,
+    retryable: value.retryable,
+    action: value.action,
   }
 }
 
@@ -102,8 +125,12 @@ function isNullableIsoTime(value: unknown): value is string | null {
   return value === null || isIsoTime(value)
 }
 
-function isNullableString(value: unknown): value is string | null {
-  return value === null || nonEmptyString(value)
+function isCategory(value: unknown): value is AiGenerationFailure['category'] {
+  return value === 'USER' || value === 'INPUT' || value === 'CONTENT' || value === 'PROVIDER' || value === 'INTERNAL'
+}
+
+function isAction(value: unknown): value is AiGenerationFailure['action'] {
+  return value === 'VIEW_BENEFITS' || value === 'SELECT_IMAGE' || value === 'USE_STANDARD_MODE' || value === 'RETRY'
 }
 
 function isJobId(value: unknown): value is string {

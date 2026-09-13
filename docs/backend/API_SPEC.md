@@ -768,12 +768,14 @@ Content-Type: application/json
 任务状态：
 
 - `queued`：任务已落库，等待提交千问。
-- `processing`：正在提交或查询千问；`provider_request_id` 为空时表示正在提交 Provider。
+- `processing`：正在提交或查询千问；`provider_request_id` 为空时表示正在提交 Provider，轮询临时失败时仍保持该状态。
 - `succeeded`：输出图片已校验、持久化为 `ai_output`，并已完成一次 AI 额度扣减。
-- `failed`：Provider、输入文件、输出文件或任务处理失败；失败不扣额度。
+- `failed`：Provider、输入文件、输出文件或任务处理失败；失败不扣额度，公开响应只返回标准 `failure` 对象。
 - `canceled`：预留状态，当前不提供取消接口。
 
 任务成功时响应包含 `outputFile`。千问返回的临时图片地址只在服务端内部使用，服务端必须立即下载并持久化；输出文件校验、资产写入、任务成功更新和一笔 `usage_debit` 在受控流程中完成，相同任务不重复扣减。
+
+任务公开响应不返回 `provider`、`model`、`promptVersion` 或供应商错误字段。失败对象统一使用 `code`、`message`、`category`、`retryable`、`action`；`AllocationQuota.FreeTierOnly` 等供应商诊断只进入受控结构化日志。
 
 小程序端接入约束：
 

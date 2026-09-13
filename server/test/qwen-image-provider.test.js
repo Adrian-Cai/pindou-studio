@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { QwenImageProvider } = require("../dist/modules/ai/qwen-image-provider.js");
+const { ProviderError, QwenImageProvider } = require("../dist/modules/ai/qwen-image-provider.js");
 
 const config = {
   enabled: true,
@@ -54,6 +54,37 @@ test("Qwen provider submits and polls the official async image API without expos
   assert.equal(requestBody.parameters.prompt_extend_mode, "direct");
   assert.equal(requestBody.parameters.enable_thinking, true);
   assert.equal(JSON.stringify({ taskId, result }).includes(config.apiKey), false);
+});
+
+test("Qwen provider normalizes quota and temporary upstream failures without leaking raw details", async () => {
+  const quotaProvider = new QwenImageProvider(config, async () => Response.json({
+    code: "AllocationQuota.FreeTierOnly",
+    message: "sensitive provider response",
+  }, { status: 403 }));
+  await assert.rejects(
+    () => quotaProvider.createTask("data:image/png;base64,AA==", "prompt"),
+    (error) => error instanceof ProviderError
+      && error.code === "AI_SERVICE_UNAVAILABLE"
+      && error.failure.kind === "QUOTA_EXHAUSTED"
+      && error.failure.providerCode === "AllocationQuota.FreeTierOnly",
+  );
+
+  const busyProvider = new QwenImageProvider(config, async () => new Response(null, { status: 503 }));
+  await assert.rejects(
+    () => busyProvider.getTask("task_123"),
+    (error) => error instanceof ProviderError
+      && error.failure.kind === "UNAVAILABLE"
+      && error.failure.httpStatus === 503,
+  );
+
+  const forbiddenProvider = new QwenImageProvider(config, async () => Response.json({ code: "Forbidden" }, { status: 403 }));
+  await assert.rejects(
+    () => forbiddenProvider.createTask("data:image/png;base64,AA==", "prompt"),
+    (error) => error instanceof ProviderError
+      && error.code === "AI_SERVICE_UNAVAILABLE"
+      && error.failure.kind === "UNAVAILABLE"
+      && error.failure.httpStatus === 403,
+  );
 });
 
 test("Qwen provider maps terminal task statuses to stable provider results", async () => {

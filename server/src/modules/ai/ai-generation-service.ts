@@ -13,7 +13,11 @@ import {
   lockQuotaUser,
   readQuota,
 } from "../quota/quota-ledger";
-import type { AiGenerationProvider } from "./qwen-image-provider";
+import {
+  ProviderError,
+  type AiGenerationProvider,
+} from "./qwen-image-provider";
+import { aiPublicFailure, type AiPublicFailure } from "./error-contract";
 import { AI_PROMPT_VERSION, buildAiPrompt } from "./prompt-template";
 
 export type AiGenerationStatus = "queued" | "processing" | "succeeded" | "failed" | "canceled";
@@ -23,6 +27,7 @@ export type AiGenerationBackgroundMode = "keep" | "simplify" | "remove";
 
 export interface CreateAiGenerationInput {
   readonly userId: string;
+  readonly requestId?: string;
   readonly idempotencyKey: string;
   readonly inputFileId: string;
   readonly style: AiGenerationStyle;
@@ -41,13 +46,10 @@ export interface AiGenerationResponse {
     readonly contentType: string;
     readonly size: number;
   } | null;
-  readonly provider: string;
-  readonly model: string;
-  readonly promptVersion: string;
   readonly style: AiGenerationStyle;
   readonly detailLevel: AiGenerationDetailLevel;
   readonly backgroundMode: AiGenerationBackgroundMode;
-  readonly errorCode: string | null;
+  readonly failure: AiPublicFailure | null;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly completedAt: string | null;
@@ -92,22 +94,6 @@ interface FileRow extends QueryResultRow {
 const ACTIVE_STATUSES = ["queued", "processing"] as const;
 const PROVIDER_SUBMISSION_TIMEOUT_MS = 2 * 60 * 1_000;
 const DEFAULT_RETENTION_MS = 24 * 60 * 60 * 1_000;
-const PUBLIC_FAILURE_CODES = new Set([
-  "AI_GENERATION_INTERNAL_ERROR",
-  "AI_INPUT_FILE_UNAVAILABLE",
-  "AI_SUBMISSION_TIMEOUT",
-  "AI_TASK_EXPIRED",
-  "AI_RESULT_EXPIRED",
-  "AI_PROVIDER_TASK_FAILED",
-  "AI_PROVIDER_ERROR",
-  "AI_PROVIDER_TIMEOUT",
-  "AI_PROVIDER_UNAVAILABLE",
-  "AI_PROVIDER_OUTPUT_INVALID",
-  "AI_PROVIDER_OUTPUT_TOO_LARGE",
-  "AI_QUOTA_UNAVAILABLE_AT_COMPLETION",
-  "AI_SERVICE_UNAVAILABLE",
-]);
-
 function nullableIso(value: Date | string | null): string | null {
   return value === null ? null : toIso(value);
 }
@@ -134,6 +120,9 @@ function mapJob(row: AiJobRow): AiGenerationResponse {
   const hasOutput = row.output_file_id && row.output_public_url && row.output_content_type
     && row.output_byte_size !== null;
   if (row.status === "succeeded" && !hasOutput) throw new Error("成功 AI 任务缺少输出文件");
+  const failure = row.status === "failed" || row.status === "canceled"
+    ? (aiPublicFailure(row.error_code) ?? aiPublicFailure("AI_GENERATION_FAILED"))
+    : null;
   return {
     id: row.id,
     generationMode: "ai",
@@ -145,13 +134,10 @@ function mapJob(row: AiJobRow): AiGenerationResponse {
       contentType: row.output_content_type!,
       size: Number(row.output_byte_size),
     } : null,
-    provider: row.provider,
-    model: row.model,
-    promptVersion: row.prompt_version,
     style: row.style,
     detailLevel: row.detail_level,
     backgroundMode: row.background_mode,
-    errorCode: publicFailureCode(row.error_code),
+    failure,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
     completedAt: nullableIso(row.completed_at),
@@ -189,7 +175,13 @@ export class PostgresAiGenerationService {
 
   public async create(input: CreateAiGenerationInput): Promise<AiGenerationResponse> {
     if (!this.provider.configured) {
-      throw new AppError(503, "AI_PROVIDER_NOT_CONFIGURED", "AI 图像服务尚未完成配置");
+      console.error(JSON.stringify({
+        event: "ai_generation_provider_not_configured",
+        requestId: input.requestId ?? null,
+        provider: this.provider.name,
+        model: this.provider.model,
+      }));
+      throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "AI 生成暂时不可用");
     }
     const currentTime = this.now();
     const client = await this.pool.connect();
@@ -278,9 +270,10 @@ export class PostgresAiGenerationService {
       client.release();
     }
     if (job.status === "queued") {
-      void this.advance(job).catch((error: unknown) => {
+      void this.advance(job, input.requestId).catch((error: unknown) => {
         console.error(JSON.stringify({
           event: "ai_generation_background_failed",
+          requestId: input.requestId ?? null,
           jobId: job.id,
           errorCode: failureCode(error),
         }));
@@ -289,14 +282,14 @@ export class PostgresAiGenerationService {
     return mapJob(job);
   }
 
-  public async get(userId: string, jobId: string): Promise<AiGenerationResponse> {
+  public async get(userId: string, jobId: string, requestId?: string): Promise<AiGenerationResponse> {
     const job = await this.readJob(this.pool, userId, jobId);
-    return this.advance(job);
+    return this.advance(job, requestId);
   }
 
-  private async advance(job: AiJobRow): Promise<AiGenerationResponse> {
+  private async advance(job: AiJobRow, requestId: string | undefined = undefined): Promise<AiGenerationResponse> {
     if (job.status === "queued") {
-      const submitted = await this.submit(job.user_id, job.id);
+      const submitted = await this.submit(job.user_id, job.id, requestId);
       return mapJob(submitted);
     }
     if (job.status !== "processing") return mapJob(job);
@@ -313,9 +306,19 @@ export class PostgresAiGenerationService {
       return mapJob(await this.markFailed(job.user_id, job.id, "AI_TASK_EXPIRED"));
     }
     let providerResult: Awaited<ReturnType<AiGenerationProvider["getTask"]>>;
+    const pollStartedAt = Date.now();
     try {
       providerResult = await this.provider.getTask(job.provider_request_id);
     } catch (error: unknown) {
+      if (isProviderError(error)) {
+        logProviderFailure(job, error, requestId, providerPublicCode(error), Date.now() - pollStartedAt);
+      }
+      if (isTransientProviderError(error)) {
+        if (!isProviderError(error)) {
+          logProviderFailure(job, null, requestId, "AI_SERVICE_BUSY", Date.now() - pollStartedAt);
+        }
+        return mapJob(job);
+      }
       return mapJob(await this.markFailed(job.user_id, job.id, failureCode(error)));
     }
     if (providerResult.status === "pending") return mapJob(job);
@@ -323,9 +326,19 @@ export class PostgresAiGenerationService {
       return mapJob(await this.markFailed(job.user_id, job.id, "AI_PROVIDER_TASK_FAILED"));
     }
     let output: Buffer;
+    const downloadStartedAt = Date.now();
     try {
       output = await this.provider.downloadOutput(providerResult.outputUrl);
     } catch (error: unknown) {
+      if (isProviderError(error)) {
+        logProviderFailure(job, error, requestId, providerPublicCode(error), Date.now() - downloadStartedAt);
+      }
+      if (isTransientProviderError(error)) {
+        if (!isProviderError(error)) {
+          logProviderFailure(job, null, requestId, "AI_SERVICE_BUSY", Date.now() - downloadStartedAt);
+        }
+        return mapJob(job);
+      }
       return mapJob(await this.markFailed(job.user_id, job.id, failureCode(error)));
     }
     let stored: StoredAiFile;
@@ -337,7 +350,7 @@ export class PostgresAiGenerationService {
     return mapJob(await this.complete(job.user_id, job.id, stored));
   }
 
-  private async submit(userId: string, jobId: string): Promise<AiJobRow> {
+  private async submit(userId: string, jobId: string, requestId?: string): Promise<AiJobRow> {
     const client = await this.pool.connect();
     let claimed: AiJobRow;
     try {
@@ -384,6 +397,7 @@ export class PostgresAiGenerationService {
     }
 
     let providerTaskId: string;
+    const submissionStartedAt = Date.now();
     try {
       const imageDataUrl = `data:${claimed.input_content_type};base64,${input.buffer.toString("base64")}`;
       providerTaskId = await this.provider.createTask(
@@ -395,6 +409,12 @@ export class PostgresAiGenerationService {
         }).text,
       );
     } catch (error: unknown) {
+      if (isProviderError(error)) {
+        logProviderFailure(claimed, error, requestId, providerPublicCode(error), Date.now() - submissionStartedAt);
+      }
+      if (error instanceof ProviderError && error.failure.kind === "TIMEOUT") {
+        return this.markFailed(userId, jobId, "AI_SUBMISSION_UNKNOWN");
+      }
       return this.markFailed(userId, jobId, failureCode(error));
     }
 
@@ -619,7 +639,57 @@ export class PostgresAiGenerationService {
   }
 }
 
-function publicFailureCode(value: string | null): string | null {
-  if (!value) return null;
-  return PUBLIC_FAILURE_CODES.has(value) ? value : "AI_GENERATION_INTERNAL_ERROR";
+function isProviderError(error: unknown): error is ProviderError {
+  return error instanceof ProviderError;
+}
+
+function isTransientProviderError(error: unknown): boolean {
+  if (isProviderError(error)) {
+    return error.failure.kind === "RATE_LIMITED"
+      || error.failure.kind === "TIMEOUT"
+      || (error.failure.kind === "UNAVAILABLE"
+        && error.failure.httpStatus !== 401
+        && error.failure.httpStatus !== 403
+        && error.code !== "AI_SERVICE_UNAVAILABLE");
+  }
+  if (error instanceof AppError) {
+    return error.code === "AI_PROVIDER_RATE_LIMITED"
+      || error.code === "AI_PROVIDER_TIMEOUT"
+      || error.code === "AI_PROVIDER_UNAVAILABLE";
+  }
+  return false;
+}
+
+function providerPublicCode(error: ProviderError): string {
+  if (error.failure.kind === "QUOTA_EXHAUSTED") return "AI_SERVICE_UNAVAILABLE";
+  if (error.failure.kind === "TIMEOUT") return "AI_TIMEOUT";
+  if (error.failure.kind === "INVALID_OUTPUT") return "AI_RESULT_INVALID";
+  if (error.failure.kind === "UNAVAILABLE"
+    && (error.failure.httpStatus === 401 || error.failure.httpStatus === 403
+      || error.code === "AI_SERVICE_UNAVAILABLE")) return "AI_SERVICE_UNAVAILABLE";
+  if (error.failure.kind === "RATE_LIMITED" || error.failure.kind === "UNAVAILABLE") {
+    return "AI_SERVICE_BUSY";
+  }
+  return "AI_GENERATION_FAILED";
+}
+
+function logProviderFailure(
+  job: AiJobRow,
+  error: ProviderError | null,
+  requestId: string | undefined,
+  publicCode: string,
+  duration: number,
+): void {
+  console.error(JSON.stringify({
+    event: "ai_provider_failure",
+    requestId: requestId ?? null,
+    jobId: job.id,
+    provider: job.provider,
+    model: job.model,
+    promptVersion: job.prompt_version,
+    publicErrorCode: aiPublicFailure(publicCode)?.code ?? "AI_GENERATION_FAILED",
+    internalProviderCode: error?.failure.providerCode ?? null,
+    httpStatus: error?.failure.httpStatus ?? null,
+    duration,
+  }));
 }

@@ -1,11 +1,13 @@
 import { createDraft } from '../../services/image-service'
 import {
+  aiGenerationFailure,
   aiGenerationErrorMessage,
   createAiGeneration,
   downloadAiOutput,
   getAiGeneration,
   isAiOutputImageAvailable,
   type AiGeneration,
+  type AiGenerationFailure,
 } from '../../services/ai-generation-service'
 import {
   clearAiGenerationSession,
@@ -14,7 +16,7 @@ import {
   saveAiGenerationSession,
   type AiGenerationSession,
 } from '../../services/ai-generation-session'
-import { ApiError } from '../../services/http-client'
+import { ApiError, type PublicErrorAction } from '../../services/http-client'
 
 export type AiGenerationFlowPageState =
   | 'loading'
@@ -37,6 +39,7 @@ export interface AiGenerationFlowState {
   retryMode: AiGenerationFlowRetryMode
   showPurchase: boolean
   retryable: boolean
+  action: PublicErrorAction
 }
 
 export interface AiGenerationFlowCallbacks {
@@ -63,6 +66,7 @@ export class AiGenerationFlow {
     retryMode: 'generation',
     showPurchase: false,
     retryable: true,
+    action: 'RETRY',
   }
 
   private pollTimer: ReturnType<typeof setTimeout> | null = null
@@ -114,7 +118,7 @@ export class AiGenerationFlow {
   }
 
   async retry(): Promise<void> {
-    if (this.polling || this.submitting || this.processing || this.destroyed) return
+    if (!this.state.retryable || this.polling || this.submitting || this.processing || this.destroyed) return
     if (this.state.retryMode === 'generation') {
       await this.retryGeneration()
       return
@@ -139,13 +143,13 @@ export class AiGenerationFlow {
     if (this.destroyed || this.hidden || this.polling || this.submitting || this.processing || this.finished) return
     const session = this.session ?? loadAiGenerationSession()
     if (!session) {
-      this.setFailure('没有找到可恢复的 AI 任务，请返回首页重新开始', 'generation')
+      this.setFailure('没有找到可恢复的 AI 任务，请返回首页重新开始', 'generation', null)
       return
     }
     this.session = session
     this.callbacks.onSourceImage?.(session.sourceImagePath)
     if (session.status === 'failed') {
-      this.setFailure('AI 生成失败，请重试', 'generation')
+      this.setFailure('AI 生成失败，请重试', 'generation', null)
       return
     }
     if (session.status === 'creating' && session.inputFileId && !session.jobId) {
@@ -153,7 +157,7 @@ export class AiGenerationFlow {
       return
     }
     if (!session.jobId) {
-      this.setFailure('任务尚未创建，请返回首页重试', 'generation')
+      this.setFailure('任务尚未创建，请返回首页重试', 'generation', null)
       return
     }
     this.setPageStateFromSession(session)
@@ -181,7 +185,7 @@ export class AiGenerationFlow {
         this.updateState({ statusMessage: '网络暂时不可用，正在稍后重试', retryMode: 'query' })
         this.schedulePoll(this.networkBackoff())
       } else {
-        this.setFailure(aiGenerationErrorMessage(error), 'query')
+        this.setFailure(aiGenerationErrorMessage(error), 'query', aiGenerationFailure(error))
       }
     } finally {
       this.polling = false
@@ -214,14 +218,13 @@ export class AiGenerationFlow {
     if (generation.status === 'failed' || generation.status === 'canceled') {
       this.session = { ...this.requireSession(), status: 'failed' }
       saveAiGenerationSession(this.session)
-      const isServiceUnavailable = generation.errorCode === 'AI_SERVICE_UNAVAILABLE'
-      const isQuotaExhausted = generation.errorCode === 'QUOTA_INSUFFICIENT'
-        || generation.errorCode === 'USER_AI_QUOTA_EXHAUSTED'
+      const failure = generation.status === 'canceled'
+        ? canceledFailure()
+        : generation.failure ?? aiGenerationFailure(generation)
       this.setFailure(
         generation.status === 'canceled' ? '任务已结束，请重新生成' : aiGenerationErrorMessage(generation),
         'generation',
-        isQuotaExhausted,
-        !isServiceUnavailable,
+        failure,
       )
       return
     }
@@ -270,7 +273,7 @@ export class AiGenerationFlow {
         && (error.code === 'NETWORK_ERROR' || error.code === 'AI_OUTPUT_INVALID')
         ? 'download'
         : 'converting'
-      this.setFailure(aiGenerationErrorMessage(error), retryMode)
+      this.setFailure(aiGenerationErrorMessage(error), retryMode, aiGenerationFailure(error))
     } finally {
       this.processing = false
       if (this.resumeAfterRequest && !this.destroyed && !this.hidden && !this.finished) {
@@ -283,7 +286,7 @@ export class AiGenerationFlow {
   private async retryGeneration(): Promise<void> {
     const previous = loadAiGenerationSession()
     if (!previous?.inputFileId) {
-      this.setFailure('输入图片已失效，请返回首页重新上传', 'generation')
+      this.setFailure('输入图片已失效，请返回首页重新上传', 'generation', null)
       return
     }
     const inputFileId = previous.inputFileId
@@ -327,15 +330,7 @@ export class AiGenerationFlow {
       await this.handleGeneration(generation, ++this.requestSequence)
     } catch (error) {
       if (this.destroyed || this.hidden) return
-      const isServiceUnavailable = error instanceof ApiError && error.code === 'AI_SERVICE_UNAVAILABLE'
-      const isQuotaExhausted = error instanceof ApiError
-        && (error.code === 'QUOTA_INSUFFICIENT' || error.code === 'USER_AI_QUOTA_EXHAUSTED')
-      this.setFailure(
-        aiGenerationErrorMessage(error),
-        'generation',
-        isQuotaExhausted,
-        !isServiceUnavailable,
-      )
+      this.setFailure(aiGenerationErrorMessage(error), 'generation', aiGenerationFailure(error))
     } finally {
       this.submitting = false
       if (this.resumeAfterRequest && !this.destroyed && !this.hidden && !this.finished) {
@@ -357,13 +352,20 @@ export class AiGenerationFlow {
     }
   }
 
-  private setFailure(message: string, retryMode: AiGenerationFlowRetryMode, showPurchase = false, retryable = true): void {
+  private setFailure(
+    message: string,
+    retryMode: AiGenerationFlowRetryMode,
+    failure: AiGenerationFailure | null,
+  ): void {
     this.clearPollTimer()
     this.clearLongWaitTimer()
+    const resolvedFailure = failure ?? aiGenerationFailure({ errorCode: 'AI_GENERATION_FAILED' })!
+    const action = resolvedFailure.action
+    const retryable = resolvedFailure.retryable && action === 'RETRY'
     let stateTitle: string
     if (retryMode === 'converting') {
       stateTitle = '拼豆图生成失败'
-    } else if (!retryable) {
+    } else if (action === 'USE_STANDARD_MODE') {
       stateTitle = 'AI 生成暂时不可用'
     } else {
       stateTitle = 'AI 生成失败'
@@ -374,8 +376,9 @@ export class AiGenerationFlow {
       stateDescription: message,
       statusMessage: '',
       retryMode,
-      showPurchase,
+      showPurchase: action === 'VIEW_BENEFITS',
       retryable,
+      action,
       waitingLong: false,
     })
   }
@@ -430,5 +433,15 @@ export class AiGenerationFlow {
       clearTimeout(this.longWaitTimer)
       this.longWaitTimer = null
     }
+  }
+}
+
+function canceledFailure(): AiGenerationFailure {
+  return {
+    code: 'AI_GENERATION_FAILED',
+    message: '任务已结束，请重新生成',
+    category: 'INTERNAL',
+    retryable: true,
+    action: 'RETRY',
   }
 }

@@ -1,5 +1,11 @@
 import { buildAiFileUrl } from '../config/api'
-import { ApiError, apiRequest, apiUploadFile } from './http-client'
+import {
+  ApiError,
+  apiRequest,
+  apiUploadFile,
+  type PublicErrorAction,
+  type PublicErrorCategory,
+} from './http-client'
 import { ensureLoggedInSession } from './session-service'
 import { parseAiGeneration } from './ai-generation-parser'
 
@@ -22,6 +28,14 @@ export interface AiOutputFile {
   size: number
 }
 
+export interface AiGenerationFailure {
+  code: string
+  message: string
+  category: PublicErrorCategory
+  retryable: boolean
+  action: PublicErrorAction
+}
+
 export interface AiInputFile {
   id: string
   type: 'ai_input'
@@ -37,13 +51,10 @@ export interface AiGeneration {
   status: AiGenerationStatus
   inputFileId: string
   outputFile: AiOutputFile | null
-  provider: string
-  model: string
-  promptVersion: string
   style: AiGenerationStyle
   detailLevel: AiGenerationDetailLevel
   backgroundMode: AiGenerationBackgroundMode
-  errorCode: string | null
+  failure: AiGenerationFailure | null
   createdAt: string
   updatedAt: string
   completedAt: string | null
@@ -178,7 +189,8 @@ export function isAiOutputImageAvailable(filePath: string): Promise<boolean> {
 }
 
 export function aiGenerationErrorMessage(error: unknown): string {
-  const code = errorCode(error)
+  const failure = aiGenerationFailure(error)
+  const code = failure?.code ?? errorCode(error)
   switch (code) {
     case 'QUOTA_INSUFFICIENT':
     case 'USER_AI_QUOTA_EXHAUSTED':
@@ -186,6 +198,18 @@ export function aiGenerationErrorMessage(error: unknown): string {
       return 'AI 生成次数不足，请购买次数'
     case 'AI_SERVICE_UNAVAILABLE':
       return '当前暂时无法完成 AI 生成\n请稍后再试，本次不会消耗生成次数'
+    case 'AI_SERVICE_BUSY':
+      return 'AI 生成服务繁忙，请稍后重试'
+    case 'AI_TIMEOUT':
+      return 'AI 生成超时，请稍后重试'
+    case 'AI_RESULT_INVALID':
+      return 'AI 生成结果不可用，请重新生成'
+    case 'INVALID_IMAGE':
+      return '当前图片暂不支持生成，请重新选择一张图片'
+    case 'CONTENT_REJECTED':
+      return '当前图片内容不支持生成，请重新选择一张图片'
+    case 'AI_GENERATION_FAILED':
+      return 'AI 生成失败，请稍后重试'
     case 'AI_PROVIDER_NOT_CONFIGURED':
     case 'AI_PROVIDER_UNAVAILABLE':
     case 'AI_PROVIDER_ERROR':
@@ -193,7 +217,6 @@ export function aiGenerationErrorMessage(error: unknown): string {
     case 'AI_PROVIDER_TASK_FAILED':
       return 'AI 服务暂时不可用'
     case 'AI_PROVIDER_TIMEOUT':
-    case 'AI_SUBMISSION_TIMEOUT':
       return 'AI 处理超时，请稍后重试'
     case 'AI_INPUT_FILE_UNAVAILABLE':
       return '输入图片已失效，请重新上传'
@@ -221,8 +244,29 @@ export function aiGenerationErrorMessage(error: unknown): string {
     case 'INVALID_RESPONSE':
       return '服务返回数据异常'
     default:
-      return 'AI 生成失败，请稍后重试'
+      return failure?.message || (error instanceof Error ? error.message : 'AI 生成失败，请稍后重试')
   }
+}
+
+export function aiGenerationFailure(error: unknown): AiGenerationFailure | null {
+  if (isRecord(error) && isRecord(error.failure)) {
+    const failure = parseFailure(error.failure)
+    if (failure) return failure
+  }
+  if (error instanceof ApiError && error.category && error.action && error.retryable !== null) {
+    return {
+      code: error.code,
+      message: error.message,
+      category: error.category,
+      retryable: error.retryable,
+      action: error.action,
+    }
+  }
+  const code = errorCode(error)
+  if (!code) return null
+  const normalizedCode = normalizeFailureCode(code)
+  const definition = failureDefinition(normalizedCode)
+  return definition ? { code: normalizedCode, ...definition } : null
 }
 
 function parseAiInputFile(value: unknown): AiInputFile {
@@ -302,6 +346,70 @@ function errorCode(error: unknown): string | null {
   if (error instanceof ApiError) return error.code
   if (isRecord(error) && typeof error.errorCode === 'string') return error.errorCode
   return null
+}
+
+function parseFailure(value: Record<string, unknown>): AiGenerationFailure | null {
+  if (
+    typeof value.code !== 'string'
+    || typeof value.message !== 'string'
+    || !isCategory(value.category)
+    || typeof value.retryable !== 'boolean'
+    || !isAction(value.action)
+  ) return null
+  return {
+    code: value.code,
+    message: value.message,
+    category: value.category,
+    retryable: value.retryable,
+    action: value.action,
+  }
+}
+
+function normalizeFailureCode(code: string): string {
+  const aliases: Record<string, string> = {
+    USER_AI_QUOTA_EXHAUSTED: 'USER_AI_QUOTA_EXHAUSTED',
+    QUOTA_INSUFFICIENT: 'USER_AI_QUOTA_EXHAUSTED',
+    AI_PROVIDER_NOT_CONFIGURED: 'AI_SERVICE_UNAVAILABLE',
+    AI_SUBMISSION_UNKNOWN: 'AI_SERVICE_UNAVAILABLE',
+    AI_PROVIDER_UNAVAILABLE: 'AI_SERVICE_BUSY',
+    AI_PROVIDER_ERROR: 'AI_GENERATION_FAILED',
+    AI_PROVIDER_TIMEOUT: 'AI_TIMEOUT',
+    AI_SUBMISSION_TIMEOUT: 'AI_SERVICE_UNAVAILABLE',
+    AI_TASK_EXPIRED: 'AI_TIMEOUT',
+    AI_PROVIDER_OUTPUT_INVALID: 'AI_RESULT_INVALID',
+    AI_PROVIDER_OUTPUT_TOO_LARGE: 'AI_RESULT_INVALID',
+    AI_OUTPUT_INVALID: 'AI_RESULT_INVALID',
+    AI_PROVIDER_TASK_FAILED: 'AI_GENERATION_FAILED',
+    AI_GENERATION_INTERNAL_ERROR: 'AI_GENERATION_FAILED',
+    AI_QUOTA_UNAVAILABLE_AT_COMPLETION: 'USER_AI_QUOTA_EXHAUSTED',
+    UNSUPPORTED_IMAGE: 'INVALID_IMAGE',
+    IMAGE_DECODE_ERROR: 'INVALID_IMAGE',
+    CONTENT_RISKY: 'CONTENT_REJECTED',
+  }
+  return aliases[code] ?? code
+}
+
+function failureDefinition(code: string): Omit<AiGenerationFailure, 'code'> | null {
+  const definitions: Record<string, Omit<AiGenerationFailure, 'code'>> = {
+    USER_AI_QUOTA_EXHAUSTED: { message: 'AI 生成次数已用完', category: 'USER', retryable: false, action: 'VIEW_BENEFITS' },
+    INVALID_IMAGE: { message: '当前图片暂不支持生成', category: 'INPUT', retryable: false, action: 'SELECT_IMAGE' },
+    AI_INPUT_FILE_UNAVAILABLE: { message: '输入图片已失效，请重新选择图片', category: 'INPUT', retryable: false, action: 'SELECT_IMAGE' },
+    CONTENT_REJECTED: { message: '当前图片内容不支持生成', category: 'CONTENT', retryable: false, action: 'SELECT_IMAGE' },
+    AI_SERVICE_UNAVAILABLE: { message: 'AI 生成暂时不可用', category: 'PROVIDER', retryable: false, action: 'USE_STANDARD_MODE' },
+    AI_SERVICE_BUSY: { message: 'AI 生成服务繁忙，请稍后重试', category: 'PROVIDER', retryable: true, action: 'RETRY' },
+    AI_TIMEOUT: { message: 'AI 生成超时，请稍后重试', category: 'PROVIDER', retryable: true, action: 'RETRY' },
+    AI_RESULT_INVALID: { message: 'AI 生成结果不可用，请重新生成', category: 'PROVIDER', retryable: true, action: 'RETRY' },
+    AI_GENERATION_FAILED: { message: 'AI 生成失败，请稍后重试', category: 'INTERNAL', retryable: true, action: 'RETRY' },
+  }
+  return definitions[code] ?? null
+}
+
+function isCategory(value: unknown): value is PublicErrorCategory {
+  return value === 'USER' || value === 'INPUT' || value === 'CONTENT' || value === 'PROVIDER' || value === 'INTERNAL'
+}
+
+function isAction(value: unknown): value is PublicErrorAction {
+  return value === 'VIEW_BENEFITS' || value === 'SELECT_IMAGE' || value === 'USE_STANDARD_MODE' || value === 'RETRY'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

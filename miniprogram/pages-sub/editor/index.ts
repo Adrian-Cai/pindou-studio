@@ -8,7 +8,7 @@ import {
   updateCloudWork,
 } from '../../services/work-service'
 import { isNetworkError, queueWorkForSync } from '../../services/work-sync-service'
-import { createPendingDraft } from '../../services/image-service'
+import { createDraft, createPendingDraft } from '../../services/image-service'
 import {
   AiGenerationFlow,
   type AiGenerationFlowState,
@@ -81,6 +81,8 @@ Page({
     aiProgress: 60,
     aiRetryMode: 'generation',
     aiShowPurchase: false,
+    aiRetryable: true,
+    aiAction: 'RETRY',
     undoStack: [] as PatternCell[][],
     redoStack: [] as PatternCell[][],
     tools: editorTools(false, false),
@@ -245,6 +247,8 @@ Page({
       aiProgress: progressMap[state.pageState] ?? 60,
       aiRetryMode: state.retryMode,
       aiShowPurchase: state.showPurchase,
+      aiRetryable: state.retryable,
+      aiAction: state.action,
     })
   },
 
@@ -272,6 +276,8 @@ Page({
       aiStatusMessage: '',
       aiWaitingLong: false,
       aiShowPurchase: false,
+      aiRetryable: true,
+      aiAction: 'RETRY',
       undoStack: [],
       redoStack: [],
       tools: editorTools(false, false),
@@ -284,6 +290,55 @@ Page({
 
   retryAiGeneration() {
     void this._aiFlow?.retry()
+  },
+
+  async useStandardMode() {
+    if (this.data.saving) return
+    const session = loadAiGenerationSession()
+    const sourceImagePath = session?.sourceImagePath || this.data.draft?.sourceImagePath || ''
+    const settings = session?.settings || this.data.draft?.settings
+    if (!sourceImagePath || !settings) {
+      this.selectNewImage()
+      return
+    }
+    wx.showLoading({ title: '正在切换', mask: true })
+    try {
+      const draft = await createDraft(sourceImagePath, settings, 'standard')
+      clearAiGenerationSession()
+      this._aiFlow?.destroy()
+      await appStore.setCurrentDraft(draft)
+      const paletteColors = this.getPaletteColors(draft)
+      const firstColor = paletteColors[0] ?? ''
+      this.setData({
+        draft,
+        generationMode: 'standard',
+        paletteColors,
+        selectedColor: firstColor,
+        selectedColorCode: firstColor ? (draft.cells.find((cell) => cell.color === firstColor)?.colorCode ?? '') : '',
+        beadCount: draft.cells.filter((cell) => cell.color !== 'transparent').length,
+        aiFailed: false,
+        aiLocked: false,
+        aiStateTitle: '',
+        aiStateDescription: '',
+        aiStatusMessage: '',
+        aiWaitingLong: false,
+        aiRetryable: true,
+        aiAction: 'RETRY',
+        undoStack: [],
+        redoStack: [],
+        tools: editorTools(false, false),
+      }, () => this.measureViewport(true))
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : '标准模式生成失败，请重试', icon: 'none' })
+    } finally {
+      wx.hideLoading()
+    }
+  },
+
+  selectNewImage() {
+    clearAiGenerationSession()
+    this._aiFlow?.destroy()
+    wx.switchTab({ url: '/pages/home/index' })
   },
 
   purchaseAiGeneration() {

@@ -1099,6 +1099,14 @@ components:
               type: string
             message:
               type: string
+            category:
+              type: string
+              enum: [USER, INPUT, CONTENT, PROVIDER, INTERNAL]
+            retryable:
+              type: boolean
+            action:
+              type: string
+              enum: [VIEW_BENEFITS, SELECT_IMAGE, USE_STANDARD_MODE, RETRY]
             requestId:
               type: string
             details:
@@ -1661,9 +1669,24 @@ components:
         url: { type: string }
         contentType: { type: string }
         size: { type: integer, minimum: 1 }
+    AiGenerationFailure:
+      type: object
+      required: [code, message, category, retryable, action]
+      properties:
+        code:
+          type: string
+          enum: [USER_AI_QUOTA_EXHAUSTED, INVALID_IMAGE, AI_INPUT_FILE_UNAVAILABLE, CONTENT_REJECTED, AI_SERVICE_UNAVAILABLE, AI_SERVICE_BUSY, AI_TIMEOUT, AI_RESULT_INVALID, AI_GENERATION_FAILED]
+        message: { type: string }
+        category:
+          type: string
+          enum: [USER, INPUT, CONTENT, PROVIDER, INTERNAL]
+        retryable: { type: boolean }
+        action:
+          type: string
+          enum: [VIEW_BENEFITS, SELECT_IMAGE, USE_STANDARD_MODE, RETRY]
     AiGenerationResponse:
       type: object
-      required: [id, status, inputFileId, outputFile, provider, model, promptVersion, style, detailLevel, backgroundMode, generationMode, errorCode, createdAt, updatedAt, completedAt]
+      required: [id, status, inputFileId, outputFile, style, detailLevel, backgroundMode, generationMode, failure, createdAt, updatedAt, completedAt]
       properties:
         id: { type: string }
         status:
@@ -1673,9 +1696,6 @@ components:
           oneOf:
             - $ref: '#/components/schemas/AiOutputFile'
             - type: 'null'
-        provider: { type: string }
-        model: { type: string }
-        promptVersion: { type: string }
         style:
           $ref: '#/components/schemas/AiGenerationStyle'
         detailLevel:
@@ -1685,8 +1705,10 @@ components:
         generationMode:
           type: string
           enum: [ai]
-        errorCode:
-          type: [string, 'null']
+        failure:
+          oneOf:
+            - $ref: '#/components/schemas/AiGenerationFailure'
+            - type: 'null'
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         completedAt:

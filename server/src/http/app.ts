@@ -16,6 +16,7 @@ import { getLegalDocument } from "../modules/legal/legal-document-service";
 import type { FavoriteListOptions, PostgresWorkService } from "../modules/works/work-service";
 import type { WorkStatus } from "../modules/works/work-service";
 import { validatePersistedPattern } from "../modules/works/pattern";
+import { aiPublicFailure, aiPublicHttpStatus, type AiPublicFailure } from "../modules/ai/error-contract";
 import { AppError, invalidArgument } from "../shared/app-error";
 import type { InMemoryRateLimiter } from "./rate-limit";
 import { readJsonObject, readRawJsonObject, readSingleUploadedFile } from "./request-body";
@@ -39,6 +40,9 @@ interface ErrorResponse {
   readonly error: {
     readonly code: string;
     readonly message: string;
+    readonly category?: AiPublicFailure["category"];
+    readonly retryable?: boolean;
+    readonly action?: AiPublicFailure["action"];
     readonly requestId: string;
     readonly details: Readonly<Record<string, unknown>>;
   };
@@ -73,8 +77,21 @@ function errorPayload(
   message: string,
   id: string,
   details: Readonly<Record<string, unknown>> = {},
+  failure: AiPublicFailure | null = null,
 ): ErrorResponse {
-  return { error: { code, message, requestId: id, details } };
+  return {
+    error: {
+      code,
+      message,
+      ...(failure ? {
+        category: failure.category,
+        retryable: failure.retryable,
+        action: failure.action,
+      } : {}),
+      requestId: id,
+      details,
+    },
+  };
 }
 
 export type HttpApplication = (request: IncomingMessage, response: ServerResponse) => void;
@@ -487,6 +504,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         dependencies.aiRateLimiter?.check(`${currentUser.id}:generation`);
         sendJson(response, 201, await dependencies.aiGenerations.create({
           userId: currentUser.id,
+          requestId: id,
           idempotencyKey: idempotencyKey(request),
           ...body,
         }));
@@ -497,7 +515,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       if (requestedAiGenerationId && request.method === "GET") {
         if (url.searchParams.size > 0) throw invalidArgument("AI 生成任务接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
-        sendJson(response, 200, await dependencies.aiGenerations.get(currentUser.id, requestedAiGenerationId));
+        sendJson(response, 200, await dependencies.aiGenerations.get(currentUser.id, requestedAiGenerationId, id));
         return;
       }
 
@@ -667,10 +685,17 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
     })().catch((error: unknown) => {
       if (!response.headersSent) {
         if (error instanceof AppError) {
+          const failure = aiPublicFailure(error.code);
           sendJson(
             response,
-            error.statusCode,
-            errorPayload(error.code, error.message, id, publicErrorDetails(error)),
+            failure ? aiPublicHttpStatus(error.code, error.statusCode) : error.statusCode,
+            errorPayload(
+              failure?.code ?? error.code,
+              failure?.message ?? error.message,
+              id,
+              publicErrorDetails(error),
+              failure,
+            ),
           );
         } else {
           console.error(JSON.stringify({

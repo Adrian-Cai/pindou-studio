@@ -63,7 +63,9 @@ test("AI generation HTTP endpoints accept only server-owned options and authenti
       }),
     });
     assert.equal(createResponse.status, 201);
-    assert.deepEqual(created, {
+    assert.match(created.requestId, /^req_[a-f0-9]{32}$/u);
+    const { requestId: _requestId, ...createdWithoutRequestId } = created;
+    assert.deepEqual(createdWithoutRequestId, {
       userId: "usr_current",
       idempotencyKey: "ai-request-1",
       inputFileId: "file_input",
@@ -122,7 +124,11 @@ test("AI HTTP errors do not expose provider details", async () => {
       }),
     });
     const body = await response.json();
-    assert.equal(response.status, 502);
+    assert.equal(response.status, 503);
+    assert.equal(body.error.code, "AI_SERVICE_BUSY");
+    assert.equal(body.error.category, "PROVIDER");
+    assert.equal(body.error.retryable, true);
+    assert.equal(body.error.action, "RETRY");
     assert.deepEqual(body.error.details, {});
     assert.doesNotMatch(JSON.stringify(body), /SECRET_PROVIDER_CODE|sensitive response/u);
   });
