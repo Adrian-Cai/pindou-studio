@@ -26,7 +26,7 @@ node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'
 
 服务在监听端口前会开启 `READ ONLY` 事务，检查数据库产品、版本、12 张表、字段、索引、外键、CHECK 约束和注释发现任何结构差异时会拒绝启动，不会自动修复数据库
 
-已有数据库部署本版本前，先由 `pindou_*` 表 owner 按编号顺序执行 `sql/` 下的迁移脚本，再执行 `npm run db:inspect`。`000_schema_migrations.sql` 会创建迁移记录表；`deploy/migrate.sh` 会按文件编号和 SHA-256 校验值只执行未记录的迁移，已成功执行且文件未变化的迁移会跳过。**必须用表 owner 或超级用户执行**：迁移含 `ALTER TABLE` / `COMMENT ON` / `CREATE INDEX`，PostgreSQL 只允许 owner 改表，仅有表级 `GRANT` 会报 `ERROR: must be owner of table pindou_*`：
+已有数据库部署本版本前，先由数据库工具或运维脚本使用 `pindou_*` 表 owner 按编号顺序执行 `sql/` 下的迁移脚本，再执行 `npm run db:inspect`。Jenkins 只负责部署 API，不连接数据库，也不会自动执行 SQL 迁移。`000_schema_migrations.sql` 会创建迁移记录表；如使用 `deploy/migrate.sh`，它会按文件编号和 SHA-256 校验值只执行未记录的迁移，已成功执行且文件未变化的迁移会跳过。**必须用表 owner 或超级用户执行**：迁移含 `ALTER TABLE` / `COMMENT ON` / `CREATE INDEX`，PostgreSQL 只允许 owner 改表，仅有表级 `GRANT` 会报 `ERROR: must be owner of table pindou_*`：
 
 ```bash
 export DB_HOST="<API 实际使用的数据库地址>"
@@ -38,7 +38,7 @@ sh deploy/migrate.sh server/sql
 unset DB_PASSWORD
 ```
 
-迁移连接必须是 **API 实际使用的那个库**（即 `config/api.env` 中 `DB_HOST` 指向的实例），迁移到别的库不会生效；Jenkins 会在启动 API 前用宿主机 `psql` 调用 `deploy/migrate.sh`，并在启动迁移前校验 `DB_USER` 对全部 `pindou_*` 表的 owner 权限，不满足时直接报错并列出缺权限的表。手工执行时可先导出 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`，再运行 `sh deploy/migrate.sh server/sql`。`001` 增加双额度字段、AI 任务表、三档 AI 套餐并停用历史下载/无限会员套餐；`002` 增加 `palette` 下载类型；`003` 增加微信内容安全审核表；`004` 增加隐私偏好字段；`005` 允许注销账号后清空 OpenID；`006` 回填历史收藏时间并增加收藏软删除字段与有效收藏时间索引；`008` 增加订单用户时间索引；`009` 增加内容安全图片哈希以复用同图检测结果。部署代码前必须先完成结构迁移，否则结构校验会阻止服务启动。
+迁移连接必须是 **API 实际使用的那个库**（即 `config/api.env` 中 `DB_HOST` 指向的实例），迁移到别的库不会生效。手工执行时可先导出 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`，再运行 `sh deploy/migrate.sh server/sql`；使用数据库工具手工修改时，也要对准同一数据库并使用 owner 账号。`001` 增加双额度字段、AI 任务表、三档 AI 套餐并停用历史下载/无限会员套餐；`002` 增加 `palette` 下载类型；`003` 增加微信内容安全审核表；`004` 增加隐私偏好字段；`005` 允许注销账号后清空 OpenID；`006` 回填历史收藏时间并增加收藏软删除字段与有效收藏时间索引；`008` 增加订单用户时间索引；`009` 增加内容安全图片哈希以复用同图检测结果。部署代码前必须先完成结构迁移，否则结构校验会阻止服务启动。
 
 健康检查：
 

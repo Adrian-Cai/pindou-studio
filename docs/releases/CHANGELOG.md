@@ -2,7 +2,7 @@
 
 ## 0.29.12
 
-- 新增 `pindou_schema_migrations` 迁移记录表与 `deploy/migrate.sh`，部署时按迁移编号和 SHA-256 只执行未完成迁移；已执行文件被修改时会阻止部署并提示人工处理。
+- 新增 `pindou_schema_migrations` 迁移记录表与可选的 `deploy/migrate.sh` 手工迁移脚本，按迁移编号和 SHA-256 记录迁移状态；Jenkins 保持只部署 API，不自动连接生产数据库执行 SQL。
 - 统一 AI 生成异常协议：Provider 原始错误仅保留在受控后端日志，403 `AllocationQuota.FreeTierOnly` 等错误不再透传到小程序。
 - AI 任务公开响应改为标准 `failure` 对象，包含稳定错误码、分类、是否可重试和白名单操作；移除 `provider`、`model`、`promptVersion` 公共字段。
 - Provider 轮询、临时输出下载失败保持任务 `processing`，由后续轮询继续恢复；成功任务仍只写入一条 `usage_debit`，失败任务不扣 AI 额度。

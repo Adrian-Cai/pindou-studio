@@ -4,7 +4,7 @@
 
 ## 当前必须执行的数据库迁移
 
-由 `pindou_*` 表 owner（或超级用户）在目标数据库执行。`000_schema_migrations.sql` 会创建迁移记录表，部署脚本会按编号和 SHA-256 只执行未记录的迁移；迁移含 `ALTER TABLE` / `COMMENT ON` / `CREATE INDEX`，PostgreSQL 只允许 owner 改表，仅有表级 `GRANT` 会报 `ERROR: must be owner of table pindou_*`：
+由数据库工具或运维脚本使用 `pindou_*` 表 owner（或超级用户）在目标数据库执行。Jenkins 只负责部署 API，不连接数据库，也不会自动执行 SQL 迁移。`000_schema_migrations.sql` 会创建迁移记录表；如使用 `deploy/migrate.sh`，它会按编号和 SHA-256 只执行未记录的迁移。迁移含 `ALTER TABLE` / `COMMENT ON` / `CREATE INDEX`，PostgreSQL 只允许 owner 改表，仅有表级 `GRANT` 会报 `ERROR: must be owner of table pindou_*`：
 
 ```bash
 export DB_HOST="<API 实际使用的数据库地址>"
@@ -16,7 +16,7 @@ sh deploy/migrate.sh server/sql
 unset DB_PASSWORD
 ```
 
-迁移连接必须是 API 实际使用的那个库（`config/api.env` 中 `DB_HOST` 指向的实例）；Jenkins 会在启动 API 前用宿主机 `psql` 调用 `deploy/migrate.sh`，只执行未记录的迁移，并在启动迁移前校验 `DB_USER` 对全部 `pindou_*` 表的 owner 权限（不满足时直接失败并列出缺权限的表）；手工补跑时同样要对准该实例并使用 owner 账号。完整清单与说明见 `server/README.md`。
+迁移连接必须是 API 实际使用的那个库（`config/api.env` 中 `DB_HOST` 指向的实例）；数据库工具或运维脚本必须对准该实例并使用 owner 账号。Jenkins 不执行数据库迁移。完整清单与说明见 `server/README.md`。
 
 随后使用应用账号执行：
 
