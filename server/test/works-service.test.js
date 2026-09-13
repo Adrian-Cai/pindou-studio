@@ -44,6 +44,35 @@ test("save writes work and pattern in one transaction and derives counts", async
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
 
+test("save persists the selected generation mode on the work", async () => {
+  let workInsertParameters;
+  const client = {
+    async query(sql, parameters) {
+      if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.includes("FROM pindou_works works")) return { rows: [] };
+      if (sql.includes("FROM pindou_file_assets")) return { rows: [{ user_id: "usr_current", deleted_at: null, file_type: "cover", object_key: "covers/x.png", public_url: "https://cdn/cover.png" }] };
+      if (sql.includes("INSERT INTO pindou_works")) {
+        workInsertParameters = parameters;
+        return { rows: [{ ...row("work_ai"), generation_mode: "ai" }] };
+      }
+      if (sql.includes("INSERT INTO pindou_work_patterns")) return { rows: [] };
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    release() {},
+  };
+  const service = new PostgresWorkService({ async connect() { return client; } });
+  const result = await service.create({
+    userId: "usr_current",
+    idempotencyKey: "save-ai",
+    title: "AI 作品",
+    coverFileId: "file_cover",
+    status: "completed",
+    validatedPattern: validatePersistedPattern({ ...pattern(), generationMode: "ai" }),
+  });
+  assert.equal(result.generationMode, "ai");
+  assert.equal(workInsertParameters[9], "ai");
+});
+
 test("list query does not load cells and detail query maps the persisted pattern", async () => {
   const listRow = row("work_list");
   const detailRow = row("work_detail");

@@ -179,6 +179,7 @@ test("AI state machine persists output and debits ai_generation exactly once aft
   const duplicate = await state.service.create(REQUEST);
 
   assert.equal(result.status, "succeeded");
+  assert.equal(result.generationMode, "ai");
   assert.equal(result.outputFile.url, "https://cdn.example/output.png");
   assert.equal(duplicate.id, result.id);
   assert.equal(state.createCount, 1);
@@ -195,6 +196,7 @@ test("AI state machine persists output and debits ai_generation exactly once aft
   const debit = state.calls.find((call) => call.sql.includes("'usage_debit'"));
   assert.match(debit.sql, /'ai_generation'/);
   assert.equal(debit.parameters[4], `ai-generation:${result.id}`);
+  assert.match(state.calls.find((call) => call.sql.includes("INSERT INTO pindou_ai_generation_jobs")).sql, /generation_mode/u);
 });
 
 test("AI output is persisted without a second content security check", async () => {
@@ -222,7 +224,7 @@ test("AI task creation reserves available quota before calling the paid provider
   const state = harness({ available: 0 });
   await assert.rejects(
     () => state.service.create(REQUEST),
-    (error) => error.statusCode === 402 && error.code === "QUOTA_INSUFFICIENT",
+    (error) => error.statusCode === 402 && error.code === "USER_AI_QUOTA_EXHAUSTED",
   );
   assert.equal(state.job, null);
   assert.equal(state.createCount, 0);

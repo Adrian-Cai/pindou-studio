@@ -154,6 +154,7 @@ Authorization: Bearer <token>
 | `413` | `FILE_TOO_LARGE` | 上传文件超过限制 |
 | `422` | `UNPROCESSABLE_ENTITY` | 业务校验失败 |
 | `402` | `QUOTA_INSUFFICIENT` | 额度不足，需要充值 |
+| `402` | `USER_AI_QUOTA_EXHAUSTED` | AI 生成额度不足，需要充值 |
 | `429` | `RATE_LIMITED` | 请求过于频繁 |
 | `500` | `INTERNAL_ERROR` | 服务端异常 |
 
@@ -166,6 +167,7 @@ Authorization: Bearer <token>
 ```json
 {
   "schemaVersion": 1,
+  "generationMode": "standard",
   "width": 64,
   "height": 64,
   "settings": {
@@ -182,6 +184,7 @@ Authorization: Bearer <token>
 
 约束：
 
+- `generationMode` 只能为 `standard` 或 `ai`；缺失时仅为兼容历史客户端按 `standard` 处理
 - `cells` 为行优先的一维数组，索引 `index = row * width + column`
 - `cells.length` 必须严格等于 `width * height`
 - `-1` 表示透明/空格；`0` 至 `palette.length - 1` 表示对应颜色
@@ -197,6 +200,7 @@ Authorization: Bearer <token>
 | `id` | 保存时由服务端生成 `workId`；客户端草稿 id 仅可作为幂等键的一部分 |
 | `sourceImagePath` | 不保存；临时文件路径重启后失效 |
 | `createdAt` | 不信任；使用服务端时间 |
+| `generationMode` | 只允许 `standard` / `ai`；保存到作品摘要，作为恢复和重新生成时的模式事实 |
 | `settings.width/height` | 写入 `pattern.width/height` |
 | `settings.colorLimit/brand` | 写入 `pattern.settings` |
 | `cells[].color/colorCode` | 客户端转换为 `palette` + `cells` |
@@ -217,6 +221,7 @@ Authorization: Bearer <token>
   "beadCount": 3840,
   "colorCount": 12,
   "brand": "MARD",
+  "generationMode": "standard",
   "status": "completed",
   "isFavorite": false,
   "createdAt": "2026-08-26T11:00:00Z",
@@ -230,6 +235,7 @@ Authorization: Bearer <token>
 {
   "pattern": {
     "schemaVersion": 1,
+    "generationMode": "standard",
     "width": 64,
     "height": 64,
     "settings": { "colorLimit": 32, "brand": "MARD" },
@@ -391,6 +397,7 @@ Authorization: Bearer <token>
   "status": "completed",
   "pattern": {
     "schemaVersion": 1,
+    "generationMode": "standard",
     "width": 64,
     "height": 64,
     "settings": {
@@ -411,6 +418,7 @@ Authorization: Bearer <token>
 服务端必须：
 
 - 校验图案结构、尺寸、颜色索引和数组长度
+- 校验 `generationMode`；`standard` 只保存标准算法结果，`ai` 只保存 AI 流程结果
 - 根据 `cells` 重新计算 `beadCount`、`colorCount`，不信任客户端提交的统计值
 - 使用服务端时间写入 `createdAt` 和 `updatedAt`
 - 校验 `coverFileId` 属于当前用户且类型为 `cover`

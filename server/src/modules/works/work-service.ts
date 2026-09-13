@@ -3,7 +3,7 @@ import { createIdempotentWorkId } from "../../shared/identity";
 import { AppError, forbidden, idempotencyConflict, notFound } from "../../shared/app-error";
 import { toIso } from "../../shared/date-time";
 import { rollbackTransaction } from "../../shared/transaction";
-import { validatePersistedPattern, type PersistedPattern, type ValidatedPattern } from "./pattern";
+import { validatePersistedPattern, type GenerationMode, type PersistedPattern, type ValidatedPattern } from "./pattern";
 
 export type WorkStatus = "draft" | "completed";
 
@@ -16,6 +16,7 @@ export interface WorkSummary {
   readonly beadCount: number;
   readonly colorCount: number;
   readonly brand: string;
+  readonly generationMode: GenerationMode;
   readonly status: WorkStatus;
   readonly isFavorite: boolean;
   readonly createdAt: string;
@@ -94,6 +95,7 @@ interface WorkRow extends QueryResultRow {
   readonly bead_count: number;
   readonly color_count: number;
   readonly brand: string;
+  readonly generation_mode?: string;
   readonly status: string;
   readonly created_at: Date | string;
   readonly updated_at: Date | string;
@@ -146,13 +148,13 @@ export class PostgresWorkService {
       const workInsert = await client.query<WorkRow>(
         `INSERT INTO pindou_works (
            id, user_id, title, cover_file_id, width, height, bead_count, color_count,
-           brand, status, created_at, updated_at, deleted_at
+           brand, generation_mode, status, created_at, updated_at, deleted_at
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, NULL)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, NULL)
          ON CONFLICT (id) DO NOTHING
          RETURNING id, user_id, title, cover_file_id, width, height, bead_count,
-                   color_count, brand, status, created_at, updated_at, deleted_at`,
-        [workId, input.userId, input.title, input.coverFileId, pattern.width, pattern.height, beadCount, colorCount, pattern.settings.brand, input.status, currentTime],
+                   color_count, brand, generation_mode, status, created_at, updated_at, deleted_at`,
+        [workId, input.userId, input.title, input.coverFileId, pattern.width, pattern.height, beadCount, colorCount, pattern.settings.brand, pattern.generationMode, input.status, currentTime],
       );
       const inserted = workInsert.rows[0];
       if (!inserted) {
@@ -182,6 +184,7 @@ export class PostgresWorkService {
         beadCount,
         colorCount,
         brand: pattern.settings.brand,
+        generationMode: pattern.generationMode,
         status: input.status,
         isFavorite: false,
         createdAt: currentTime.toISOString(),
@@ -225,11 +228,11 @@ export class PostgresWorkService {
       const updated = await client.query<WorkRow>(
         `UPDATE pindou_works
             SET title = $3, cover_file_id = $4, width = $5, height = $6,
-                bead_count = $7, color_count = $8, brand = $9, status = $10,
-                updated_at = $11
+                bead_count = $7, color_count = $8, brand = $9, generation_mode = $10,
+                status = $11, updated_at = $12
           WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
           RETURNING id, user_id, title, cover_file_id, width, height, bead_count,
-                    color_count, brand, status, created_at, updated_at, deleted_at`,
+                    color_count, brand, generation_mode, status, created_at, updated_at, deleted_at`,
         [
           input.workId,
           input.userId,
@@ -240,6 +243,7 @@ export class PostgresWorkService {
           validatedPattern?.beadCount ?? existing.bead_count,
           validatedPattern?.colorCount ?? existing.color_count,
           pattern?.settings.brand ?? existing.brand,
+          pattern?.generationMode ?? generationModeFromRow(existing),
           input.status ?? existing.status,
           currentTime,
         ],
@@ -301,7 +305,7 @@ export class PostgresWorkService {
     const result = await this.pool.query<WorkRow>(
       `SELECT works.id, works.user_id, works.title, works.cover_file_id,
               files.public_url AS cover_url, works.width, works.height,
-              works.bead_count, works.color_count, works.brand, works.status,
+              works.bead_count, works.color_count, works.brand, works.generation_mode, works.status,
               works.created_at, works.updated_at, works.deleted_at,
               EXISTS (
                 SELECT 1 FROM pindou_favorites favorites
@@ -322,7 +326,7 @@ export class PostgresWorkService {
     const result = await this.pool.query<WorkRow>(
       `SELECT works.id, works.user_id, works.title, works.cover_file_id,
               files.public_url AS cover_url, works.width, works.height,
-              works.bead_count, works.color_count, works.brand, works.status,
+              works.bead_count, works.color_count, works.brand, works.generation_mode, works.status,
               works.created_at, works.updated_at, works.deleted_at,
               patterns.schema_version, patterns.color_limit,
               patterns.brand AS pattern_brand, patterns.palette_json, patterns.cells_json,
@@ -422,7 +426,7 @@ export class PostgresWorkService {
     const result = await this.pool.query<WorkRow>(
       `SELECT works.id, works.user_id, works.title, works.cover_file_id,
               files.public_url AS cover_url, works.width, works.height,
-              works.bead_count, works.color_count, works.brand, works.status,
+              works.bead_count, works.color_count, works.brand, works.generation_mode, works.status,
               works.created_at, works.updated_at, works.deleted_at,
               favorites.favorited_at,
               TRUE AS is_favorite
@@ -447,7 +451,7 @@ async function readWorkDetail(
   const result = await client.query<WorkRow>(
     `SELECT works.id, works.user_id, works.title, works.cover_file_id,
             files.public_url AS cover_url, works.width, works.height,
-            works.bead_count, works.color_count, works.brand, works.status,
+            works.bead_count, works.color_count, works.brand, works.generation_mode, works.status,
             works.created_at, works.updated_at, works.deleted_at,
             EXISTS (
               SELECT 1 FROM pindou_favorites favorites
@@ -473,7 +477,7 @@ async function readWorkSummary(
   const result = await client.query<WorkRow>(
     `SELECT works.id, works.user_id, works.title, works.cover_file_id,
             files.public_url AS cover_url, works.width, works.height,
-            works.bead_count, works.color_count, works.brand, works.status,
+            works.bead_count, works.color_count, works.brand, works.generation_mode, works.status,
             works.created_at, works.updated_at, works.deleted_at,
             EXISTS (
               SELECT 1 FROM pindou_favorites favorites
@@ -505,6 +509,7 @@ function mapSummary(row: WorkRow): WorkSummary {
     beadCount: row.bead_count,
     colorCount: row.color_count,
     brand: row.brand,
+    generationMode: generationModeFromRow(row),
     status: row.status,
     isFavorite: row.is_favorite === true,
     createdAt: toIso(row.created_at),
@@ -524,6 +529,7 @@ function mapFavoriteSummary(row: WorkRow): FavoriteWorkSummary {
 function mapPattern(row: WorkRow): PersistedPattern {
   const pattern = {
     schemaVersion: row.schema_version,
+    generationMode: generationModeFromRow(row),
     width: row.width,
     height: row.height,
     settings: { colorLimit: row.color_limit, brand: row.pattern_brand },
@@ -531,6 +537,11 @@ function mapPattern(row: WorkRow): PersistedPattern {
     cells: parseJson(row.cells_json),
   };
   return validatePersistedPattern(pattern).pattern;
+}
+
+function generationModeFromRow(row: Pick<WorkRow, "generation_mode">): GenerationMode {
+  if (row.generation_mode === "ai") return "ai";
+  return "standard";
 }
 
 function parseJson(value: unknown): unknown {

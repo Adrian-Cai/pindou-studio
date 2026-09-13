@@ -150,6 +150,7 @@ pindou_users
 | `bead_count` | `int4` | 否 | 非透明拼豆数量 |
 | `color_count` | `int2` | 否 | 实际使用颜色数 |
 | `brand` | `varchar(40)` | 否 | 色板/品牌 |
+| `generation_mode` | `varchar(20)` | 否 | `standard` / `ai`；历史作品迁移默认 `standard` |
 | `status` | `varchar(20)` | 否 | `draft` / `completed` |
 | `created_at` | `timestamptz` | 否 | 创建时间 |
 | `updated_at` | `timestamptz` | 否 | 更新时间 |
@@ -161,6 +162,7 @@ pindou_users
 - FK：`user_id -> pindou_users.id`
 - FK：`cover_file_id -> pindou_file_assets.id`
 - CHECK：`status in ('draft', 'completed')`
+- CHECK：`generation_mode in ('standard', 'ai')`
 - CHECK：宽高不得超过 128
 - CHECK：`bead_count >= 0`
 - CHECK：`color_count >= 0`
@@ -359,6 +361,7 @@ AI 任务的 `expires_at` 默认设置为创建后 24 小时。定时清理会�
 | `style` | `varchar(20)` | 否 | `natural` / `cartoon` / `minimal` |
 | `detail_level` | `varchar(20)` | 否 | `low` / `medium` / `high` |
 | `background_mode` | `varchar(20)` | 否 | `keep` / `simplify` / `remove` |
+| `generation_mode` | `varchar(20)` | 否 | 固定为 `ai`；AI 任务表不允许记录标准模式任务 |
 | `provider_request_id` | `varchar(128)` | 是 | Provider 异步任务 ID |
 | `idempotency_key` | `varchar(128)` | 否 | 同一用户创建任务的幂等键 |
 | `error_code` | `varchar(80)` | 是 | 稳定失败代码 |
@@ -366,7 +369,7 @@ AI 任务的 `expires_at` 默认设置为创建后 24 小时。定时清理会�
 | `started_at` / `completed_at` | `timestamptz` | 是 | 处理/完成时间 |
 | `expires_at` | `timestamptz` | 否 | 任务查询截止时间 |
 
-幂等唯一索引为 `(user_id, idempotency_key)`；活跃状态索引用于额度预留和超时巡检
+幂等唯一索引为 `(user_id, idempotency_key)`；活跃状态索引用于额度预留和超时巡检。`generation_mode` 的 CHECK 约束固定为 `ai`，标准模式不会进入该表。
 
 ## 13. Schema 的事实来源与验证方式
 

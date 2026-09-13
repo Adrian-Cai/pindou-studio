@@ -1,6 +1,6 @@
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import type { ServerConfig } from "../../config/env";
-import { AppError, idempotencyConflict, notFound, quotaInsufficient } from "../../shared/app-error";
+import { aiQuotaInsufficient, AppError, idempotencyConflict, notFound } from "../../shared/app-error";
 import { toIso } from "../../shared/date-time";
 import { createEntityId } from "../../shared/identity";
 import { shanghaiDate } from "../../shared/shanghai-time";
@@ -32,6 +32,7 @@ export interface CreateAiGenerationInput {
 
 export interface AiGenerationResponse {
   readonly id: string;
+  readonly generationMode: "ai";
   readonly status: AiGenerationStatus;
   readonly inputFileId: string;
   readonly outputFile: {
@@ -69,6 +70,7 @@ interface AiJobRow extends QueryResultRow {
   readonly style: string;
   readonly detail_level: string;
   readonly background_mode: string;
+  readonly generation_mode?: string;
   readonly provider_request_id: string | null;
   readonly idempotency_key: string;
   readonly error_code: string | null;
@@ -126,11 +128,15 @@ function mapJob(row: AiJobRow): AiGenerationResponse {
   if (row.background_mode !== "keep" && row.background_mode !== "simplify" && row.background_mode !== "remove") {
     throw new Error("数据库 AI 任务背景模式无效");
   }
+  if (row.generation_mode !== undefined && row.generation_mode !== "ai") {
+    throw new Error("数据库 AI 任务生成模式无效");
+  }
   const hasOutput = row.output_file_id && row.output_public_url && row.output_content_type
     && row.output_byte_size !== null;
   if (row.status === "succeeded" && !hasOutput) throw new Error("成功 AI 任务缺少输出文件");
   return {
     id: row.id,
+    generationMode: "ai",
     status: row.status as AiGenerationStatus,
     inputFileId: row.input_file_id,
     outputFile: hasOutput ? {
@@ -164,7 +170,7 @@ const JOB_SELECT = `SELECT jobs.id, jobs.user_id, jobs.input_file_id,
        output_file.content_type AS output_content_type,
        output_file.byte_size AS output_byte_size,
        jobs.provider, jobs.model, jobs.status, jobs.prompt_version,
-       jobs.style, jobs.detail_level, jobs.background_mode,
+       jobs.style, jobs.detail_level, jobs.background_mode, jobs.generation_mode,
        jobs.provider_request_id, jobs.idempotency_key, jobs.error_code,
        jobs.created_at, jobs.updated_at, jobs.started_at, jobs.completed_at, jobs.expires_at
   FROM pindou_ai_generation_jobs jobs
@@ -241,17 +247,17 @@ export class PostgresAiGenerationService {
           [input.userId, currentTime],
         );
         const active = Number(activeResult.rows[0]?.active_count ?? "0");
-        if (availableQuota(quota) <= active) throw quotaInsufficient("AI 生成额度不足");
+        if (availableQuota(quota) <= active) throw aiQuotaInsufficient();
 
         const id = createEntityId("aijob");
         const expiresAt = new Date(currentTime.getTime() + this.retentionMs);
         const inserted = await client.query<AiJobRow>(
           `INSERT INTO pindou_ai_generation_jobs (
              id, user_id, input_file_id, output_file_id, provider, model, status,
-             prompt_version, style, detail_level, background_mode, provider_request_id,
+             prompt_version, style, detail_level, background_mode, generation_mode, provider_request_id,
              idempotency_key, error_code, created_at, updated_at, started_at,
              completed_at, expires_at
-           ) VALUES ($1, $2, $3, NULL, $4, $5, 'queued', $6, $7, $8, $9, NULL,
+           ) VALUES ($1, $2, $3, NULL, $4, $5, 'queued', $6, $7, $8, $9, 'ai', NULL,
                      $10, NULL, $11, $11, NULL, NULL, $12)
            RETURNING *, $13::text AS input_object_key, $14::text AS input_content_type,
                      NULL::text AS output_public_url, NULL::text AS output_content_type,

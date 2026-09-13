@@ -194,6 +194,8 @@ Content-Type: application/json
 - 同一次业务操作重试时必须复用相同值。
 - 换了一张图片或任一生成参数后必须使用新的值。
 
+该接口只服务 `generationMode = ai`。标准模式不上传 `ai_input`、不创建 AI 任务、不检查或扣减 AI 额度。
+
 请求体必须严格只包含以下四个字段，不允许添加 `prompt`、`provider`、`model`、`quota` 或其他字段：
 
 ```json
@@ -232,6 +234,7 @@ HTTP 状态码：`201 Created`
   "style": "natural",
   "detailLevel": "medium",
   "backgroundMode": "simplify",
+  "generationMode": "ai",
   "errorCode": null,
   "createdAt": "2026-09-12T08:00:00.000Z",
   "updatedAt": "2026-09-12T08:00:00.000Z",
@@ -247,7 +250,7 @@ HTTP 状态码：`201 Created`
 | ---: | --- | --- |
 | 400 | `INVALID_ARGUMENT` | 请求体字段不完整、枚举值无效或包含额外字段 |
 | 401 | `UNAUTHORIZED` | Token 缺失、无效或过期 |
-| 402 | `QUOTA_INSUFFICIENT` | 可用 AI 生成额度不足 |
+| 402 | `USER_AI_QUOTA_EXHAUSTED` | 可用 AI 生成额度不足 |
 | 404 | `NOT_FOUND` | `inputFileId` 不存在、不属于当前用户或已失效 |
 | 409 | `IDEMPOTENCY_CONFLICT` | 相同幂等键对应了不同输入或不同生成参数 |
 | 429 | `RATE_LIMITED` | AI 创建频率超过限制 |
@@ -282,6 +285,7 @@ HTTP 状态码：`200 OK`
   "style": "natural",
   "detailLevel": "medium",
   "backgroundMode": "simplify",
+  "generationMode": "ai",
   "errorCode": null,
   "createdAt": "2026-09-12T08:00:00.000Z",
   "updatedAt": "2026-09-12T08:00:03.000Z",
@@ -310,6 +314,7 @@ HTTP 状态码：`200 OK`
   "style": "natural",
   "detailLevel": "medium",
   "backgroundMode": "simplify",
+  "generationMode": "ai",
   "errorCode": null,
   "createdAt": "2026-09-12T08:00:00.000Z",
   "updatedAt": "2026-09-12T08:00:18.000Z",
@@ -335,6 +340,7 @@ HTTP 状态码：`200 OK`
   "style": "natural",
   "detailLevel": "medium",
   "backgroundMode": "simplify",
+  "generationMode": "ai",
   "errorCode": "AI_PROVIDER_TASK_FAILED",
   "createdAt": "2026-09-12T08:00:00.000Z",
   "updatedAt": "2026-09-12T08:00:20.000Z",

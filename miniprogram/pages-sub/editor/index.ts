@@ -1,4 +1,4 @@
-import type { PatternCell, PatternDraft } from '../../models/pattern'
+import { resolveGenerationMode, type GenerationMode, type PatternCell, type PatternDraft } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
 import {
@@ -13,7 +13,7 @@ import {
   AiGenerationFlow,
   type AiGenerationFlowState,
 } from '../services/ai-generation-flow'
-import { loadAiGenerationSession } from '../../services/ai-generation-session'
+import { clearAiGenerationSession, loadAiGenerationSession } from '../../services/ai-generation-session'
 import {
   calculateFittedImageSize,
   clampViewTranslation,
@@ -60,6 +60,7 @@ const SCALE_DEFAULT = 1
 Page({
   data: {
     draft: null as PatternDraft | null,
+    generationMode: 'standard' as GenerationMode,
     scale: SCALE_DEFAULT,
     scalePercent: 100,
     /** 拼豆图中心相对于 viewport 中心的平移（CSS px） */
@@ -109,11 +110,17 @@ Page({
   _pinchStartMidY: 0,
 
   onLoad(options?: Record<string, string | undefined>) {
-    const aiSession = loadAiGenerationSession()
     let draft = appStore.getSnapshot().currentDraft
+    const previewRequested = options?.preview === 'generating' || options?.preview === 'ai'
+    const generationMode = draft ? resolveGenerationMode(draft) : (previewRequested ? 'ai' : 'standard')
+    if (draft && draft.generationMode !== generationMode) {
+      draft = { ...draft, generationMode }
+    }
+    if (generationMode === 'standard') clearAiGenerationSession()
+    const aiSession = generationMode === 'ai' ? loadAiGenerationSession() : null
 
     const isPendingDraft = draft?.id.startsWith('ai-pending-') === true
-    const shouldResumeAiSession = aiSession !== null && (
+    const shouldResumeAiSession = generationMode === 'ai' && aiSession !== null && (
       aiSession.status === 'processing'
       || aiSession.status === 'succeeded'
       || (aiSession.status === 'creating' && aiSession.inputFileId !== null)
@@ -125,8 +132,9 @@ Page({
       void appStore.setCurrentDraft(draft)
     }
     if (!draft) {
-      if (options?.preview === 'generating' || options?.preview === 'ai') {
+      if (previewRequested) {
         this.setData({
+          generationMode,
           aiLocked: true,
           aiFailed: false,
           aiProgress: 60,
@@ -147,13 +155,14 @@ Page({
       : ''
     this.setData({
       draft,
+      generationMode,
       paletteColors,
       selectedColor: firstColor,
       selectedColorCode: firstColorCode,
       beadCount: draft.cells.filter((cell) => cell.color !== 'transparent').length,
     })
 
-    if (options?.preview === 'generating' || options?.preview === 'ai') {
+    if (previewRequested && generationMode === 'ai') {
       this.setData({
         aiLocked: true,
         aiFailed: false,
@@ -164,7 +173,7 @@ Page({
       return
     }
 
-    if (aiSession && shouldResumeAiSession && aiSession.sourceImagePath === draft.sourceImagePath && draft.id.startsWith('ai-pending-')) {
+    if (generationMode === 'ai' && aiSession && shouldResumeAiSession && aiSession.sourceImagePath === draft.sourceImagePath && draft.id.startsWith('ai-pending-')) {
       this._aiFlow = new AiGenerationFlow({
         onStateChange: (state) => this.applyAiFlowState(state),
         onDraftReady: (nextDraft) => this.applyAiDraft(nextDraft),
@@ -176,7 +185,7 @@ Page({
 
   onShow() {
     this._aiFlow?.onShow()
-    if (this.data.aiShowPurchase) {
+    if (this.data.generationMode === 'ai' && this.data.aiShowPurchase) {
       void this._refreshQuotaAfterPurchase()
     }
   },
@@ -240,6 +249,7 @@ Page({
   },
 
   async applyAiDraft(nextDraft: PatternDraft): Promise<void> {
+    nextDraft = { ...nextDraft, generationMode: 'ai' }
     await appStore.setCurrentDraft(nextDraft)
     const paletteColors = this.getPaletteColors(nextDraft)
     const firstColor = paletteColors[0] ?? ''
@@ -766,6 +776,7 @@ Page({
           id: draft.id,
           title: existing?.title ?? '未命名作品',
           coverPath: draft.sourceImagePath,
+          generationMode: draft.generationMode,
           updatedAt: Date.now(),
           createdAt: existing?.createdAt ?? draft.createdAt,
           beadCount: this.data.beadCount,

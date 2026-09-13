@@ -1320,11 +1320,14 @@ components:
     PersistedPattern:
       type: object
       additionalProperties: false
-      required: [schemaVersion, width, height, settings, palette, cells]
+      required: [schemaVersion, generationMode, width, height, settings, palette, cells]
       properties:
         schemaVersion:
           type: integer
           const: 1
+        generationMode:
+          type: string
+          enum: [standard, ai]
         width:
           type: integer
           enum: [32, 48, 64, 96, 128]
@@ -1354,7 +1357,7 @@ components:
       enum: [draft, completed]
     WorkSummary:
       type: object
-      required: [id, title, coverUrl, width, height, beadCount, colorCount, brand, status, isFavorite, createdAt, updatedAt]
+      required: [id, title, coverUrl, width, height, beadCount, colorCount, brand, generationMode, status, isFavorite, createdAt, updatedAt]
       properties:
         id: { type: string }
         title: { type: string }
@@ -1365,6 +1368,9 @@ components:
         beadCount: { type: integer, minimum: 0 }
         colorCount: { type: integer, minimum: 0 }
         brand: { type: string }
+        generationMode:
+          type: string
+          enum: [standard, ai]
         status:
           $ref: '#/components/schemas/WorkStatus'
         isFavorite: { type: boolean }
@@ -1657,7 +1663,7 @@ components:
         size: { type: integer, minimum: 1 }
     AiGenerationResponse:
       type: object
-      required: [id, status, inputFileId, outputFile, provider, model, promptVersion, style, detailLevel, backgroundMode, errorCode, createdAt, updatedAt, completedAt]
+      required: [id, status, inputFileId, outputFile, provider, model, promptVersion, style, detailLevel, backgroundMode, generationMode, errorCode, createdAt, updatedAt, completedAt]
       properties:
         id: { type: string }
         status:
@@ -1676,6 +1682,9 @@ components:
           $ref: '#/components/schemas/AiGenerationDetailLevel'
         backgroundMode:
           $ref: '#/components/schemas/AiGenerationBackgroundMode'
+        generationMode:
+          type: string
+          enum: [ai]
         errorCode:
           type: [string, 'null']
         createdAt: { type: string, format: date-time }

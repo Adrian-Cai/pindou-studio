@@ -1,3 +1,5 @@
+export type GenerationMode = 'standard' | 'ai'
+
 export interface PatternSettings {
   width: number
   height: number
@@ -14,8 +16,18 @@ export interface PatternDraft {
   id: string
   sourceImagePath: string
   createdAt: number
+  generationMode: GenerationMode
   settings: PatternSettings
   cells: PatternCell[]
+}
+
+export function isGenerationMode(value: unknown): value is GenerationMode {
+  return value === 'standard' || value === 'ai'
+}
+
+export function resolveGenerationMode(draft: { id: string; generationMode?: unknown }): GenerationMode {
+  if (isGenerationMode(draft.generationMode)) return draft.generationMode
+  return draft.id.startsWith('ai-pending-') ? 'ai' : 'standard'
 }
 
 export interface PersistedPaletteItem {
@@ -25,6 +37,7 @@ export interface PersistedPaletteItem {
 
 export interface PersistedPattern {
   schemaVersion: 1
+  generationMode: GenerationMode
   width: number
   height: number
   settings: Pick<PatternSettings, 'colorLimit' | 'brand'>
@@ -36,6 +49,7 @@ export interface WorkItem {
   id: string
   title: string
   coverPath: string
+  generationMode: GenerationMode
   updatedAt: number
   beadCount: number
   colorCount: number

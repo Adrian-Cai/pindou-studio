@@ -1,4 +1,4 @@
-import type { DownloadRecord, PatternDraft, WorkItem } from '../models/pattern'
+import { isGenerationMode, type DownloadRecord, type PatternDraft, type WorkItem } from '../models/pattern'
 
 interface Workspace { currentDraft: PatternDraft | null; localDrafts: Record<string, PatternDraft>; works: WorkItem[]; favoriteIds: string[]; downloadQuota: number; downloadQuotaDate: string; downloadRecords: DownloadRecord[] }
 interface PersistedState { version: 2; guest: Workspace; accounts: Record<string, Workspace> }
@@ -201,10 +201,24 @@ export class AppStore {
 export const appStore = new AppStore()
 function createWorkspace(): Workspace { return { currentDraft: null, localDrafts: {}, works: [], favoriteIds: [], downloadQuota: DAILY_FREE_DOWNLOAD_QUOTA, downloadQuotaDate: dateKey(), downloadRecords: [] } }
 function cloneWorkspace(w: Workspace): Workspace { return { ...w, localDrafts: { ...w.localDrafts }, works: [...w.works], favoriteIds: [...w.favoriteIds], downloadRecords: [...w.downloadRecords] } }
-function normalizeWorkspace(w: Partial<Workspace>): Workspace { return { ...createWorkspace(), ...w, localDrafts: { ...(w.localDrafts ?? {}) }, works: w.works ?? [], favoriteIds: w.favoriteIds ?? [], downloadRecords: w.downloadRecords ?? [] } }
+function normalizeWorkspace(w: Partial<Workspace>): Workspace {
+  return {
+    ...createWorkspace(),
+    ...w,
+    currentDraft: w.currentDraft ? normalizeDraft(w.currentDraft) : null,
+    localDrafts: Object.fromEntries(Object.entries(w.localDrafts ?? {}).map(([id, draft]) => [id, normalizeDraft(draft)])),
+    works: (w.works ?? []).map(normalizeWork),
+    favoriteIds: w.favoriteIds ?? [],
+    downloadRecords: w.downloadRecords ?? [],
+  }
+}
 function normalizePersistedState(state: PersistedState): PersistedState { return { version: 2, guest: normalizeWorkspace(state.guest), accounts: Object.fromEntries(Object.entries(state.accounts ?? {}).map(([id, w]) => [id, normalizeWorkspace(w)])) } }
 function isPersistedState(value: unknown): value is PersistedState { return typeof value === 'object' && value !== null && (value as { version?: unknown }).version === 2 && typeof (value as { guest?: unknown }).guest === 'object' }
 function isSynced(work: WorkItem): boolean { return work.syncStatus === 'synced' || work.isCloud === true }
+function normalizeDraft(draft: PatternDraft): PatternDraft {
+  return { ...draft, generationMode: isGenerationMode(draft.generationMode) ? draft.generationMode : (draft.id.startsWith('ai-pending-') ? 'ai' : 'standard') }
+}
+function normalizeWork(work: WorkItem): WorkItem { return { ...work, generationMode: isGenerationMode(work.generationMode) ? work.generationMode : 'standard' } }
 function mergeWorks(first: WorkItem[], second: WorkItem[]): WorkItem[] { const seen = new Set<string>(); return [...first, ...second].filter((work) => !seen.has(work.id) && (seen.add(work.id), true)) }
 function applyFavorite(works: WorkItem[], id: string, favorite: boolean, at: number): WorkItem[] { return works.map((work) => work.id === id ? { ...work, isFavorite: favorite, favoritedAt: favorite ? at : undefined } : work) }
 function unique(values: string[]): string[] { return [...new Set(values)] }

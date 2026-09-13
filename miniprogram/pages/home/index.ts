@@ -8,16 +8,15 @@ import {
   uploadAiInput,
 } from '../../services/ai-generation-service'
 import {
+  clearAiGenerationSession,
   createIdempotencyKey,
   loadAiGenerationSession,
   saveAiGenerationSession,
   type AiGenerationSession,
 } from '../../services/ai-generation-session'
-import type { PatternSettings } from '../../models/pattern'
+import type { GenerationMode, PatternSettings } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
 
-/** 生成模式 */
-type GenerationMode = 'standard' | 'ai'
 type UploadStatus = 'empty' | 'uploading' | 'checking' | 'success' | 'rejected' | 'error'
 
 let currentUploadRequestId = 0
@@ -121,7 +120,9 @@ Page({
   },
 
   onShow() {
-    // tab 高亮由 page-layout selected-tab 属性管理
+    // tab 高亮由 page-layout selected-tab 属性管理；从编辑器返回时恢复当前草稿模式。
+    const draft = appStore.getSnapshot().currentDraft
+    if (draft) this.setData({ generationMode: draft.generationMode ?? 'standard' })
   },
 
   onUnload() {
@@ -250,12 +251,13 @@ Page({
       return
     }
 
-    // 标准模式：保持现有完整生成流程
+    // 标准模式：清理可能残留的 AI 会话，保持现有完整生成流程。
+    clearAiGenerationSession()
     this.setData({ generating: true, currentStep: 3 })
     wx.showLoading({ title: '正在生成', mask: true })
 
     try {
-      const draft = await createDraft(this.data.sourceImagePath, this.data.settings)
+      const draft = await createDraft(this.data.sourceImagePath, this.data.settings, 'standard')
       appStore.setCurrentDraft(draft)
       wx.navigateTo({ url: '/pages-sub/editor/index' })
     } catch (error) {
@@ -305,6 +307,7 @@ Page({
     if (!session) {
       session = {
         idempotencyKey: createIdempotencyKey(),
+        generationMode: 'ai',
         jobId: null,
         inputFileId: null,
         sourceImagePath: this.data.sourceImagePath,

@@ -1,5 +1,5 @@
 import { DEFAULT_PATTERN_SETTINGS } from '../config/product'
-import type { PatternDraft, PatternSettings } from '../models/pattern'
+import type { GenerationMode, PatternDraft, PatternSettings } from '../models/pattern'
 import { ApiError } from './http-client'
 import { generateStandardPatternCells } from './pattern-generation/standard-generator'
 
@@ -150,6 +150,7 @@ function isImagePickerCancel(error: unknown): boolean {
 export async function createDraft(
   sourceImagePath: string,
   settings: Partial<PatternSettings>,
+  generationMode: GenerationMode = 'standard',
 ): Promise<PatternDraft> {
   const normalizedSettings: PatternSettings = {
     ...DEFAULT_PATTERN_SETTINGS,
@@ -162,6 +163,7 @@ export async function createDraft(
     id: 'draft-' + now,
     sourceImagePath,
     createdAt: now,
+    generationMode,
     settings: normalizedSettings,
     cells,
   }
@@ -185,6 +187,7 @@ export function createPendingDraft(
     id: `ai-pending-${now}`,
     sourceImagePath,
     createdAt: now,
+    generationMode: 'ai',
     settings: normalizedSettings,
     cells: Array.from(
       { length: normalizedSettings.width * normalizedSettings.height },

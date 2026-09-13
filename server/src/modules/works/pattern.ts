@@ -5,8 +5,11 @@ export interface PersistedPaletteItem {
   readonly color: string;
 }
 
+export type GenerationMode = "standard" | "ai";
+
 export interface PersistedPattern {
   readonly schemaVersion: 1;
+  readonly generationMode: GenerationMode;
   readonly width: number;
   readonly height: number;
   readonly settings: {
@@ -26,10 +29,16 @@ export interface ValidatedPattern {
 const SUPPORTED_SIZES = new Set([32, 48, 64, 96, 128]);
 
 export function validatePersistedPattern(value: unknown): ValidatedPattern {
-  if (!isRecord(value) || !hasExactKeys(value, ["schemaVersion", "width", "height", "settings", "palette", "cells"])) {
+  if (!isRecord(value) || !hasOnlyKeys(value, ["schemaVersion", "generationMode", "width", "height", "settings", "palette", "cells"])) {
     throw invalidArgument("pattern 必须是合法的 PersistedPattern");
   }
-  if (value.schemaVersion !== 1 || !SUPPORTED_SIZES.has(value.width as number) || !SUPPORTED_SIZES.has(value.height as number)) {
+  const generationMode = value.generationMode === undefined ? "standard" : value.generationMode;
+  if (
+    value.schemaVersion !== 1
+    || (generationMode !== "standard" && generationMode !== "ai")
+    || !SUPPORTED_SIZES.has(value.width as number)
+    || !SUPPORTED_SIZES.has(value.height as number)
+  ) {
     throw invalidArgument("pattern 的 schemaVersion 或尺寸不受支持");
   }
   if (!isRecord(value.settings) || !hasExactKeys(value.settings, ["colorLimit", "brand"])) {
@@ -77,6 +86,7 @@ export function validatePersistedPattern(value: unknown): ValidatedPattern {
   return {
     pattern: {
       schemaVersion: 1,
+      generationMode,
       width,
       height,
       settings: { colorLimit, brand: brand.trim() },
@@ -92,9 +102,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const allowed = new Set(keys);
+  return actual.every((key) => allowed.has(key));
+}
+
 function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
-  return actual.length === keys.length && actual.every((key, index) => key === [...keys].sort()[index]);
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
 function isIntegerInRange(value: unknown, minimum: number, maximum: number): value is number {

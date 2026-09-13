@@ -5,6 +5,7 @@ export function parseAiGeneration(value: unknown): AiGeneration {
   if (!isRecord(value)) throw invalidResponse()
 
   const id = isJobId(value.id) ? value.id : undefined
+  const generationMode = value.generationMode === undefined || value.generationMode === 'ai' ? 'ai' : undefined
   const status = parseStatus(value.status)
   const inputFileId = asNonEmptyString(value.inputFileId)
   const outputFile = value.outputFile === undefined || value.outputFile === null
@@ -19,6 +20,7 @@ export function parseAiGeneration(value: unknown): AiGeneration {
 
   if (
     !id
+    || !generationMode
     || !status
     || !inputFileId
     || outputFile === undefined
@@ -37,6 +39,7 @@ export function parseAiGeneration(value: unknown): AiGeneration {
 
   return {
     id,
+    generationMode,
     status,
     inputFileId,
     outputFile,

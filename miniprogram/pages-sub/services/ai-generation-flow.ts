@@ -259,7 +259,7 @@ export class AiGenerationFlow {
         statusMessage: '',
         retryMode: 'converting',
       })
-      const draft = await createDraft(outputImagePath, session.settings)
+      const draft = await createDraft(outputImagePath, session.settings, 'ai')
       if (this.isStale(requestSequence)) return
       await this.callbacks.onDraftReady(draft)
       clearAiGenerationSession()

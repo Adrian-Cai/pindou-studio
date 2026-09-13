@@ -33,6 +33,7 @@ export interface AiInputFile {
 
 export interface AiGeneration {
   id: string
+  generationMode: 'ai'
   status: AiGenerationStatus
   inputFileId: string
   outputFile: AiOutputFile | null

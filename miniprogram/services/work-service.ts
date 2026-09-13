@@ -1,7 +1,9 @@
-import type {
-  PatternDraft,
-  PersistedPattern,
-  WorkItem,
+import {
+  isGenerationMode,
+  type GenerationMode,
+  type PatternDraft,
+  type PersistedPattern,
+  type WorkItem,
 } from '../models/pattern'
 import { normalizeCoverUrl } from '../config/api'
 import { isAuthSessionExpired, loadAuthSession } from './token-storage'
@@ -16,6 +18,7 @@ export interface CloudWorkSummary {
   beadCount: number
   colorCount: number
   brand: string
+  generationMode: GenerationMode
   status: 'draft' | 'completed'
   isFavorite: boolean
   createdAt: string
@@ -162,6 +165,7 @@ export function cloudSummaryToWorkItem(summary: CloudWorkSummary | CloudFavorite
     createdAt: Date.parse(summary.createdAt),
     beadCount: summary.beadCount,
     colorCount: summary.colorCount,
+    generationMode: summary.generationMode,
     width: summary.width,
     height: summary.height,
     status: summary.status,
@@ -177,6 +181,7 @@ export function cloudDetailToDraft(detail: CloudWorkDetail): PatternDraft {
     id: detail.id,
     sourceImagePath: '',
     createdAt: Date.parse(detail.createdAt),
+    generationMode: pattern.generationMode,
     settings: {
       width: pattern.width,
       height: pattern.height,
@@ -210,6 +215,7 @@ export function draftToPersistedPattern(draft: PatternDraft): PersistedPattern {
   })
   return {
     schemaVersion: 1,
+    generationMode: draft.generationMode,
     width: draft.settings.width,
     height: draft.settings.height,
     settings: { colorLimit: draft.settings.colorLimit, brand: draft.settings.brand },
@@ -296,6 +302,7 @@ function parseWorkDetail(value: unknown): CloudWorkDetail {
   const summary = parseWorkSummary(value)
   if (!isRecord(value) || !isRecord(value.pattern)) throw invalidResponse()
   const pattern = parsePersistedPattern(value.pattern)
+  if (summary.generationMode !== pattern.generationMode) throw invalidResponse()
   return { ...summary, pattern }
 }
 
@@ -324,6 +331,7 @@ function parseWorkSummary(value: unknown): CloudWorkSummary {
     beadCount: value.beadCount,
     colorCount: value.colorCount,
     brand: value.brand,
+    generationMode: isGenerationMode(value.generationMode) ? value.generationMode : 'standard',
     status: value.status,
     isFavorite: value.isFavorite,
     createdAt: value.createdAt,
@@ -355,6 +363,7 @@ function parsePersistedPattern(value: Record<string, unknown>): PersistedPattern
   })
   return {
     schemaVersion: 1,
+    generationMode: isGenerationMode(value.generationMode) ? value.generationMode : 'standard',
     width: value.width,
     height: value.height,
     settings: { colorLimit: value.settings.colorLimit, brand: value.settings.brand },

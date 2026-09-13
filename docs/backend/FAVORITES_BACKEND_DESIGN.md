@@ -409,6 +409,7 @@ interface WorkSummary {
   id: string
   title: string
   ...
+  generationMode: 'standard' | 'ai'
   isFavorite: boolean
   createdAt: string
   updatedAt: string

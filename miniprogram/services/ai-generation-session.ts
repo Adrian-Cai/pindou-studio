@@ -7,6 +7,7 @@ import type {
 
 export interface AiGenerationSession {
   idempotencyKey: string
+  generationMode: 'ai'
   jobId: string | null
   inputFileId: string | null
   sourceImagePath: string
@@ -32,7 +33,8 @@ export function saveAiGenerationSession(session: AiGenerationSession): void {
 export function loadAiGenerationSession(): AiGenerationSession | null {
   try {
     const value = wx.getStorageSync<unknown>(AI_GENERATION_SESSION_STORAGE_KEY)
-    return isAiGenerationSession(value) ? value : null
+    if (!isAiGenerationSession(value)) return null
+    return { ...value, generationMode: 'ai' }
   } catch (error) {
     console.warn('读取 AI 任务会话失败', error)
     return null
@@ -51,6 +53,7 @@ function isAiGenerationSession(value: unknown): value is AiGenerationSession {
   if (!isRecord(value)) return false
   return (
     nonEmptyString(value.idempotencyKey)
+    && (value.generationMode === undefined || value.generationMode === 'ai')
     && isNullableNonEmptyString(value.jobId)
     && isNullableNonEmptyString(value.inputFileId)
     && nonEmptyString(value.sourceImagePath)

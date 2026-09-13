@@ -23,6 +23,7 @@
 ```json
 {
   "schemaVersion": 1,
+  "generationMode": "standard",
   "width": 64,
   "height": 64,
   "settings": { "colorLimit": 32, "brand": "MARD" },
@@ -181,6 +182,7 @@ pindou_users
 | `bead_count` | integer | NOT NULL | 非透明格数量，服务端重算 |
 | `color_count` | smallint | NOT NULL | 实际使用颜色数量，服务端重算 |
 | `brand` | varchar(40) | NOT NULL | 图案设置中的品牌 |
+| `generation_mode` | varchar(20) | NOT NULL | `standard` 或 `ai`；历史数据迁移默认 `standard` |
 | `status` | varchar(20) | NOT NULL | `draft` 或 `completed` |
 | `created_at` | timestamp | NOT NULL | 服务端创建时间 |
 | `updated_at` | timestamp | NOT NULL | 服务端更新时间 |
@@ -212,6 +214,7 @@ pindou_users
 ```json
 {
   "schemaVersion": 1,
+  "generationMode": "standard",
   "width": 64,
   "height": 64,
   "settings": { "colorLimit": 32, "brand": "MARD" },
@@ -229,6 +232,7 @@ pindou_users
 - 每个非 `-1` 值必须是有效 palette 下标
 - `palette_json` 的颜色必须是合法 6 位 hex；`code` 不得为空且在同一图案内唯一
 - `pindou_works.bead_count` 等统计字段必须由同一份图案计算，禁止客户端绕过校验
+- `generationMode` 必须与作品摘要的 `generation_mode` 一致；标准模式不得调用 AI 额度或 AI 服务
 
 ### 3.6 `pindou_favorites`
 
