@@ -43,6 +43,10 @@ page {
   color: var(--color-text);
 }
 
+.editor--loading {
+  height: auto;
+}
+
 .editor__body {
   min-height: 0;
   flex: 1;
@@ -56,6 +60,18 @@ page {
   min-height: 0;
   flex-direction: column;
   padding: 16rpx 16rpx calc(40rpx + env(safe-area-inset-bottom));
+}
+
+.ai-loading-layout {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 12px 16rpx 16px;
+}
+
+.ai-loading-layout generating-preview-card {
+  display: block;
+  width: 100%;
 }
 
 
@@ -96,19 +112,6 @@ page {
   flex-direction: column;
   background: rgba(255, 255, 255, 0.9);
   text-align: center;
-}
-
-.ai-editor-state--loading {
-  overflow: hidden;
-  padding: 0;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.ai-editor-state--loading generating-preview-card {
-  width: 100%;
 }
 
 .ai-editor-state--failed {
@@ -166,13 +169,6 @@ page {
 
   .ai-editor-state--failed {
     background: rgba(26, 32, 40, 0.98);
-  }
-
-  .ai-editor-state--loading {
-    background:
-      radial-gradient(ellipse at 12% 88%, rgba(146, 154, 255, 0.48) 0, rgba(146, 154, 255, 0) 42%),
-      radial-gradient(ellipse at 86% 18%, rgba(86, 88, 224, 0.88) 0, rgba(86, 88, 224, 0) 38%),
-      linear-gradient(135deg, #6068c0 0%, #3935c9 49%, #6868d2 100%);
   }
 
   .ai-editor-state__error-icon {
