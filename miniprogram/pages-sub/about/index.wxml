@@ -2,7 +2,7 @@
   <view class="subpage about-page">
     <image class="about-logo" src="/assets/icons/brand-avatar.svg" mode="aspectFit" />
     <view class="about-name">拼豆制作工具</view>
-    <view class="about-version">Version 0.29.10</view>
+    <view class="about-version">Version 0.29.11</view>
 
     <view class="about-intro">
       <view class="about-intro__title"><text>i</text> 产品介绍</view>
