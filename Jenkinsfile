@@ -60,7 +60,7 @@ pipeline {
                     docker compose --env-file "$RUNTIME_ENV_FILE" config --quiet
                     IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" \
                       docker compose --env-file "$RUNTIME_ENV_FILE" \
-                        up -d api
+                        up -d --wait --wait-timeout 120 api
                 '''
             }
         }
