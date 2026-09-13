@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.29.12
+
+- 统一 AI 生成异常协议：Provider 原始错误仅保留在受控后端日志，403 `AllocationQuota.FreeTierOnly` 等错误不再透传到小程序。
+- AI 任务公开响应改为标准 `failure` 对象，包含稳定错误码、分类、是否可重试和白名单操作；移除 `provider`、`model`、`promptVersion` 公共字段。
+- Provider 轮询、临时输出下载失败保持任务 `processing`，由后续轮询继续恢复；成功任务仍只写入一条 `usage_debit`，失败任务不扣 AI 额度。
+- 小程序按 `action` 展示重试、查看权益、重新选图或切换标准模式，并保留原图和 AI 会话用于恢复。
+
 ## 0.29.11
 
 - 优化「编辑拼豆图」页面的 AI 生成中布局：Loading 卡片移出图片编辑画布的固定高度容器，减少上下无意义留白。
