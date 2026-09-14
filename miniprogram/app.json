@@ -27,12 +27,6 @@
       ]
     }
   ],
-  "preloadRule": {
-    "pages/profile/index": {
-      "network": "all",
-      "packages": ["pages-sub"]
-    }
-  },
   "window": {
     "navigationStyle": "custom",
     "backgroundColor": "#FFFFFF",

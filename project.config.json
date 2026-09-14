@@ -16,13 +16,21 @@
     },
     "useCompilerPlugins": [
       "typescript"
-    ],
-    "ignoreUploadUnusedFiles": false
+    ]
   },
   "compileType": "miniprogram",
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "tests"
+      },
+      {
+        "type": "folder",
+        "value": "test-assets"
+      }
+    ],
     "include": [
       {
         "type": "folder",
