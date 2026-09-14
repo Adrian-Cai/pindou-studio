@@ -1,6 +1,12 @@
 import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
-import { fetchAiGenerationPackages, type AiGenerationPackage } from '../../services/payment-service'
+import {
+  fetchAiGenerationPackages,
+  isWechatPaymentCancelled,
+  payForAiGenerationPackage,
+  paymentErrorMessage,
+  type AiGenerationPackage,
+} from '../../services/payment-service'
 
 const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.webp'
 
@@ -37,6 +43,7 @@ Page({
     profileSaving: false,
     profileMessage: '',
     selectedPackage: 0,
+    paymentLoading: false,
   },
 
   authUnsubscribe: undefined as (() => void) | undefined,
@@ -172,6 +179,7 @@ Page({
     this.getTabBar()?.setData({ hidden: true })
     this.setData({
       activeSheet: sheet,
+      paymentLoading: false,
       loginClosing: false,
       loginAgreementAccepted: sheet === 'login' ? false : this.data.loginAgreementAccepted,
       loginUiState: sheet === 'login' ? 'idle' : this.data.loginUiState,
@@ -216,9 +224,11 @@ Page({
   },
 
   hideActiveSheet() {
+    if (this.data.paymentLoading) return
     clearTimeout(this.loginCloseTimer)
     this.setData({
       activeSheet: 'none',
+      paymentLoading: false,
       loginClosing: false,
       loginUiState: 'idle',
       loginMessage: '',
@@ -255,13 +265,31 @@ Page({
     this.setData({ selectedPackage: Number(event.currentTarget.dataset.index) })
   },
 
-  purchase() {
-    if (this.data.packages.length === 0) return
-    wx.showModal({
-      title: '支付能力尚未接入',
-      content: 'AI 生成次数套餐界面已经完成，待商户号、定价和付费服务协议确认后再接入微信支付',
-      showCancel: false,
-    })
+  async purchase() {
+    const selectedPackage = this.data.packages[this.data.selectedPackage]
+    if (!selectedPackage || this.data.paymentLoading) return
+
+    this.setData({ paymentLoading: true })
+    try {
+      const created = await payForAiGenerationPackage(selectedPackage.id)
+      this.setData({ paymentLoading: false })
+      this.hideActiveSheet()
+      wx.navigateTo({
+        url: `/pages-sub/payment-success/index?orderId=${encodeURIComponent(created.orderId)}`,
+      })
+    } catch (error) {
+      if (isWechatPaymentCancelled(error)) {
+        wx.showToast({ title: '已取消支付', icon: 'none' })
+      } else {
+        wx.showModal({
+          title: '支付未完成',
+          content: paymentErrorMessage(error),
+          showCancel: false,
+        })
+      }
+    } finally {
+      if (this.data.paymentLoading) this.setData({ paymentLoading: false })
+    }
   },
 
   async startWechatLogin() {

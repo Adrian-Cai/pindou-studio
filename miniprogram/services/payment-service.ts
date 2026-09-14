@@ -1,4 +1,18 @@
 import { ApiError, apiRequest } from './http-client'
+import { isAuthSessionExpired, loadAuthSession } from './token-storage'
+
+export interface WeChatPaymentParameters {
+  timeStamp: string
+  nonceStr: string
+  package: string
+  signType: 'RSA'
+  paySign: string
+}
+
+export interface CreatePaymentResponse {
+  orderId: string
+  payment: WeChatPaymentParameters
+}
 
 export interface AiGenerationPackage {
   id: string
@@ -12,9 +26,89 @@ export async function fetchAiGenerationPackages(): Promise<AiGenerationPackage[]
   return parsePackages(response)
 }
 
+async function createAiGenerationPayment(
+  packageId: string,
+  idempotencyKey: string = createPaymentIdempotencyKey(),
+): Promise<CreatePaymentResponse> {
+  const normalizedPackageId = packageId.trim()
+  if (!normalizedPackageId || !idempotencyKey.trim()) {
+    throw new ApiError('支付参数无效，请重新选择套餐', { code: 'INVALID_ARGUMENT' })
+  }
+  const response = await apiRequest<unknown>({
+    path: '/api/payments/create',
+    method: 'POST',
+    token: requireToken(),
+    headers: { 'Idempotency-Key': idempotencyKey },
+    data: { packageId: normalizedPackageId },
+    timeoutMs: 15_000,
+  })
+  return parseCreatePayment(response)
+}
+
+export async function payForAiGenerationPackage(packageId: string): Promise<CreatePaymentResponse> {
+  const created = await createAiGenerationPayment(packageId)
+  await requestWechatPayment(created.payment)
+  return created
+}
+
+function requestWechatPayment(payment: WeChatPaymentParameters): Promise<void> {
+  return new Promise((resolve, reject) => {
+    wx.requestPayment({
+      ...payment,
+      success: () => resolve(),
+      fail: (error) => reject(error),
+    })
+  })
+}
+
+function createPaymentIdempotencyKey(): string {
+  return `payment-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`
+}
+
+export function isWechatPaymentCancelled(error: unknown): boolean {
+  const message = isRecord(error) && typeof error.errMsg === 'string' ? error.errMsg : ''
+  return message.includes('requestPayment:fail cancel')
+}
+
+export function paymentErrorMessage(error: unknown): string {
+  return error instanceof Error && error.message
+    ? error.message
+    : '支付未完成，请稍后重试'
+}
+
 function parsePackages(value: unknown): AiGenerationPackage[] {
   if (!isRecord(value) || !Array.isArray(value.items)) throw invalidResponse()
   return value.items.map(parsePackage)
+}
+
+function parseCreatePayment(value: unknown): CreatePaymentResponse {
+  if (!isRecord(value)
+    || typeof value.orderId !== 'string'
+    || !value.orderId
+    || !isRecord(value.payment)) throw invalidResponse()
+  return {
+    orderId: value.orderId,
+    payment: parsePaymentParameters(value.payment),
+  }
+}
+
+function parsePaymentParameters(value: Record<string, unknown>): WeChatPaymentParameters {
+  if (typeof value.timeStamp !== 'string'
+    || !value.timeStamp
+    || typeof value.nonceStr !== 'string'
+    || !value.nonceStr
+    || typeof value.package !== 'string'
+    || !value.package.startsWith('prepay_id=')
+    || typeof value.paySign !== 'string'
+    || !value.paySign
+    || value.signType !== 'RSA') throw invalidResponse()
+  return {
+    timeStamp: value.timeStamp,
+    nonceStr: value.nonceStr,
+    package: value.package,
+    signType: 'RSA',
+    paySign: value.paySign,
+  }
 }
 
 function parsePackage(value: unknown): AiGenerationPackage {
@@ -54,4 +148,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isPositiveSafeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+}
+
+function requireToken(): string {
+  const session = loadAuthSession()
+  if (!session || isAuthSessionExpired(session)) {
+    throw new ApiError('请先登录后再发起支付', { statusCode: 401, code: 'UNAUTHORIZED' })
+  }
+  return session.token
 }

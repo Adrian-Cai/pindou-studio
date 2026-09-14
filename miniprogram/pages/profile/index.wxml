@@ -142,8 +142,8 @@
         <image class="payment-row__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
       </view>
     </view>
-    <button class="button-primary recharge-sheet__pay" style="width: 100%;" disabled="{{packagesLoading || packages.length === 0}}" bindtap="purchase">立即支付</button>
-    <view class="recharge-sheet__cancel" bindtap="hideActiveSheet">取消</view>
+    <button class="button-primary recharge-sheet__pay" style="width: 100%;" loading="{{paymentLoading}}" disabled="{{packagesLoading || packages.length === 0 || paymentLoading}}" bindtap="purchase">{{paymentLoading ? '正在支付…' : '立即支付'}}</button>
+    <view wx:if="{{!paymentLoading}}" class="recharge-sheet__cancel" bindtap="hideActiveSheet">取消</view>
   </view>
 </view>
 

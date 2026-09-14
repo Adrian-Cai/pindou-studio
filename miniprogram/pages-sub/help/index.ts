@@ -30,7 +30,7 @@ Page({
     const messages: Record<string, string> = {
       beginner: '从首页上传图片，设置尺寸与颜色后即可开始制作',
       download: '下载功能将在文件导出服务接入后开放',
-      payment: '支付能力尚未接入，当前不会产生任何费用',
+      payment: '选择 AI 生成次数套餐后，通过微信支付完成购买；支付结果可在“我的订单”查看',
       support: '请通过意见反馈留下问题与联系方式',
     }
     wx.showModal({ title: '帮助说明', content: messages[id] ?? '', showCancel: false })

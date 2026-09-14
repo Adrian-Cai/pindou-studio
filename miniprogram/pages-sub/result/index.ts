@@ -329,12 +329,9 @@ Page({
     if (currentQuota <= 0) {
       this.setData({ quota: 0, quotaTipsOpen: false })
       wx.showModal({
-        title: '今日免费次数已用完',
-        content: '开通会员后可享无限下载',
-        confirmText: '去开通',
-        success: ({ confirm }) => {
-          if (confirm) this.openMembership()
-        },
+        title: '今日免费下载次数已用完',
+        content: '免费下载次数每日 00:00 自动恢复；AI 生成次数与下载次数分开计算。',
+        confirmText: '知道了',
       })
       return
     }
@@ -389,12 +386,9 @@ Page({
         downloadIdempotencyKey: '',
       })
       wx.showModal({
-        title: '今日免费次数已用完',
-        content: '开通会员后可享无限下载',
-        confirmText: '去开通',
-        success: ({ confirm }) => {
-          if (confirm) this.openMembership()
-        },
+        title: '今日免费下载次数已用完',
+        content: '免费下载次数每日 00:00 自动恢复；AI 生成次数与下载次数分开计算。',
+        confirmText: '知道了',
       })
       return
     }

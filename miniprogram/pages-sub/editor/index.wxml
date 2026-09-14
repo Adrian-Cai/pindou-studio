@@ -26,13 +26,27 @@
         bindtouchcancel="onWorkspaceTouchCancel"
         catchtouchmove="onWorkspaceTouchMove"
       >
-        <view class="canvas-stage">
+        <view class="canvas-stage {{canvasReady ? 'canvas-stage--ready' : ''}}">
           <canvas
             wx:if="{{!aiLocked}}"
             id="patternCanvas"
             class="pattern-canvas"
             type="2d"
           ></canvas>
+        </view>
+
+        <view
+          wx:if="{{!canvasReady && !aiLocked && !aiFailed}}"
+          class="canvas-loading-state"
+          role="status"
+          aria-label="正在准备图纸，请稍候"
+          catchtouchstart="stopWorkspaceTouch"
+          catchtouchmove="stopWorkspaceTouch"
+          catchtouchend="stopWorkspaceTouch"
+        >
+          <view class="canvas-loading-state__spinner" aria-hidden="true"></view>
+          <text class="canvas-loading-state__title">正在准备图纸</text>
+          <text class="canvas-loading-state__description">马上就好，可以开始编辑</text>
         </view>
 
         <view
@@ -74,14 +88,14 @@
         <button
           class="zoom-control__button"
           bindtap="zoomOut"
-          disabled="{{scale <= 1 || aiLocked}}"
+          disabled="{{scale <= 1 || aiLocked || !canvasReady}}"
           aria-label="缩小"
         ><image src="/assets/icons/iconsax/minus.svg" mode="aspectFit" /></button>
         <text class="zoom-control__value">{{scalePercent}}%</text>
         <button
           class="zoom-control__button"
           bindtap="zoomIn"
-          disabled="{{scale >= 3 || aiLocked}}"
+          disabled="{{scale >= 3 || aiLocked || !canvasReady}}"
           aria-label="放大"
         ><image src="/assets/icons/iconsax/add.svg" mode="aspectFit" /></button>
       </view>
@@ -100,9 +114,9 @@
         <view
           wx:for="{{tools}}"
           wx:key="id"
-          class="tool {{item.disabled ? 'tool--disabled' : ''}} {{activeTool === item.id ? 'tool--active' : ''}}"
+          class="tool {{item.disabled || !canvasReady ? 'tool--disabled' : ''}} {{activeTool === item.id ? 'tool--active' : ''}}"
           data-tool="{{item.id}}"
-          data-disabled="{{item.disabled}}"
+          data-disabled="{{item.disabled || !canvasReady}}"
           bindtap="selectTool"
         >
           <image
@@ -118,11 +132,11 @@
       <view class="palette">
         <view wx:for="{{paletteColors}}" wx:key="*this" class="palette__slot">
           <button
-            class="palette__color {{selectedColor === item ? 'palette__color--selected' : ''}} {{aiLocked ? 'palette__color--disabled' : ''}}"
+            class="palette__color {{selectedColor === item ? 'palette__color--selected' : ''}} {{aiLocked || !canvasReady ? 'palette__color--disabled' : ''}}"
             style="background-color: {{item}};"
             data-color="{{item}}"
             bindtap="selectPaletteColor"
-            disabled="{{aiLocked}}"
+            disabled="{{aiLocked || !canvasReady}}"
             aria-label="选择颜色 {{item}}"
           >
             <image wx:if="{{selectedColor === item}}" class="palette__check" src="/assets/icons/iconsax/check.svg" mode="aspectFit" />
@@ -133,7 +147,7 @@
       <!-- ── 底部操作 ── -->
       <view class="editor-actions">
         <button class="button-secondary editor-actions__button" bindtap="regenerate">重新生成</button>
-        <button class="button-primary editor-actions__button" bindtap="saveAndView" loading="{{saving}}" disabled="{{saving || aiLocked}}">{{saving ? '保存中' : '保存作品'}}</button>
+        <button class="button-primary editor-actions__button" bindtap="saveAndView" loading="{{saving}}" disabled="{{saving || aiLocked || !canvasReady}}">{{saving ? '保存中' : '保存作品'}}</button>
       </view>
 
     </view>

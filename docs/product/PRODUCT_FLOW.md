@@ -45,7 +45,7 @@
 - `pages-sub/downloads/index`：下载记录
 - `pages-sub/recharge/index`：下载次数 / 额度相关展示
 - `pages-sub/orders/index`：当前用户的 AI 生成次数订单列表
-- `pages-sub/payment-success/index`：支付成功展示页，当前支付闭环尚未正式接入
+- `pages-sub/payment-success/index`：支付结果展示页，从服务端确认订单和 AI 额度
 - `pages-sub/help/index`：使用帮助
 - `pages-sub/feedback/index`：意见反馈
 - `pages-sub/privacy/index`：隐私设置

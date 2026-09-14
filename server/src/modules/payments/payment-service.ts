@@ -13,6 +13,8 @@ import type {
   WeChatPaymentGateway,
 } from "./wechat-pay-client";
 
+const NEW_USER_TEST_PACKAGE_ID = "ai_generation_new_user_5";
+
 export interface PaymentPackage {
   readonly id: string;
   readonly label: string;
@@ -274,6 +276,9 @@ export class PostgresPaymentService implements PaymentService {
     try {
       await client.query("BEGIN");
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        `pindou-payment-user:${input.userId}`,
+      ]);
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
         `pindou-payment:${orderId}`,
       ]);
       const existingResult = await client.query<OrderRow>(
@@ -310,6 +315,25 @@ export class PostgresPaymentService implements PaymentService {
         [packageId],
       );
       const selectedPackage = ensurePayablePackage(packageResult.rows[0]);
+      if (selectedPackage.id === NEW_USER_TEST_PACKAGE_ID) {
+        const previousPurchase = await client.query(
+          `SELECT 1
+             FROM pindou_orders
+            WHERE user_id = $1
+              AND quota_kind_snapshot = 'ai_generation'
+              AND status = 'paid'
+            LIMIT 1
+            FOR SHARE`,
+          [input.userId],
+        );
+        if (previousPurchase.rows[0]) {
+          throw new AppError(
+            409,
+            "NEW_USER_PACKAGE_NOT_ELIGIBLE",
+            "新人测试福利仅限首次购买 AI 生成次数",
+          );
+        }
+      }
       const userResult = await client.query<UserPaymentRow>(
         `SELECT openid_ciphertext
            FROM pindou_users

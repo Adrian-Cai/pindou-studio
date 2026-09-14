@@ -67,11 +67,11 @@
         </view>
         <view class="download-sheet__meta-row">
           <text class="download-sheet__meta-label">本次消耗</text>
-          <text class="download-sheet__meta-value">{{isVip ? '会员权益免费' : costText}}</text>
+          <text class="download-sheet__meta-value">{{costText}}</text>
         </view>
         <view class="download-sheet__meta-row">
           <text class="download-sheet__meta-label">今日剩余</text>
-          <text class="download-sheet__meta-value download-sheet__meta-value--purple">{{isVip ? '无限下载' : (quota + ' 次')}}</text>
+          <text class="download-sheet__meta-value download-sheet__meta-value--purple">{{quota}} 次</text>
         </view>
       </view>
 

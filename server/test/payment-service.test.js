@@ -151,6 +151,87 @@ test("payment creation snapshots server package values and never accepts a clien
   assert.equal(orderInsert[7], 990);
 });
 
+test("new user test package costs 10 fen and snapshots 5 AI generations", async () => {
+  let gatewayInput;
+  let orderInsert;
+  const encryptedOpenid = encryptOpenid(OPENID, SECRET);
+  const { pool } = clientPool((sql, parameters) => {
+    if (sql === "BEGIN" || sql === "COMMIT" || sql.includes("pg_advisory_xact_lock")) return { rows: [] };
+    if (sql.includes("FROM pindou_orders") && !sql.includes("JOIN pindou_users")) return { rows: [] };
+    if (sql.includes("FROM pindou_packages")) {
+      return { rows: [packageRow({
+        id: "ai_generation_new_user_5",
+        label: "新人测试福利 · AI 生成 5 次",
+        quota_amount: 5,
+        price_fen: 10,
+      })] };
+    }
+    if (sql.includes("FROM pindou_users")) return { rows: [{ openid_ciphertext: encryptedOpenid }] };
+    if (sql.includes("INSERT INTO pindou_orders")) {
+      orderInsert = parameters;
+      return { rows: [] };
+    }
+    if (sql.includes("UPDATE pindou_orders") && sql.includes("wx_prepay_id")) return { rows: [] };
+    throw new Error(`unexpected SQL: ${sql}`);
+  });
+  const service = new PostgresPaymentService(pool, fakeGateway({
+    async createPayment(input) {
+      gatewayInput = input;
+      return { prepayId: "wx_prepay_test", payment: paymentParameters() };
+    },
+  }), SECRET, () => NOW);
+
+  await service.createPayment({
+    userId: "usr_new_user",
+    packageId: "ai_generation_new_user_5",
+    idempotencyKey: "new-user-test-1",
+  });
+
+  assert.equal(gatewayInput.amountFen, 10);
+  assert.equal(gatewayInput.description, "小露拼豆-新人测试福利 · AI 生成 5 次");
+  assert.equal(orderInsert[4], 5);
+  assert.equal(orderInsert[7], 10);
+});
+
+test("new user test package is rejected after any paid AI purchase", async () => {
+  const encryptedOpenid = encryptOpenid(OPENID, SECRET);
+  let gatewayCalled = false;
+  const state = clientPool((sql) => {
+    if (sql === "BEGIN" || sql === "ROLLBACK" || sql.includes("pg_advisory_xact_lock")) return { rows: [] };
+    if (sql.includes("FROM pindou_orders") && !sql.includes("JOIN pindou_users")) {
+      if (sql.includes("status = 'paid'")) return { rows: [{ id: "order_paid" }] };
+      return { rows: [] };
+    }
+    if (sql.includes("FROM pindou_packages")) {
+      return { rows: [packageRow({
+        id: "ai_generation_new_user_5",
+        label: "新人测试福利 · AI 生成 5 次",
+        quota_amount: 5,
+        price_fen: 10,
+      })] };
+    }
+    if (sql.includes("FROM pindou_users")) return { rows: [{ openid_ciphertext: encryptedOpenid }] };
+    throw new Error(`unexpected SQL: ${sql}`);
+  });
+  const service = new PostgresPaymentService(state.pool, fakeGateway({
+    async createPayment() {
+      gatewayCalled = true;
+      throw new Error("gateway should not be called");
+    },
+  }), SECRET, () => NOW);
+
+  await assert.rejects(
+    () => service.createPayment({
+      userId: "usr_existing_customer",
+      packageId: "ai_generation_new_user_5",
+      idempotencyKey: "new-user-test-2",
+    }),
+    (error) => error.code === "NEW_USER_PACKAGE_NOT_ELIGIBLE",
+  );
+  assert.equal(gatewayCalled, false);
+  assert.ok(state.calls.some((call) => call.sql === "ROLLBACK"));
+});
+
 function notificationHarness(notificationOverrides = {}, options = {}) {
   const order = {
     id: "order_test",

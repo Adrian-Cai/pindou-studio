@@ -70,6 +70,7 @@ Page({
     paletteColors: [] as string[],
     selectedColor: '',
     selectedColorCode: '',
+    canvasReady: false,
     activeTool: 'pencil',
     saving: false,
     aiFailed: false,
@@ -99,6 +100,7 @@ Page({
   _blockSingleTouchUntilRelease: false,
   _toastTimer: null as ReturnType<typeof setTimeout> | null,
   _aiFlow: null as AiGenerationFlow | null,
+  _canvasRenderVersion: 0,
 
   _isPinching: false,
   /** pinch 开始时两指距离 */
@@ -263,6 +265,7 @@ Page({
     this._viewportRect = null
     this._fittedImage = null
     this._patternCanvasNode = null
+    this._canvasRenderVersion += 1
     this.setData({
       draft: nextDraft,
       paletteColors,
@@ -285,6 +288,7 @@ Page({
       scalePercent: 100,
       translateX: 0,
       translateY: 0,
+      canvasReady: false,
     }, () => this.measureViewport(true))
   },
 
@@ -327,6 +331,7 @@ Page({
         undoStack: [],
         redoStack: [],
         tools: editorTools(false, false),
+        canvasReady: false,
       }, () => this.measureViewport(true))
     } catch (error) {
       wx.showToast({ title: error instanceof Error ? error.message : '标准模式生成失败，请重试', icon: 'none' })
@@ -362,7 +367,7 @@ Page({
   },
 
   selectTool(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.aiLocked) return
+    if (this.data.aiLocked || !this.data.canvasReady) return
     if (event.currentTarget.dataset.disabled) return
     const tool = String(event.currentTarget.dataset.tool)
     if (tool === 'undo') {
@@ -377,7 +382,7 @@ Page({
   },
 
   selectPaletteColor(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.aiLocked) return
+    if (this.data.aiLocked || !this.data.canvasReady) return
     const color = String(event.currentTarget.dataset.color)
     const draft = this.data.draft
     const colorCode = draft
@@ -389,15 +394,20 @@ Page({
   measureViewport(resetView: boolean) {
     const draft = this.data.draft
     if (!draft) return
+    const renderVersion = ++this._canvasRenderVersion
+    this._viewportRect = null
+    this._fittedImage = null
+    this._patternCanvasNode = null
+    this.setData({ canvasReady: false })
     wx.createSelectorQuery()
       .in(this)
       .select('.workspace')
       .fields({ rect: true, size: true })
       .exec((results) => {
+        if (renderVersion !== this._canvasRenderVersion) return
         const rect = results[0] as CanvasRect | undefined
         if (!rect?.width || !rect.height) return
         this._viewportRect = rect
-        this._patternCanvasNode = null
         const fittedImage = calculateFittedImageSize(
           rect.width,
           rect.height,
@@ -411,16 +421,22 @@ Page({
               ? { scale: SCALE_DEFAULT, scalePercent: 100, translateX: 0, translateY: 0 }
               : {}),
           },
-          () => this.drawPattern(),
+          () => this.drawPattern(renderVersion),
         )
       })
   },
 
-  drawPattern() {
+  drawPattern(renderVersion?: number) {
+    const activeRenderVersion = renderVersion ?? this._canvasRenderVersion
     const draft = this.data.draft
     const viewport = this._viewportRect
     const image = this._fittedImage
-    if (!draft || !viewport || !image) return
+    if (!draft || !viewport || !image || activeRenderVersion !== this._canvasRenderVersion) return
+
+    const markCanvasReady = () => {
+      if (activeRenderVersion !== this._canvasRenderVersion || this.data.canvasReady) return
+      this.setData({ canvasReady: true })
+    }
 
     const render = (canvas: PatternCanvas) => {
       drawPatternViewport(
@@ -438,6 +454,7 @@ Page({
     }
     if (this._patternCanvasNode) {
       render(this._patternCanvasNode)
+      markCanvasReady()
       return
     }
 
@@ -446,6 +463,7 @@ Page({
       .select('#patternCanvas')
       .fields({ node: true, size: true })
       .exec((results) => {
+        if (activeRenderVersion !== this._canvasRenderVersion) return
         const result = results[0] as CanvasQueryResult | undefined
         if (!result?.node || !result.width || !result.height) return
 
@@ -457,6 +475,7 @@ Page({
         context.scale(pixelRatio, pixelRatio)
         this._patternCanvasNode = canvas
         render(canvas)
+        markCanvasReady()
       })
   },
 
@@ -507,7 +526,7 @@ Page({
   },
 
   onWorkspaceTouchStart(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.aiLocked) return
+    if (this.data.aiLocked || !this.data.canvasReady) return
     const touches = event.touches
     if (touches.length >= 2) {
       this._beginPinch(touches[0], touches[1])
@@ -519,7 +538,7 @@ Page({
   },
 
   onWorkspaceTouchMove(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.aiLocked) return
+    if (this.data.aiLocked || !this.data.canvasReady) return
     const touches = event.touches
     if (touches.length >= 2) {
       if (!this._isPinching) this._beginPinch(touches[0], touches[1])
@@ -529,7 +548,7 @@ Page({
   },
 
   onWorkspaceTouchEnd(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.aiLocked) return
+    if (this.data.aiLocked || !this.data.canvasReady) return
     const touches = event.touches
     if (this._isPinching) {
       if (touches.length >= 2) return
@@ -550,7 +569,7 @@ Page({
   },
 
   onWorkspaceTouchCancel() {
-    if (this.data.aiLocked) return
+    if (this.data.aiLocked || !this.data.canvasReady) return
     this._singleTouchActive = false
     this._isPinching = false
     this._blockSingleTouchUntilRelease = false
@@ -634,8 +653,9 @@ Page({
   },
 
   async finishSingleTouch(clientX: number, clientY: number) {
+    if (!this.data.canvasReady) return
     const cell = await this.touchToGridCell(clientX, clientY).catch(() => null)
-    if (this._isPinching || this._blockSingleTouchUntilRelease) return
+    if (!this.data.canvasReady || this._isPinching || this._blockSingleTouchUntilRelease) return
     if (cell) this.executeToolAt(cell)
   },
 
@@ -751,14 +771,14 @@ Page({
   // ─── 缩放（按钮） ─────────────────────────────────────────────────────────
 
   zoomIn() {
-    if (this.data.aiLocked) return
+    if (this.data.aiLocked || !this.data.canvasReady) return
     this._setScaleAtViewportCenter(
       Math.min(SCALE_MAX, Number((this.data.scale + SCALE_STEP).toFixed(1))),
     )
   },
 
   zoomOut() {
-    if (this.data.aiLocked) return
+    if (this.data.aiLocked || !this.data.canvasReady) return
     this._setScaleAtViewportCenter(
       Math.max(SCALE_MIN, Number((this.data.scale - SCALE_STEP).toFixed(1))),
     )
@@ -819,7 +839,7 @@ Page({
   },
 
   async saveAndView() {
-    if (this.data.saving || this.data.aiLocked) return
+    if (this.data.saving || this.data.aiLocked || !this.data.canvasReady) return
     const draft = this.data.draft
     if (!draft) return
     this.setData({ saving: true })

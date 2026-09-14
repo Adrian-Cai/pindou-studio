@@ -16,10 +16,6 @@ Component({
       type: Number,
       value: 0,
     },
-    isVip: {
-      type: Boolean,
-      value: false,
-    },
     costText: {
       type: String,
       value: '1 次下载次数',

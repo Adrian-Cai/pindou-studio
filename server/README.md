@@ -38,7 +38,7 @@ sh deploy/migrate.sh server/sql
 unset DB_PASSWORD
 ```
 
-迁移连接必须是 **API 实际使用的那个库**（即 `config/api.env` 中 `DB_HOST` 指向的实例），迁移到别的库不会生效。手工执行时可先导出 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`，再运行 `sh deploy/migrate.sh server/sql`；使用数据库工具手工修改时，也要对准同一数据库并使用 owner 账号。`001` 增加双额度字段、AI 任务表、三档 AI 套餐并停用历史下载/无限会员套餐；`002` 增加 `palette` 下载类型；`003` 增加微信内容安全审核表；`004` 增加隐私偏好字段；`005` 允许注销账号后清空 OpenID；`006` 回填历史收藏时间并增加收藏软删除字段与有效收藏时间索引；`008` 增加订单用户时间索引；`009` 增加内容安全图片哈希以复用同图检测结果。部署代码前必须先完成结构迁移，否则结构校验会阻止服务启动。
+迁移连接必须是 **API 实际使用的那个库**（即 `config/api.env` 中 `DB_HOST` 指向的实例），迁移到别的库不会生效。手工执行时可先导出 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`，再运行 `sh deploy/migrate.sh server/sql`；使用数据库工具手工修改时，也要对准同一数据库并使用 owner 账号。`001` 增加双额度字段、AI 任务表和 AI 套餐并停用历史下载/无限会员套餐；`002` 增加 `palette` 下载类型；`003` 增加微信内容安全审核表；`004` 增加隐私偏好字段；`005` 允许注销账号后清空 OpenID；`006` 回填历史收藏时间并增加收藏软删除字段与有效收藏时间索引；`008` 增加订单用户时间索引；`009` 增加内容安全图片哈希以复用同图检测结果；`011` 下架 AI 精致生成 150 次套餐；`012` 增加 ¥0.10/5 次新人支付联调套餐。部署代码前必须先完成结构迁移，否则结构校验会阻止服务启动。
 
 健康检查：
 
@@ -148,7 +148,7 @@ Content-Type: application/json
 
 `POST /api/payments/notify` 仅使用微信支付请求头和原始请求体完成验签，不读取 Bearer token回调通过平台公钥验签并使用 API v3 密钥解密后，服务端再次校验商户号、AppID、订单号、金额、币种、付款人和支付状态；首次成功在同一事务内把订单改为 `paid` 并写一笔 `purchase_grant`，重复回调只确认成功
 
-支付环境变量见 `.env.example`支付配置全部缺省时，套餐读取仍可用，创建支付与回调返回 `PAYMENT_NOT_CONFIGURED`；部分配置会被视为配置错误并阻止启动已有用户需要重新登录一次，以便服务端在 `openid_ciphertext` 中保存支付所需的加密身份
+支付环境变量见 [`.env.example`](./.env.example) 和 [`WECHAT_PAYMENT_SETUP.md`](../docs/backend/operations/WECHAT_PAYMENT_SETUP.md)。支付配置全部缺省时，套餐读取仍可用，创建支付与回调返回 `PAYMENT_NOT_CONFIGURED`；部分配置会被视为配置错误并阻止启动。已有用户需要重新登录一次，以便服务端在 `openid_ciphertext` 中保存支付所需的加密身份。
 
 ## 阶段 6 接口
 

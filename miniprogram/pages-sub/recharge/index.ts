@@ -1,5 +1,11 @@
 import { authStore } from '../../store/auth-store'
-import { fetchAiGenerationPackages, type AiGenerationPackage } from '../../services/payment-service'
+import {
+  fetchAiGenerationPackages,
+  isWechatPaymentCancelled,
+  payForAiGenerationPackage,
+  paymentErrorMessage,
+  type AiGenerationPackage,
+} from '../../services/payment-service'
 
 Page({
   data: {
@@ -8,6 +14,7 @@ Page({
     packageMessage: '',
     selected: 0,
     quota: 0,
+    paymentLoading: false,
   },
 
   onShow() {
@@ -48,12 +55,29 @@ Page({
     wx.navigateTo({ url: '/pages-sub/privacy-document/index?key=paid-service' })
   },
 
-  purchase() {
-    if (this.data.packages.length === 0) return
-    wx.showModal({
-      title: '支付能力尚未接入',
-      content: 'AI 生成次数套餐页面已经完成，待商户号、正式定价和付费服务协议确认后，再调用微信支付并跳转支付成功页',
-      showCancel: false,
-    })
+  async purchase() {
+    const selectedPackage = this.data.packages[this.data.selected]
+    if (!selectedPackage || this.data.paymentLoading) return
+
+    this.setData({ paymentLoading: true })
+    try {
+      const created = await payForAiGenerationPackage(selectedPackage.id)
+      this.setData({ paymentLoading: false })
+      wx.navigateTo({
+        url: `/pages-sub/payment-success/index?orderId=${encodeURIComponent(created.orderId)}`,
+      })
+    } catch (error) {
+      if (isWechatPaymentCancelled(error)) {
+        wx.showToast({ title: '已取消支付', icon: 'none' })
+      } else {
+        wx.showModal({
+          title: '支付未完成',
+          content: paymentErrorMessage(error),
+          showCancel: false,
+        })
+      }
+    } finally {
+      if (this.data.paymentLoading) this.setData({ paymentLoading: false })
+    }
   },
 })

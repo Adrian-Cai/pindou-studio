@@ -270,7 +270,7 @@ Page({
     if (!this.data.allWorks.some((work) => work.id === id)) return
     this.getTabBar()?.setData({ hidden: false })
     this.setData({ showPageNav: true }, () => {
-      wx.navigateTo({ url: '/pages-sub/downloads/index' })
+      void this.openWorkById(id, false)
     })
   },
 
