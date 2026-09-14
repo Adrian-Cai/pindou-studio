@@ -74,7 +74,7 @@
 - [x] `preloadRule` 已移除，分包改为按需加载
 - [x] `npm --prefix server run typecheck`：通过
 - [x] `npm --prefix server test`：147 项通过，5 项真实数据库场景按环境跳过
-- [x] 三个远程 `master` 已同步本次发布提交 `3b13622`
+- [x] 三个远程 `master` 已同步本次发布提交 `8594276`
 - [x] 数据库迁移 `011`、`012`：用户已确认使用 owner 在 DBeaver 手工执行
 - [ ] 微信开发者工具视觉与交互验收
 - [ ] iPhone、Android 真机验证
