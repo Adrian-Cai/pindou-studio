@@ -1,11 +1,11 @@
-import type { DownloadFileType, DownloadRecord } from '../../../models/pattern'
+import type { DownloadFileType, DownloadRecord } from '../../models/pattern'
 import {
   cloudDownloadToLocalRecord,
   fetchDownloads,
-} from '../../../services/download-service'
-import { hasCloudSession } from '../../../services/work-service'
-import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../../store/app-store'
-import { authStore } from '../../../store/auth-store'
+} from '../../services/download-service'
+import { hasCloudSession } from '../../services/work-service'
+import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
+import { authStore } from '../../store/auth-store'
 
 type DownloadTab = 'all' | DownloadFileType
 type DownloadView = DownloadRecord & {
@@ -137,7 +137,7 @@ Page({
   },
 
   openRecharge() {
-    wx.navigateTo({ url: '/packages/account/recharge/index' })
+    wx.navigateTo({ url: '/packages/payment/recharge/index' })
   },
 })
 

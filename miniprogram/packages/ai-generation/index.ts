@@ -1,11 +1,11 @@
 import {
   AiGenerationFlow,
   type AiGenerationFlowState,
-} from '../services/ai-generation-flow'
-import { createDraft } from '../../../services/image-service'
-import { ApiError } from '../../../services/http-client'
-import { appStore } from '../../../store/app-store'
-import { clearAiGenerationSession, loadAiGenerationSession } from '../../../services/ai-generation-session'
+} from './services/ai-generation-flow'
+import { createDraft } from '../../services/image-service'
+import { ApiError } from '../../services/http-client'
+import { appStore } from '../../store/app-store'
+import { clearAiGenerationSession, loadAiGenerationSession } from '../../services/ai-generation-session'
 
 Page({
   data: {
@@ -56,7 +56,7 @@ Page({
   },
 
   purchaseAiGeneration() {
-    wx.navigateTo({ url: '/packages/account/recharge/index' })
+    wx.navigateTo({ url: '/packages/payment/recharge/index' })
   },
 
   async useStandardMode() {

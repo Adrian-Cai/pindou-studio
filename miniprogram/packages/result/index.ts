@@ -316,7 +316,7 @@ Page({
 
   openMembership() {
     this.closeQuotaTips()
-    wx.navigateTo({ url: '/packages/account/recharge/index' })
+    wx.navigateTo({ url: '/packages/payment/recharge/index' })
   },
 
   // ── 统一下载交互处理 ──

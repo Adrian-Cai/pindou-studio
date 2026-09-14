@@ -1,7 +1,6 @@
 {
   "usingComponents": {
-    "top-bar": "/components/top-bar/index",
-    "generating-preview-card": "/components/generating-preview-card/index"
+    "top-bar": "/components/top-bar/index"
   },
   "disableScroll": true
 }

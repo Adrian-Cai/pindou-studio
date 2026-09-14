@@ -1,4 +1,4 @@
-@import "../../../styles/profile-pages.wxss";
+@import "../../styles/profile-pages.wxss";
 
 .download-summary { display: flex; padding: 32rpx 20rpx; }
 .download-summary__item { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: center; gap: 16rpx; color: var(--color-text-secondary); font-size: 22rpx; }

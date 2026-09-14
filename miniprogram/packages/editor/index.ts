@@ -1,6 +1,5 @@
 import { resolveGenerationMode, type GenerationMode, type PatternCell, type PatternDraft } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
-import { authStore } from '../../store/auth-store'
 import {
   cloudSummaryToWorkItem,
   hasCloudSession,
@@ -8,12 +7,7 @@ import {
   updateCloudWork,
 } from '../../services/work-service'
 import { isNetworkError, queueWorkForSync } from '../../services/work-sync-service'
-import { createDraft, createPendingDraft } from '../../services/image-service'
-import {
-  AiGenerationFlow,
-  type AiGenerationFlowState,
-} from './services/ai-generation-flow'
-import { clearAiGenerationSession, loadAiGenerationSession } from '../../services/ai-generation-session'
+import { clearAiGenerationSession } from '../../services/ai-generation-session'
 import {
   calculateFittedImageSize,
   clampViewTranslation,
@@ -73,17 +67,6 @@ Page({
     canvasReady: false,
     activeTool: 'pencil',
     saving: false,
-    aiFailed: false,
-    aiLocked: false,
-    aiStateTitle: '',
-    aiStateDescription: '',
-    aiStatusMessage: '',
-    aiWaitingLong: false,
-    aiProgress: 60,
-    aiRetryMode: 'generation',
-    aiShowPurchase: false,
-    aiRetryable: true,
-    aiAction: 'RETRY',
     undoStack: [] as PatternCell[][],
     redoStack: [] as PatternCell[][],
     tools: editorTools(false, false),
@@ -99,7 +82,6 @@ Page({
   _singleTouchActive: false,
   _blockSingleTouchUntilRelease: false,
   _toastTimer: null as ReturnType<typeof setTimeout> | null,
-  _aiFlow: null as AiGenerationFlow | null,
   _canvasRenderVersion: 0,
 
   _isPinching: false,
@@ -114,43 +96,28 @@ Page({
   _pinchStartMidY: 0,
 
   onLoad(options?: Record<string, string | undefined>) {
-    let draft = appStore.getSnapshot().currentDraft
     const previewRequested = options?.preview === 'generating' || options?.preview === 'ai'
-    const generationMode = draft ? resolveGenerationMode(draft) : (previewRequested ? 'ai' : 'standard')
-    if (draft && draft.generationMode !== generationMode) {
-      draft = { ...draft, generationMode }
+    if (previewRequested) {
+      wx.redirectTo({ url: '/packages/ai-generation/index' })
+      return
     }
-    if (generationMode === 'standard') clearAiGenerationSession()
-    const aiSession = generationMode === 'ai' ? loadAiGenerationSession() : null
 
-    const isPendingDraft = draft?.id.startsWith('ai-pending-') === true
-    const shouldResumeAiSession = generationMode === 'ai' && aiSession !== null && (
-      aiSession.status === 'processing'
-      || aiSession.status === 'succeeded'
-      || (aiSession.status === 'creating' && aiSession.inputFileId !== null)
-      || (aiSession.status === 'failed' && (!draft || isPendingDraft))
-    )
-
-    if (aiSession && shouldResumeAiSession && (!draft || draft.sourceImagePath !== aiSession.sourceImagePath || !isPendingDraft)) {
-      draft = createPendingDraft(aiSession.sourceImagePath, aiSession.settings)
-      void appStore.setCurrentDraft(draft)
+    let draft = appStore.getSnapshot().currentDraft
+    if (draft?.id.startsWith('ai-pending-')) {
+      wx.redirectTo({ url: '/packages/ai-generation/index' })
+      return
     }
     if (!draft) {
-      if (previewRequested) {
-        this.setData({
-          generationMode,
-          aiLocked: true,
-          aiFailed: false,
-          aiProgress: 60,
-          aiStateTitle: 'AI 正在生成拼豆图',
-          aiStateDescription: '预计还需几分钟，请稍候',
-        })
-        return
-      }
       wx.showToast({ title: '请先选择图片', icon: 'none' })
       setTimeout(() => wx.switchTab({ url: '/pages/home/index' }), 500)
       return
     }
+
+    const generationMode = resolveGenerationMode(draft)
+    if (draft && draft.generationMode !== generationMode) {
+      draft = { ...draft, generationMode }
+    }
+    if (generationMode === 'standard') clearAiGenerationSession()
 
     const paletteColors = this.getPaletteColors(draft)
     const firstColor = paletteColors[0] ?? ''
@@ -165,53 +132,6 @@ Page({
       selectedColorCode: firstColorCode,
       beadCount: draft.cells.filter((cell) => cell.color !== 'transparent').length,
     })
-
-    if (previewRequested && generationMode === 'ai') {
-      this.setData({
-        aiLocked: true,
-        aiFailed: false,
-        aiProgress: 60,
-        aiStateTitle: 'AI 正在生成拼豆图',
-        aiStateDescription: '预计还需几分钟，请稍候',
-      })
-      return
-    }
-
-    if (generationMode === 'ai' && aiSession && shouldResumeAiSession && aiSession.sourceImagePath === draft.sourceImagePath && draft.id.startsWith('ai-pending-')) {
-      this._aiFlow = new AiGenerationFlow({
-        onStateChange: (state) => this.applyAiFlowState(state),
-        onDraftReady: (nextDraft) => this.applyAiDraft(nextDraft),
-      })
-      this.setData({ aiLocked: true })
-      this._aiFlow.onShow()
-    }
-  },
-
-  onShow() {
-    this._aiFlow?.onShow()
-    if (this.data.generationMode === 'ai' && this.data.aiShowPurchase) {
-      void this._refreshQuotaAfterPurchase()
-    }
-  },
-
-  async _refreshQuotaAfterPurchase(): Promise<void> {
-    try {
-      const quota = await authStore.refreshAiQuota()
-      if (quota && quota.aiGeneration.remaining > 0) {
-        this.setData({
-          aiFailed: false,
-          aiShowPurchase: false,
-          aiStateTitle: '',
-          aiStateDescription: '',
-        })
-      }
-    } catch (error) {
-      console.error('刷新 AI 次数失败', error)
-    }
-  },
-
-  onHide() {
-    this._aiFlow?.onHide()
   },
 
   onReady() {
@@ -224,130 +144,12 @@ Page({
 
   onUnload() {
     this._clearToastTimer()
-    this._aiFlow?.destroy()
-  },
-
-  applyAiFlowState(state: AiGenerationFlowState) {
-    const failed = state.pageState === 'failed'
-    const progressMap: Record<string, number> = {
-      loading: 20,
-      uploading: 35,
-      submitting: 45,
-      queued: 55,
-      processing: 60,
-      downloading: 80,
-      converting: 90,
-      failed: 0,
-    }
-    this.setData({
-      aiFailed: failed,
-      aiLocked: true,
-      aiStateTitle: state.stateTitle || 'AI 正在生成拼豆图',
-      aiStateDescription: state.stateDescription || '预计还需几分钟，请稍候',
-      aiStatusMessage: state.statusMessage,
-      aiWaitingLong: state.waitingLong,
-      aiProgress: progressMap[state.pageState] ?? 60,
-      aiRetryMode: state.retryMode,
-      aiShowPurchase: state.showPurchase,
-      aiRetryable: state.retryable,
-      aiAction: state.action,
-    })
-  },
-
-  async applyAiDraft(nextDraft: PatternDraft): Promise<void> {
-    nextDraft = { ...nextDraft, generationMode: 'ai' }
-    await appStore.setCurrentDraft(nextDraft)
-    const paletteColors = this.getPaletteColors(nextDraft)
-    const firstColor = paletteColors[0] ?? ''
-    const firstColorCode = firstColor
-      ? (nextDraft.cells.find((cell) => cell.color === firstColor)?.colorCode ?? '')
-      : ''
-    this._viewportRect = null
-    this._fittedImage = null
-    this._patternCanvasNode = null
-    this._canvasRenderVersion += 1
-    this.setData({
-      draft: nextDraft,
-      paletteColors,
-      selectedColor: firstColor,
-      selectedColorCode: firstColorCode,
-      beadCount: nextDraft.cells.filter((cell) => cell.color !== 'transparent').length,
-      aiFailed: false,
-      aiLocked: false,
-      aiStateTitle: '',
-      aiStateDescription: '',
-      aiStatusMessage: '',
-      aiWaitingLong: false,
-      aiShowPurchase: false,
-      aiRetryable: true,
-      aiAction: 'RETRY',
-      undoStack: [],
-      redoStack: [],
-      tools: editorTools(false, false),
-      scale: SCALE_DEFAULT,
-      scalePercent: 100,
-      translateX: 0,
-      translateY: 0,
-      canvasReady: false,
-    }, () => this.measureViewport(true))
-  },
-
-  retryAiGeneration() {
-    void this._aiFlow?.retry()
-  },
-
-  async useStandardMode() {
-    if (this.data.saving) return
-    const session = loadAiGenerationSession()
-    const sourceImagePath = session?.sourceImagePath || this.data.draft?.sourceImagePath || ''
-    const settings = session?.settings || this.data.draft?.settings
-    if (!sourceImagePath || !settings) {
-      this.selectNewImage()
-      return
-    }
-    wx.showLoading({ title: '正在切换', mask: true })
-    try {
-      const draft = await createDraft(sourceImagePath, settings, 'standard')
-      clearAiGenerationSession()
-      this._aiFlow?.destroy()
-      await appStore.setCurrentDraft(draft)
-      const paletteColors = this.getPaletteColors(draft)
-      const firstColor = paletteColors[0] ?? ''
-      this.setData({
-        draft,
-        generationMode: 'standard',
-        paletteColors,
-        selectedColor: firstColor,
-        selectedColorCode: firstColor ? (draft.cells.find((cell) => cell.color === firstColor)?.colorCode ?? '') : '',
-        beadCount: draft.cells.filter((cell) => cell.color !== 'transparent').length,
-        aiFailed: false,
-        aiLocked: false,
-        aiStateTitle: '',
-        aiStateDescription: '',
-        aiStatusMessage: '',
-        aiWaitingLong: false,
-        aiRetryable: true,
-        aiAction: 'RETRY',
-        undoStack: [],
-        redoStack: [],
-        tools: editorTools(false, false),
-        canvasReady: false,
-      }, () => this.measureViewport(true))
-    } catch (error) {
-      wx.showToast({ title: error instanceof Error ? error.message : '标准模式生成失败，请重试', icon: 'none' })
-    } finally {
-      wx.hideLoading()
-    }
   },
 
   selectNewImage() {
     clearAiGenerationSession()
-    this._aiFlow?.destroy()
+    void appStore.setCurrentDraft(null)
     wx.switchTab({ url: '/pages/home/index' })
-  },
-
-  purchaseAiGeneration() {
-    wx.navigateTo({ url: '/packages/account/recharge/index' })
   },
 
   stopWorkspaceTouch() {
@@ -367,7 +169,7 @@ Page({
   },
 
   selectTool(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.aiLocked || !this.data.canvasReady) return
+    if (!this.data.canvasReady) return
     if (event.currentTarget.dataset.disabled) return
     const tool = String(event.currentTarget.dataset.tool)
     if (tool === 'undo') {
@@ -382,7 +184,7 @@ Page({
   },
 
   selectPaletteColor(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.aiLocked || !this.data.canvasReady) return
+    if (!this.data.canvasReady) return
     const color = String(event.currentTarget.dataset.color)
     const draft = this.data.draft
     const colorCode = draft
@@ -526,7 +328,7 @@ Page({
   },
 
   onWorkspaceTouchStart(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.aiLocked || !this.data.canvasReady) return
+    if (!this.data.canvasReady) return
     const touches = event.touches
     if (touches.length >= 2) {
       this._beginPinch(touches[0], touches[1])
@@ -538,7 +340,7 @@ Page({
   },
 
   onWorkspaceTouchMove(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.aiLocked || !this.data.canvasReady) return
+    if (!this.data.canvasReady) return
     const touches = event.touches
     if (touches.length >= 2) {
       if (!this._isPinching) this._beginPinch(touches[0], touches[1])
@@ -548,7 +350,7 @@ Page({
   },
 
   onWorkspaceTouchEnd(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.aiLocked || !this.data.canvasReady) return
+    if (!this.data.canvasReady) return
     const touches = event.touches
     if (this._isPinching) {
       if (touches.length >= 2) return
@@ -569,7 +371,7 @@ Page({
   },
 
   onWorkspaceTouchCancel() {
-    if (this.data.aiLocked || !this.data.canvasReady) return
+    if (!this.data.canvasReady) return
     this._singleTouchActive = false
     this._isPinching = false
     this._blockSingleTouchUntilRelease = false
@@ -771,14 +573,14 @@ Page({
   // ─── 缩放（按钮） ─────────────────────────────────────────────────────────
 
   zoomIn() {
-    if (this.data.aiLocked || !this.data.canvasReady) return
+    if (!this.data.canvasReady) return
     this._setScaleAtViewportCenter(
       Math.min(SCALE_MAX, Number((this.data.scale + SCALE_STEP).toFixed(1))),
     )
   },
 
   zoomOut() {
-    if (this.data.aiLocked || !this.data.canvasReady) return
+    if (!this.data.canvasReady) return
     this._setScaleAtViewportCenter(
       Math.max(SCALE_MIN, Number((this.data.scale - SCALE_STEP).toFixed(1))),
     )
@@ -839,7 +641,7 @@ Page({
   },
 
   async saveAndView() {
-    if (this.data.saving || this.data.aiLocked || !this.data.canvasReady) return
+    if (this.data.saving || !this.data.canvasReady) return
     const draft = this.data.draft
     if (!draft) return
     this.setData({ saving: true })

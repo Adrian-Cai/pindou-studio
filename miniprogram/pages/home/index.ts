@@ -122,7 +122,7 @@ Page({
   onShow() {
     // tab 高亮由 page-layout selected-tab 属性管理；从编辑器返回时恢复当前草稿模式。
     const draft = appStore.getSnapshot().currentDraft
-    if (draft) this.setData({ generationMode: draft.generationMode ?? 'standard' })
+    this.setData({ generationMode: draft?.generationMode ?? 'standard' })
   },
 
   onUnload() {
@@ -390,7 +390,7 @@ async function openAiEditor(session: AiGenerationSession): Promise<void> {
 function navigateToEditor(): Promise<void> {
   return new Promise((resolve, reject) => {
     wx.navigateTo({
-      url: '/packages/editor/index',
+      url: '/packages/ai-generation/index',
       success: () => resolve(),
       fail: () => reject(createIdempotentNavigationError()),
     })
@@ -404,7 +404,7 @@ function showAiQuotaModal(): void {
     confirmText: '购买次数',
     cancelText: '稍后再说',
     success: ({ confirm }) => {
-      if (confirm) wx.navigateTo({ url: '/packages/account/recharge/index' })
+      if (confirm) wx.navigateTo({ url: '/packages/payment/recharge/index' })
     },
   })
 }

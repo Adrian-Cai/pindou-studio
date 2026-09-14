@@ -40,17 +40,19 @@
 ### 2.2 二级页面
 
 - `packages/editor/index`：编辑拼豆草稿
-- `packages/editor/ai-generation/index`：AI 生成流程
+- `packages/ai-generation/index`：AI 生成流程、任务恢复和失败重试
 - `packages/result/index`：查看作品结果并下载
 - `packages/account/favorites/index`：收藏列表
-- `packages/account/downloads/index`：下载记录
-- `packages/account/recharge/index`：下载次数 / 额度相关展示
-- `packages/account/orders/index`：当前用户的 AI 生成次数订单列表
-- `packages/account/payment-success/index`：支付结果展示页，从服务端确认订单和 AI 额度
 - `packages/account/help/index`：使用帮助
 - `packages/account/feedback/index`：意见反馈
 - `packages/account/privacy/index`：隐私设置
 - `packages/account/about/index`：关于我们
+- `packages/account/settings/index`：帮助、反馈、隐私和关于入口
+- `packages/account/profile-edit/index`：编辑个人资料
+- `packages/payment/recharge/index`：购买 AI 生成次数
+- `packages/payment/orders/index`：当前用户的 AI 生成次数订单列表
+- `packages/payment/payment-success/index`：支付结果展示页，从服务端确认订单和 AI 额度
+- `packages/download/index`：下载记录
 
 ### 2.3 结果页不是四个独立页面
 
@@ -100,11 +102,11 @@ Ai 模式生成的是更适合拼豆化的中间图，最终网格仍由现有 S
 → 选择图片
 → 图片安全检测
 → 上传 ai_input
-→ 进入编辑器，图片区域展示 AI 处理中状态
-→ 编辑器内创建 AI 任务并轮询任务状态
+→ 进入 AI 生成页，展示原图和 AI 处理中状态
+→ AI 生成页创建任务并轮询任务状态
 → 下载服务端持久化的 ai_output
 → createDraft(aiOutputPath, settings)
-→ 在当前编辑器替换临时草稿
+→ 写入当前草稿并进入编辑器
 → 用户调整图案
 → 保存并查看
 → 结果页

@@ -1,21 +1,7 @@
-<view class="editor {{aiLocked && !aiFailed ? 'editor--loading' : ''}}">
+<view class="editor">
   <top-bar title="编辑拼豆图" back back-inset-rpx="{{32}}" />
 
-  <view
-    wx:if="{{aiLocked && !aiFailed}}"
-    class="ai-loading-layout"
-    role="status"
-    aria-label="{{aiStateTitle || 'AI 正在生成拼豆图'}}，{{aiStateDescription || '预计还需几分钟，请稍候'}}"
-  >
-    <generating-preview-card
-      title="{{aiStateTitle || 'AI 正在生成拼豆图'}}"
-      subtitle="{{aiWaitingLong ? '处理时间比平时长一些，请稍候' : (aiStateDescription || '预计还需几分钟，请稍候')}}"
-      progress="{{aiProgress || 60}}"
-      tipText="正在为你优化图片细节，生成完成后即可开始编辑"
-    />
-  </view>
-
-  <view wx:elif="{{draft}}" class="editor__body">
+  <view wx:if="{{draft}}" class="editor__body">
     <view class="editor__content">
 
       <!-- ── 工作区：接收所有手势 ── -->
@@ -28,7 +14,6 @@
       >
         <view class="canvas-stage {{canvasReady ? 'canvas-stage--ready' : ''}}">
           <canvas
-            wx:if="{{!aiLocked}}"
             id="patternCanvas"
             class="pattern-canvas"
             type="2d"
@@ -36,7 +21,7 @@
         </view>
 
         <view
-          wx:if="{{!canvasReady && !aiLocked && !aiFailed}}"
+          wx:if="{{!canvasReady}}"
           class="canvas-loading-state"
           role="status"
           aria-label="正在准备图纸，请稍候"
@@ -49,38 +34,6 @@
           <text class="canvas-loading-state__description">马上就好，可以开始编辑</text>
         </view>
 
-        <view
-          wx:if="{{aiFailed}}"
-          class="ai-editor-state ai-editor-state--failed"
-          role="alert"
-          catchtouchstart="stopWorkspaceTouch"
-          catchtouchmove="stopWorkspaceTouch"
-          catchtouchend="stopWorkspaceTouch"
-        >
-          <view class="ai-editor-state__error-icon">!</view>
-          <text class="ai-editor-state__title">{{aiStateTitle}}</text>
-          <text class="ai-editor-state__description">{{aiStateDescription}}</text>
-          <button
-            wx:if="{{aiShowPurchase}}"
-            class="button-primary ai-editor-state__button"
-            bindtap="purchaseAiGeneration"
-          >购买 AI 生成次数</button>
-          <button
-            wx:elif="{{aiAction === 'USE_STANDARD_MODE'}}"
-            class="button-primary ai-editor-state__button"
-            bindtap="useStandardMode"
-          >使用标准模式</button>
-          <button
-            wx:elif="{{aiAction === 'SELECT_IMAGE'}}"
-            class="button-primary ai-editor-state__button"
-            bindtap="selectNewImage"
-          >重新选择图片</button>
-          <button
-            wx:elif="{{aiRetryable}}"
-            class="button-primary ai-editor-state__button"
-            bindtap="retryAiGeneration"
-          >{{aiRetryMode === 'generation' ? '重新生成' : aiRetryMode === 'query' ? '重新查询' : '重试'}}</button>
-        </view>
       </view>
 
       <!-- ── 缩放控制 ── -->
@@ -88,14 +41,14 @@
         <button
           class="zoom-control__button"
           bindtap="zoomOut"
-          disabled="{{scale <= 1 || aiLocked || !canvasReady}}"
+          disabled="{{scale <= 1 || !canvasReady}}"
           aria-label="缩小"
         ><image src="/assets/icons/iconsax/minus.svg" mode="aspectFit" /></button>
         <text class="zoom-control__value">{{scalePercent}}%</text>
         <button
           class="zoom-control__button"
           bindtap="zoomIn"
-          disabled="{{scale >= 3 || aiLocked || !canvasReady}}"
+          disabled="{{scale >= 3 || !canvasReady}}"
           aria-label="放大"
         ><image src="/assets/icons/iconsax/add.svg" mode="aspectFit" /></button>
       </view>
@@ -132,11 +85,11 @@
       <view class="palette">
         <view wx:for="{{paletteColors}}" wx:key="*this" class="palette__slot">
           <button
-            class="palette__color {{selectedColor === item ? 'palette__color--selected' : ''}} {{aiLocked || !canvasReady ? 'palette__color--disabled' : ''}}"
+            class="palette__color {{selectedColor === item ? 'palette__color--selected' : ''}} {{!canvasReady ? 'palette__color--disabled' : ''}}"
             style="background-color: {{item}};"
             data-color="{{item}}"
             bindtap="selectPaletteColor"
-            disabled="{{aiLocked || !canvasReady}}"
+            disabled="{{!canvasReady}}"
             aria-label="选择颜色 {{item}}"
           >
             <image wx:if="{{selectedColor === item}}" class="palette__check" src="/assets/icons/iconsax/check.svg" mode="aspectFit" />
@@ -147,7 +100,7 @@
       <!-- ── 底部操作 ── -->
       <view class="editor-actions">
         <button class="button-secondary editor-actions__button" bindtap="regenerate">重新生成</button>
-        <button class="button-primary editor-actions__button" bindtap="saveAndView" loading="{{saving}}" disabled="{{saving || aiLocked || !canvasReady}}">{{saving ? '保存中' : '保存作品'}}</button>
+        <button class="button-primary editor-actions__button" bindtap="saveAndView" loading="{{saving}}" disabled="{{saving || !canvasReady}}">{{saving ? '保存中' : '保存作品'}}</button>
       </view>
 
     </view>

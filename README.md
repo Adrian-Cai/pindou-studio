@@ -112,22 +112,16 @@
 - `pages/projects/index`：我的作品
 - `pages/profile/index`：我的
 
-### 分包 `pages-sub`
+### 分包 `packages`
 
-- `pages-sub/editor/index`：拼豆图编辑器
-- `pages-sub/result/index`：作品结果
-- `pages-sub/favorites/index`：我的收藏
-- `pages-sub/downloads/index`：下载记录
-- `pages-sub/help/index`：使用帮助
-- `pages-sub/feedback/index`：意见反馈
-- `pages-sub/privacy/index`：隐私设置
-- `pages-sub/about/index`：关于我们
-- `pages-sub/recharge/index`：AI 生成次数 / 额度相关页面
-- `pages-sub/orders/index`：AI 生成次数订单
-- `pages-sub/payment-success/index`：支付成功展示
-- `pages-sub/settings/index`：帮助、反馈、隐私和关于入口
-- `pages-sub/account/index`：账号管理
-- `pages-sub/profile-edit/index`：编辑个人资料
+- `packages/editor/index`：拼豆图编辑器
+- `packages/ai-generation/index`：AI 生成任务状态、恢复和失败重试
+- `packages/result/index`：作品结果及内部下载组件
+- `packages/account/index`：账号、收藏、帮助、隐私和设置
+- `packages/payment/recharge/index`：AI 生成次数充值
+- `packages/payment/orders/index`：AI 生成次数订单
+- `packages/payment/payment-success/index`：支付结果展示
+- `packages/download/index`：下载记录
 
 ## 技术架构
 
@@ -179,7 +173,7 @@ pindou-studio/
 │   ├── config/              # 产品常量与设计配置
 │   ├── models/              # 领域类型
 │   ├── pages/               # 主包页面
-│   ├── pages-sub/           # 分包页面
+│   ├── packages/             # 编辑器、AI、结果、账户、支付和下载分包
 │   ├── services/            # 微信 API / 后端接口封装
 │   ├── store/               # 全局轻量状态
 │   └── utils/               # 工具函数

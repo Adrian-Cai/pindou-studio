@@ -169,7 +169,7 @@ Page({
   },
 
   downloadWork() {
-      wx.navigateTo({ url: '/packages/account/downloads/index' })
+      wx.navigateTo({ url: '/packages/download/index' })
   },
 
   stopPropagation() {},

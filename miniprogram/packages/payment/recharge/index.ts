@@ -81,7 +81,7 @@ Page({
       const created = await payForAiGenerationPackage(selectedPackage.id)
       this.setData({ paymentLoading: false })
       wx.navigateTo({
-        url: `/packages/account/payment-success/index?orderId=${encodeURIComponent(created.orderId)}`,
+        url: `/packages/payment/payment-success/index?orderId=${encodeURIComponent(created.orderId)}`,
       })
     } catch (error) {
       if (isWechatPaymentCancelled(error)) {

@@ -9,8 +9,14 @@
       "name": "editor",
       "root": "packages/editor",
       "pages": [
-        "index",
-        "ai-generation/index"
+        "index"
+      ]
+    },
+    {
+      "name": "ai-generation",
+      "root": "packages/ai-generation",
+      "pages": [
+        "index"
       ]
     },
     {
@@ -26,17 +32,29 @@
       "pages": [
         "index",
         "about/index",
-        "downloads/index",
         "favorites/index",
         "feedback/index",
         "help/index",
-        "orders/index",
-        "payment-success/index",
         "privacy-document/index",
         "privacy/index",
         "profile-edit/index",
-        "recharge/index",
         "settings/index"
+      ]
+    },
+    {
+      "name": "payment",
+      "root": "packages/payment",
+      "pages": [
+        "orders/index",
+        "payment-success/index",
+        "recharge/index"
+      ]
+    },
+    {
+      "name": "download",
+      "root": "packages/download",
+      "pages": [
+        "index"
       ]
     }
   ],

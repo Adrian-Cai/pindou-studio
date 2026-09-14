@@ -2,7 +2,7 @@
 
 > 状态：当前实现基线
 >
-> 适用版本：0.19.x
+> 适用版本：0.30.1
 >
 > 本文描述当前已经落地的系统，不包含尚未接入的 Ai 模式未来 AI 架构见 `docs/backend/AI_GENERATION_DESIGN.md`
 
@@ -123,9 +123,12 @@ wx.login
 
 ### 分包 `packages`
 
-- `packages/editor`：编辑器与 AI 生成
-- `packages/result`：结果页及下载相关组件
-- `packages/account`：个人中心、订单、充值及账号设置
+- `packages/editor`：拼豆图编辑器与编辑服务
+- `packages/ai-generation`：AI 生成等待页、任务轮询、输出转换和恢复流程
+- `packages/result`：结果页及结果页内部的下载组件
+- `packages/account`：个人中心、收藏、帮助、隐私、关于和账号设置
+- `packages/payment`：充值、订单、支付结果及订单服务
+- `packages/download`：下载记录页面
 
 ## 4. 后端模块
 

@@ -164,11 +164,11 @@ Page({
   },
 
   openDownloads() {
-    wx.navigateTo({ url: '/packages/account/downloads/index' })
+    wx.navigateTo({ url: '/packages/download/index' })
   },
 
   openOrders() {
-    wx.navigateTo({ url: '/packages/account/orders/index' })
+    wx.navigateTo({ url: '/packages/payment/orders/index' })
   },
 
   openSettings() {
@@ -302,7 +302,7 @@ Page({
       this.setData({ paymentLoading: false })
       this.hideActiveSheet()
       wx.navigateTo({
-        url: `/packages/account/payment-success/index?orderId=${encodeURIComponent(created.orderId)}`,
+        url: `/packages/payment/payment-success/index?orderId=${encodeURIComponent(created.orderId)}`,
       })
     } catch (error) {
       if (isWechatPaymentCancelled(error)) {
