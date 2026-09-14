@@ -101,6 +101,13 @@
   font-weight: 600;
   line-height: 1;
 }
+.benefit-card__quota-breakdown {
+  margin-top: 12rpx;
+  color: var(--color-text-secondary);
+  font-size: 22rpx;
+  line-height: 32rpx;
+}
+.benefit-card__quota-breakdown text { color: var(--color-text); }
 .benefit-card__action {
   display: inline-flex;
   height: 72rpx;
@@ -233,7 +240,7 @@
 
 /* ── Recharge Sheet ── */
 .recharge-sheet__title { font-size: 36rpx; font-weight: 600; text-align: center; }
-.recharge-sheet__quota { margin: 8rpx 0 24rpx; color: var(--color-text-secondary); font-size: 25rpx; text-align: center; }
+.recharge-sheet__quota { display: flex; flex-direction: column; gap: 4rpx; margin: 8rpx 0 24rpx; color: var(--color-text-secondary); font-size: 25rpx; line-height: 34rpx; text-align: center; }
 .recharge-sheet__quota text { color: var(--color-primary); font-size: 34rpx; font-weight: 600; }
 .recharge-sheet__message { padding: 28rpx 0; color: var(--color-text-secondary); font-size: 25rpx; line-height: 36rpx; text-align: center; }
 .recharge-option { display: flex; height: 92rpx; align-items: center; margin-bottom: 16rpx; padding: 0 24rpx; border: 0; border-radius: var(--radius-card-small); background: var(--color-surface); box-shadow: var(--shadow-card); transition: var(--transition-press); }

@@ -259,7 +259,7 @@ Page({
     try {
       const draft = await createDraft(this.data.sourceImagePath, this.data.settings, 'standard')
       appStore.setCurrentDraft(draft)
-      wx.navigateTo({ url: '/pages-sub/editor/index' })
+      wx.navigateTo({ url: '/packages/editor/index' })
     } catch (error) {
       console.error('生成拼豆图失败', error)
       wx.showToast({ title: '生成失败，请重试', icon: 'none' })
@@ -390,7 +390,7 @@ async function openAiEditor(session: AiGenerationSession): Promise<void> {
 function navigateToEditor(): Promise<void> {
   return new Promise((resolve, reject) => {
     wx.navigateTo({
-      url: '/pages-sub/editor/index',
+      url: '/packages/editor/index',
       success: () => resolve(),
       fail: () => reject(createIdempotentNavigationError()),
     })
@@ -404,7 +404,7 @@ function showAiQuotaModal(): void {
     confirmText: '购买次数',
     cancelText: '稍后再说',
     success: ({ confirm }) => {
-      if (confirm) wx.navigateTo({ url: '/pages-sub/recharge/index' })
+      if (confirm) wx.navigateTo({ url: '/packages/account/recharge/index' })
     },
   })
 }

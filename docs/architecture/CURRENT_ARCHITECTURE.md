@@ -121,18 +121,11 @@ wx.login
 - `pages/projects/index`
 - `pages/profile/index`
 
-### 分包 `pages-sub`
+### 分包 `packages`
 
-- editor
-- result
-- favorites
-- downloads
-- help
-- feedback
-- privacy
-- about
-- recharge
-- payment-success
+- `packages/editor`：编辑器与 AI 生成
+- `packages/result`：结果页及下载相关组件
+- `packages/account`：个人中心、订单、充值及账号设置
 
 ## 4. 后端模块
 

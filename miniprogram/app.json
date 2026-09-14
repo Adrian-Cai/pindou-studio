@@ -6,24 +6,37 @@
   ],
   "subPackages": [
     {
-      "root": "pages-sub",
+      "name": "editor",
+      "root": "packages/editor",
       "pages": [
-        "editor/index",
-        "ai-generation/index",
-        "result/index",
+        "index",
+        "ai-generation/index"
+      ]
+    },
+    {
+      "name": "result",
+      "root": "packages/result",
+      "pages": [
+        "index"
+      ]
+    },
+    {
+      "name": "account",
+      "root": "packages/account",
+      "pages": [
+        "index",
+        "about/index",
         "downloads/index",
         "favorites/index",
-        "help/index",
-        "about/index",
-        "privacy/index",
-        "privacy-document/index",
         "feedback/index",
-        "recharge/index",
+        "help/index",
         "orders/index",
         "payment-success/index",
-        "settings/index",
-        "account/index",
-        "profile-edit/index"
+        "privacy-document/index",
+        "privacy/index",
+        "profile-edit/index",
+        "recharge/index",
+        "settings/index"
       ]
     }
   ],

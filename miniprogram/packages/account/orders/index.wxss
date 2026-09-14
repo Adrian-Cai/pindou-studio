@@ -1,0 +1,30 @@
+@import "../../../styles/profile-pages.wxss";
+
+.orders-page { padding-top: 16rpx; }
+.orders-list { display: grid; gap: 20rpx; }
+.order-card { min-width: 0; padding: 28rpx 32rpx; }
+.order-card__header { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 20rpx; }
+.order-card__label { min-width: 0; flex: 1; color: var(--color-text); font-size: 30rpx; font-weight: 600; line-height: 42rpx; }
+.order-card__amount { margin-top: 20rpx; color: var(--color-text); font-family: var(--font-heading); font-size: 40rpx; font-weight: 600; line-height: 48rpx; }
+.order-card__details { display: grid; gap: 12rpx; margin-top: 24rpx; padding-top: 20rpx; border-top: 1rpx solid var(--color-border); }
+.order-card__detail { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 20rpx; font-size: 23rpx; line-height: 34rpx; }
+.order-card__detail-label { flex-shrink: 0; color: var(--color-text-secondary); }
+.order-card__detail-value { min-width: 0; overflow-wrap: anywhere; color: var(--color-text-tertiary); text-align: right; }
+.order-status { flex-shrink: 0; }
+.order-status--pending { background: var(--color-warning-soft); color: var(--color-warning); }
+.order-status--paid { background: var(--color-success-soft); color: var(--color-success); }
+.order-status--failed { background: var(--color-danger-soft); color: var(--color-danger); }
+.order-status--closed { background: var(--color-surface-muted); color: var(--color-text-secondary); }
+.order-status--refunded { background: var(--color-info-soft); color: var(--color-info); }
+.orders-message { display: flex; min-height: 520rpx; flex-direction: column; align-items: center; justify-content: center; padding: 48rpx 32rpx; text-align: center; }
+.orders-message__title { color: var(--color-text); font-size: 32rpx; font-weight: 600; line-height: 44rpx; }
+.orders-message__description { max-width: 560rpx; margin-top: 12rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 38rpx; }
+.orders-message__button { width: 320rpx; margin-top: 32rpx; }
+.orders-empty { min-height: 560rpx; }
+.orders-empty__icon { width: 96rpx; height: 96rpx; padding: 24rpx; border-radius: 40rpx; background: var(--color-primary-soft); }
+
+@media (max-width: 340px) {
+  .order-card { padding-right: 24rpx; padding-left: 24rpx; }
+  .order-card__label { font-size: 28rpx; }
+  .order-card__amount { font-size: 36rpx; }
+}

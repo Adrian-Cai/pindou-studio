@@ -160,7 +160,7 @@ Page({
         const detail = await fetchCloudWork(id)
         await appStore.setCurrentDraft(cloudDetailToDraft(detail))
         await appStore.saveWork(cloudSummaryToWorkItem(detail))
-        wx.navigateTo({ url: edit ? '/pages-sub/editor/index' : '/pages-sub/result/index' })
+        wx.navigateTo({ url: edit ? '/packages/editor/index' : '/packages/result/index' })
       } catch (error) {
         console.error('读取作品详情失败', error)
         wx.showToast({
@@ -173,7 +173,7 @@ Page({
       return
     }
     if (state.currentDraft?.id === id) {
-      wx.navigateTo({ url: edit ? '/pages-sub/editor/index' : '/pages-sub/result/index' })
+      wx.navigateTo({ url: edit ? '/packages/editor/index' : '/packages/result/index' })
       return
     }
     wx.showToast({ title: '这份本地作品缺少可恢复的网格数据', icon: 'none' })

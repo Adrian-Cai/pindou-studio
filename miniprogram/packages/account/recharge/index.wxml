@@ -1,0 +1,30 @@
+<page-layout title="购买 AI 生成次数" back showMainNav selectedTab="2">
+  <view class="subpage recharge-page">
+    <view class="recharge-hero">
+      <image src="/assets/icons/bead-stack.svg" mode="aspectFit" />
+      <view class="recharge-hero__title">购买 AI 生成次数</view>
+      <view class="recharge-hero__quota">
+        <view>今日免费剩余 <text>{{dailyFreeRemaining}}</text> / {{dailyFreeQuota}} 次</view>
+        <view>已购买 <text>{{purchasedQuota}}</text> 次</view>
+        <view>当前总可用 <text>{{quota}}</text> 次</view>
+      </view>
+    </view>
+
+    <view class="recharge-options">
+      <view wx:if="{{packagesLoading}}" class="recharge-options__message">正在加载 AI 套餐…</view>
+      <view wx:elif="{{packageMessage}}" class="recharge-options__message">{{packageMessage}}</view>
+      <block wx:else>
+        <view class="recharge-option {{selected === index ? 'recharge-option--active' : ''}}" wx:for="{{packages}}" wx:key="id" data-index="{{index}}" bindtap="selectPackage">
+          <image src="/assets/icons/bead-stack.svg" mode="aspectFit" />
+          <view class="recharge-option__label">{{item.label}}</view>
+          <view class="recharge-option__price">¥ {{item.price}}</view>
+          <view class="recharge-option__check"><image wx:if="{{selected === index}}" src="/assets/icons/iconsax/check.svg" mode="aspectFit" /></view>
+        </view>
+      </block>
+    </view>
+
+    <view class="payment-method ui-card"><text>支付方式</text><view><image src="/assets/icons/login/wechat.svg" mode="aspectFit"/>微信支付<image class="payment-method__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit"/></view></view>
+    <button class="button-primary recharge-button" style="width: 100%;" loading="{{paymentLoading}}" disabled="{{packagesLoading || packages.length === 0 || paymentLoading}}" bindtap="purchase">{{paymentLoading ? '正在支付…' : '立即支付'}}</button>
+    <view class="recharge-notes"><view class="recharge-notes__agreement" bindtap="openPaidServiceAgreement" hover-class="recharge-notes__agreement--pressed" aria-role="link" aria-label="查看付费服务协议">支付即表示同意 <text class="recharge-notes__link">《付费服务协议》</text></view><view>支付成功后，AI 生成次数以服务端到账结果为准</view></view>
+  </view>
+</page-layout>

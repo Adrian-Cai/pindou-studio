@@ -39,17 +39,18 @@
 
 ### 2.2 二级页面
 
-- `pages-sub/editor/index`：编辑拼豆草稿
-- `pages-sub/result/index`：查看作品结果并下载
-- `pages-sub/favorites/index`：收藏列表
-- `pages-sub/downloads/index`：下载记录
-- `pages-sub/recharge/index`：下载次数 / 额度相关展示
-- `pages-sub/orders/index`：当前用户的 AI 生成次数订单列表
-- `pages-sub/payment-success/index`：支付结果展示页，从服务端确认订单和 AI 额度
-- `pages-sub/help/index`：使用帮助
-- `pages-sub/feedback/index`：意见反馈
-- `pages-sub/privacy/index`：隐私设置
-- `pages-sub/about/index`：关于我们
+- `packages/editor/index`：编辑拼豆草稿
+- `packages/editor/ai-generation/index`：AI 生成流程
+- `packages/result/index`：查看作品结果并下载
+- `packages/account/favorites/index`：收藏列表
+- `packages/account/downloads/index`：下载记录
+- `packages/account/recharge/index`：下载次数 / 额度相关展示
+- `packages/account/orders/index`：当前用户的 AI 生成次数订单列表
+- `packages/account/payment-success/index`：支付结果展示页，从服务端确认订单和 AI 额度
+- `packages/account/help/index`：使用帮助
+- `packages/account/feedback/index`：意见反馈
+- `packages/account/privacy/index`：隐私设置
+- `packages/account/about/index`：关于我们
 
 ### 2.3 结果页不是四个独立页面
 

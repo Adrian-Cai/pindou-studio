@@ -57,10 +57,14 @@
       </view>
       <view class="benefit-card__content">
         <view class="benefit-card__quota-info">
-          <text class="benefit-card__caption">AI 今日剩余</text>
+          <text class="benefit-card__caption">AI 当前总可用</text>
           <view class="benefit-card__quota-val">
             <text class="benefit-card__quota-num">{{aiGenerationQuota}}</text>
-            <text class="benefit-card__quota-unit"> / {{dailyFreeAiGenerationQuota}} 次</text>
+            <text class="benefit-card__quota-unit"> 次</text>
+          </view>
+          <view class="benefit-card__quota-breakdown">
+            <view>今日免费剩余：<text>{{aiGenerationDailyFreeRemaining}} / {{dailyFreeAiGenerationQuota}} 次</text></view>
+            <view>已购买：<text>{{aiGenerationPurchasedQuota}} 次</text></view>
           </view>
         </view>
         <view class="benefit-card__action" bindtap="showRechargeSheet">购买 AI 生成次数 <image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
@@ -114,7 +118,11 @@
   <view class="profile-sheet recharge-sheet" catchtap="stopPropagation">
     <view class="profile-sheet__handle"></view>
     <view class="recharge-sheet__title">购买 AI 生成次数</view>
-    <view class="recharge-sheet__quota">AI 今日剩余 <text>{{aiGenerationQuota}}</text> 次</view>
+    <view class="recharge-sheet__quota">
+      <view>今日免费剩余 <text>{{aiGenerationDailyFreeRemaining}}</text> / {{dailyFreeAiGenerationQuota}} 次</view>
+      <view>已购买 <text>{{aiGenerationPurchasedQuota}}</text> 次</view>
+      <view>当前总可用 <text>{{aiGenerationQuota}}</text> 次</view>
+    </view>
     <view wx:if="{{packagesLoading}}" class="recharge-sheet__message">正在加载 AI 套餐…</view>
     <view wx:elif="{{packageMessage}}" class="recharge-sheet__message">{{packageMessage}}</view>
     <block wx:else>

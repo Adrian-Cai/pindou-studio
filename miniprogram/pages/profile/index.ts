@@ -28,6 +28,8 @@ Page({
     dailyFreeDownloadQuota: DAILY_FREE_DOWNLOAD_QUOTA,
     aiGenerationQuota: 0,
     dailyFreeAiGenerationQuota: 0,
+    aiGenerationDailyFreeRemaining: 0,
+    aiGenerationPurchasedQuota: 0,
     avatarPath: DEFAULT_AVATAR_PATH,
     isLoggedIn: false,
     accountName: '拼豆用户',
@@ -100,13 +102,20 @@ Page({
     const downloadQuota = profile?.quota.remaining ?? state.downloadQuota
     const dailyFreeDownloadQuota = profile?.quota.dailyFree ?? DAILY_FREE_DOWNLOAD_QUOTA
     const aiGenerationQuota = profile?.quota.aiGeneration.remaining ?? 0
-    const dailyFreeAiGenerationQuota = profile?.quota.aiGeneration.dailyFree ?? 0
+    const aiGenerationDailyFreeQuota = profile?.quota.aiGeneration.dailyFree ?? 0
+    const aiGenerationDailyFreeRemaining = Math.max(
+      0,
+      aiGenerationDailyFreeQuota - (profile?.quota.aiGeneration.usedToday ?? 0),
+    )
+    const aiGenerationPurchasedQuota = profile?.quota.aiGeneration.purchased ?? 0
 
     this.setData({
       downloadQuota,
       dailyFreeDownloadQuota,
       aiGenerationQuota,
-      dailyFreeAiGenerationQuota,
+      dailyFreeAiGenerationQuota: aiGenerationDailyFreeQuota,
+      aiGenerationDailyFreeRemaining,
+      aiGenerationPurchasedQuota,
       avatarPath: DEFAULT_AVATAR_PATH,
       isLoggedIn: hasAuthenticatedUser,
       accountName: user?.nickname?.trim() || '拼豆用户',
@@ -149,24 +158,24 @@ Page({
   },
 
   openFavorites() {
-    wx.navigateTo({ url: '/pages-sub/favorites/index' })
+    wx.navigateTo({ url: '/packages/account/favorites/index' })
   },
 
   openDownloads() {
-    wx.navigateTo({ url: '/pages-sub/downloads/index' })
+    wx.navigateTo({ url: '/packages/account/downloads/index' })
   },
 
   openOrders() {
-    wx.navigateTo({ url: '/pages-sub/orders/index' })
+    wx.navigateTo({ url: '/packages/account/orders/index' })
   },
 
   openSettings() {
-    wx.navigateTo({ url: '/pages-sub/settings/index' })
+    wx.navigateTo({ url: '/packages/account/settings/index' })
   },
 
   openUserPanel() {
     if (this.data.isLoggedIn) {
-      wx.navigateTo({ url: '/pages-sub/account/index' })
+      wx.navigateTo({ url: '/packages/account/index' })
       return
     }
     authStore.clearError()
@@ -275,7 +284,7 @@ Page({
       this.setData({ paymentLoading: false })
       this.hideActiveSheet()
       wx.navigateTo({
-        url: `/pages-sub/payment-success/index?orderId=${encodeURIComponent(created.orderId)}`,
+        url: `/packages/account/payment-success/index?orderId=${encodeURIComponent(created.orderId)}`,
       })
     } catch (error) {
       if (isWechatPaymentCancelled(error)) {
@@ -326,7 +335,7 @@ Page({
   openLegalDocument(key: 'user-agreement' | 'privacy-policy') {
     this.preserveSheetOnNextHide = true
     wx.navigateTo({
-      url: `/pages-sub/privacy-document/index?key=${key}`,
+      url: `/packages/account/privacy-document/index?key=${key}`,
       fail: () => {
         this.preserveSheetOnNextHide = false
       },
