@@ -30,6 +30,7 @@ Page({
     dailyFreeAiGenerationQuota: 0,
     aiGenerationDailyFreeRemaining: 0,
     aiGenerationPurchasedQuota: 0,
+    aiQuotaTipsOpen: false,
     avatarPath: DEFAULT_AVATAR_PATH,
     isLoggedIn: false,
     accountName: '拼豆用户',
@@ -45,6 +46,7 @@ Page({
     profileSaving: false,
     profileMessage: '',
     selectedPackage: 0,
+    selectedPackagePrice: '',
     paymentLoading: false,
   },
 
@@ -201,8 +203,18 @@ Page({
     void this.refreshPackages()
   },
 
+  toggleAiQuotaTips() {
+    this.setData({ aiQuotaTipsOpen: !this.data.aiQuotaTipsOpen })
+  },
+
+  closeAiQuotaTips() {
+    this.setData({ aiQuotaTipsOpen: false })
+  },
+
+  keepAiQuotaTipsOpen() {},
+
   async refreshPackages() {
-    this.setData({ packagesLoading: true, packageMessage: '' })
+    this.setData({ packagesLoading: true, packageMessage: '', selectedPackagePrice: '' })
     try {
       const packages = await fetchAiGenerationPackages()
       this.setData({
@@ -210,12 +222,14 @@ Page({
         packagesLoading: false,
         packageMessage: packages.length > 0 ? '' : '暂无可购买的 AI 生成套餐',
         selectedPackage: 0,
+        selectedPackagePrice: packages[0]?.price ?? '',
       })
     } catch {
       this.setData({
         packages: [],
         packagesLoading: false,
         packageMessage: '套餐加载失败，请稍后重试',
+        selectedPackagePrice: '',
       })
     }
   },
@@ -271,7 +285,11 @@ Page({
   stopPropagation() {},
 
   selectPackage(event: WechatMiniprogram.TouchEvent) {
-    this.setData({ selectedPackage: Number(event.currentTarget.dataset.index) })
+    const selectedPackage = Number(event.currentTarget.dataset.index)
+    this.setData({
+      selectedPackage,
+      selectedPackagePrice: this.data.packages[selectedPackage]?.price ?? '',
+    })
   },
 
   async purchase() {
