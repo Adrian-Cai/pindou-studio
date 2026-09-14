@@ -1,4 +1,4 @@
-import { createDraft } from '../../../services/image-service'
+import { createDraft, prepareImageForContentSecurity } from '../../../services/image-service'
 import {
   aiGenerationFailure,
   aiGenerationErrorMessage,
@@ -6,6 +6,7 @@ import {
   downloadAiOutput,
   getAiGeneration,
   isAiOutputImageAvailable,
+  uploadAiInput,
   type AiGeneration,
   type AiGenerationFailure,
 } from '../../../services/ai-generation-service'
@@ -152,7 +153,8 @@ export class AiGenerationFlow {
       this.setFailure('AI 生成失败，请重试', 'generation', null)
       return
     }
-    if (session.status === 'creating' && session.inputFileId && !session.jobId) {
+    if ((session.status === 'uploading' && !session.inputFileId)
+      || (session.status === 'creating' && session.inputFileId && !session.jobId)) {
       await this.retryGeneration()
       return
     }
@@ -285,34 +287,50 @@ export class AiGenerationFlow {
 
   private async retryGeneration(): Promise<void> {
     const previous = loadAiGenerationSession()
-    if (!previous?.inputFileId) {
+    if (!previous) {
       this.setFailure('输入图片已失效，请返回首页重新上传', 'generation', null)
       return
     }
-    const inputFileId = previous.inputFileId
+    let inputFileId = previous.inputFileId
     const session: AiGenerationSession = {
       ...previous,
       inputFileId,
       jobId: null,
       outputImagePath: '',
       idempotencyKey: previous.jobId ? createIdempotencyKey() : previous.idempotencyKey,
-      status: 'creating',
+      status: inputFileId ? 'creating' : 'uploading',
     }
     this.session = session
     saveAiGenerationSession(session)
     this.clearPollTimer()
     this.clearLongWaitTimer()
     this.updateState({
-      pageState: 'submitting',
-      stateTitle: '正在创建 AI 任务',
-      stateDescription: '正在提交新的生成请求',
+      pageState: inputFileId ? 'submitting' : 'uploading',
+      stateTitle: inputFileId ? '正在创建 AI 任务' : '正在上传图片',
+      stateDescription: inputFileId ? '正在提交新的生成请求' : '正在准备 AI 输入图片',
       statusMessage: '',
       showPurchase: false,
       waitingLong: false,
       retryMode: 'generation',
     })
+    const requestSequence = ++this.requestSequence
     this.submitting = true
     try {
+      if (!inputFileId) {
+        const inputImagePath = session.inputImagePath || await prepareImageForContentSecurity(session.sourceImagePath)
+        if (this.isStale(requestSequence)) return
+        const uploaded = await uploadAiInput(inputImagePath, session.securityCheckId)
+        if (this.isStale(requestSequence)) return
+        inputFileId = uploaded.id
+        this.session = { ...session, inputFileId, status: 'creating' }
+        saveAiGenerationSession(this.session)
+        this.updateState({
+          pageState: 'submitting',
+          stateTitle: '正在创建 AI 任务',
+          stateDescription: '正在提交新的生成请求',
+        })
+      }
+      if (!inputFileId) throw new ApiError('输入图片已失效，请重新上传', { code: 'IMAGE_DECODE_ERROR' })
       const generation = await createAiGeneration({
         inputFileId,
         style: session.style,
@@ -320,14 +338,15 @@ export class AiGenerationFlow {
         backgroundMode: session.backgroundMode,
         idempotencyKey: session.idempotencyKey,
       })
+      if (this.isStale(requestSequence)) return
       this.session = {
-        ...session,
+        ...(this.session ?? session),
         jobId: generation.id,
         status: generation.status === 'succeeded' ? 'succeeded' : 'processing',
       }
       saveAiGenerationSession(this.session)
       this.lastGeneration = generation
-      await this.handleGeneration(generation, ++this.requestSequence)
+      await this.handleGeneration(generation, requestSequence)
     } catch (error) {
       if (this.destroyed || this.hidden) return
       this.setFailure(aiGenerationErrorMessage(error), 'generation', aiGenerationFailure(error))

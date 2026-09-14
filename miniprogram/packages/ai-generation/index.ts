@@ -2,10 +2,16 @@ import {
   AiGenerationFlow,
   type AiGenerationFlowState,
 } from './services/ai-generation-flow'
+import { DEFAULT_AI_OPTIONS } from '../../services/ai-generation-service'
 import { createDraft } from '../../services/image-service'
 import { ApiError } from '../../services/http-client'
 import { appStore } from '../../store/app-store'
-import { clearAiGenerationSession, loadAiGenerationSession } from '../../services/ai-generation-session'
+import {
+  clearAiGenerationSession,
+  createIdempotencyKey,
+  loadAiGenerationSession,
+  saveAiGenerationSession,
+} from '../../services/ai-generation-session'
 
 Page({
   data: {
@@ -25,6 +31,7 @@ Page({
   _aiFlow: null as AiGenerationFlow | null,
 
   onLoad() {
+    ensureAiSession()
     this._aiFlow = new AiGenerationFlow({
       onStateChange: (state) => this.applyFlowState(state),
       onSourceImage: (sourceImagePath) => this.setData({ sourceImagePath, sourceImageError: false }),
@@ -101,4 +108,41 @@ function redirectToEditor(): Promise<void> {
       fail: () => reject(new ApiError('编辑器打开失败，请稍后重试', { code: 'NAVIGATION_ERROR' })),
     })
   })
+}
+
+function ensureAiSession(): void {
+  const draft = appStore.getSnapshot().currentDraft
+  if (!draft?.id.startsWith('ai-pending-')) return
+  const existing = loadAiGenerationSession()
+  if (existing?.sourceImagePath === draft.sourceImagePath && existing.status !== 'failed') {
+    if (existing.inputFileId || existing.jobId) return
+    try {
+      saveAiGenerationSession({
+        ...existing,
+        securityCheckId: draft.contentSecurityCheckId,
+        inputImagePath: draft.contentSecurityImagePath,
+      })
+    } catch (error) {
+      console.error('更新 AI 任务会话失败', error)
+    }
+    return
+  }
+  try {
+    saveAiGenerationSession({
+      idempotencyKey: createIdempotencyKey(),
+      generationMode: 'ai',
+      jobId: null,
+      inputFileId: null,
+      securityCheckId: draft.contentSecurityCheckId,
+      inputImagePath: draft.contentSecurityImagePath,
+      sourceImagePath: draft.sourceImagePath,
+      outputImagePath: '',
+      settings: { ...draft.settings },
+      ...DEFAULT_AI_OPTIONS,
+      status: 'uploading',
+      createdAt: Date.now(),
+    })
+  } catch (error) {
+    console.error('创建 AI 任务会话失败', error)
+  }
 }

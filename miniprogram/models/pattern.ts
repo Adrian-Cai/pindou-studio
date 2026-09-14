@@ -15,6 +15,10 @@ export interface PatternCell {
 export interface PatternDraft {
   id: string
   sourceImagePath: string
+  /** AI 临时草稿使用：首页完成的内容安全检查编号。 */
+  contentSecurityCheckId?: string
+  /** 与内容安全检查对应的已压缩输入图片路径。 */
+  contentSecurityImagePath?: string
   createdAt: number
   generationMode: GenerationMode
   settings: PatternSettings

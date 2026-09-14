@@ -176,6 +176,8 @@ export async function createDraft(
 export function createPendingDraft(
   sourceImagePath: string,
   settings: Partial<PatternSettings>,
+  contentSecurityCheckId?: string,
+  contentSecurityImagePath?: string,
 ): PatternDraft {
   const normalizedSettings: PatternSettings = {
     ...DEFAULT_PATTERN_SETTINGS,
@@ -186,6 +188,8 @@ export function createPendingDraft(
   return {
     id: `ai-pending-${now}`,
     sourceImagePath,
+    contentSecurityCheckId: contentSecurityCheckId?.trim() || undefined,
+    contentSecurityImagePath: contentSecurityImagePath?.trim() || undefined,
     createdAt: now,
     generationMode: 'ai',
     settings: normalizedSettings,

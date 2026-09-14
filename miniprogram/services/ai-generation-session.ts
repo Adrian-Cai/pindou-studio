@@ -10,6 +10,8 @@ export interface AiGenerationSession {
   generationMode: 'ai'
   jobId: string | null
   inputFileId: string | null
+  securityCheckId?: string
+  inputImagePath?: string
   sourceImagePath: string
   outputImagePath: string
   settings: PatternSettings
@@ -56,6 +58,8 @@ function isAiGenerationSession(value: unknown): value is AiGenerationSession {
     && (value.generationMode === undefined || value.generationMode === 'ai')
     && isNullableNonEmptyString(value.jobId)
     && isNullableNonEmptyString(value.inputFileId)
+    && (value.securityCheckId === undefined || nonEmptyString(value.securityCheckId))
+    && (value.inputImagePath === undefined || nonEmptyString(value.inputImagePath))
     && nonEmptyString(value.sourceImagePath)
     && typeof value.outputImagePath === 'string'
     && isPatternSettings(value.settings)
