@@ -15,8 +15,9 @@ services:
       - /opt/pindou/data/covers:/app/data/covers
       - /opt/pindou/data/ai:/app/data/ai
       - /opt/pindou/data/content-security:/app/data/content-security
+      - /opt/pindou/config/certs:/app/certs:ro
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(async (response) => { console.log(await response.text()); process.exit(response.ok ? 0 : 1); }).catch((error) => { console.error(error.message); process.exit(1); })"]
       interval: 10s
       timeout: 5s
       retries: 12

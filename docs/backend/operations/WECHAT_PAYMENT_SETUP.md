@@ -35,6 +35,8 @@ WECHAT_PAY_CALLBACK_TOLERANCE_SECONDS=300
 
 私钥、API v3 密钥和 AppSecret 只能放在服务端密钥管理或运行环境中，不能进入小程序包、接口响应、日志或 Git。支付配置只要填写了其中一项，服务端就会要求其余项全部有效；全部不填时，服务端保持安全关闭，创建支付返回 `PAYMENT_NOT_CONFIGURED`。
 
+使用当前 Docker Compose 部署时，请将证书文件放在宿主机 `/opt/pindou/config/certs/`，并保持上面两个路径为 `./certs/...`。Compose 会以只读方式将该目录挂载到容器 `/app/certs/`；相对路径按容器工作目录 `/app` 解析，不按 `api.env` 文件所在目录解析。
+
 ## 3. 数据库和服务发布
 
 使用生产 API 实际连接的数据库，并用表 owner 或超级用户执行迁移：

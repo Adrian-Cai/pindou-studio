@@ -58,9 +58,18 @@ pipeline {
 
                     cd "$DEPLOY_DIR"
                     docker compose --env-file "$RUNTIME_ENV_FILE" config --quiet
-                    IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" \
-                      docker compose --env-file "$RUNTIME_ENV_FILE" \
-                        up -d --wait --wait-timeout 120 api
+                    if ! IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" \
+                        docker compose --env-file "$RUNTIME_ENV_FILE" \
+                          up -d --wait --wait-timeout 120 api; then
+                        echo "API 容器未通过 Compose 健康等待，输出容器状态和最近日志"
+                        IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" \
+                          docker compose --env-file "$RUNTIME_ENV_FILE" ps || true
+                        docker inspect --format '{{json .State.Health}}' pindou-api || true
+                        IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" \
+                          docker compose --env-file "$RUNTIME_ENV_FILE" \
+                            logs --tail=100 api || true
+                        exit 1
+                    fi
                 '''
             }
         }

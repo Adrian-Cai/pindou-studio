@@ -86,21 +86,21 @@
       </view>
       <view class="profile-grid__item ui-card" bindtap="openFavorites">
         <view class="profile-grid__body">
-          <image class="profile-grid__icon" src="/assets/icons/iconsax/heart.svg" mode="aspectFit" aria-hidden="true" />
+          <image class="profile-grid__icon" src="/assets/icons/iconsax/heart-profile.svg" mode="aspectFit" aria-hidden="true" />
           <text class="profile-grid__title">我的收藏</text>
         </view>
         <image class="profile-grid__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
       </view>
       <view class="profile-grid__item ui-card" bindtap="openDownloads">
         <view class="profile-grid__body">
-          <image class="profile-grid__icon" src="/assets/icons/iconsax/document-download.svg" mode="aspectFit" aria-hidden="true" />
+          <image class="profile-grid__icon" src="/assets/icons/iconsax/document-download-profile.svg" mode="aspectFit" aria-hidden="true" />
           <text class="profile-grid__title">下载记录</text>
         </view>
         <image class="profile-grid__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
       </view>
       <view class="profile-grid__item ui-card" bindtap="openSettings">
         <view class="profile-grid__body">
-          <image class="profile-grid__icon" src="/assets/icons/iconsax/setting-2.svg" mode="aspectFit" aria-hidden="true" />
+          <image class="profile-grid__icon" src="/assets/icons/iconsax/setting-2-profile.svg" mode="aspectFit" aria-hidden="true" />
           <text class="profile-grid__title">设置</text>
         </view>
         <image class="profile-grid__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
