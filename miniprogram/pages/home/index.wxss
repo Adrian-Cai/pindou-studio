@@ -307,6 +307,18 @@ page {
   box-shadow: 0 0 0 2rpx var(--color-ai), var(--shadow-card);
 }
 
+/* 暂未开放的模式保留展示，但不提供可选状态 */
+.mode-card--disabled {
+  background: var(--color-surface-muted);
+  box-shadow: var(--shadow-card);
+  opacity: 0.56;
+}
+
+.mode-card.mode-card--disabled:active {
+  opacity: 0.56;
+  transform: none;
+}
+
 .mode-card:active {
   opacity: 0.84;
   transform: scale(0.97);
@@ -361,6 +373,11 @@ page {
 .mode-card__badge--ai {
   background: var(--color-ai-soft);
   color: var(--color-ai-text);
+}
+
+.mode-card__badge--disabled {
+  background: var(--color-disabled);
+  color: var(--color-text-secondary);
 }
 
 .mode-card--active-ai .mode-card__badge--ai {

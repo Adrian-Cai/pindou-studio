@@ -65,18 +65,24 @@
       <view
         wx:for="{{generationModes}}"
         wx:key="id"
-        class="mode-card {{generationMode === item.id ? 'mode-card--active mode-card--active-' + item.id : ''}}"
+        class="mode-card {{generationMode === item.id ? 'mode-card--active mode-card--active-' + item.id : ''}} {{!item.enabled ? 'mode-card--disabled' : ''}}"
         data-mode="{{item.id}}"
         bindtap="selectMode"
         role="radio"
         aria-checked="{{generationMode === item.id}}"
-        aria-label="{{item.title}}"
+        aria-disabled="{{!item.enabled}}"
+        aria-label="{{item.enabled ? item.title : item.title + '，暂未开放'}}"
       >
         <!-- 右上角 badge -->
         <view
-          wx:if="{{item.badge}}"
+          wx:if="{{item.badge && item.enabled}}"
           class="mode-card__badge mode-card__badge--{{item.id}}"
         >{{item.badge}}</view>
+
+        <view
+          wx:if="{{!item.enabled}}"
+          class="mode-card__badge mode-card__badge--disabled"
+        >暂未开放</view>
 
         <!-- 右上角选中对勾 -->
         <view

@@ -18,6 +18,7 @@ interface GenerationModeOption {
   tips: string[]
   icon: string
   badge: string
+  enabled: boolean
   /** 预留：未来 AI 额度消耗，当前阶段不使用 */
   quotaCost: number
 }
@@ -29,6 +30,9 @@ interface SampleImage {
   alt: string
 }
 
+// AI 模式正式开放时改为 true，即可恢复首页选择和启动链路。
+const AI_MODE_ENABLED = false
+
 const GENERATION_MODES: GenerationModeOption[] = [
   {
     id: 'standard',
@@ -37,6 +41,7 @@ const GENERATION_MODES: GenerationModeOption[] = [
     tips: ['快速转换，免费使用，适合日常生成'],
     icon: '/assets/icons/mode-standard.svg',
     badge: '',
+    enabled: true,
     quotaCost: 0,
   },
   {
@@ -46,6 +51,7 @@ const GENERATION_MODES: GenerationModeOption[] = [
     tips: ['当前生成结果由人工智能生成', 'AI 优化细节，效果更精致，更接近原图'],
     icon: '/assets/icons/mode-ai-sparkle.svg',
     badge: '更精致',
+    enabled: AI_MODE_ENABLED,
     quotaCost: 1,
   },
 ]
@@ -111,7 +117,10 @@ Page({
   onShow() {
     // tab 高亮由 page-layout selected-tab 属性管理；从编辑器返回时恢复当前草稿模式。
     const draft = appStore.getSnapshot().currentDraft
-    this.setData({ generationMode: draft?.generationMode ?? 'standard' })
+    const generationMode = draft?.generationMode === 'ai' && !AI_MODE_ENABLED
+      ? 'standard'
+      : draft?.generationMode ?? 'standard'
+    this.setData({ generationMode })
   },
 
   onUnload() {
@@ -120,7 +129,8 @@ Page({
 
   selectMode(event: WechatMiniprogram.TouchEvent) {
     const mode = event.currentTarget.dataset.mode as GenerationMode
-    if (mode === this.data.generationMode) return
+    const modeOption = this.data.generationModes.find((item) => item.id === mode)
+    if (!modeOption?.enabled || mode === this.data.generationMode) return
     this.setData({ generationMode: mode })
   },
 
@@ -236,6 +246,11 @@ Page({
     }
 
     if (this.data.generationMode === 'ai') {
+      if (!AI_MODE_ENABLED) {
+        this.setData({ generationMode: 'standard' })
+        wx.showToast({ title: 'AI模式暂未开放', icon: 'none' })
+        return
+      }
       await this.startAiCreating()
       return
     }
