@@ -2,13 +2,13 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { PostgresAiGenerationService } = require("../dist/modules/ai/ai-generation-service.js");
 const { AppError } = require("../dist/shared/app-error.js");
-const { ProviderError } = require("../dist/modules/ai/qwen-image-provider.js");
+const { ProviderError } = require("../dist/modules/ai/hunyuan-image-provider.js");
 
 const NOW = new Date("2026-09-01T04:00:00.000Z");
 
 function harness({
   available = 3,
-  providerResult = { status: "succeeded", outputUrl: "https://result.aliyuncs.com/output.png" },
+  providerOutputUrl = "https://aigc-image.cos.myqcloud.com/output.png",
   providerError = null,
   inputAvailable = true,
   inputFileUserId = "usr_a",
@@ -43,7 +43,7 @@ function harness({
           output_file_id: null, output_public_url: null, output_content_type: null,
           output_byte_size: null, provider: parameters[3], model: parameters[4], status: "queued",
           prompt_version: parameters[5], style: parameters[6], detail_level: parameters[7],
-          background_mode: parameters[8], provider_request_id: null, idempotency_key: parameters[9],
+          background_mode: parameters[8], provider_request_id: null, provider_output_url: null, idempotency_key: parameters[9],
           error_code: null, created_at: parameters[10], updated_at: parameters[10], started_at: null,
           completed_at: null, expires_at: parameters[11],
         };
@@ -51,7 +51,8 @@ function harness({
       }
       if (sql.includes("SET provider_request_id =")) {
         job.provider_request_id = parameters[1];
-        job.updated_at = parameters[2];
+        job.provider_output_url = parameters[2];
+        job.updated_at = parameters[3];
         return { rows: [{ ...job }] };
       }
       if (sql.includes("WHERE jobs.id = $1") && sql.includes("FOR UPDATE OF jobs")) return { rows: [{ ...job }] };
@@ -96,23 +97,17 @@ function harness({
     async query(sql, parameters) { return client.query(sql, parameters); },
   };
   let createCount = 0;
-  let pollCount = 0;
   let receivedPrompt = "";
   const provider = {
     configured: true,
-    name: "qwen",
-    model: "qwen-image-3.0",
+    name: "hunyuan",
+    model: "hy-image-v3",
     async createTask(_image, prompt) {
       events.push({ type: "provider_create" });
       receivedPrompt = prompt;
       createCount += 1;
-      return "provider_task_1";
-    },
-    async getTask() {
-      events.push({ type: "provider_poll" });
-      pollCount += 1;
       if (providerError) throw providerError;
-      return providerResult;
+      return { requestId: "provider_request_1", outputUrl: providerOutputUrl };
     },
     async downloadOutput() {
       if (downloadError) throw downloadError;
@@ -149,7 +144,6 @@ function harness({
     get receivedPrompt() { return receivedPrompt; },
     get debitCount() { return debitCount; },
     get createCount() { return createCount; },
-    get pollCount() { return pollCount; },
     get saveCount() { return saveCount; },
   };
 }
@@ -184,7 +178,6 @@ test("AI state machine persists output and debits ai_generation exactly once aft
   assert.equal(result.outputFile.url, "https://cdn.example/output.png");
   assert.equal(duplicate.id, result.id);
   assert.equal(state.createCount, 1);
-  assert.equal(state.pollCount, 1);
   assert.equal(state.saveCount, 1);
   assert.equal(state.debitCount, 1);
   assert.match(state.receivedPrompt, /适合后续转换为拼豆图/);
@@ -211,12 +204,19 @@ test("AI output is persisted without a second content security check", async () 
 });
 
 test("AI provider failure enters a failed terminal state without output or quota debit", async () => {
-  const state = harness({ providerResult: { status: "failed", errorCode: "CONTENT_REJECTED" } });
+  const state = harness({
+    providerError: new ProviderError({
+      provider: "hunyuan",
+      providerCode: "ContentReviewFailed",
+      httpStatus: 422,
+      kind: "UNKNOWN",
+    }),
+  });
   const created = await state.service.create(REQUEST);
   const result = await advanceUntilTerminal(state, created.id);
   assert.equal(result.status, "failed");
-  assert.equal(result.failure.code, "AI_GENERATION_FAILED");
-  assert.equal(result.failure.category, "INTERNAL");
+  assert.equal(result.failure.code, "AI_SERVICE_BUSY");
+  assert.equal(result.failure.category, "PROVIDER");
   assert.equal(result.outputFile, null);
   assert.equal(state.saveCount, 0);
   assert.equal(state.debitCount, 0);
@@ -257,17 +257,6 @@ test("AI input ownership and type are checked before creating a job", async () =
   }
 });
 
-test("AI task remains processing while the provider is still running", async () => {
-  const state = harness({ providerResult: { status: "pending" } });
-  const created = await state.service.create(REQUEST);
-  const result = await advanceUntilTerminal(state, created.id);
-
-  assert.equal(result.status, "processing");
-  assert.equal(result.outputFile, null);
-  assert.ok(state.pollCount > 0);
-  assert.equal(state.debitCount, 0);
-});
-
 test("unavailable AI input enters a failed terminal state without calling the provider", async () => {
   const state = harness({ inputAvailable: false });
   const created = await state.service.create(REQUEST);
@@ -280,10 +269,10 @@ test("unavailable AI input enters a failed terminal state without calling the pr
   assert.equal(state.debitCount, 0);
 });
 
-test("provider polling errors keep the task processing without output or quota debit", async () => {
+test("provider submission errors fail the task without output or quota debit", async () => {
   const state = harness({
     providerError: new ProviderError({
-      provider: "qwen",
+      provider: "hunyuan",
       providerCode: null,
       httpStatus: 503,
       kind: "UNAVAILABLE",
@@ -292,28 +281,26 @@ test("provider polling errors keep the task processing without output or quota d
   const created = await state.service.create(REQUEST);
   const result = await advanceUntilTerminal(state, created.id);
 
-  assert.equal(result.status, "processing");
-  assert.equal(result.failure, null);
-  assert.ok(state.pollCount > 0);
+  assert.equal(result.status, "failed");
+  assert.equal(result.failure.code, "AI_SERVICE_BUSY");
   assert.equal(state.saveCount, 0);
   assert.equal(state.debitCount, 0);
 });
 
-test("provider timeout keeps the task processing for a later poll", async () => {
+test("provider timeout fails the task without charging the user", async () => {
   const state = harness({ providerError: new AppError(504, "AI_PROVIDER_TIMEOUT", "provider timeout") });
   const created = await state.service.create(REQUEST);
   const result = await advanceUntilTerminal(state, created.id);
 
-  assert.equal(result.status, "processing");
-  assert.equal(result.failure, null);
-  assert.ok(state.pollCount > 0);
+  assert.equal(result.status, "failed");
+  assert.equal(result.failure.code, "AI_TIMEOUT");
   assert.equal(state.debitCount, 0);
 });
 
 test("temporary output download failures keep the task processing for a later download", async () => {
   const state = harness({
     downloadError: new ProviderError({
-      provider: "qwen",
+      provider: "hunyuan",
       providerCode: null,
       httpStatus: 503,
       kind: "UNAVAILABLE",

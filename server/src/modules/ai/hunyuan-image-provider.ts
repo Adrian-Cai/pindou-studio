@@ -1,10 +1,5 @@
-import type { QwenImageConfig } from "../../config/env";
+import type { HunyuanImageConfig } from "../../config/env";
 import { AppError } from "../../shared/app-error";
-
-export type ProviderTaskResult =
-  | { readonly status: "pending" }
-  | { readonly status: "succeeded"; readonly outputUrl: string }
-  | { readonly status: "failed" };
 
 export type ProviderFailureKind =
   | "QUOTA_EXHAUSTED"
@@ -15,7 +10,7 @@ export type ProviderFailureKind =
   | "UNKNOWN";
 
 export interface ProviderFailure {
-  readonly provider: "qwen";
+  readonly provider: "hunyuan";
   readonly providerCode: string | null;
   readonly httpStatus: number | null;
   readonly kind: ProviderFailureKind;
@@ -36,12 +31,16 @@ export class ProviderError extends AppError {
   }
 }
 
+export interface ProviderTaskSubmission {
+  readonly requestId: string;
+  readonly outputUrl: string;
+}
+
 export interface AiGenerationProvider {
   readonly configured: boolean;
-  readonly name: "qwen";
+  readonly name: "hunyuan";
   readonly model: string;
-  createTask(imageDataUrl: string, prompt: string): Promise<string>;
-  getTask(taskId: string): Promise<ProviderTaskResult>;
+  createTask(imageDataUrl: string, prompt: string): Promise<ProviderTaskSubmission>;
   downloadOutput(outputUrl: string): Promise<Buffer>;
 }
 
@@ -64,14 +63,14 @@ function providerFailure(
   code = providerErrorCode(kind),
   message = "AI 图像服务请求失败",
 ): ProviderError {
-  return new ProviderError({ provider: "qwen", providerCode, httpStatus, kind }, code, message);
+  return new ProviderError({ provider: "hunyuan", providerCode, httpStatus, kind }, code, message);
 }
 
-export class QwenImageProvider implements AiGenerationProvider {
-  public readonly name = "qwen" as const;
+export class HunyuanImageProvider implements AiGenerationProvider {
+  public readonly name = "hunyuan" as const;
 
   public constructor(
-    private readonly config: QwenImageConfig,
+    private readonly config: HunyuanImageConfig,
     private readonly fetchImplementation: typeof fetch = fetch,
   ) {}
 
@@ -80,63 +79,34 @@ export class QwenImageProvider implements AiGenerationProvider {
   }
 
   public get model(): string {
-    return this.config.enabled ? this.config.model : "qwen-image-3.0";
+    return this.config.enabled ? this.config.model : "hy-image-v3";
   }
 
-  public async createTask(imageDataUrl: string, prompt: string): Promise<string> {
+  public async createTask(imageDataUrl: string, prompt: string): Promise<ProviderTaskSubmission> {
     const config = this.requireConfig();
     const body = await this.request(
-      `${config.baseUrl}/api/v1/services/aigc/image-generation/generation`,
+      `${config.baseUrl}/v1/wand/hunyuan-image/v3-generation`,
       {
         method: "POST",
         headers: {
           authorization: `Bearer ${config.apiKey}`,
           "content-type": "application/json",
-          "x-dashscope-async": "enable",
         },
         body: JSON.stringify({
           model: config.model,
-          input: {
-            messages: [{ role: "user", content: [{ image: imageDataUrl }, { text: prompt }] }],
-          },
-          parameters: {
-            prompt_extend: true,
-            prompt_extend_mode: "direct",
-            enable_thinking: true,
-            n: 1,
-            watermark: false,
-          },
+          prompt,
+          images: [imageDataUrl],
+          size: "1024x1024",
+          revise: false,
         }),
       },
     );
-    const taskId = string(object(body.output)?.task_id);
-    if (!taskId || taskId.length > 128) throw providerFailure();
-    return taskId;
-  }
-
-  public async getTask(taskId: string): Promise<ProviderTaskResult> {
-    const config = this.requireConfig();
-    if (!/^[A-Za-z0-9_-]{1,128}$/u.test(taskId)) {
-      throw providerFailure("UNKNOWN", null, null, "AI_PROVIDER_TASK_INVALID", "AI 服务任务标识无效");
-    }
-    const body = await this.request(
-      `${config.baseUrl}/api/v1/tasks/${encodeURIComponent(taskId)}`,
-      { method: "GET", headers: { authorization: `Bearer ${config.apiKey}` } },
-    );
-    const output = object(body.output);
-    const status = string(output?.task_status);
-    if (status === "PENDING" || status === "RUNNING") return { status: "pending" };
-    if (status === "FAILED" || status === "CANCELED" || status === "UNKNOWN") {
-      return { status: "failed" };
-    }
-    if (status !== "SUCCEEDED") throw providerFailure();
-    const choices = Array.isArray(output?.choices) ? output.choices : [];
-    const firstChoice = object(choices[0]);
-    const message = object(firstChoice?.message);
-    const content = Array.isArray(message?.content) ? message.content : [];
-    const outputUrl = string(object(content[0])?.image);
-    if (!outputUrl) throw providerFailure();
-    return { status: "succeeded", outputUrl };
+    const requestId = string(body.request_id) ?? string(body.id);
+    const data = Array.isArray(body.data) ? body.data : [];
+    const first = object(data[0]);
+    const outputUrl = string(first?.url);
+    if (!requestId || requestId.length > 128 || !outputUrl) throw providerFailure();
+    return { requestId, outputUrl };
   }
 
   public async downloadOutput(outputUrl: string): Promise<Buffer> {
@@ -188,11 +158,11 @@ export class QwenImageProvider implements AiGenerationProvider {
       }
       chunks.push(buffer);
     }
-    if (size === 0) throw providerFailure("INVALID_OUTPUT", null, response.status, "AI_PROVIDER_OUTPUT_INVALID", "AI 服务输出图片为空");
+    if (size === 0) throw providerFailure("INVALID_OUTPUT", null, response.status, "AI 服务输出图片为空");
     return Buffer.concat(chunks);
   }
 
-  private requireConfig(): Extract<QwenImageConfig, { readonly enabled: true }> {
+  private requireConfig(): Extract<HunyuanImageConfig, { readonly enabled: true }> {
     if (!this.config.enabled) {
       throw new AppError(503, "AI_PROVIDER_NOT_CONFIGURED", "AI 图像服务尚未完成配置");
     }
@@ -208,15 +178,6 @@ export class QwenImageProvider implements AiGenerationProvider {
       // 非 JSON 响应统一映射为稳定的上游错误
     }
     if (!response.ok || !body) {
-      if (response.status === 403 && isAllocationQuotaError(body)) {
-        throw providerFailure(
-          "QUOTA_EXHAUSTED",
-          providerCode(body),
-          response.status,
-          "AI_SERVICE_UNAVAILABLE",
-          "AI 生成服务暂时不可用",
-        );
-      }
       if (response.status === 429) {
         throw providerFailure("RATE_LIMITED", providerCode(body), response.status, "AI_PROVIDER_RATE_LIMITED", "AI 图像服务请求繁忙");
       }
@@ -257,12 +218,7 @@ function isTrustedOutputUrl(value: URL): boolean {
     && !value.username
     && !value.password
     && !value.port
-    && hostname.endsWith(".aliyuncs.com")
-    && hostname.length > ".aliyuncs.com".length;
-}
-
-function isAllocationQuotaError(body: JsonObject | null): boolean {
-  return providerCode(body) === "AllocationQuota.FreeTierOnly";
+    && (hostname === "myqcloud.com" || hostname.endsWith(".myqcloud.com"));
 }
 
 function providerCode(body: JsonObject | null): string | null {

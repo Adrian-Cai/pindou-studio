@@ -8,14 +8,14 @@
 
 1. 项目文件接口：上传 AI 输入图片。
 2. 项目 AI 接口：创建生成任务、查询任务状态。
-3. 服务端上游接口：后端调用阿里云百炼通义千问图像异步接口。
+3. 服务端上游接口：后端调用腾讯云 TokenHub 混元 Hy-Image-3.0 同步接口。
 
-小程序只允许调用项目自己的接口，不能直接调用千问接口，也不能接触 `QWEN_IMAGE_API_KEY`。
+小程序只允许调用项目自己的接口，不能直接调用混元接口，也不能接触 `HUNYUAN_IMAGE_API_KEY`。
 
 当前实现对应：
 
-- Provider：`qwen`
-- 模型：`qwen-image-3.0`，也支持服务端配置为 `qwen-image-3.0-pro`
+- Provider：`hunyuan`
+- 模型：`hy-image-v3`（Hy-Image-3.0）
 - Prompt 模板版本：`v2`
 - 输入/输出文件默认保留：24 小时
 - 默认本地服务地址：`http://127.0.0.1:4000`
@@ -39,12 +39,11 @@
               ├─ 服务端读取 inputFileId 对应的文件字节
               ├─ 转成 data:image/...;base64,...
               ├─ 根据三个业务参数生成固定 Prompt
-              ├─ POST 千问图像异步接口
-              ├─ 保存千问 task_id 为 provider_request_id
+              ├─ POST 混元 TokenHub 同步接口
+              ├─ 保存 request_id 和临时 output URL
               │
               └─ GET /api/ai/generations/{id}
-                   ├─ 查询千问任务状态
-                   ├─ 成功后下载千问临时 PNG 地址
+                   ├─ 下载混元临时 PNG 地址
                    ├─ 校验并保存为 ai_output
                    ├─ 成功完成额度扣减
                    └─ 返回项目自己的 outputFile.url
@@ -55,17 +54,17 @@
 | 来源参数 | 服务端处理 | 下游参数/结果 |
 | --- | --- | --- |
 | 上传文件二进制 | 校验真实图片格式、大小、尺寸并保存 | `pindou_file_assets.id`，即 `inputFileId` |
-| `inputFileId` | 查询当前用户的 `ai_input` 文件并读取字节 | 千问 `input.messages[0].content[0].image` |
+| `inputFileId` | 查询当前用户的 `ai_input` 文件并读取字节 | 混元 `images[0]` |
 | `style` | 选择风格 Prompt 片段 | 固定 Prompt |
 | `detailLevel` | 选择细节 Prompt 片段 | 固定 Prompt |
 | `backgroundMode` | 选择背景 Prompt 片段 | 固定 Prompt |
-| 服务端 `QWEN_IMAGE_MODEL` | 客户端不可覆盖 | 千问 `model` |
-| 服务端固定 Prompt | 客户端不可传入 | 千问 `input.messages[0].content[1].text` |
-| 千问 `output.task_id` | 保存到任务记录 | 后续查询千问任务 |
-| 千问临时图片 URL | 服务端下载，不向客户端透传 | 项目 `ai_output` 文件 |
+| 服务端 `HUNYUAN_IMAGE_MODEL` | 客户端不可覆盖 | 混元 `model` |
+| 服务端固定 Prompt | 客户端不可传入 | 混元 `prompt` |
+| 混元 `request_id` | 保存到任务记录 | 服务端日志定位 |
+| 混元临时图片 URL | 服务端下载，不向客户端透传 | 项目 `ai_output` 文件 |
 | 项目 `outputFile.url` | 客户端下载并进入本地拼豆算法 | 最终 AI 中间图 |
 
-安全审核边界：AI 输入图片只执行一次项目配置的微信内容安全审核。首页已检测过同一图片时，`POST /api/files/upload` 通过 `securityCheckId` 复用结果；旧客户端未携带标识时仍在 AI 输入上传阶段检测。千问生成结果不再调用本项目的微信内容安全接口，生成结果的安全审核由千问服务商负责。服务端仍会校验千问输出地址、真实图片格式、大小、尺寸和像素数，再将结果保存为 `ai_output`。
+安全审核边界：AI 输入图片只执行一次项目配置的微信内容安全审核。首页已检测过同一图片时，`POST /api/files/upload` 通过 `securityCheckId` 复用结果；旧客户端未携带标识时仍在 AI 输入上传阶段检测。混元生成结果不再调用本项目的微信内容安全接口，生成结果的安全审核由混元服务商负责。服务端仍会校验混元输出地址、真实图片格式、大小、尺寸和像素数，再将结果保存为 `ai_output`。
 
 ## 3. 公共约定
 
@@ -101,7 +100,7 @@ Content-Type: application/json
 }
 ```
 
-`requestId` 用于服务端日志定位。AI 错误还会返回稳定的 `category`、`retryable` 和 `action`；服务端不会向客户端返回千问原始错误、API Key 或内部堆栈。
+`requestId` 用于服务端日志定位。AI 错误还会返回稳定的 `category`、`retryable` 和 `action`；服务端不会向客户端返回混元原始错误、API Key 或内部堆栈。
 
 AI 公开错误结构为：
 
@@ -179,7 +178,7 @@ HTTP 状态码：`201 Created`
 }
 ```
 
-后续创建任务只使用 `file.id`，即上例中的 `inputFileId`。客户端不需要把 `url` 转成千问地址。
+后续创建任务只使用 `file.id`，即上例中的 `inputFileId`。客户端不需要把 `url` 转成混元地址。
 
 ### 4.3 常见失败
 
@@ -331,7 +330,7 @@ HTTP 状态码：`200 OK`
 }
 ```
 
-客户端使用 `outputFile.url` 下载图片。千问返回的临时 URL 不会出现在项目响应中。
+客户端使用 `outputFile.url` 下载图片。混元返回的临时 URL 不会出现在项目响应中。
 
 ### 6.4 失败响应
 
@@ -365,7 +364,7 @@ HTTP 状态码：`200 OK`
 | `status` | 含义 | 客户端动作 |
 | --- | --- | --- |
 | `queued` | 任务已落库，尚未完成上游提交 | 继续查询 |
-| `processing` | 正在提交或查询千问 | 继续查询 |
+| `processing` | 正在调用或下载混元结果 | 继续查询 |
 | `succeeded` | 图片已下载、校验、持久化并完成额度扣减 | 下载 `outputFile.url` |
 | `failed` | 输入、Provider、输出校验、文件存储或额度完成阶段失败 | 展示错误并允许新建任务 |
 | `canceled` | 预留状态，当前没有取消接口 | 按失败处理 |
@@ -383,7 +382,7 @@ Provider 原始错误（例如 `AllocationQuota.FreeTierOnly`）只保存在结�
 | 401 | `UNAUTHORIZED` | Token 缺失、无效或过期 |
 | 404 | `NOT_FOUND` | 任务不存在或不属于当前用户 |
 
-Provider 查询阶段的临时网络、429、502 或 503 不会立即将任务置为 `failed`，服务端保持 `processing`，小程序按轮询退避策略继续查询。只有 Provider 明确失败、任务过期或结果确认无效时才进入终态失败。服务端不会把千问原始错误直接返回给客户端。
+Provider 调用或输出下载阶段的临时网络、429、502 或 503 不会立即将任务置为 `failed`，服务端保持 `processing`，小程序按轮询退避策略继续查询。只有 Provider 明确失败、任务过期或结果确认无效时才进入终态失败。服务端不会把混元原始错误直接返回给客户端。
 
 ## 7. 输出媒体接口
 
@@ -393,106 +392,51 @@ Provider 查询阶段的临时网络、429、502 或 503 不会立即将任务�
 GET /api/media/ai/ai_output_<32位小写十六进制>.png
 ```
 
-响应为 PNG 二进制，服务端返回 `Cache-Control: private, no-store`。客户端禁止拼接或替换成千问临时图片地址。
+响应为 PNG 二进制，服务端返回 `Cache-Control: private, no-store`。客户端禁止拼接或替换成混元临时图片地址。
 
-## 8. 服务端调用千问接口
+## 8. 服务端调用混元接口
 
 以下接口只允许由服务端调用，不能放到小程序代码中。
 
-### 8.1 创建千问异步任务
+### 8.1 创建混元同步生成请求
 
-当前本地环境的 Base URL 为 `QWEN_IMAGE_BASE_URL`，实际路径为：
+当前本地环境的 Base URL 为 `HUNYUAN_IMAGE_BASE_URL`，实际路径为：
 
 ```http
-POST {QWEN_IMAGE_BASE_URL}/api/v1/services/aigc/image-generation/generation
-Authorization: Bearer {QWEN_IMAGE_API_KEY}
-X-DashScope-Async: enable
+POST {HUNYUAN_IMAGE_BASE_URL}/v1/wand/hunyuan-image/v3-generation
+Authorization: Bearer {HUNYUAN_IMAGE_API_KEY}
 Content-Type: application/json
 ```
 
 当前 `.env` 配置下的完整地址是：
 
 ```text
-https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation
+https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation
 ```
 
 服务端发送的请求结构为：
 
 ```json
 {
-  "model": "qwen-image-3.0",
-  "input": {
-    "messages": [
-      {
-        "role": "user",
-        "content": [
-          {
-            "image": "data:image/png;base64,<输入图片Base64>"
-          },
-          {
-            "text": "<服务端根据业务参数生成的固定Prompt>"
-          }
-        ]
-      }
-    ]
-  },
-  "parameters": {
-    "prompt_extend": true,
-    "prompt_extend_mode": "direct",
-    "enable_thinking": true,
-    "n": 1,
-    "watermark": false
-  }
+  "model": "hy-image-v3",
+  "prompt": "<服务端根据业务参数生成的固定Prompt>",
+  "images": ["data:image/png;base64,<输入图片Base64>"],
+  "size": "1024x1024",
+  "revise": false
 }
 ```
 
-上游成功创建时，服务端读取：
+上游成功返回时，服务端读取 `request_id`（兼容读取 `id`）和 `data[0].url`：
 
 ```json
 {
-  "output": {
-    "task_id": "<千问任务ID>"
-  }
+  "id": "4-WandImage-xxx",
+  "request_id": "<混元请求ID>",
+  "data": [{"url": "https://aigc-image.cos.myqcloud.com/<临时图片>.png"}]
 }
 ```
 
-### 8.2 查询千问任务
-
-```http
-GET {QWEN_IMAGE_BASE_URL}/api/v1/tasks/{千问任务ID}
-Authorization: Bearer {QWEN_IMAGE_API_KEY}
-```
-
-服务端读取 `output.task_status`：
-
-| 千问状态 | 项目状态 |
-| --- | --- |
-| `PENDING`、`RUNNING` | `processing` |
-| `SUCCEEDED` | 继续下载并持久化输出 |
-| `FAILED`、`CANCELED`、`UNKNOWN` | `failed` |
-
-千问成功结果中的图片地址位于：
-
-```json
-{
-  "output": {
-    "task_status": "SUCCEEDED",
-    "choices": [
-      {
-        "message": {
-          "content": [
-            {
-              "image": "https://<aliyuncs域名>/<临时图片路径>"
-            }
-          ]
-        }
-      }
-    ]
-  }
-}
-```
-
-该临时地址只在服务端内部使用。服务端要求其为 HTTPS 的受信任 `*.aliyuncs.com` 地址，下载后校验为 PNG，再写入项目自己的 AI 文件存储。
+该接口为同步调用，不需要服务端向混元发起第二次任务查询。项目自己的任务接口仍保留 `queued -> processing -> succeeded/failed` 状态，用于避免小程序长时间等待 HTTP 请求。临时地址只在服务端内部使用；服务端要求其为 HTTPS 的受信任 `*.myqcloud.com` 地址，下载后校验为 PNG，再写入项目自己的 AI 文件存储。临时地址保存于 `provider_output_url`，成功持久化后清空。
 
 ## 9. 额度与幂等规则
 
@@ -519,14 +463,14 @@ npm start
 GET http://127.0.0.1:4000/health
 ```
 
-后端启动依赖 PostgreSQL、文件存储目录、内容安全配置和千问环境变量。千问配置项为：
+后端启动依赖 PostgreSQL、文件存储目录、内容安全配置和混元环境变量。混元配置项为：
 
 ```text
-QWEN_IMAGE_API_KEY=<仅服务端配置>
-QWEN_IMAGE_BASE_URL=https://dashscope.aliyuncs.com
-QWEN_IMAGE_MODEL=qwen-image-3.0
-QWEN_IMAGE_TIMEOUT_MS=30000
-QWEN_IMAGE_MAX_OUTPUT_BYTES=10485760
+HUNYUAN_IMAGE_API_KEY=<仅服务端配置>
+HUNYUAN_IMAGE_BASE_URL=https://tokenhub.tencentmaas.com
+HUNYUAN_IMAGE_MODEL=hy-image-v3
+HUNYUAN_IMAGE_TIMEOUT_MS=60000
+HUNYUAN_IMAGE_MAX_OUTPUT_BYTES=10485760
 ```
 
 ### 10.2 小程序本地请求
@@ -543,7 +487,7 @@ develop: 'http://127.0.0.1:4000',
 微信登录 → 上传 ai_input → 创建任务 → 轮询任务 → 下载 outputFile.url
 ```
 
-禁止跳过上传直接传本地文件路径，也禁止让小程序直接调用千问接口。
+禁止跳过上传直接传本地文件路径，也禁止让小程序直接调用混元接口。
 
 ## 11. 代码对应位置
 
@@ -551,7 +495,7 @@ develop: 'http://127.0.0.1:4000',
 | --- | --- |
 | 项目 HTTP 路由 | `server/src/http/app.ts` |
 | 请求字段校验 | `server/src/http/request-validation.ts` |
-| 千问 Provider | `server/src/modules/ai/qwen-image-provider.ts` |
+| 混元 Provider | `server/src/modules/ai/hunyuan-image-provider.ts` |
 | AI 任务状态机 | `server/src/modules/ai/ai-generation-service.ts` |
 | 固定 Prompt 模板 | `server/src/modules/ai/prompt-template.ts` |
 | 小程序 AI 请求封装 | `miniprogram/services/ai-generation-service.ts` |

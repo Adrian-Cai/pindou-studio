@@ -16,7 +16,7 @@ import {
 import {
   ProviderError,
   type AiGenerationProvider,
-} from "./qwen-image-provider";
+} from "./hunyuan-image-provider";
 import { aiPublicFailure, type AiPublicFailure } from "./error-contract";
 import { AI_PROMPT_VERSION, buildAiPrompt } from "./prompt-template";
 
@@ -74,6 +74,7 @@ interface AiJobRow extends QueryResultRow {
   readonly background_mode: string;
   readonly generation_mode?: string;
   readonly provider_request_id: string | null;
+  readonly provider_output_url: string | null;
   readonly idempotency_key: string;
   readonly error_code: string | null;
   readonly created_at: Date | string;
@@ -157,13 +158,15 @@ const JOB_SELECT = `SELECT jobs.id, jobs.user_id, jobs.input_file_id,
        output_file.byte_size AS output_byte_size,
        jobs.provider, jobs.model, jobs.status, jobs.prompt_version,
        jobs.style, jobs.detail_level, jobs.background_mode, jobs.generation_mode,
-       jobs.provider_request_id, jobs.idempotency_key, jobs.error_code,
+       jobs.provider_request_id, jobs.provider_output_url, jobs.idempotency_key, jobs.error_code,
        jobs.created_at, jobs.updated_at, jobs.started_at, jobs.completed_at, jobs.expires_at
   FROM pindou_ai_generation_jobs jobs
   JOIN pindou_file_assets input_file ON input_file.id = jobs.input_file_id
   LEFT JOIN pindou_file_assets output_file ON output_file.id = jobs.output_file_id`;
 
 export class PostgresAiGenerationService {
+  private readonly outputCompletions = new Map<string, Promise<AiGenerationResponse>>();
+
   public constructor(
     private readonly pool: Pool,
     private readonly provider: AiGenerationProvider,
@@ -247,9 +250,10 @@ export class PostgresAiGenerationService {
           `INSERT INTO pindou_ai_generation_jobs (
              id, user_id, input_file_id, output_file_id, provider, model, status,
              prompt_version, style, detail_level, background_mode, generation_mode, provider_request_id,
+             provider_output_url,
              idempotency_key, error_code, created_at, updated_at, started_at,
              completed_at, expires_at
-           ) VALUES ($1, $2, $3, NULL, $4, $5, 'queued', $6, $7, $8, $9, 'ai', NULL,
+           ) VALUES ($1, $2, $3, NULL, $4, $5, 'queued', $6, $7, $8, $9, 'ai', NULL, NULL,
                      $10, NULL, $11, $11, NULL, NULL, $12)
            RETURNING *, $13::text AS input_object_key, $14::text AS input_content_type,
                      NULL::text AS output_public_url, NULL::text AS output_content_type,
@@ -290,6 +294,9 @@ export class PostgresAiGenerationService {
   private async advance(job: AiJobRow, requestId: string | undefined = undefined): Promise<AiGenerationResponse> {
     if (job.status === "queued") {
       const submitted = await this.submit(job.user_id, job.id, requestId);
+      if (submitted.provider_output_url) {
+        return this.completeOutput(submitted, submitted.provider_output_url, requestId);
+      }
       return mapJob(submitted);
     }
     if (job.status !== "processing") return mapJob(job);
@@ -305,30 +312,35 @@ export class PostgresAiGenerationService {
     if (new Date(job.expires_at).getTime() <= this.now().getTime()) {
       return mapJob(await this.markFailed(job.user_id, job.id, "AI_TASK_EXPIRED"));
     }
-    let providerResult: Awaited<ReturnType<AiGenerationProvider["getTask"]>>;
-    const pollStartedAt = Date.now();
+    if (!job.provider_output_url) return mapJob(job);
+    return this.completeOutput(job, job.provider_output_url, requestId);
+  }
+
+  private async completeOutput(
+    job: AiJobRow,
+    outputUrl: string,
+    requestId?: string,
+  ): Promise<AiGenerationResponse> {
+    const existing = this.outputCompletions.get(job.id);
+    if (existing) return existing;
+    const completion = this.completeOutputInternal(job, outputUrl, requestId);
+    this.outputCompletions.set(job.id, completion);
     try {
-      providerResult = await this.provider.getTask(job.provider_request_id);
-    } catch (error: unknown) {
-      if (isProviderError(error)) {
-        logProviderFailure(job, error, requestId, providerPublicCode(error), Date.now() - pollStartedAt);
-      }
-      if (isTransientProviderError(error)) {
-        if (!isProviderError(error)) {
-          logProviderFailure(job, null, requestId, "AI_SERVICE_BUSY", Date.now() - pollStartedAt);
-        }
-        return mapJob(job);
-      }
-      return mapJob(await this.markFailed(job.user_id, job.id, failureCode(error)));
+      return await completion;
+    } finally {
+      if (this.outputCompletions.get(job.id) === completion) this.outputCompletions.delete(job.id);
     }
-    if (providerResult.status === "pending") return mapJob(job);
-    if (providerResult.status === "failed") {
-      return mapJob(await this.markFailed(job.user_id, job.id, "AI_PROVIDER_TASK_FAILED"));
-    }
+  }
+
+  private async completeOutputInternal(
+    job: AiJobRow,
+    outputUrl: string,
+    requestId?: string,
+  ): Promise<AiGenerationResponse> {
     let output: Buffer;
     const downloadStartedAt = Date.now();
     try {
-      output = await this.provider.downloadOutput(providerResult.outputUrl);
+      output = await this.provider.downloadOutput(outputUrl);
     } catch (error: unknown) {
       if (isProviderError(error)) {
         logProviderFailure(job, error, requestId, providerPublicCode(error), Date.now() - downloadStartedAt);
@@ -396,11 +408,11 @@ export class PostgresAiGenerationService {
       return this.markFailed(userId, jobId, "AI_INPUT_FILE_UNAVAILABLE");
     }
 
-    let providerTaskId: string;
+    let providerSubmission: Awaited<ReturnType<AiGenerationProvider["createTask"]>>;
     const submissionStartedAt = Date.now();
     try {
       const imageDataUrl = `data:${claimed.input_content_type};base64,${input.buffer.toString("base64")}`;
-      providerTaskId = await this.provider.createTask(
+      providerSubmission = await this.provider.createTask(
         imageDataUrl,
         buildAiPrompt({
           style: claimed.style as AiGenerationStyle,
@@ -420,13 +432,13 @@ export class PostgresAiGenerationService {
 
     const updated = await this.pool.query<AiJobRow>(
       `UPDATE pindou_ai_generation_jobs
-          SET provider_request_id = $2, updated_at = $3
-        WHERE id = $1 AND user_id = $4
+          SET provider_request_id = $2, provider_output_url = $3, updated_at = $4
+        WHERE id = $1 AND user_id = $5
           AND status = 'processing' AND provider_request_id IS NULL
-        RETURNING *, $5::text AS input_object_key, $6::text AS input_content_type,
+        RETURNING *, $6::text AS input_object_key, $7::text AS input_content_type,
                   NULL::text AS output_public_url, NULL::text AS output_content_type,
                   NULL::bigint AS output_byte_size`,
-      [jobId, providerTaskId, this.now(), userId, claimed.input_object_key, claimed.input_content_type],
+      [jobId, providerSubmission.requestId, providerSubmission.outputUrl, this.now(), userId, claimed.input_object_key, claimed.input_content_type],
     );
     return updated.rows[0] ?? this.readJob(this.pool, userId, jobId);
   }
@@ -486,7 +498,7 @@ export class PostgresAiGenerationService {
       );
       const updated = await client.query<AiJobRow>(
         `UPDATE pindou_ai_generation_jobs
-            SET status = 'succeeded', output_file_id = $2, error_code = NULL,
+            SET status = 'succeeded', output_file_id = $2, provider_output_url = NULL, error_code = NULL,
                 completed_at = $3, updated_at = $3
           WHERE id = $1
           RETURNING *, NULL::text AS input_object_key, NULL::text AS input_content_type,
@@ -545,7 +557,7 @@ export class PostgresAiGenerationService {
     const currentTime = this.now();
     const result = await client.query<AiJobRow>(
       `UPDATE pindou_ai_generation_jobs
-          SET status = 'failed', error_code = $2, completed_at = $3, updated_at = $3
+          SET status = 'failed', provider_output_url = NULL, error_code = $2, completed_at = $3, updated_at = $3
         WHERE id = $1
         RETURNING *, NULL::text AS input_object_key, NULL::text AS input_content_type,
                   NULL::text AS output_public_url, NULL::text AS output_content_type,

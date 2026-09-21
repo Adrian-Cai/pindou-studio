@@ -31,7 +31,7 @@ interface SampleImage {
 }
 
 // AI 模式正式开放时改为 true，即可恢复首页选择和启动链路。
-const AI_MODE_ENABLED = false
+const AI_MODE_ENABLED = true
 
 const GENERATION_MODES: GenerationModeOption[] = [
   {

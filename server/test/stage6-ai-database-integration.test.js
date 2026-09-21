@@ -28,17 +28,16 @@ test("stage 6 real database flow: AI success, failure, output asset and idempote
   let outputNumber = 0;
   const provider = {
     configured: true,
-    name: "qwen",
-    model: "qwen-image-3.0",
+    name: "hunyuan",
+    model: "hy-image-v3",
     async createTask(_image, prompt) {
       providerCreateCount += 1;
       assert.match(prompt, /不要生成拼豆网格、方格、材料标记、施工图、边框、Logo、水印或额外文字/);
-      return providerCreateCount === 1 ? `task_success_${suffix}` : `task_failed_${suffix}`;
-    },
-    async getTask(taskId) {
-      return taskId.startsWith("task_success")
-        ? { status: "succeeded", outputUrl: "https://result.aliyuncs.com/output.png" }
-        : { status: "failed", errorCode: "CONTENT_REJECTED" };
+      if (providerCreateCount > 1) throw new Error("provider rejected image");
+      return {
+        requestId: `request_success_${suffix}`,
+        outputUrl: "https://aigc-image.cos.myqcloud.com/output.png",
+      };
     },
     async downloadOutput() { return Buffer.from("verified-provider-output"); },
   };

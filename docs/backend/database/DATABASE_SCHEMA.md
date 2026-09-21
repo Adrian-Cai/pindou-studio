@@ -363,7 +363,7 @@ AI 任务的 `expires_at` 默认设置为创建后 24 小时。定时清理会�
 | `user_id` | `varchar(32)` | 否 | 用户 ID |
 | `input_file_id` | `varchar(32)` | 否 | `ai_input` 文件 ID |
 | `output_file_id` | `varchar(32)` | 是 | 成功后的 `ai_output` 文件 ID |
-| `provider` | `varchar(40)` | 否 | Provider 快照，当前为 `qwen` |
+| `provider` | `varchar(40)` | 否 | Provider 快照，当前为 `hunyuan` |
 | `model` | `varchar(80)` | 否 | 模型快照 |
 | `status` | `varchar(20)` | 否 | `queued` / `processing` / `succeeded` / `failed` / `canceled` |
 | `prompt_version` | `varchar(20)` | 否 | 服务端提示词版本 |
@@ -371,7 +371,8 @@ AI 任务的 `expires_at` 默认设置为创建后 24 小时。定时清理会�
 | `detail_level` | `varchar(20)` | 否 | `low` / `medium` / `high` |
 | `background_mode` | `varchar(20)` | 否 | `keep` / `simplify` / `remove` |
 | `generation_mode` | `varchar(20)` | 否 | 固定为 `ai`；AI 任务表不允许记录标准模式任务 |
-| `provider_request_id` | `varchar(128)` | 是 | Provider 异步任务 ID |
+| `provider_request_id` | `varchar(128)` | 是 | Provider 请求 ID |
+| `provider_output_url` | `text` | 是 | 混元临时输出地址；持久化成功后清空 |
 | `idempotency_key` | `varchar(128)` | 否 | 同一用户创建任务的幂等键 |
 | `error_code` | `varchar(80)` | 是 | 稳定失败代码 |
 | `created_at` / `updated_at` | `timestamptz` | 否 | 创建/更新时间 |

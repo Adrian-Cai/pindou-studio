@@ -25,7 +25,7 @@ test("readConfig loads validated server and database settings", () => {
   assert.equal(config.auth.tokenTtlDays, 30);
   assert.equal(config.quota.dailyStandardDownloads, 9);
   assert.equal(config.quota.dailyAiGenerations, 3);
-  assert.deepEqual(config.qwenImage, { enabled: false });
+  assert.deepEqual(config.hunyuanImage, { enabled: false });
   assert.deepEqual(config.wechatPay, { enabled: false });
   assert.equal(config.avatars.maximumBytes, 2 * 1024 * 1024);
   assert.equal(config.aiFiles.maximumBytes, 10 * 1024 * 1024);
@@ -49,6 +49,22 @@ test("readConfig uses the shared local development port for defaults", () => {
     config.contentSecurity.mediaPublicBaseUrl,
     "http://127.0.0.1:4000/api/content-security/media",
   );
+});
+
+test("readConfig validates the TokenHub Hunyuan image configuration", () => {
+  const config = readConfig({
+    ...validEnvironment,
+    HUNYUAN_IMAGE_API_KEY: "test-hunyuan-api-key",
+    HUNYUAN_IMAGE_BASE_URL: "https://tokenhub.tencentmaas.com/",
+  });
+  assert.deepEqual(config.hunyuanImage, {
+    enabled: true,
+    apiKey: "test-hunyuan-api-key",
+    baseUrl: "https://tokenhub.tencentmaas.com",
+    model: "hy-image-v3",
+    timeoutMs: 60_000,
+    maximumOutputBytes: 10 * 1024 * 1024,
+  });
 });
 
 test("readConfig rejects missing sensitive database configuration without exposing values", () => {
@@ -108,7 +124,7 @@ test("production configuration refuses incomplete payment, AI, HTTPS, storage an
     () => readConfig({ ...validEnvironment, APP_ENV: "production" }),
     (error) => error instanceof ConfigError
       && error.issues.includes("生产环境必须配置微信支付")
-      && error.issues.includes("生产环境必须配置千问图像服务")
+      && error.issues.includes("生产环境必须配置混元图像服务")
       && error.issues.includes("生产环境 COVER_PUBLIC_BASE_URL 必须使用 HTTPS")
       && error.issues.includes("生产环境 AI_FILE_PUBLIC_BASE_URL 必须使用 HTTPS")
       && error.issues.includes("生产环境必须确认 PERSISTENT_STORAGE_MOUNTED=true")

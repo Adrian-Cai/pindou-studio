@@ -19,7 +19,7 @@ import { PostgresUserProfileService } from "./modules/users/user-profile-service
 import { FileSystemCoverStorage } from "./modules/files/cover-storage";
 import { PostgresFileAssetService } from "./modules/files/file-asset-service";
 import { FileSystemAiFileStorage } from "./modules/files/ai-file-storage";
-import { QwenImageProvider } from "./modules/ai/qwen-image-provider";
+import { HunyuanImageProvider } from "./modules/ai/hunyuan-image-provider";
 import { PostgresAiGenerationService } from "./modules/ai/ai-generation-service";
 import { PostgresQuotaDownloadService } from "./modules/downloads/quota-download-service";
 import { PostgresPaymentService } from "./modules/payments/payment-service";
@@ -75,10 +75,10 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       () => new Date(),
       config.contentSecurity.asyncMediaCheckEnabled,
     );
-    const qwenImage = new QwenImageProvider(config.qwenImage);
+    const hunyuanImage = new HunyuanImageProvider(config.hunyuanImage);
     const aiGenerations = new PostgresAiGenerationService(
       pool,
-      qwenImage,
+      hunyuanImage,
       aiFiles,
       config.quota,
       () => new Date(),
@@ -123,7 +123,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         aiGenerations,
         capabilities: {
           wechatPay: paymentGateway.configured,
-          aiGeneration: qwenImage.configured,
+          aiGeneration: hunyuanImage.configured,
           persistentStorage: config.deployment.persistentStorageMounted,
           httpsPublicUrls: config.covers.publicBaseUrl.startsWith("https://")
             && config.aiFiles.publicBaseUrl.startsWith("https://"),

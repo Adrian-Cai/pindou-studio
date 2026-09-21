@@ -32,13 +32,13 @@ export type WeChatPayConfig =
       readonly callbackToleranceSeconds: number;
     };
 
-export type QwenImageConfig =
+export type HunyuanImageConfig =
   | { readonly enabled: false }
   | {
       readonly enabled: true;
       readonly apiKey: string;
       readonly baseUrl: string;
-      readonly model: "qwen-image-3.0" | "qwen-image-3.0-pro";
+      readonly model: "hy-image-v3";
       readonly timeoutMs: number;
       readonly maximumOutputBytes: number;
     };
@@ -54,7 +54,7 @@ export interface ServerConfig {
     readonly timeoutMs: number;
   };
   readonly wechatPay: WeChatPayConfig;
-  readonly qwenImage: QwenImageConfig;
+  readonly hunyuanImage: HunyuanImageConfig;
   readonly auth: {
     readonly openidHashSecret: string;
     readonly tokenTtlDays: number;
@@ -245,39 +245,39 @@ function parseWeChatPayConfig(
   };
 }
 
-function parseQwenImageConfig(env: NodeJS.ProcessEnv, issues: string[]): QwenImageConfig {
-  const apiKey = env.QWEN_IMAGE_API_KEY?.trim();
-  const baseUrl = env.QWEN_IMAGE_BASE_URL?.trim();
+function parseHunyuanImageConfig(env: NodeJS.ProcessEnv, issues: string[]): HunyuanImageConfig {
+  const apiKey = env.HUNYUAN_IMAGE_API_KEY?.trim();
+  const baseUrl = env.HUNYUAN_IMAGE_BASE_URL?.trim();
   if (!apiKey && !baseUrl) return { enabled: false };
-  if (!apiKey) issues.push("QWEN_IMAGE_API_KEY 未配置");
-  if (!baseUrl) issues.push("QWEN_IMAGE_BASE_URL 未配置");
+  if (!apiKey) issues.push("HUNYUAN_IMAGE_API_KEY 未配置");
+  if (!baseUrl) issues.push("HUNYUAN_IMAGE_BASE_URL 未配置");
 
   let normalizedBaseUrl = baseUrl ?? "";
   try {
     const parsed = new URL(normalizedBaseUrl);
-    if (parsed.protocol !== "https:") issues.push("QWEN_IMAGE_BASE_URL 必须使用 HTTPS");
+    if (parsed.protocol !== "https:") issues.push("HUNYUAN_IMAGE_BASE_URL 必须使用 HTTPS");
     if (parsed.username || parsed.password || parsed.search || parsed.hash) {
-      issues.push("QWEN_IMAGE_BASE_URL 不能包含凭据、查询参数或片段");
+      issues.push("HUNYUAN_IMAGE_BASE_URL 不能包含凭据、查询参数或片段");
     }
     normalizedBaseUrl = parsed.href.replace(/\/$/u, "");
   } catch {
-    issues.push("QWEN_IMAGE_BASE_URL 必须是合法 URL");
+    issues.push("HUNYUAN_IMAGE_BASE_URL 必须是合法 URL");
     normalizedBaseUrl = "";
   }
 
-  const model = env.QWEN_IMAGE_MODEL?.trim() || "qwen-image-3.0";
-  if (model !== "qwen-image-3.0" && model !== "qwen-image-3.0-pro") {
-    issues.push("QWEN_IMAGE_MODEL 必须是 qwen-image-3.0 或 qwen-image-3.0-pro");
+  const model = env.HUNYUAN_IMAGE_MODEL?.trim() || "hy-image-v3";
+  if (model !== "hy-image-v3") {
+    issues.push("HUNYUAN_IMAGE_MODEL 必须是 hy-image-v3");
   }
   return {
     enabled: true,
     apiKey: apiKey ?? "",
     baseUrl: normalizedBaseUrl,
-    model: model === "qwen-image-3.0-pro" ? model : "qwen-image-3.0",
-    timeoutMs: integer(env, "QWEN_IMAGE_TIMEOUT_MS", 30_000, 1_000, 60_000, issues),
+    model: "hy-image-v3",
+    timeoutMs: integer(env, "HUNYUAN_IMAGE_TIMEOUT_MS", 60_000, 1_000, 120_000, issues),
     maximumOutputBytes: integer(
       env,
-      "QWEN_IMAGE_MAX_OUTPUT_BYTES",
+      "HUNYUAN_IMAGE_MAX_OUTPUT_BYTES",
       10 * 1_024 * 1_024,
       64 * 1_024,
       20 * 1_024 * 1_024,
@@ -311,7 +311,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       timeoutMs: integer(env, "WECHAT_API_TIMEOUT_MS", 8_000, 1_000, 30_000, issues),
     },
     wechatPay: parseWeChatPayConfig(env, wechatAppId, issues),
-    qwenImage: parseQwenImageConfig(env, issues),
+    hunyuanImage: parseHunyuanImageConfig(env, issues),
     auth: {
       openidHashSecret: requiredSecret(env, "OPENID_HASH_SECRET", 32, issues),
       tokenTtlDays: integer(env, "AUTH_TOKEN_TTL_DAYS", 30, 1, 365, issues),
@@ -391,7 +391,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       issues.push("生产环境 CONTENT_SECURITY_ASYNC_MEDIA_CHECK_ENABLED 必须为 true");
     }
     if (!config.wechatPay.enabled) issues.push("生产环境必须配置微信支付");
-    if (!config.qwenImage.enabled) issues.push("生产环境必须配置千问图像服务");
+    if (!config.hunyuanImage.enabled) issues.push("生产环境必须配置混元图像服务");
     if (!config.covers.publicBaseUrl.startsWith("https://")) {
       issues.push("生产环境 COVER_PUBLIC_BASE_URL 必须使用 HTTPS");
     }
