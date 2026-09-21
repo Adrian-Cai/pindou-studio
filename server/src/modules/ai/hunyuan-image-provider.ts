@@ -1,4 +1,4 @@
-import type { HunyuanImageConfig } from "../../config/env";
+import { HUNYUAN_IMAGE_MODEL, type HunyuanImageConfig } from "../../config/env";
 import { AppError } from "../../shared/app-error";
 
 export type ProviderFailureKind =
@@ -79,7 +79,7 @@ export class HunyuanImageProvider implements AiGenerationProvider {
   }
 
   public get model(): string {
-    return this.config.enabled ? this.config.model : "hy-image-v3";
+    return this.config.enabled ? this.config.model : HUNYUAN_IMAGE_MODEL;
   }
 
   public async createTask(imageDataUrl: string, prompt: string): Promise<ProviderTaskSubmission> {

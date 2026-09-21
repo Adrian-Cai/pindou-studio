@@ -101,7 +101,7 @@ function harness({
   const provider = {
     configured: true,
     name: "hunyuan",
-    model: "hy-image-v3",
+    model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
     async createTask(_image, prompt) {
       events.push({ type: "provider_create" });
       receivedPrompt = prompt;

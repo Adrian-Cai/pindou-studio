@@ -15,7 +15,7 @@
 当前实现对应：
 
 - Provider：`hunyuan`
-- 模型：`hy-image-v3`（Hy-Image-3.0）
+- 模型：`HY-Image-v3.0-I2I-ToB-v1.0.1`（Hy-Image-3.0 图生图）
 - Prompt 模板版本：`v2`
 - 输入/输出文件默认保留：24 小时
 - 默认本地服务地址：`http://127.0.0.1:4000`
@@ -418,7 +418,7 @@ https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation
 
 ```json
 {
-  "model": "hy-image-v3",
+  "model": "HY-Image-v3.0-I2I-ToB-v1.0.1",
   "prompt": "<服务端根据业务参数生成的固定Prompt>",
   "images": ["data:image/png;base64,<输入图片Base64>"],
   "size": "1024x1024",
@@ -468,7 +468,7 @@ GET http://127.0.0.1:4000/health
 ```text
 HUNYUAN_IMAGE_API_KEY=<仅服务端配置>
 HUNYUAN_IMAGE_BASE_URL=https://tokenhub.tencentmaas.com
-HUNYUAN_IMAGE_MODEL=hy-image-v3
+HUNYUAN_IMAGE_MODEL=HY-Image-v3.0-I2I-ToB-v1.0.1
 HUNYUAN_IMAGE_TIMEOUT_MS=60000
 HUNYUAN_IMAGE_MAX_OUTPUT_BYTES=10485760
 ```

@@ -6,7 +6,7 @@ const config = {
   enabled: true,
   apiKey: "test-hunyuan-api-key",
   baseUrl: "https://tokenhub.tencentmaas.com",
-  model: "hy-image-v3",
+  model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
   timeoutMs: 1000,
   maximumOutputBytes: 1024,
 };
@@ -39,7 +39,7 @@ test("Hunyuan provider submits the TokenHub reference-image request and download
   assert.equal(requests[0].url, `${config.baseUrl}/v1/wand/hunyuan-image/v3-generation`);
   assert.equal(requests[0].init.headers.authorization, `Bearer ${config.apiKey}`);
   const requestBody = JSON.parse(requests[0].init.body);
-  assert.equal(requestBody.model, "hy-image-v3");
+  assert.equal(requestBody.model, "HY-Image-v3.0-I2I-ToB-v1.0.1");
   assert.equal(requestBody.prompt, "生成精致图片");
   assert.deepEqual(requestBody.images, ["data:image/png;base64,AA=="]);
   assert.equal(requestBody.size, "1024x1024");

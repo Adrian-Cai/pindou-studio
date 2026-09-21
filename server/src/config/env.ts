@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 export type AppEnvironment = "development" | "test" | "production";
 export type DatabaseSslMode = "disable" | "require" | "verify-full";
 
+export const HUNYUAN_IMAGE_MODEL = "HY-Image-v3.0-I2I-ToB-v1.0.1" as const;
+
 export interface DatabaseConfig {
   readonly host: string;
   readonly port: number;
@@ -38,7 +40,7 @@ export type HunyuanImageConfig =
       readonly enabled: true;
       readonly apiKey: string;
       readonly baseUrl: string;
-      readonly model: "hy-image-v3";
+      readonly model: typeof HUNYUAN_IMAGE_MODEL;
       readonly timeoutMs: number;
       readonly maximumOutputBytes: number;
     };
@@ -265,15 +267,15 @@ function parseHunyuanImageConfig(env: NodeJS.ProcessEnv, issues: string[]): Huny
     normalizedBaseUrl = "";
   }
 
-  const model = env.HUNYUAN_IMAGE_MODEL?.trim() || "hy-image-v3";
-  if (model !== "hy-image-v3") {
-    issues.push("HUNYUAN_IMAGE_MODEL 必须是 hy-image-v3");
+  const model = env.HUNYUAN_IMAGE_MODEL?.trim() || HUNYUAN_IMAGE_MODEL;
+  if (model !== HUNYUAN_IMAGE_MODEL) {
+    issues.push(`HUNYUAN_IMAGE_MODEL 必须是 ${HUNYUAN_IMAGE_MODEL}`);
   }
   return {
     enabled: true,
     apiKey: apiKey ?? "",
     baseUrl: normalizedBaseUrl,
-    model: "hy-image-v3",
+    model: HUNYUAN_IMAGE_MODEL,
     timeoutMs: integer(env, "HUNYUAN_IMAGE_TIMEOUT_MS", 60_000, 1_000, 120_000, issues),
     maximumOutputBytes: integer(
       env,

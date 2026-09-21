@@ -29,7 +29,7 @@ test("stage 6 real database flow: AI success, failure, output asset and idempote
   const provider = {
     configured: true,
     name: "hunyuan",
-    model: "hy-image-v3",
+    model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
     async createTask(_image, prompt) {
       providerCreateCount += 1;
       assert.match(prompt, /不要生成拼豆网格、方格、材料标记、施工图、边框、Logo、水印或额外文字/);

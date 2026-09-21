@@ -56,12 +56,13 @@ test("readConfig validates the TokenHub Hunyuan image configuration", () => {
     ...validEnvironment,
     HUNYUAN_IMAGE_API_KEY: "test-hunyuan-api-key",
     HUNYUAN_IMAGE_BASE_URL: "https://tokenhub.tencentmaas.com/",
+    HUNYUAN_IMAGE_MODEL: "HY-Image-v3.0-I2I-ToB-v1.0.1",
   });
   assert.deepEqual(config.hunyuanImage, {
     enabled: true,
     apiKey: "test-hunyuan-api-key",
     baseUrl: "https://tokenhub.tencentmaas.com",
-    model: "hy-image-v3",
+    model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
     timeoutMs: 60_000,
     maximumOutputBytes: 10 * 1024 * 1024,
   });

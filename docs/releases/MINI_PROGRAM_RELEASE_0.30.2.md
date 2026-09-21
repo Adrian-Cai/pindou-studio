@@ -15,7 +15,7 @@
 ## 本次修改说明
 
 1. **开放 AI 模式入口**：首页 AI 模式从暂未开放调整为可选模式，用户可以进入 AI 生成页面并继续现有任务流程。
-2. **切换生图服务**：服务端不再使用千问生图，改为调用腾讯云 TokenHub 的混元 Hy-Image-3.0（`hy-image-v3`）。
+2. **切换生图服务**：服务端不再使用千问生图，改为调用腾讯云 TokenHub 的混元 Hy-Image-3.0 图生图模型（`HY-Image-v3.0-I2I-ToB-v1.0.1`）。
 3. **保持任务体验**：小程序继续使用创建任务、查询状态和失败恢复接口；供应商同步生成过程由服务端封装，不改变小程序调用协议。
 4. **完善结果保存**：服务端下载并持久化混元返回的临时图片地址，成功保存后清理临时地址，不向小程序暴露供应商密钥或上游临时 URL。
 5. **更新隐私和服务说明**：同步更新 AI 服务商、图片处理、第三方共享清单及生产验收文档。
@@ -35,7 +35,7 @@
 
 ## 发布前置条件
 
-1. 服务端配置 `HUNYUAN_IMAGE_API_KEY`、`HUNYUAN_IMAGE_BASE_URL=https://tokenhub.tencentmaas.com` 和 `HUNYUAN_IMAGE_MODEL=hy-image-v3`。
+1. 服务端配置 `HUNYUAN_IMAGE_API_KEY`、`HUNYUAN_IMAGE_BASE_URL=https://tokenhub.tencentmaas.com` 和 `HUNYUAN_IMAGE_MODEL=HY-Image-v3.0-I2I-ToB-v1.0.1`。
 2. 使用数据库 owner 执行迁移 `013_hunyuan_provider_output_url.sql`，并完成结构检查后再部署服务端。
 3. 确认生产 API 使用 HTTPS，且小程序 `request` 合法域名配置正确。
 4. 先完成混元真实账号的单次生图联调，再提交小程序审核；未配置混元密钥时不应开启生产 AI 入口。
