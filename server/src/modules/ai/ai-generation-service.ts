@@ -93,7 +93,7 @@ interface FileRow extends QueryResultRow {
 }
 
 const ACTIVE_STATUSES = ["queued", "processing"] as const;
-const PROVIDER_SUBMISSION_TIMEOUT_MS = 2 * 60 * 1_000;
+const PROVIDER_SUBMISSION_TIMEOUT_MS = 15 * 60 * 1_000;
 const DEFAULT_RETENTION_MS = 24 * 60 * 60 * 1_000;
 function nullableIso(value: Date | string | null): string | null {
   return value === null ? null : toIso(value);

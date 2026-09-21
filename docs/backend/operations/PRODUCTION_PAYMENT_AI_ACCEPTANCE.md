@@ -42,7 +42,7 @@ npm test
 
 ## 混元、存储、HTTPS 与监控
 
-- 配置 TokenHub `HUNYUAN_IMAGE_API_KEY`、`HUNYUAN_IMAGE_BASE_URL` 和 `HY-Image-v3.0-I2I-ToB-v1.0.1`；项目任务仍保持异步查询，服务端同步调用后立即下载并持久化 Provider 输出，不能长期引用 12 小时临时 URL
+- 配置 CloudBase `HUNYUAN_IMAGE_API_KEY`、`HUNYUAN_IMAGE_BASE_URL=https://<env-id>.api.tcloudbasegateway.com/v1/ai/cloudbase` 和 `HY-Image-v3.0-I2I-ToB-v1.0.1`；服务端使用 `@cloudbase/node-sdk >= 3.18.3` 调用 `generateImage` 云函数，项目任务仍保持异步查询，服务端同步调用后立即下载云函数生成的云存储文件并持久化 Provider 输出，不能长期引用临时 URL
 - `HUNYUAN_IMAGE_API_KEY` 只能注入服务端运行环境；验收客户端包、接口响应和日志均无 API Key、Provider 原始错误或内部堆栈
 - 验收 AI 输入/输出真实格式、10 MiB 大小、4096×4096 尺寸及 16 MP 像素限制；验收每用户 10 分钟 5 次的上传/任务创建限流
 - 使用恶意或非腾讯云 COS 输出地址、跨域跳转和非 PNG 输出做回归，确认均不会被服务端下载或持久化

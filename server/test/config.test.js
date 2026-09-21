@@ -51,19 +51,20 @@ test("readConfig uses the shared local development port for defaults", () => {
   );
 });
 
-test("readConfig validates the TokenHub Hunyuan image configuration", () => {
+test("readConfig validates the CloudBase Hunyuan image configuration", () => {
   const config = readConfig({
     ...validEnvironment,
     HUNYUAN_IMAGE_API_KEY: "test-hunyuan-api-key",
-    HUNYUAN_IMAGE_BASE_URL: "https://tokenhub.tencentmaas.com/",
+    HUNYUAN_IMAGE_BASE_URL: "https://cloud1-test.api.tcloudbasegateway.com/v1/ai/cloudbase/",
     HUNYUAN_IMAGE_MODEL: "HY-Image-v3.0-I2I-ToB-v1.0.1",
   });
   assert.deepEqual(config.hunyuanImage, {
     enabled: true,
     apiKey: "test-hunyuan-api-key",
-    baseUrl: "https://tokenhub.tencentmaas.com",
+    baseUrl: "https://cloud1-test.api.tcloudbasegateway.com/v1/ai/cloudbase",
+    environmentId: "cloud1-test",
     model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
-    timeoutMs: 60_000,
+    timeoutMs: 150_000,
     maximumOutputBytes: 10 * 1024 * 1024,
   });
 });

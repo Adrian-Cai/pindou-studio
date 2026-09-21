@@ -8,7 +8,7 @@
 
 1. 项目文件接口：上传 AI 输入图片。
 2. 项目 AI 接口：创建生成任务、查询任务状态。
-3. 服务端上游接口：后端调用腾讯云 TokenHub 混元 Hy-Image-3.0 同步接口。
+3. 服务端上游接口：后端调用 `generateImage` 云函数，由云函数内置的 `wx-server-sdk` 调用混元 Hy-Image-3.0。
 
 小程序只允许调用项目自己的接口，不能直接调用混元接口，也不能接触 `HUNYUAN_IMAGE_API_KEY`。
 
@@ -39,7 +39,8 @@
               ├─ 服务端读取 inputFileId 对应的文件字节
               ├─ 转成 data:image/...;base64,...
               ├─ 根据三个业务参数生成固定 Prompt
-              ├─ POST 混元 TokenHub 同步接口
+              ├─ CloudBase Node SDK 调用 generateImage 云函数
+              │    └─ 云函数内 wx-server-sdk 调用混元图像同步接口
               ├─ 保存 request_id 和临时 output URL
               │
               └─ GET /api/ai/generations/{id}
@@ -398,23 +399,11 @@ GET /api/media/ai/ai_output_<32位小写十六进制>.png
 
 以下接口只允许由服务端调用，不能放到小程序代码中。
 
-### 8.1 创建混元同步生成请求
+### 8.1 通过 `generateImage` 云函数创建混元同步生成请求
 
-当前本地环境的 Base URL 为 `HUNYUAN_IMAGE_BASE_URL`，实际路径为：
+服务端依赖 `@cloudbase/node-sdk >= 3.18.3`，从 `HUNYUAN_IMAGE_BASE_URL` 解析 CloudBase 环境 ID，并用 `HUNYUAN_IMAGE_API_KEY` 初始化 SDK。服务端通过 SDK 调用 `generateImage` 云函数；云函数依赖微信云函数环境内置的 `wx-server-sdk >= 4.0.2`，再由 `cloud.ai().createImageModel("hunyuan-image")` 调用混元模型。小程序和服务端都不直接拼接或直连混元图片接口。
 
-```http
-POST {HUNYUAN_IMAGE_BASE_URL}/v1/wand/hunyuan-image/v3-generation
-Authorization: Bearer {HUNYUAN_IMAGE_API_KEY}
-Content-Type: application/json
-```
-
-当前 `.env` 配置下的完整地址是：
-
-```text
-https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation
-```
-
-服务端发送的请求结构为：
+SDK 调用参数为：
 
 ```json
 {
@@ -422,21 +411,20 @@ https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation
   "prompt": "<服务端根据业务参数生成的固定Prompt>",
   "images": ["data:image/png;base64,<输入图片Base64>"],
   "size": "1024x1024",
-  "revise": false
+  "revise": {"value": false}
 }
 ```
 
-上游成功返回时，服务端读取 `request_id`（兼容读取 `id`）和 `data[0].url`：
+云函数通过 `cloud.ai().createImageModel("hunyuan-image")` 调用上面的参数，使用 `images` 传入参考图 Base64。云函数下载模型临时图片并上传到云存储，返回 `fileID`；服务端再通过 CloudBase SDK 下载该云存储文件并持久化到项目自己的 AI 文件存储。云函数请求 ID 仍会回传到服务端任务记录：
 
 ```json
 {
-  "id": "4-WandImage-xxx",
-  "request_id": "<混元请求ID>",
-  "data": [{"url": "https://aigc-image.cos.myqcloud.com/<临时图片>.png"}]
+  "requestId": "<CloudBase请求ID>",
+  "fileID": "cloud://<env-id>/ai-images/<generated>.png"
 }
 ```
 
-该接口为同步调用，不需要服务端向混元发起第二次任务查询。项目自己的任务接口仍保留 `queued -> processing -> succeeded/failed` 状态，用于避免小程序长时间等待 HTTP 请求。临时地址只在服务端内部使用；服务端要求其为 HTTPS 的受信任 `*.myqcloud.com` 地址，下载后校验为 PNG，再写入项目自己的 AI 文件存储。临时地址保存于 `provider_output_url`，成功持久化后清空。
+该接口为同步调用，不需要服务端向混元再次查询。项目自己的任务接口仍保留 `queued -> processing -> succeeded/failed` 状态，用于避免小程序长时间等待 HTTP 请求。云存储 `fileID` 只在服务端内部使用，下载后校验为 PNG，再写入项目自己的 AI 文件存储；`provider_output_url` 暂存该内部文件引用，成功持久化后清空。
 
 ## 9. 额度与幂等规则
 
@@ -467,9 +455,9 @@ GET http://127.0.0.1:4000/health
 
 ```text
 HUNYUAN_IMAGE_API_KEY=<仅服务端配置>
-HUNYUAN_IMAGE_BASE_URL=https://tokenhub.tencentmaas.com
+HUNYUAN_IMAGE_BASE_URL=https://<env-id>.api.tcloudbasegateway.com/v1/ai/cloudbase
 HUNYUAN_IMAGE_MODEL=HY-Image-v3.0-I2I-ToB-v1.0.1
-HUNYUAN_IMAGE_TIMEOUT_MS=60000
+HUNYUAN_IMAGE_TIMEOUT_MS=150000
 HUNYUAN_IMAGE_MAX_OUTPUT_BYTES=10485760
 ```
 

@@ -5,50 +5,77 @@ const { HunyuanImageProvider, ProviderError } = require("../dist/modules/ai/huny
 const config = {
   enabled: true,
   apiKey: "test-hunyuan-api-key",
-  baseUrl: "https://tokenhub.tencentmaas.com",
+  baseUrl: "https://cloud1-test.api.tcloudbasegateway.com/v1/ai/cloudbase",
   model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
   timeoutMs: 1000,
   maximumOutputBytes: 1024,
 };
 
-test("Hunyuan provider submits the TokenHub reference-image request and downloads its PNG output", async () => {
+test("Hunyuan provider submits the CloudBase SDK reference-image request and downloads its PNG output", async () => {
   const requests = [];
-  const fetchImplementation = async (url, init) => {
-    requests.push({ url, init });
-    if (url.endsWith("/v1/wand/hunyuan-image/v3-generation")) {
-      return Response.json({
+  const sdkRequests = [];
+  const imageModel = {
+    generateImage: async (input) => {
+      sdkRequests.push(input);
+      return {
         id: "4-WandImage-test",
         request_id: "request_hy_123",
-        data: [{ url: "https://aigc-image.cos.myqcloud.com/result.png" }],
-      });
-    }
+        data: [{ url: "https://cloud1-test.api.tcloudbasegateway.com/v1/ai/cloudbase/result.png" }],
+      };
+    },
+  };
+  const fetchImplementation = async (url, init) => {
+    requests.push({ url, init });
     return new Response(Buffer.from([1, 2, 3]), {
       status: 200,
       headers: { "content-type": "image/png", "content-length": "3" },
     });
   };
-  const provider = new HunyuanImageProvider(config, fetchImplementation);
+  const provider = new HunyuanImageProvider(config, fetchImplementation, imageModel);
   const submission = await provider.createTask("data:image/png;base64,AA==", "生成精致图片");
   const output = await provider.downloadOutput(submission.outputUrl);
 
   assert.deepEqual(submission, {
     requestId: "request_hy_123",
-    outputUrl: "https://aigc-image.cos.myqcloud.com/result.png",
+    outputUrl: "https://cloud1-test.api.tcloudbasegateway.com/v1/ai/cloudbase/result.png",
   });
   assert.deepEqual(output, Buffer.from([1, 2, 3]));
-  assert.equal(requests[0].url, `${config.baseUrl}/v1/wand/hunyuan-image/v3-generation`);
-  assert.equal(requests[0].init.headers.authorization, `Bearer ${config.apiKey}`);
-  const requestBody = JSON.parse(requests[0].init.body);
-  assert.equal(requestBody.model, "HY-Image-v3.0-I2I-ToB-v1.0.1");
-  assert.equal(requestBody.prompt, "生成精致图片");
-  assert.deepEqual(requestBody.images, ["data:image/png;base64,AA=="]);
-  assert.equal(requestBody.size, "1024x1024");
-  assert.equal(requestBody.revise, false);
-  assert.equal(JSON.stringify({ submission }).includes(config.apiKey), false);
+  assert.equal(requests.length, 1);
+  assert.deepEqual(sdkRequests, [{
+    model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
+    prompt: "生成精致图片",
+    images: ["data:image/png;base64,AA=="],
+    size: "1024x1024",
+    revise: { value: false },
+  }]);
+  assert.equal(JSON.stringify({ submission, sdkRequests }).includes(config.apiKey), false);
+});
+
+test("Hunyuan provider accepts the wx-server-sdk cloud function file result", async () => {
+  const imageModel = {
+    generateImage: async () => ({
+      request_id: "request_cloud_function_123",
+      fileID: "cloud://env/ai-images/result.png",
+      data: [],
+    }),
+    downloadFile: async (fileId) => {
+      assert.equal(fileId, "cloud://env/ai-images/result.png");
+      return Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    },
+  };
+  const provider = new HunyuanImageProvider(config, fetch, imageModel);
+  const submission = await provider.createTask("data:image/png;base64,AA==", "生成精致图片");
+  const output = await provider.downloadOutput(submission.outputUrl);
+
+  assert.equal(submission.requestId, "request_cloud_function_123");
+  assert.equal(submission.outputUrl, "cloud-file:cloud://env/ai-images/result.png");
+  assert.equal(output.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
 });
 
 test("Hunyuan provider normalizes quota, auth and temporary upstream failures", async () => {
-  const busyProvider = new HunyuanImageProvider(config, async () => new Response(null, { status: 503 }));
+  const busyProvider = new HunyuanImageProvider(config, fetch, {
+    generateImage: async () => { throw Object.assign(new Error("upstream busy"), { statusCode: 503 }); },
+  });
   await assert.rejects(
     () => busyProvider.createTask("data:image/png;base64,AA==", "prompt"),
     (error) => error instanceof ProviderError
@@ -56,7 +83,9 @@ test("Hunyuan provider normalizes quota, auth and temporary upstream failures", 
       && error.failure.httpStatus === 503,
   );
 
-  const forbiddenProvider = new HunyuanImageProvider(config, async () => Response.json({ code: "Unauthorized" }, { status: 401 }));
+  const forbiddenProvider = new HunyuanImageProvider(config, fetch, {
+    generateImage: async () => { throw Object.assign(new Error("Unauthorized"), { code: "Unauthorized", statusCode: 401 }); },
+  });
   await assert.rejects(
     () => forbiddenProvider.createTask("data:image/png;base64,AA==", "prompt"),
     (error) => error instanceof ProviderError
@@ -65,11 +94,37 @@ test("Hunyuan provider normalizes quota, auth and temporary upstream failures", 
       && error.failure.httpStatus === 401,
   );
 
-  const rateLimitedProvider = new HunyuanImageProvider(config, async () => new Response(null, { status: 429 }));
+  const rateLimitedProvider = new HunyuanImageProvider(config, fetch, {
+    generateImage: async () => { throw Object.assign(new Error("rate limited"), { code: "RATE_LIMITED", statusCode: 429 }); },
+  });
   await assert.rejects(
     () => rateLimitedProvider.createTask("data:image/png;base64,AA==", "prompt"),
     (error) => error instanceof ProviderError
       && error.failure.kind === "RATE_LIMITED",
+  );
+
+  const tokenQuotaProvider = new HunyuanImageProvider(config, fetch, {
+    generateImage: async () => { throw Object.assign(new Error("Request failed with status code 429"), { code: "429" }); },
+  });
+  await assert.rejects(
+    () => tokenQuotaProvider.createTask("data:image/png;base64,AA==", "prompt"),
+    (error) => error instanceof ProviderError
+      && error.failure.kind === "QUOTA_EXHAUSTED",
+  );
+
+  const quotaProvider = new HunyuanImageProvider(config, fetch, {
+    generateImage: async () => {
+      throw Object.assign(new Error("EXCEED_TOKEN_QUOTA_LIMIT"), {
+        code: "EXCEED_TOKEN_QUOTA_LIMIT",
+        statusCode: 429,
+      });
+    },
+  });
+  await assert.rejects(
+    () => quotaProvider.createTask("data:image/png;base64,AA==", "prompt"),
+    (error) => error instanceof ProviderError
+      && error.failure.kind === "QUOTA_EXHAUSTED"
+      && error.failure.providerCode === "EXCEED_TOKEN_QUOTA_LIMIT",
   );
 });
 

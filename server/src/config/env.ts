@@ -40,6 +40,7 @@ export type HunyuanImageConfig =
       readonly enabled: true;
       readonly apiKey: string;
       readonly baseUrl: string;
+      readonly environmentId: string;
       readonly model: typeof HUNYUAN_IMAGE_MODEL;
       readonly timeoutMs: number;
       readonly maximumOutputBytes: number;
@@ -255,6 +256,7 @@ function parseHunyuanImageConfig(env: NodeJS.ProcessEnv, issues: string[]): Huny
   if (!baseUrl) issues.push("HUNYUAN_IMAGE_BASE_URL 未配置");
 
   let normalizedBaseUrl = baseUrl ?? "";
+  let environmentId = "";
   try {
     const parsed = new URL(normalizedBaseUrl);
     if (parsed.protocol !== "https:") issues.push("HUNYUAN_IMAGE_BASE_URL 必须使用 HTTPS");
@@ -262,6 +264,12 @@ function parseHunyuanImageConfig(env: NodeJS.ProcessEnv, issues: string[]): Huny
       issues.push("HUNYUAN_IMAGE_BASE_URL 不能包含凭据、查询参数或片段");
     }
     normalizedBaseUrl = parsed.href.replace(/\/$/u, "");
+    const environmentMatch = /^([a-z0-9-]+)\.api\.tcloudbasegateway\.com$/iu.exec(parsed.hostname);
+    if (!environmentMatch?.[1]) {
+      issues.push("HUNYUAN_IMAGE_BASE_URL 必须使用 CloudBase 网关地址");
+    } else {
+      environmentId = environmentMatch[1];
+    }
   } catch {
     issues.push("HUNYUAN_IMAGE_BASE_URL 必须是合法 URL");
     normalizedBaseUrl = "";
@@ -275,8 +283,9 @@ function parseHunyuanImageConfig(env: NodeJS.ProcessEnv, issues: string[]): Huny
     enabled: true,
     apiKey: apiKey ?? "",
     baseUrl: normalizedBaseUrl,
+    environmentId,
     model: HUNYUAN_IMAGE_MODEL,
-    timeoutMs: integer(env, "HUNYUAN_IMAGE_TIMEOUT_MS", 60_000, 1_000, 120_000, issues),
+    timeoutMs: integer(env, "HUNYUAN_IMAGE_TIMEOUT_MS", 150_000, 1_000, 900_000, issues),
     maximumOutputBytes: integer(
       env,
       "HUNYUAN_IMAGE_MAX_OUTPUT_BYTES",

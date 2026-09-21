@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 0.30.6
+
+- AI 生图任务改为由服务端调用 `generateImage` 云函数，再由云函数内置的 `wx-server-sdk` 调用混元图生图模型。
+- 保留现有登录、AI 额度、任务轮询、结果校验和项目文件持久化链路；小程序不直接接触模型凭据或云函数输出文件。
+
+## 0.30.5
+
+- 将服务端 AI 图生图切换为腾讯云 CloudBase `@cloudbase/node-sdk`，使用 `hunyuan-image` Provider 和 `HY-Image-v3.0-I2I-ToB-v1.0.1`。
+- 按 CloudBase I2I 协议传入服务端生成的参考图 Base64，保留现有任务、用户额度、结果下载和持久化链路。
+- 真实联调已确认 SDK 鉴权和模型调用链可达；当前环境返回 HTTP 429，未生成图片，符合控制台“生图额度 0 次”的现状。
+
 ## 0.30.3
 
 - 新增 `generateImage` 微信云函数：通过内置 `wx-server-sdk` 调用混元生图模型，将模型临时图片下载后持久化到云存储 `ai-images/` 目录。

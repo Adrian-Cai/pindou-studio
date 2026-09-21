@@ -6,10 +6,11 @@ cloud.init({
   timeout: 900000,
 })
 
-const IMAGE_MODEL = 'HY-Image-3.0-Plus-4090-Tob-v1.0'
+const IMAGE_MODEL = 'HY-Image-v3.0-I2I-ToB-v1.0.1'
+const TEXT_IMAGE_MODEL = 'HY-Image-3.0-Plus-4090-Tob-v1.0'
 const ALLOWED_SIZES = ['1024x1024', '1280x720', '720x1280', '1280x1280']
 const MAX_PROMPT_LENGTH = 500
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 exports.main = async (event) => {
   const prompt = typeof event?.prompt === 'string' ? event.prompt.trim() : ''
@@ -18,39 +19,66 @@ exports.main = async (event) => {
     return { error: `提示词最多 ${MAX_PROMPT_LENGTH} 字`, code: 'INVALID_PROMPT' }
   }
 
+  const hasImageInput = event?.imageDataUrl !== undefined
+  const image = hasImageInput ? parseInputImage(event.imageDataUrl) : null
+  if (hasImageInput && !image) {
+    return { error: '请输入有效的参考图片', code: 'INVALID_IMAGE' }
+  }
+
   const size = ALLOWED_SIZES.includes(event?.size) ? event.size : '1024x1024'
 
   try {
     const imageModel = cloud.ai().createImageModel('hunyuan-image')
     const response = await imageModel.generateImage({
-      model: IMAGE_MODEL,
+      model: image ? IMAGE_MODEL : TEXT_IMAGE_MODEL,
       prompt,
+      ...(image ? { images: [image.base64] } : {}),
       size,
-      revise: { value: true },
+      revise: { value: image ? false : true },
     })
     const generatedImage = response?.data?.[0]
     if (!generatedImage || typeof generatedImage.url !== 'string' || !generatedImage.url) {
       throw new Error('模型未返回有效图片地址')
     }
 
-    const image = await downloadImage(generatedImage.url)
+    const downloadedImage = await downloadImage(generatedImage.url)
     const uploadResponse = await cloud.uploadFile({
-      cloudPath: `ai-images/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${fileExtension(image.contentType)}`,
-      fileContent: image.buffer,
+      cloudPath: `ai-images/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${fileExtension(downloadedImage.contentType)}`,
+      fileContent: downloadedImage.buffer,
     })
 
     return {
       fileID: uploadResponse.fileID,
-      contentType: image.contentType,
-      size: image.buffer.length,
+      contentType: downloadedImage.contentType,
+      size: downloadedImage.buffer.length,
       revisedPrompt: typeof generatedImage.revised_prompt === 'string'
         ? generatedImage.revised_prompt
         : prompt,
+      requestId: typeof response.request_id === 'string'
+        ? response.request_id
+        : typeof response.id === 'string' ? response.id : '',
     }
   } catch (error) {
     console.error('[generateImage] generation failed', serializeError(error))
     return { error: '图片生成失败，请稍后重试', code: 'IMAGE_GENERATION_FAILED' }
   }
+}
+
+function parseInputImage(value) {
+  if (typeof value !== 'string') return null
+  const match = value.trim().match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=\s]+)$/i)
+  if (!match) return null
+
+  const contentType = match[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : match[1].toLowerCase()
+  const base64 = match[2].replace(/\s/g, '')
+  let buffer
+  try {
+    buffer = Buffer.from(base64, 'base64')
+  } catch {
+    return null
+  }
+  if (buffer.length === 0 || buffer.length > MAX_IMAGE_BYTES) return null
+  return { base64, buffer, contentType }
 }
 
 function downloadImage(imageUrl) {

@@ -26,11 +26,11 @@ Ai 模式解决的问题不是“让模型直接输出最终拼豆格子”，�
 适合原因：
 
 - 支持参考图片和指令控制，适合“保留主体、减少细节、加强轮廓、控制背景”等拼豆前处理
-- TokenHub 提供统一的同步接口，模型 ID 为 `HY-Image-v3.0-I2I-ToB-v1.0.1`
+- `generateImage` 云函数通过微信云函数环境内置的 `wx-server-sdk` 调用 `hunyuan-image`，模型 ID 为 `HY-Image-v3.0-I2I-ToB-v1.0.1`
 - 国内云服务接入更适合微信小程序生产环境
-- 后端可以直接调用，不需要让小程序直连模型厂商
+- 服务端通过 `@cloudbase/node-sdk` 调用 `generateImage` 云函数，不需要让小程序直连模型厂商
 
-当前默认使用 Hy-Image-3.0，服务端固定 `revise=false`，减少不必要的 Prompt 改写等待；如后续切换模型，只替换 Provider 和服务端配置。
+当前默认使用 Hy-Image-3.0，服务端固定 `revise={ value: false }`，减少不必要的 Prompt 改写等待；如后续切换模型，只替换 Provider 和服务端配置。
 
 ### Benchmark / 备用：OpenAI GPT-Image-2
 
