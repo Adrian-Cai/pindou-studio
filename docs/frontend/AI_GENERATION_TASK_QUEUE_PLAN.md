@@ -608,9 +608,13 @@ export function migrateLegacyAiSession(): void {
 | **封面** | 原图 + 半透明遮罩 + 进度「约 N%」 | 原图 + 灰色遮罩 + 失败标识 | 原图（现状） |
 | **标题** | 默认「AI 拼豆图」（本地字段，随时可改） | 同左 | 用户标题 |
 | **状态标签** | `生成中`（绿） | `生成失败`（红） | `草稿` / `已完成` |
-| **元信息** | `96×96 · 32色`（按任务设置预填）+ 提交时间 | 同左 + **一行失败原因**（`failureMessage`） | 现状 |
-| **操作行** | 仅「取消任务」 | 「重试」+「重命名」+「删除」 | 重命名/下载/删除（现状） |
+| **元信息** | `96×96 · 32色`（按任务设置预填）+ 提交时间 | 同左 + **一行失败原因**（`failureMessage`，红字） | 现状 |
+| **操作区** | **时间行下面一行文字**：`约 68% · 查看进度 · 取消任务` | **失败原因行下面一行文字**：`查看进度 · 重试 · 删除` | 图标操作行（重命名/下载/删除）+ 底部「继续编辑」（**现状，不动**） |
 | **点卡片** | 进任务详情页看进度 | 进任务详情页看原因 | 正常打开 |
+
+> **布局口径（产品确认）**：AI 态（生成中/失败）**不沿用**现有的图标操作行 + 底部「继续编辑」按钮，
+> 一律收进封面右侧信息区 —— 标题 → 元信息 → 时间 →（失败原因）→ **操作文案一行**。
+> 完成态保持现状不动，两种布局不混用。
 
 设计说明与边界：
 
@@ -633,25 +637,67 @@ export function migrateLegacyAiSession(): void {
    见 `AI_GENERATION_DESIGN.md`），客户端只负责展示 `failureCode` 对应文案，不自行判断。
 7. **任务被取消**（用户主动删卡片）：直接 `cancelTask` + 删记录，不留失败态。
    只有**服务端/网络导致的失败**才走 `ai_failed`。
+8. **操作为什么改成一行文字**：AI 态卡片本身已经有一个状态 pill（生成中/生成失败）、
+   封面上还有进度遮罩，再挂一行图标按钮 + 一个底部按钮，信息层级太重、卡片被撑高，
+   多条任务并列时列表会非常吵。收成一行 24rpx 文字链接后：
+   - 与「时间」「失败原因」同属一个信息块，读起来是连续的（发生了什么 → 我能做什么）
+   - 卡片高度与非 AI 卡片一致，列表节奏稳定
+   - 「查看进度」用主色（主操作），「取消任务/删除」用危险色，靠颜色而非按钮形状区分
 
-对应的 WXML 改动点（现有骨架上微调）：
+#### 10.2.1 卡片结构（AI 态）
 
-```xml
-<!-- 操作行：三态分流 -->
-<view wx:if="{{item.status === 'ai_pending'}}" class="project-card__actions-inline">
-  <view class="project-card__action-inline project-card__action-inline--danger"
-        data-id="{{item.id}}" catchtap="cancelAiTask">取消任务</view>
-</view>
-<view wx:elif="{{item.status === 'ai_failed'}}" class="project-card__actions-inline">
-  <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="retryAiTask">重试</view>
-  <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="startRename">重命名</view>
-  <view class="project-card__action-inline project-card__action-inline--danger"
-        data-id="{{item.id}}" catchtap="deleteWork">删除</view>
-</view>
-<view wx:else class="project-card__actions-inline"><!-- 现状 --></view>
+```
+┌────────┬──────────────────────────────────┐
+│        │ AI 拼豆图                 [生成中] │
+│  原图   │ 96×96 · 32色                      │
+│ +遮罩   │ 今天 22:05 提交                    │
+│  68%   │ 约 68% · 查看进度 · 取消任务        │  ← 操作文案一行
+└────────┴──────────────────────────────────┘
+┌────────┬──────────────────────────────────┐
+│        │ AI 拼豆图                [生成失败] │
+│  原图   │ 96×96 · 32色                      │
+│ +灰罩   │ 今天 22:05 提交                    │
+│        │ AI 生成次数不足，请购买次数          │  ← 失败原因（红）
+│        │ 查看进度 · 重试 · 删除              │  ← 操作文案一行
+└────────┴──────────────────────────────────┘
 ```
 
-进度/失败遮罩（封面右上角叠一层）：
+对应的 WXML 改动点（`project-card__info` 内部追加，AI 态不再渲染图标操作行和底部按钮）：
+
+```xml
+<view class="project-card__info">
+  <view class="project-card__title">{{item.title}}</view>
+  <view class="project-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>
+  <view class="project-card__date">{{item.updatedText}}</view>
+
+  <!-- 失败原因：时间行下面，红字 -->
+  <view wx:if="{{item.isAiFailed}}" class="project-card__failure">{{item.failureMessage}}</view>
+
+  <!-- 操作文案：失败原因（或时间）下面，一行展示 -->
+  <view wx:if="{{item.isAiTask}}" class="project-card__taskline" catchtap="stopPropagation">
+    <text wx:if="{{item.isAiGenerating}}" class="project-card__taskline-text">约 {{item.aiProgress}}%</text>
+    <text class="project-card__taskline-link"
+          data-id="{{item.id}}" catchtap="openWork">{{item.isAiGenerating ? '查看进度' : '查看重试'}}</text>
+    <text wx:if="{{item.isAiFailed && item.canRetry}}" class="project-card__taskline-link"
+          data-id="{{item.id}}" catchtap="retryAiTask">{{item.retryLabel}}</text>
+    <text class="project-card__taskline-link project-card__taskline-link--danger"
+          data-id="{{item.id}}" catchtap="cancelAiTask">{{item.isAiGenerating ? '取消任务' : '删除'}}</text>
+  </view>
+</view>
+```
+
+配套 WXSS（对齐 `__meta` / `__date` 的字号与节奏）：
+
+```css
+.project-card__failure { margin-top: 6rpx; color: var(--color-danger); font-size: 24rpx; line-height: 32rpx; }
+.project-card__taskline { display: flex; flex-direction: row; align-items: center; gap: 12rpx; margin-top: 8rpx; font-size: 24rpx; line-height: 32rpx; }
+.project-card__taskline-text { color: var(--color-text-tertiary); }
+.project-card__taskline-link { color: var(--color-primary); }
+.project-card__taskline-link--danger { color: var(--color-danger); }
+.project-card__taskline-link:active { opacity: 0.6; }
+```
+
+进度/失败遮罩（封面叠加层，不动 `project-card__cover` 本体）：
 
 ```xml
 <view class="project-card__cover-wrap">
@@ -668,20 +714,24 @@ export function migrateLegacyAiSession(): void {
 数据侧（`refreshVisibleWorks`）给每条 AI 记录补派生字段：
 
 ```ts
-progressText: status === 'ai_pending' ? `约 ${aiProgress}%` : undefined,
+isAiTask: isAiTaskWork(work),                       // ai_pending | ai_failed
+aiProgress: work.aiProgress ?? 0,                   // 0-100，随任务 notify 刷新
 failureMessage: status === 'ai_failed' ? work.failureMessage : undefined,
+canRetry: status === 'ai_failed' ? canRetryTask(work) : false,   // 图片问题/内容违规 → false
+retryLabel: retryActionLabel(work.failureCode),     // 重试 / 购买次数 / 重新选图生成 / 用标准模式生成
 ```
 
 `refreshVisibleWorks()` 的触发源：`aiTaskManager.subscribeAll()`（任务每次 patch 都会 notify），
 进度数字随 tick 自然刷新，无需页面自己起定时器。
 
-### 10.2.1 `pages/projects/index.ts`
+### 10.2.2 `pages/projects/index.ts`
 
 - [ ] **删除** `id: 'ai-active-task'` 虚拟卡片（L107-129）
 - [ ] 改为从 `appStore.works` 渲染真实记录：
   ```ts
   const works = state.works.map((work) => ({
     ...work,
+    isAiTask: isAiTaskWork(work),
     isAiGenerating: work.status === 'ai_pending',
     isAiFailed: work.status === 'ai_failed',
     statusLabel: statusLabel(work),     // 草稿 / 已完成 / AI生成中 / 生成失败
@@ -689,7 +739,12 @@ failureMessage: status === 'ai_failed' ? work.failureMessage : undefined,
   ```
 - [ ] 删除所有 `id === 'ai-active-task'` 特判（L162/164/192/200/242/327/336）
 - [ ] 删除逻辑改为：`isAiTaskWork(work)` → `aiTaskManager.cancelTask(work.id)`
-- [ ] 失败卡片增加「重试」按钮 → `aiTaskManager.retryTask(work.id)`
+- [ ] 失败卡片增加「重试」入口 → `aiTaskManager.retryTask(work.id)`
+- [ ] WXML：AI 态**不再**渲染 `project-card__actions-inline`（L73-78）与
+      `project-card__continue`（L79-89），改用 §10.2.1 的 `__failure` + `__taskline`
+      （完成态两处保持原样）
+- [ ] 新增 `cancelAiTask` / `retryAiTask` 方法，均带 `catchtap`，容器 `stopPropagation`
+      避免误触发 `openWork`
 - [ ] 点 pending/failed 卡片 → `navigateTo('/packages/ai-generation/index?taskId=' + work.id + '&from=projects')`
       （当前是**不带参**的裸跳转，正是靠全局单例 session 才能"猜"出任务的原因）
 - [ ] 订阅改为 `subscribeAll()`，`onShow` 订阅 / `onHide` 退订
@@ -791,6 +846,10 @@ failureMessage: status === 'ai_failed' ? work.failureMessage : undefined,
 | T14 | 详情页点「取消生成」 | 任务停止轮询，返回作品页后卡片已消失 |
 | T15 | 任务已完成后，再从作品页点进详情页 | 显示「查看作品」，不卡在 loading，不重复生成 |
 | T16 | 详情页任务失败且不可重试 | 展示失败原因 + 「返回作品页」，无无效按钮 |
+| T17 | 作品页生成中卡片 | 封面右侧：标题 → 元信息 → 时间 → `约 N% · 查看进度 · 取消任务` 一行；无图标操作行、无底部按钮 |
+| T18 | 作品页失败卡片 | 时间下面红字失败原因，其下一行 `查看重试 · 重试 · 删除`；不可重试时无「重试」 |
+| T19 | 一条生成中 + 一条完成并列 | 两张卡片**等高**，列表不被撑高 |
+| T20 | 点卡片空白处（非文字链接） | 进任务详情页；点「取消任务」只取消不跳转 |
 
 ---
 
