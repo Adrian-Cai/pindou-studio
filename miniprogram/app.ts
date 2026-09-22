@@ -2,6 +2,7 @@ import { appStore } from './store/app-store'
 import { authStore } from './store/auth-store'
 import { syncPendingWorks } from './services/work-sync-service'
 import { initCloud } from './config/cloud'
+import { aiGenerationManager } from './services/ai-generation-manager'
 
 App<IAppOption>({
   globalData: {
@@ -16,6 +17,7 @@ App<IAppOption>({
     }
     appStore.hydrate()
     void authStore.restore()
+    aiGenerationManager.init()
     wx.onNetworkStatusChange(({ isConnected }) => {
       const userId = authStore.getSnapshot().user?.id
       if (isConnected && userId) void syncPendingWorks(userId)

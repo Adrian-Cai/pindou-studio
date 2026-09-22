@@ -74,7 +74,7 @@ export class AppStore {
     else { this.cloudDraft = null; this.getActiveWorkspace().currentDraft = currentDraft }
     this.rebuildState(); return this.persist()
   }
-  saveLocalDraft(draft: PatternDraft): Promise<void> { const w = this.getActiveWorkspace(); w.localDrafts = { ...w.localDrafts, [draft.id]: draft }; w.currentDraft = draft; this.rebuildState(); return this.persist() }
+  saveLocalDraft(draft: PatternDraft, setAsCurrent = true): Promise<void> { const w = this.getActiveWorkspace(); w.localDrafts = { ...w.localDrafts, [draft.id]: draft }; if (setAsCurrent || !w.currentDraft) { w.currentDraft = draft; } this.rebuildState(); return this.persist() }
   getLocalDraft(workId: string): PatternDraft | null { return this.getActiveWorkspace().localDrafts[workId] ?? null }
   removeLocalDraft(workId: string): Promise<void> { const w = this.getActiveWorkspace(); if (!w.localDrafts[workId] && w.currentDraft?.id !== workId) return Promise.resolve(); const drafts = { ...w.localDrafts }; delete drafts[workId]; w.localDrafts = drafts; if (w.currentDraft?.id === workId) w.currentDraft = null; this.rebuildState(); return this.persist() }
 

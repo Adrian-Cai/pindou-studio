@@ -1,4 +1,4 @@
-import { createDraft, prepareImageForContentSecurity } from '../../../services/image-service'
+import { createDraft, prepareImageForContentSecurity } from './image-service'
 import {
   aiGenerationFailure,
   aiGenerationErrorMessage,
@@ -9,15 +9,15 @@ import {
   uploadAiInput,
   type AiGeneration,
   type AiGenerationFailure,
-} from '../../../services/ai-generation-service'
+} from './ai-generation-service'
 import {
   clearAiGenerationSession,
   createIdempotencyKey,
   loadAiGenerationSession,
   saveAiGenerationSession,
   type AiGenerationSession,
-} from '../../../services/ai-generation-session'
-import { ApiError, type PublicErrorAction } from '../../../services/http-client'
+} from './ai-generation-session'
+import { ApiError, type PublicErrorAction } from './http-client'
 
 export type AiGenerationFlowPageState =
   | 'loading'
@@ -49,6 +49,10 @@ export interface AiGenerationFlowCallbacks {
   onDraftReady: (draft: Awaited<ReturnType<typeof createDraft>>) => Promise<void>
 }
 
+export type AiGenerationFlowOptions = AiGenerationFlowCallbacks & {
+  allowBackground?: boolean
+}
+
 const POLL_INTERVAL_MS = 4_000
 const LONG_WAIT_MS = 60_000
 const NETWORK_BACKOFF_MS = [8_000, 15_000, 30_000] as const
@@ -56,6 +60,9 @@ const NETWORK_BACKOFF_MS = [8_000, 15_000, 30_000] as const
 /**
  * AI 任务的轮询、输出下载和 Standard Pattern Engine 转换共用流程。
  * 页面只负责展示状态和承接最终草稿，避免不同入口各自维护一套状态机。
+ *
+ * 注意：本文件必须位于主包，app.ts 启动时会通过 ai-generation-manager 引用，
+ * 放在分包内会导致主包无法 require。
  */
 export class AiGenerationFlow {
   private state: AiGenerationFlowState = {
@@ -84,8 +91,30 @@ export class AiGenerationFlow {
   private networkFailureCount = 0
   private session: AiGenerationSession | null = null
   private lastGeneration: AiGeneration | null = null
+  private callbacks: AiGenerationFlowCallbacks
+  private readonly allowBackground: boolean
 
-  constructor(private readonly callbacks: AiGenerationFlowCallbacks) {}
+  constructor(options: AiGenerationFlowOptions) {
+    this.callbacks = options
+    this.allowBackground = Boolean(options.allowBackground)
+  }
+
+  start(): void {
+    this.onShow()
+  }
+
+  getState(): AiGenerationFlowState {
+    return { ...this.state }
+  }
+
+  attachView(callbacks: Partial<AiGenerationFlowCallbacks>): void {
+    this.callbacks = { ...this.callbacks, ...callbacks }
+    callbacks.onStateChange?.({ ...this.state })
+    const sourceImagePath = this.session?.sourceImagePath ?? loadAiGenerationSession()?.sourceImagePath
+    if (sourceImagePath) {
+      callbacks.onSourceImage?.(sourceImagePath)
+    }
+  }
 
   onShow(): void {
     this.hidden = false
@@ -102,6 +131,7 @@ export class AiGenerationFlow {
   }
 
   onHide(): void {
+    if (this.allowBackground) return
     this.hidden = true
     this.clearPollTimer()
     this.clearLongWaitTimer()
@@ -141,7 +171,7 @@ export class AiGenerationFlow {
   }
 
   private async resumeSession(): Promise<void> {
-    if (this.destroyed || this.hidden || this.polling || this.submitting || this.processing || this.finished) return
+    if (this.destroyed || (!this.allowBackground && this.hidden) || this.polling || this.submitting || this.processing || this.finished) return
     const session = this.session ?? loadAiGenerationSession()
     if (!session) {
       this.setFailure('没有找到可恢复的 AI 任务，请返回首页重新开始', 'generation', null)
@@ -167,7 +197,7 @@ export class AiGenerationFlow {
   }
 
   private async queryAiGeneration(jobId: string): Promise<void> {
-    if (this.destroyed || this.hidden || this.finished) return
+    if (this.destroyed || (!this.allowBackground && this.hidden) || this.finished) return
     if (this.polling) {
       this.resumeAfterRequest = true
       return
@@ -191,7 +221,7 @@ export class AiGenerationFlow {
       }
     } finally {
       this.polling = false
-      if (this.resumeAfterRequest && !this.hidden && !this.destroyed && !this.processing && !this.finished) {
+      if (this.resumeAfterRequest && (this.allowBackground || !this.hidden) && !this.destroyed && !this.processing && !this.finished) {
         this.resumeAfterRequest = false
         void this.queryAiGeneration(jobId)
       }
@@ -348,11 +378,11 @@ export class AiGenerationFlow {
       this.lastGeneration = generation
       await this.handleGeneration(generation, requestSequence)
     } catch (error) {
-      if (this.destroyed || this.hidden) return
+      if (this.destroyed || (!this.allowBackground && this.hidden)) return
       this.setFailure(aiGenerationErrorMessage(error), 'generation', aiGenerationFailure(error))
     } finally {
       this.submitting = false
-      if (this.resumeAfterRequest && !this.destroyed && !this.hidden && !this.finished) {
+      if (this.resumeAfterRequest && !this.destroyed && (this.allowBackground || !this.hidden) && !this.finished) {
         this.resumeAfterRequest = false
         void this.resumeSession()
       }
@@ -409,7 +439,7 @@ export class AiGenerationFlow {
 
   private schedulePoll(delay: number): void {
     this.clearPollTimer()
-    if (this.destroyed || this.hidden || this.processing || this.finished) return
+    if (this.destroyed || (!this.allowBackground && this.hidden) || this.processing || this.finished) return
     this.pollTimer = setTimeout(() => {
       this.pollTimer = null
       const jobId = this.session?.jobId ?? loadAiGenerationSession()?.jobId
@@ -418,10 +448,10 @@ export class AiGenerationFlow {
   }
 
   private scheduleLongWait(): void {
-    if (this.state.waitingLong || this.longWaitTimer !== null || this.destroyed || this.hidden) return
+    if (this.state.waitingLong || this.longWaitTimer !== null || this.destroyed || (!this.allowBackground && this.hidden)) return
     this.longWaitTimer = setTimeout(() => {
       this.longWaitTimer = null
-      if (!this.destroyed && !this.hidden && !this.processing && !this.finished) this.updateState({ waitingLong: true })
+      if (!this.destroyed && (this.allowBackground || !this.hidden) && !this.processing && !this.finished) this.updateState({ waitingLong: true })
     }, LONG_WAIT_MS)
   }
 
@@ -430,7 +460,7 @@ export class AiGenerationFlow {
   }
 
   private isStale(requestSequence: number): boolean {
-    return requestSequence !== this.requestSequence || this.destroyed || this.hidden || this.finished
+    return requestSequence !== this.requestSequence || this.destroyed || (!this.allowBackground && this.hidden) || this.finished
   }
 
   private requireSession(): AiGenerationSession {

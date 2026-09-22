@@ -180,3 +180,9 @@
     transform: translateY(-3px) scale(1.02);
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .generating-card__icon-wrap {
+    animation: none;
+  }
+}

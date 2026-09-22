@@ -1,17 +1,36 @@
-import {
-  AiGenerationFlow,
-  type AiGenerationFlowState,
-} from './services/ai-generation-flow'
+import { type AiGenerationFlowState } from '../../services/ai-generation-flow'
 import { DEFAULT_AI_OPTIONS } from '../../services/ai-generation-service'
 import { createDraft } from '../../services/image-service'
 import { ApiError } from '../../services/http-client'
 import { appStore } from '../../store/app-store'
 import {
-  clearAiGenerationSession,
   createIdempotencyKey,
   loadAiGenerationSession,
   saveAiGenerationSession,
 } from '../../services/ai-generation-session'
+import { aiGenerationManager } from '../../services/ai-generation-manager'
+
+const GENERATING_STATES: ReadonlySet<string> = new Set([
+  'uploading',
+  'submitting',
+  'queued',
+  'processing',
+  'downloading',
+  'converting',
+])
+
+/** 各生成阶段展示的近似进度（服务端任务没有精确百分比，用“约 N%”呈现） */
+const GENERATING_PROGRESS: Record<string, number> = {
+  uploading: 12,
+  submitting: 28,
+  queued: 45,
+  processing: 68,
+  downloading: 86,
+  converting: 94,
+}
+
+const DEFAULT_GENERATING_TIP = '正在为你优化图片细节，生成完成后即可开始编辑'
+const LONG_WAIT_TIP = '处理时间比平时长一些，可以暂时离开，稍后回来继续查看'
 
 Page({
   data: {
@@ -26,13 +45,14 @@ Page({
     retryMode: 'generation',
     retryable: true,
     action: 'RETRY',
+    isGenerating: false,
+    progress: 0,
+    tipText: DEFAULT_GENERATING_TIP,
   },
-
-  _aiFlow: null as AiGenerationFlow | null,
 
   onLoad() {
     ensureAiSession()
-    this._aiFlow = new AiGenerationFlow({
+    aiGenerationManager.attachView({
       onStateChange: (state) => this.applyFlowState(state),
       onSourceImage: (sourceImagePath) => this.setData({ sourceImagePath, sourceImageError: false }),
       onDraftReady: async (draft) => {
@@ -43,23 +63,30 @@ Page({
   },
 
   onShow() {
-    this._aiFlow?.onShow()
+    aiGenerationManager.ensureFlowRunning()
   },
 
   onHide() {
-    this._aiFlow?.onHide()
+    aiGenerationManager.detachView()
   },
 
   onUnload() {
-    this._aiFlow?.destroy()
+    aiGenerationManager.detachView()
   },
 
   applyFlowState(state: AiGenerationFlowState) {
-    this.setData({ ...state })
+    const isGenerating = GENERATING_STATES.has(state.pageState)
+    this.setData({
+      ...state,
+      isGenerating,
+      progress: isGenerating ? GENERATING_PROGRESS[state.pageState] ?? 0 : 0,
+      tipText: state.statusMessage
+        || (state.waitingLong ? LONG_WAIT_TIP : DEFAULT_GENERATING_TIP),
+    })
   },
 
   retry() {
-    void this._aiFlow?.retry()
+    void aiGenerationManager.retry()
   },
 
   purchaseAiGeneration() {
@@ -75,7 +102,7 @@ Page({
     wx.showLoading({ title: '正在切换', mask: true })
     try {
       const draft = await createDraft(session.sourceImagePath, session.settings, 'standard')
-      clearAiGenerationSession()
+      aiGenerationManager.cancelActiveTask()
       await appStore.setCurrentDraft(draft)
       await redirectToEditor()
     } catch (error) {
@@ -86,12 +113,11 @@ Page({
   },
 
   selectNewImage() {
-    clearAiGenerationSession()
+    aiGenerationManager.cancelActiveTask()
     wx.switchTab({ url: '/pages/home/index' })
   },
 
   backHome() {
-    this._aiFlow?.onHide()
     wx.switchTab({ url: '/pages/home/index' })
   },
 

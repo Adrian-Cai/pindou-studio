@@ -53,10 +53,10 @@
               <view class="project-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>
               <view class="project-card__date">{{item.updatedText}}</view>
             </view>
-            <text class="status-pill {{item.isDraft ? 'status-pill--draft' : ''}}">{{item.statusLabel}}</text>
+            <text class="status-pill {{item.isAiGenerating ? 'status-pill--ai-generating' : (item.isAiFailed ? 'status-pill--danger' : (item.isDraft ? 'status-pill--draft' : ''))}}">{{item.statusLabel}}</text>
             <text wx:if="{{item.syncLabel}}" class="status-pill status-pill--draft">{{item.syncLabel}}</text>
           </view>
-          <view class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
+          <view wx:if="{{!item.isAiGenerating && !item.isAiFailed}}" class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
             <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="startRename" aria-role="button" aria-label="重命名作品 {{item.title}}">
               <image class="project-card__action-icon" src="/assets/icons/iconsax/edit-2.svg" mode="aspectFit" aria-hidden="true" />
               <text>重命名</text>
@@ -70,16 +70,22 @@
               <text>删除</text>
             </view>
           </view>
+          <view wx:else class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
+            <view class="project-card__action-inline project-card__action-inline--danger" data-id="{{item.id}}" catchtap="deleteWork" aria-role="button" aria-label="取消任务 {{item.title}}">
+              <image class="project-card__action-icon" src="/assets/icons/iconsax/trash.svg" mode="aspectFit" aria-hidden="true" />
+              <text>取消任务</text>
+            </view>
+          </view>
           <view
             wx:if="{{item.isDraft}}"
             class="project-card__continue"
             data-id="{{item.id}}"
             catchtap="editWork"
             aria-role="button"
-            aria-label="继续编辑 {{item.title}}"
+            aria-label="{{item.isAiGenerating ? '查看进度' : (item.isAiFailed ? '查看重试' : '继续编辑')}} {{item.title}}"
           >
-            <image class="project-card__continue-icon" src="/assets/icons/iconsax/edit-2.svg" mode="aspectFit" aria-hidden="true" />
-            <text>继续编辑</text>
+            <image class="project-card__continue-icon" src="{{item.isAiGenerating ? '/assets/icons/iconsax/clock.svg' : '/assets/icons/iconsax/edit-2.svg'}}" mode="aspectFit" aria-hidden="true" />
+            <text>{{item.isAiGenerating ? '查看进度' : (item.isAiFailed ? '查看重试' : '继续编辑')}}</text>
           </view>
         </view>
       </view>

@@ -1,5 +1,6 @@
 {
   "usingComponents": {
-    "page-layout": "/components/page-layout/index"
+    "page-layout": "/components/page-layout/index",
+    "generating-preview-card": "/components/generating-preview-card/index"
   }
 }

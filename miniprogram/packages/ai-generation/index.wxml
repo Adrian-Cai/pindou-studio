@@ -18,17 +18,22 @@
       <view wx:else class="ai-generation-source__fallback">原图暂时无法预览</view>
     </view>
 
-    <view class="ai-generation-card">
+    <view wx:if="{{isGenerating}}" class="ai-generation-generating">
+      <generating-preview-card
+        title="{{stateTitle}}"
+        subtitle="{{stateDescription}}"
+        progress="{{progress}}"
+        tip-text="{{tipText}}"
+      />
+    </view>
+    <view wx:else class="ai-generation-card">
       <view class="ai-generation-card__eyebrow">AI 精致生成</view>
       <view class="ai-generation-card__title">{{stateTitle}}</view>
       <view class="ai-generation-card__hint">{{stateDescription}}</view>
-      <view wx:if="{{pageState === 'uploading' || pageState === 'submitting' || pageState === 'queued' || pageState === 'processing' || pageState === 'downloading' || pageState === 'converting'}}" class="ai-generation-progress" aria-label="正在处理">
-        <view class="ai-generation-progress__bar"></view>
-      </view>
       <view wx:if="{{statusMessage}}" class="ai-generation-card__status">{{statusMessage}}</view>
     </view>
 
-    <view wx:if="{{waitingLong}}" class="ai-generation-waiting" role="status">
+    <view wx:if="{{waitingLong && !isGenerating}}" class="ai-generation-waiting" role="status">
       处理时间比平时长一些，你可以暂时离开，之后回来继续查看。
     </view>
 
@@ -69,7 +74,7 @@
     >返回首页</button>
 
     <button
-      wx:if="{{pageState === 'loading' || pageState === 'uploading' || pageState === 'submitting' || pageState === 'queued' || pageState === 'processing' || pageState === 'downloading' || pageState === 'converting'}}"
+      wx:if="{{isGenerating || pageState === 'loading'}}"
       class="button-secondary ai-generation-back"
       bindtap="backHome"
     >返回首页</button>

@@ -2,7 +2,6 @@ import { DEFAULT_PATTERN_SETTINGS } from '../../config/product'
 import { chooseSourceImage, createDraft, createPendingDraft, prepareImageForContentSecurity } from '../../services/image-service'
 import { checkImageContent } from '../../services/content-security-service'
 import { ApiError } from '../../services/http-client'
-import { clearAiGenerationSession } from '../../services/ai-generation-session'
 import type { GenerationMode } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
 
@@ -115,12 +114,19 @@ Page({
   },
 
   onShow() {
-    // tab 高亮由 page-layout selected-tab 属性管理；从编辑器返回时恢复当前草稿模式。
+    // tab 高亮由 page-layout selected-tab 属性管理；从编辑器返回时恢复当前草稿模式，重置生成中状态确保不阻塞后续操作。
     const draft = appStore.getSnapshot().currentDraft
-    const generationMode = draft?.generationMode === 'ai' && !AI_MODE_ENABLED
-      ? 'standard'
-      : draft?.generationMode ?? 'standard'
-    this.setData({ generationMode })
+    const isAiPending = draft?.id.startsWith('ai-pending-')
+    const generationMode = isAiPending
+      ? this.data.generationMode
+      : (draft?.generationMode === 'ai' && !AI_MODE_ENABLED
+        ? 'standard'
+        : draft?.generationMode ?? this.data.generationMode)
+    this.setData({
+      generating: false,
+      currentStep: this.data.uploadStatus === 'success' ? 2 : 1,
+      generationMode,
+    })
   },
 
   onUnload() {
@@ -255,8 +261,7 @@ Page({
       return
     }
 
-    // 标准模式：清理可能残留的 AI 会话，保持现有完整生成流程。
-    clearAiGenerationSession()
+    // 标准模式：保持独立生成，不清除后台正在运行的 AI 任务。
     this.setData({ generating: true, currentStep: 3 })
     wx.showLoading({ title: '正在生成', mask: true })
 
@@ -300,8 +305,12 @@ Page({
       ))
       await navigateToAiGeneration()
     } catch (error) {
-      this.setData({ generating: false, currentStep: 2 })
       wx.showToast({ title: error instanceof Error ? error.message : 'AI 生成页面打开失败，请重试', icon: 'none' })
+    } finally {
+      this.setData({
+        generating: false,
+        currentStep: this.data.uploadStatus === 'success' ? 2 : 1,
+      })
     }
   },
 })

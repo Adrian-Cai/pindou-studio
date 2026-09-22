@@ -10,6 +10,7 @@ import {
 } from '../../services/work-service'
 import { appStore } from '../../store/app-store'
 import { checkTextContent } from '../../services/content-security-service'
+import { aiGenerationManager } from '../../services/ai-generation-manager'
 
 type ProjectTab = 'all' | 'recent' | 'draft' | 'completed'
 type WorkView = WorkItem & {
@@ -18,6 +19,8 @@ type WorkView = WorkItem & {
   statusLabel: string
   isDraft: boolean
   syncLabel: string
+  isAiGenerating?: boolean
+  isAiFailed?: boolean
 }
 const tabs = [
   { id: 'all', label: '全部' },
@@ -47,9 +50,24 @@ Page({
     renameSaving: false,
   },
 
+  _unsubscribeAiTask: null as (() => void) | null,
+
   onShow() {
     this.getTabBar()?.setData({ selected: 1, hidden: Boolean(this.data.renameWorkId) })
+    if (!this._unsubscribeAiTask) {
+      this._unsubscribeAiTask = aiGenerationManager.subscribe(() => this.refreshVisibleWorks())
+    }
     void this.refreshWorks()
+  },
+
+  onHide() {
+    this._unsubscribeAiTask?.()
+    this._unsubscribeAiTask = null
+  },
+
+  onUnload() {
+    this._unsubscribeAiTask?.()
+    this._unsubscribeAiTask = null
   },
 
   async refreshWorks() {
@@ -71,7 +89,7 @@ Page({
   refreshVisibleWorks() {
     const state = appStore.getSnapshot()
     const currentDraft = state.currentDraft
-    const allWorks = state.works.map((work) => {
+    const allWorks: WorkView[] = state.works.map((work) => {
       const isDraft = work.status === 'draft'
       const width = work.width ?? (currentDraft?.id === work.id ? currentDraft.settings.width : 0)
       const height = work.height ?? (currentDraft?.id === work.id ? currentDraft.settings.height : 0)
@@ -85,6 +103,30 @@ Page({
         syncLabel: syncLabel(work),
       }
     })
+
+    const activeAiTask = aiGenerationManager.getActiveTask()
+    if (activeAiTask) {
+      const aiTaskWork: WorkView = {
+        id: 'ai-active-task',
+        title: activeAiTask.isFailed ? 'AI 拼豆图 (生成失败)' : 'AI 拼豆图 (生成中)',
+        coverPath: activeAiTask.sourceImagePath || COVER_FALLBACK_PATH,
+        generationMode: 'ai',
+        updatedAt: activeAiTask.createdAt,
+        beadCount: 0,
+        colorCount: activeAiTask.colorLimit,
+        width: activeAiTask.width,
+        height: activeAiTask.height,
+        status: 'draft',
+        updatedText: activeAiTask.isFailed ? '生成失败，点击查看' : (activeAiTask.stateTitle || '正在后台生成'),
+        dimensions: `${activeAiTask.width}×${activeAiTask.height}`,
+        statusLabel: activeAiTask.isFailed ? '生成失败' : 'AI生成中',
+        isDraft: true,
+        syncLabel: '',
+        isAiGenerating: activeAiTask.isProcessing,
+        isAiFailed: activeAiTask.isFailed,
+      }
+      allWorks.unshift(aiTaskWork)
+    }
 
     this.setData({
       allWorks,
@@ -117,9 +159,9 @@ Page({
     const activeTab = this.data.activeTab
     const works = this.data.allWorks.filter((work) => {
       if (query && !work.title.toLowerCase().includes(query)) return false
-      if (activeTab === 'recent') return isRecent(work.updatedAt)
+      if (activeTab === 'recent') return work.id === 'ai-active-task' || isRecent(work.updatedAt)
       if (activeTab === 'draft') return work.isDraft
-      if (activeTab === 'completed') return !work.isDraft
+      if (activeTab === 'completed') return !work.isDraft && work.id !== 'ai-active-task'
       return true
     })
     this.setData({ works })
@@ -147,10 +189,18 @@ Page({
 
   editWork(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
+    if (id === 'ai-active-task') {
+      wx.navigateTo({ url: '/packages/ai-generation/index' })
+      return
+    }
     void this.openWorkById(id, true)
   },
 
   async openWorkById(id: string, edit: boolean) {
+    if (id === 'ai-active-task') {
+      wx.navigateTo({ url: '/packages/ai-generation/index' })
+      return
+    }
     const state = appStore.getSnapshot()
     const work = state.works.find((item) => item.id === id)
     if (!work) return
@@ -176,6 +226,12 @@ Page({
       wx.navigateTo({ url: edit ? '/packages/editor/index' : '/packages/result/index' })
       return
     }
+    const localDraft = appStore.getLocalDraft(id)
+    if (localDraft) {
+      await appStore.setCurrentDraft(localDraft)
+      wx.navigateTo({ url: edit ? '/packages/editor/index' : '/packages/result/index' })
+      return
+    }
     wx.showToast({ title: '这份本地作品缺少可恢复的网格数据', icon: 'none' })
   },
 
@@ -183,6 +239,7 @@ Page({
 
   startRename(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
+    if (id === 'ai-active-task') return
     const work = this.data.allWorks.find((item) => item.id === id)
     if (!work) return
     this.getTabBar()?.setData({ hidden: true })
@@ -267,6 +324,7 @@ Page({
 
   downloadWork(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
+    if (id === 'ai-active-task') return
     if (!this.data.allWorks.some((work) => work.id === id)) return
     this.getTabBar()?.setData({ hidden: false })
     this.setData({ showPageNav: true }, () => {
@@ -276,6 +334,21 @@ Page({
 
   deleteWork(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
+    if (id === 'ai-active-task') {
+      wx.showModal({
+        title: '取消任务？',
+        content: '确定要取消这个 AI 生成任务吗？',
+        cancelText: '保留',
+        confirmText: '取消任务',
+        confirmColor: '#e5484d',
+        success: ({ confirm }) => {
+          if (!confirm) return
+          aiGenerationManager.cancelActiveTask()
+          this.refreshVisibleWorks()
+        },
+      })
+      return
+    }
     const work = this.data.allWorks.find((item) => item.id === id)
     if (!work) return
     this.getTabBar()?.setData({ hidden: false })

@@ -48,9 +48,20 @@ exports.main = async (event) => {
     }
 
     const downloadedImage = await downloadImage(generatedImage.url)
+    const cloudPath = `ai-images/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${fileExtension(downloadedImage.contentType)}`
     const uploadResponse = await cloud.uploadFile({
-      cloudPath: `ai-images/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${fileExtension(downloadedImage.contentType)}`,
+      cloudPath,
       fileContent: downloadedImage.buffer,
+    })
+
+    // 诊断用：记录落盘文件的真实字节特征，用于确认模型实际返回的图片格式
+    console.log('[generateImage] output persisted', {
+      cloudPath,
+      fileID: uploadResponse.fileID,
+      headerContentType: downloadedImage.contentType,
+      detectedFormat: detectImageFormat(downloadedImage.buffer),
+      byteSize: downloadedImage.buffer.length,
+      signatureHex: downloadedImage.buffer.subarray(0, 16).toString('hex'),
     })
 
     return {
@@ -185,6 +196,18 @@ function fileExtension(contentType) {
   if (contentType === 'image/jpeg') return 'jpg'
   if (contentType === 'image/webp') return 'webp'
   return 'png'
+}
+
+function detectImageFormat(buffer) {
+  if (buffer.length === 0) return 'empty'
+  if (buffer.length >= 8 && buffer.subarray(0, 8).toString('hex') === '89504e470d0a1a0a') return 'png'
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpeg'
+  if (
+    buffer.length >= 12
+    && buffer.subarray(0, 4).toString('ascii') === 'RIFF'
+    && buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) return 'webp'
+  return 'unknown'
 }
 
 function serializeError(error) {

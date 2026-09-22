@@ -113,6 +113,16 @@ export class HunyuanImageProvider implements AiGenerationProvider {
     const outputFileId = string(body.fileID) ?? string(first?.fileID);
     const outputReference = outputFileId ? `cloud-file:${outputFileId}` : outputUrl;
     if (!requestId || requestId.length > 128 || !outputReference) throw providerFailure();
+    console.log(JSON.stringify({
+      event: "ai_provider_output_declared",
+      provider: this.name,
+      model: this.model,
+      requestId,
+      outputReferenceKind: outputFileId ? "cloud-file" : "url",
+      declaredContentType: string(body.contentType) ?? string(first?.contentType) ?? null,
+      declaredFileExtension: outputFileId ? outputFileExtension(outputFileId) : "none",
+      declaredByteSize: number(body.size) ?? null,
+    }));
     return { requestId, outputUrl: outputReference };
   }
 
@@ -174,16 +184,42 @@ export class HunyuanImageProvider implements AiGenerationProvider {
 
   private async downloadCloudFile(fileId: string): Promise<Buffer> {
     if (!fileId || !this.imageModel?.downloadFile) {
+      logOutputRejected({
+        reason: "missing_file_reference",
+        fileId,
+        byteSize: 0,
+        detectedFormat: "unknown",
+        signatureHex: "",
+        maximumOutputBytes: null,
+      });
       throw providerFailure("INVALID_OUTPUT", null, null, "AI_PROVIDER_OUTPUT_INVALID", "AI 服务返回了无效图片文件");
     }
     try {
       const output = await this.imageModel.downloadFile(fileId);
-      if (output.length === 0 || output.length > this.requireConfig().maximumOutputBytes || !isPng(output)) {
+      const maximumOutputBytes = this.requireConfig().maximumOutputBytes;
+      if (output.length === 0 || output.length > maximumOutputBytes || !isPng(output)) {
+        logOutputRejected({
+          reason: "output_format_rejected",
+          fileId,
+          byteSize: output.length,
+          detectedFormat: detectOutputFormat(output),
+          signatureHex: output.subarray(0, 16).toString("hex"),
+          maximumOutputBytes,
+        });
         throw providerFailure("INVALID_OUTPUT", null, null, "AI_PROVIDER_OUTPUT_INVALID", "AI 服务输出图片不可用");
       }
       return output;
     } catch (error: unknown) {
       if (error instanceof ProviderError) throw error;
+      logOutputRejected({
+        reason: "download_failed",
+        fileId,
+        byteSize: null,
+        detectedFormat: "unknown",
+        signatureHex: "",
+        maximumOutputBytes: null,
+        message: error instanceof Error ? error.message : String(error),
+      });
       throw providerFailure("UNAVAILABLE", null, null, "AI_PROVIDER_UNAVAILABLE", "AI 服务输出暂时不可用");
     }
   }
@@ -260,6 +296,50 @@ function createImageModel(config: HunyuanImageConfig): HunyuanImageModel | null 
 function isPng(value: Buffer): boolean {
   const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   return value.subarray(0, signature.length).equals(signature);
+}
+
+export type ProviderOutputFormat = "png" | "jpeg" | "webp" | "empty" | "unknown";
+
+export function detectOutputFormat(value: Buffer): ProviderOutputFormat {
+  if (value.length === 0) return "empty";
+  if (isPng(value)) return "png";
+  if (value.length >= 3 && value[0] === 0xff && value[1] === 0xd8 && value[2] === 0xff) return "jpeg";
+  if (
+    value.length >= 12
+    && value.subarray(0, 4).toString("ascii") === "RIFF"
+    && value.subarray(8, 12).toString("ascii") === "WEBP"
+  ) return "webp";
+  return "unknown";
+}
+
+function outputFileExtension(fileId: string): string {
+  const match = /\.([A-Za-z0-9]{1,8})$/u.exec(fileId.trim());
+  return match ? match[1]!.toLowerCase() : "none";
+}
+
+interface OutputRejectionDiagnostic {
+  readonly reason: string;
+  readonly fileId: string;
+  readonly byteSize: number | null;
+  readonly detectedFormat: ProviderOutputFormat;
+  readonly signatureHex: string;
+  readonly maximumOutputBytes: number | null;
+  readonly message?: string;
+}
+
+function logOutputRejected(diagnostic: OutputRejectionDiagnostic): void {
+  console.error(JSON.stringify({
+    event: "ai_provider_output_rejected",
+    provider: "hunyuan",
+    reason: diagnostic.reason,
+    fileIdSuffix: diagnostic.fileId ? diagnostic.fileId.slice(-96) : null,
+    declaredFileExtension: diagnostic.fileId ? outputFileExtension(diagnostic.fileId) : "none",
+    byteSize: diagnostic.byteSize,
+    detectedFormat: diagnostic.detectedFormat,
+    signatureHex: diagnostic.signatureHex,
+    maximumOutputBytes: diagnostic.maximumOutputBytes,
+    ...(diagnostic.message ? { message: diagnostic.message.slice(0, 300) } : {}),
+  }));
 }
 
 function isTrustedOutputUrl(value: URL, baseUrl: string): boolean {
