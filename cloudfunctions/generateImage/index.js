@@ -4,7 +4,7 @@ const cloud = require('wx-server-sdk')
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV,
   // AI 生图与云存储上传耗时较长，SDK 默认 15s 会中断请求
-  timeout: 900000,
+  timeout: 600000,
 })
 
 const IMAGE_MODEL = 'HY-Image-v3.0-I2I-ToB-v1.0.1'
