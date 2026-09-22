@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.30.9
+
+- 抽出编辑器底部控制面板为公共组件 `components/editor-control-panel`（缩放、图案信息、工具栏、调色板、重新生成/保存作品），编辑器页与 AI 生成页共用同一套分组与样式，不再各写一份。
+- AI 生成页生成中状态补上该面板的禁用态：尺寸/颜色取本次任务设置、颗粒数按满格上限预估，调色板以占位色块保持高度稳定；生成完成跳转编辑器后同一面板变为可操作，解决生成等待期底部大片空白。
+- 修复禁用态按钮不生效的问题：面板内 `.button-primary[disabled]` 之前会被启用态配色覆盖，现在保存作品/重新生成在未就绪时明确置灰。
+- 精简 AI 生成页「生成中」中间状态：生成过程中不再展示待生成的原图预览，同时隐藏「返回首页」按钮和底部合规说明文案，只保留顶部 AI 生成提示、生成中动画卡片与禁用态面板。
+- 明确分包依赖边界：将 `ai-generation-flow` 上提到主包 `miniprogram/services/`，并新增「分包与主包依赖规范」（`docs/frontend/MINI_PROGRAM_RULES.md` 第 7 节），禁止主包引用 `packages/` 下的模块与组件，避免启动期 `module ... is not defined` 崩溃。
+- 修复 AI 精致生成必然失败的问题：混元图生图实际返回 JPEG，而模型临时地址缺失 `content-type` 响应头，云函数按 `|| 'image/png'` 回退把 JPEG 误标为 `.png`；服务端 `isPng()` 只认 PNG 魔数，导致任务恒定以 `AI_PROVIDER_OUTPUT_INVALID` 失败，小程序显示「AI 生成结果不可用，请重新生成」。
+- AI 输出改为按真实字节魔数识别格式：云函数按下载内容判定 `contentType` 与文件名后缀；服务端 `HunyuanImageProvider` 接受 PNG / JPEG / WEBP，`ai-generation-service` 按实际格式命名与标注 MIME，`ai-file-storage` 移除「AI 输出必须是 PNG」限制，小程序 `AiOutputFile.contentType` 同步支持三种格式。
+
 ## 0.30.8
 
 - 修复首页生成按钮在离开 AI 生成页后持续提示“正在生成”的问题：在首页 `onShow` 与 `startAiCreating` `finally` 中严格重置 `generating` 状态，恢复主链路操作。

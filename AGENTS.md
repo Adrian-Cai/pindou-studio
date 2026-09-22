@@ -74,6 +74,8 @@
 
 所有微信小程序相关开发必须阅读 docs/frontend/MINI_PROGRAM_RULES.md，并考虑屏幕适配、安全区域、滚动体验、图片加载和弱网络
 
+必须遵守该文档的「7. 分包与主包依赖规范」：`miniprogram/packages/*` 均为分包，主包（`app.ts`、`pages/*`、`services/*`、`components/*`）禁止引用 `packages/` 下的模块或组件，跨分包共用逻辑必须上提到主包
+
 ### 微信小程序页面结构
 
 所有使用自定义导航栏的页面必须遵循统一的导航栏、安全区和滚动规范

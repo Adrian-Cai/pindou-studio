@@ -48,10 +48,16 @@ Page({
     isGenerating: false,
     progress: 0,
     tipText: DEFAULT_GENERATING_TIP,
+    /** 生成中底部面板预填的图案参数（取自本次 AI 任务设置） */
+    panelWidth: 0,
+    panelHeight: 0,
+    panelColorLimit: 0,
+    panelBeadCount: 0,
   },
 
   onLoad() {
     ensureAiSession()
+    this.syncPanelSettings()
     aiGenerationManager.attachView({
       onStateChange: (state) => this.applyFlowState(state),
       onSourceImage: (sourceImagePath) => this.setData({ sourceImagePath, sourceImageError: false }),
@@ -82,6 +88,21 @@ Page({
       progress: isGenerating ? GENERATING_PROGRESS[state.pageState] ?? 0 : 0,
       tipText: state.statusMessage
         || (state.waitingLong ? LONG_WAIT_TIP : DEFAULT_GENERATING_TIP),
+    })
+  },
+
+  /**
+   * 生成中面板的尺寸/颜色沿用本次任务设置；
+   * 图案还没跑出来，颗粒数先按满格上限展示。
+   */
+  syncPanelSettings() {
+    const session = loadAiGenerationSession()
+    if (!session) return
+    this.setData({
+      panelWidth: session.settings.width,
+      panelHeight: session.settings.height,
+      panelColorLimit: session.settings.colorLimit,
+      panelBeadCount: session.settings.width * session.settings.height,
     })
   },
 

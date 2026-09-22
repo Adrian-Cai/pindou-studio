@@ -6,7 +6,7 @@
       aria-label="当前生成结果由人工智能生成"
     >当前生成结果由人工智能生成</view>
 
-    <view wx:if="{{sourceImagePath}}" class="ai-generation-source">
+    <view wx:if="{{sourceImagePath && !isGenerating}}" class="ai-generation-source">
       <image
         wx:if="{{!sourceImageError}}"
         class="ai-generation-source__image"
@@ -32,6 +32,16 @@
       <view class="ai-generation-card__hint">{{stateDescription}}</view>
       <view wx:if="{{statusMessage}}" class="ai-generation-card__status">{{statusMessage}}</view>
     </view>
+
+    <!-- 生成中：提前展示编辑器底部面板的禁用态，图案就绪后跳转编辑器再启用 -->
+    <editor-control-panel
+      wx:if="{{isGenerating}}"
+      ready="{{false}}"
+      width="{{panelWidth}}"
+      height="{{panelHeight}}"
+      color-limit="{{panelColorLimit}}"
+      bead-count="{{panelBeadCount}}"
+    />
 
     <view wx:if="{{waitingLong && !isGenerating}}" class="ai-generation-waiting" role="status">
       处理时间比平时长一些，你可以暂时离开，之后回来继续查看。
@@ -74,12 +84,12 @@
     >返回首页</button>
 
     <button
-      wx:if="{{isGenerating || pageState === 'loading'}}"
+      wx:if="{{pageState === 'loading'}}"
       class="button-secondary ai-generation-back"
       bindtap="backHome"
     >返回首页</button>
 
-    <view class="ai-generation-note">
+    <view wx:if="{{!isGenerating}}" class="ai-generation-note">
       AI 输入图片已在上传时完成内容安全审核；生成结果经服务端格式校验后交给标准模式转换为拼豆图。
     </view>
   </view>

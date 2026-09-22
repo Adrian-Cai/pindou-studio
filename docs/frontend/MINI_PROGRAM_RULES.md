@@ -182,3 +182,83 @@ navigationStyle: "custom"
 - 关于我们
 
 禁止为上述页面创建 PageLayout、CustomNavbar、ScrollArea 或 StickyTabs 的页面专属替代实现
+---
+
+## 7. 分包与主包依赖规范
+
+### 7.1 分包范围
+
+`miniprogram/packages/*` 全部是分包，以 `app.json` 的 `subPackages` 为准：
+
+- editor
+- ai-generation
+- result
+- account
+- payment
+- download
+
+除上述 root 之外的目录均属于主包，包括：
+
+- `app.ts`
+- `pages/*`
+- `services/*`
+- `store/*`
+- `components/*`
+- `custom-tab-bar/*`
+
+### 7.2 强制约束
+
+禁止：
+
+- 主包代码 import / require 任何 `packages/` 下的模块（`.ts` / `.wxs` / 组件 / 资源）
+- 主包页面 `usingComponents` 指向 `packages/` 下的组件
+- 分包 A 引用分包 B 的模块
+
+允许：
+
+- 分包 import 主包模块（单向依赖，如分包页面 `import { ... } from '../../services/xxx'`）
+- 同一分包内部互相引用
+
+### 7.3 原因
+
+分包代码不会打进主包 bundle。主包引用分包模块在编译期不报错，运行时才抛：
+
+```text
+module 'packages/xxx/services/xxx.js' is not defined, require args is '../packages/xxx/services/xxx'
+```
+
+若该引用出现在 `app.ts` 的加载链上（如 `app.ts -> services/*`），会在小程序启动阶段直接崩溃白屏，
+并连带产生 `Component is not found in path "wx://not-found"` 之类的次生报错，容易误判为组件路径问题。
+
+### 7.4 新增模块时先判断归属
+
+被以下任一位置引用，就必须放在主包目录：
+
+- `app.ts`
+- 主包页面（`pages/*`）
+- 主包服务（`services/*`）
+- 主包公共组件（`components/*`）
+
+例如 `ai-generation-flow.ts` 被主包 `services/ai-generation-manager.ts`（`app.ts` 引用）使用，
+必须放在 `miniprogram/services/`，不能放在 `miniprogram/packages/ai-generation/services/`。
+
+跨分包共用的逻辑一律上提到主包，不要为了"就近"放进某个分包。
+
+### 7.5 排查方法
+
+检索主包代码里指向 `packages/` 的相对引用：
+
+```bash
+grep -rn "from '\(\.\./\)*packages/" miniprogram --include=*.ts
+```
+
+主包侧任何命中都是违规引用，需将目标模块上提到主包后再改引用路径。
+
+### 7.6 跨分包共用组件的落地方式
+
+- 被多个分包（或分包与主包）共用的组件必须放在主包 `components/`。放进某个分包内会让其他分包引用它，同样违反 7.2。
+- 组件需要复用 `app.wxss` 的全局类（如 `.button-primary`、`.button-secondary`）时，必须在其 `options` 中声明 `styleIsolation: 'apply-shared'`；默认 `isolated` 下 app.wxss 与页面样式对组件无效，按钮会掉样式。
+- 组件 wxss 内不能使用标签名、ID、属性选择器。页面里常见的 `.xxx image { width: 32rpx; }` 抽进组件后必须改成给节点加 class 再写类选择器，否则不生效。
+- 页面级 CSS 变量（`page { --token: ... }`）会继承进组件，可直接引用；只在个别页面定义的 token（如编辑器页的 `--tool-active-*`）在组件内必须写 fallback 值。
+
+参考实现：`components/editor-control-panel/`（编辑器页与 AI 生成页共用）。

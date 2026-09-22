@@ -12,7 +12,6 @@ import {
   calculateFittedImageSize,
   clampViewTranslation,
   drawPatternViewport,
-  editorTools,
   exportPatternCoverImage,
   fillConnectedCells,
   sameCell,
@@ -69,7 +68,6 @@ Page({
     saving: false,
     undoStack: [] as PatternCell[][],
     redoStack: [] as PatternCell[][],
-    tools: editorTools(false, false),
     toast: {
       visible: false,
       message: '',
@@ -168,10 +166,9 @@ Page({
       .map(([color]) => color)
   },
 
-  selectTool(event: WechatMiniprogram.TouchEvent) {
+  selectTool(event: WechatMiniprogram.CustomEvent<{ tool: string }>) {
     if (!this.data.canvasReady) return
-    if (event.currentTarget.dataset.disabled) return
-    const tool = String(event.currentTarget.dataset.tool)
+    const tool = event.detail.tool
     if (tool === 'undo') {
       this.undoEdit()
       return
@@ -183,9 +180,9 @@ Page({
     this.setData({ activeTool: tool })
   },
 
-  selectPaletteColor(event: WechatMiniprogram.TouchEvent) {
+  selectPaletteColor(event: WechatMiniprogram.CustomEvent<{ color: string }>) {
     if (!this.data.canvasReady) return
-    const color = String(event.currentTarget.dataset.color)
+    const color = event.detail.color
     const draft = this.data.draft
     const colorCode = draft
       ? (draft.cells.find((c) => c.color === color)?.colorCode ?? '')
@@ -563,7 +560,6 @@ Page({
         draft: updatedDraft,
         undoStack,
         redoStack,
-        tools: editorTools(undoStack.length > 0, redoStack.length > 0),
         beadCount: cells.filter((cell) => cell.color !== 'transparent').length,
       },
       () => this.drawPattern(),
