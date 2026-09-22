@@ -609,7 +609,11 @@ export class PostgresAiGenerationService {
            JOIN pindou_file_assets input_file ON input_file.id = jobs.input_file_id
            LEFT JOIN pindou_file_assets output_file ON output_file.id = jobs.output_file_id
           WHERE jobs.expires_at <= $1
-            AND jobs.status IN ('queued', 'processing', 'succeeded', 'failed', 'canceled')
+            -- 一次性守卫：已终结的任务（completed_at 已写入）不再命中，
+            -- 只有 succeeded 还需再走一轮，把过期结果置为 AI_RESULT_EXPIRED。
+            -- 缺了这行守卫时，每轮清理都会把整批过期历史重新选中、重写一遍 updated_at，
+            -- 表现为整表 updated_at 被周期性刷新，失去"最后业务变更时间"的意义。
+            AND (jobs.completed_at IS NULL OR jobs.status = 'succeeded')
           FOR UPDATE OF jobs SKIP LOCKED`,
         [currentTime],
       );
