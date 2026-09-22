@@ -3,6 +3,7 @@ const cloud = require('wx-server-sdk')
 
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV,
+  // AI 生图与云存储上传耗时较长，SDK 默认 15s 会中断请求
   timeout: 900000,
 })
 
@@ -13,19 +14,24 @@ const MAX_PROMPT_LENGTH = 500
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 exports.main = async (event) => {
-  const prompt = typeof event?.prompt === 'string' ? event.prompt.trim() : ''
+  const payload = parsePayload(event)
+  if (!payload) {
+    return { error: '请求参数格式无效', code: 'INVALID_BODY' }
+  }
+
+  const prompt = typeof payload.prompt === 'string' ? payload.prompt.trim() : ''
   if (!prompt) return { error: '请输入提示词', code: 'INVALID_PROMPT' }
   if (prompt.length > MAX_PROMPT_LENGTH) {
     return { error: `提示词最多 ${MAX_PROMPT_LENGTH} 字`, code: 'INVALID_PROMPT' }
   }
 
-  const hasImageInput = event?.imageDataUrl !== undefined
-  const image = hasImageInput ? parseInputImage(event.imageDataUrl) : null
+  const hasImageInput = payload.imageDataUrl !== undefined
+  const image = hasImageInput ? parseInputImage(payload.imageDataUrl) : null
   if (hasImageInput && !image) {
     return { error: '请输入有效的参考图片', code: 'INVALID_IMAGE' }
   }
 
-  const size = ALLOWED_SIZES.includes(event?.size) ? event.size : '1024x1024'
+  const size = ALLOWED_SIZES.includes(payload.size) ? payload.size : '1024x1024'
 
   try {
     const imageModel = cloud.ai().createImageModel('hunyuan-image')
@@ -59,8 +65,35 @@ exports.main = async (event) => {
         : typeof response.id === 'string' ? response.id : '',
     }
   } catch (error) {
-    console.error('[generateImage] generation failed', serializeError(error))
-    return { error: '图片生成失败，请稍后重试', code: 'IMAGE_GENERATION_FAILED' }
+    const serialized = serializeError(error)
+    console.error('[generateImage] generation failed', serialized)
+    return {
+      error: '图片生成失败，请稍后重试',
+      code: 'IMAGE_GENERATION_FAILED',
+      ...(serialized.statusCode ? { statusCode: serialized.statusCode } : {}),
+    }
+  }
+}
+
+function parsePayload(event) {
+  if (!event || typeof event !== 'object') return {}
+  if (typeof event.body === 'undefined') return event
+  if (typeof event.body === 'object' && event.body !== null) {
+    return Array.isArray(event.body) ? null : event.body
+  }
+  if (typeof event.body !== 'string') return null
+
+  const raw = event.isBase64Encoded
+    ? Buffer.from(event.body, 'base64').toString('utf8')
+    : event.body
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch (error) {
+    console.error('[generateImage] request body is not valid JSON', {
+      message: error instanceof Error ? error.message : String(error),
+    })
+    return null
   }
 }
 
@@ -155,6 +188,30 @@ function fileExtension(contentType) {
 }
 
 function serializeError(error) {
-  if (error instanceof Error) return { name: error.name, message: error.message }
-  return { message: String(error) }
+  const response = error?.response || {}
+  const statusCode = Number(error?.statusCode ?? error?.status ?? response.status ?? response.statusCode)
+  const providerCode = error?.code || error?.error_code || response.data?.code
+
+  return {
+    currentEnv: currentEnv(),
+    name: error?.name || 'Error',
+    message: error?.message ? String(error.message).slice(0, 500) : String(error).slice(0, 500),
+    ...(providerCode ? { providerCode: String(providerCode) } : {}),
+    ...(Number.isFinite(statusCode) && statusCode > 0 ? { statusCode } : {}),
+  }
+}
+
+function currentEnv() {
+  try {
+    if (typeof cloud.getWXContext === 'function') {
+      const wxContext = cloud.getWXContext() || {}
+      if (wxContext.ENV) return String(wxContext.ENV)
+    }
+  } catch (error) {
+    // 诊断信息不能影响错误处理本身
+    console.error('[generateImage] failed to read WX context', {
+      message: error instanceof Error ? error.message : String(error),
+    })
+  }
+  return process.env.TCB_ENV || process.env.SCF_NAMESPACE || 'unknown'
 }

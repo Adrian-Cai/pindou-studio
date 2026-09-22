@@ -1,9 +1,11 @@
 node_modules/*
 miniprogram_npm/
 server/node_modules/
+cloudfunctions/**/node_modules/
 server/dist/
 server/.env
 server/data/
+.env*.local
 .DS_Store
 *.log
 project.private.config.json
@@ -11,3 +13,9 @@ project.private.config.json
 
 docs/ui/*
 .agents/*
+
+*.codebuddy/
+*.lingma/
+*rules/
+*codebuddy-plugin/
+*.workbuddy/
