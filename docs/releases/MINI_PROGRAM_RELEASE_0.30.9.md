@@ -17,8 +17,19 @@
 | `f258786` | feat(miniprogram)：v0.30.9 主体（面板复用、生成中状态、分包规范） |
 | `1bbb591` | docs(miniprogram)：AI 生成链路与内容安全服务的模块职责注释 |
 | `406d900` | docs(plan)：AI 生成任务化方案补充作品卡三态与任务详情页改造 |
+| `93508de` | docs：新增小程序 0.30.9 提审说明 |
+| `5922106` | docs(server)：服务端 AI 生成链路六模块职责注释 |
+| `1353e87` | docs(plan)：任务队列方案修订作品卡 AI 态操作布局 |
+| `5abd0ea` | docs(miniprogram)：调色板选型与标准图纸生成注释 |
+| `ca08d1b` | docs(miniprogram)：median cut 颜色量化注释 |
+| `e11e951` | chore(git)：`.gitignore` 增加 `.tmp*` / `*.tmp` 规则 |
+| `e777da1` | docs：小程序与服务端核心模块职责注释（27 文件，651 行新增 / 5 行删除） |
+| `08218bb` | docs(server)：鉴权仓储、支付服务、用户资料服务注释 |
 
-当前 `master` HEAD：`406d900`。
+当前 `master` HEAD：`08218bb`。
+
+> `5922106` 之后的 8 个提交**全部为注释、文档与仓库配置，不含任何逻辑改动**
+> （`e777da1` 的 5 处删除行为注释改写与 BOM 位移后原样补回的 import，已逐条核对）。
 
 ## 微信小程序提审版本说明
 
@@ -33,7 +44,7 @@
 5. **修复禁用态按钮不生效**：面板内 `.button-primary[disabled]` 之前会被启用态配色覆盖，现在保存作品/重新生成在未就绪时明确置灰。
 6. **明确分包依赖边界**：`ai-generation-flow` 上提到主包 `miniprogram/services/`，新增「分包与主包依赖规范」（`docs/frontend/MINI_PROGRAM_RULES.md` 第 7 节），禁止主包引用 `packages/` 下的模块与组件，避免启动期 `module ... is not defined` 崩溃。
 7. **服务端清理任务加一次性守卫**（`5aa5040`）：`cleanupExpired()` 的 SELECT 增加 `AND (completed_at IS NULL OR status = 'succeeded')`，避免每小时把整批过期历史重新选中、重写一遍 `updated_at`，并重复调用已删除对象的 `storage.remove()`。
-8. **文档与注释**：AI 生成链路各服务补充文件头职责说明（职责/调用方/关键点）；任务化方案补充作品卡片三态设计与「AI 生成页改造为任务详情页（不新建页面）」方案。
+8. **文档与注释（无功能改动）**：为核心业务链路补齐模块职责注释，统一格式为「文件头一句话职责 + 职责边界 + 调用方 + 关键点」，导出函数补 JSDoc，行内注释只在复杂条件、阈值、状态机迁移、错误码映射、重试退避与 SQL 处添加。覆盖：`miniprogram` 的图纸模型、编辑器页与绘制服务、作品/下载/图片/支付/鉴权/作品存储、拼豆图生成（调色板选型、标准图纸生成、颜色量化、边缘检测、cleanup）、作品页；`server` 的 AI 生成链路、下载配额、微信支付、额度台账、鉴权仓储、用户资料、作品与图纸；以及 `cloudfunctions/generateImage`。任务化方案补充作品卡片三态设计与「AI 生成页改造为任务详情页（不新建页面）」方案。另有 `.gitignore` 增加 `.tmp*` / `*.tmp` 规则，避免一次性排查脚本被误提交。
 
 ## 影响范围
 
@@ -43,9 +54,12 @@
 - 主包新增组件 `components/editor-control-panel`
 - `ai-generation-flow` 模块路径（由 `packages/ai-generation/services/` 移至主包 `services/`）
 - 服务端过期任务清理的扫描条件
+- 注释与文档（**无逻辑改动**）：小程序与服务端核心模块、`cloudfunctions/generateImage`、任务化方案文档、`.gitignore`
 - 小程序版本号与 CHANGELOG
 
 **不影响范围：**
+
+- 本次后 8 个提交均为注释、文档与仓库配置，**不改变任何运行时行为**（删除行合计 5 行，均为注释改写）
 
 - AI 生图云调用协议与成功返回字段（`fileID`、`contentType`、`size`、`revisedPrompt`、`requestId`）
 - AI 生成任务的状态机、轮询、配额扣减与失败退还逻辑
@@ -74,11 +88,15 @@
 
 ## 检查记录
 
+提交前复核（含全部注释提交后重跑，HEAD `08218bb`）：
+
 - [x] 根目录类型检查：通过（`tsc --noEmit`，EXIT 0）
-- [x] 根目录拼豆图生成测试：57 项全部通过
-- [x] 服务端类型检查与构建：通过（`npm run build` EXIT 0）
-- [x] 服务端测试：150 项全部通过（含新增的 JPEG 输出落盘回归用例）
-- [x] 云函数 `node --check cloudfunctions/generateImage/index.js`：通过
+- [x] 根目录拼豆图生成测试：57 项全部通过（57 pass / 0 fail）
+- [x] 服务端类型检查与构建：通过（`tsc -p tsconfig.json`，EXIT 0）
+- [x] 服务端测试：155 tests / 150 pass / 0 fail / 5 skipped
+- [x] 云函数 `node --check cloudfunctions/*/index.js`：全部通过
+- [x] 待提交 diff 审查：删除行 0~5（均为注释改写），新增 TODO/FIXME 0 个
+- [x] 变更已同步推送 `cnb/master`、`origin/master`、`wechat/master`
 - [ ] 服务端部署后线上验证：任务表 `status=succeeded`、`output_file_id` 有值
 - [ ] 微信开发者工具视觉与交互验收（生成中面板禁用态、编辑器面板回归）
 - [ ] iPhone、Android 真机验证（生成中状态、小屏适配、出图跳转）
