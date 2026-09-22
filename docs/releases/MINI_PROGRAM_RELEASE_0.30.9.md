@@ -25,11 +25,15 @@
 | `e11e951` | chore(git)：`.gitignore` 增加 `.tmp*` / `*.tmp` 规则 |
 | `e777da1` | docs：小程序与服务端核心模块职责注释（27 文件，651 行新增 / 5 行删除） |
 | `08218bb` | docs(server)：鉴权仓储、支付服务、用户资料服务注释 |
+| `3ab42c4` | docs：提审说明提交清单更新至 `08218bb` |
+| `5bccf2f` | docs：提审说明标注「代码基线」与后续文档提交的区别 |
+| `1a2a376` | docs：`CODE_RULES.md` 新增注释规范；CHANGELOG 补充 0.30.9 三条主链路注释工作 |
 
-代码基线 `master` HEAD：`08218bb`（本提审说明自身的提交为 `3ab42c4`，仅文档）。
+代码基线 `master` HEAD：`1a2a376`（说明文档自身的更新提交 `3ab42c4` / `5bccf2f` 均为仅文档）。
 
-> `5922106` 之后的 8 个提交**全部为注释、文档与仓库配置，不含任何逻辑改动**
+> `5922106` 之后的 11 个提交**全部为注释、文档与仓库配置，不含任何逻辑改动**
 > （`e777da1` 的 5 处删除行为注释改写与 BOM 位移后原样补回的 import，已逐条核对）。
+> 因此代码基线以最后一个含代码改动的提交 `08218bb` 为准，后续三个提交不影响运行时行为。
 
 ## 微信小程序提审版本说明
 
@@ -54,7 +58,7 @@
 - 主包新增组件 `components/editor-control-panel`
 - `ai-generation-flow` 模块路径（由 `packages/ai-generation/services/` 移至主包 `services/`）
 - 服务端过期任务清理的扫描条件
-- 注释与文档（**无逻辑改动**）：小程序与服务端核心模块、`cloudfunctions/generateImage`、任务化方案文档、`.gitignore`
+- 注释与文档（**无逻辑改动**）：小程序与服务端核心模块、`cloudfunctions/generateImage`、任务化方案文档、`CODE_RULES.md` 新增注释规范一节、`.gitignore`
 - 小程序版本号与 CHANGELOG
 
 **不影响范围：**
@@ -88,13 +92,14 @@
 
 ## 检查记录
 
-提交前复核（含全部注释提交后重跑，HEAD `08218bb`）：
+提交前复核（含全部注释提交后重跑，HEAD `1a2a376`；代码基线 `08218bb`）：
 
 - [x] 根目录类型检查：通过（`tsc --noEmit`，EXIT 0）
-- [x] 根目录拼豆图生成测试：57 项全部通过（57 pass / 0 fail）
-- [x] 服务端类型检查与构建：通过（`tsc -p tsconfig.json`，EXIT 0）
+- [x] 根目录拼豆图生成测试：57 pass / 0 fail
+- [x] 服务端类型检查与构建：通过（`tsc -p tsconfig.json --noEmit`，EXIT 0）
 - [x] 服务端测试：155 tests / 150 pass / 0 fail / 5 skipped
-- [x] 云函数 `node --check cloudfunctions/*/index.js`：全部通过
+- [x] 云函数 `node --check cloudfunctions/generateImage/index.js`：通过
+- [x] 版本号一致：`package.json` 与 `package-lock.json` 均为 `0.30.9`
 - [x] 待提交 diff 审查：删除行 0~5（均为注释改写），新增 TODO/FIXME 0 个
 - [x] 变更已同步推送 `cnb/master`、`origin/master`、`wechat/master`
 - [ ] 服务端部署后线上验证：任务表 `status=succeeded`、`output_file_id` 有值
