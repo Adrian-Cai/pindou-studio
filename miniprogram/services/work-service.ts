@@ -1,3 +1,12 @@
+/**
+ * 作品云端读写与本地/云端数据互转：把 PatternDraft 存成云端作品，或把云端作品读回草稿。
+ *
+ * 职责：封装所有 /api/works、/api/favorites 云端接口；负责草稿↔持久化图纸↔云端摘要
+ *       三套结构之间的转换，并对返回做严格字段校验；不负责图片选图/生成/下载。
+ * 调用方：我的作品页（pages/projects）、结果页与编辑器（保存/读取云端作品）。
+ * 关键点：所有解析函数对服务端返回做鸭子类型校验，字段不符即抛 INVALID_RESPONSE，
+ *       防止脏数据进入本地；保存新建作品带幂等键避免重复提交。
+ */
 import {
   isGenerationMode,
   type GenerationMode,
@@ -9,6 +18,7 @@ import { normalizeCoverUrl } from '../config/api'
 import { isAuthSessionExpired, loadAuthSession } from './token-storage'
 import { ApiError, apiRequest, apiUploadFile } from './http-client'
 
+/** 云端作品列表项/摘要：不含完整图纸，仅用于列表展示与转本地 WorkItem。 */
 export interface CloudWorkSummary {
   id: string
   title: string
@@ -25,10 +35,12 @@ export interface CloudWorkSummary {
   updatedAt: string
 }
 
+/** 云端作品详情：在摘要基础上附带完整 PersistedPattern 图纸数据。 */
 export interface CloudWorkDetail extends CloudWorkSummary {
   pattern: PersistedPattern
 }
 
+/** 云端收藏项：在作品摘要基础上附带收藏时间。 */
 export interface CloudFavoriteSummary extends CloudWorkSummary {
   favoritedAt: string
 }
@@ -53,11 +65,21 @@ interface FavoriteUpdateResponse {
   favoritedAt: string | null
 }
 
+/**
+ * 当前是否已登录且 token 未过期。
+ * @returns 有有效会话返回 true
+ */
 export function hasCloudSession(): boolean {
   const session = loadAuthSession()
   return Boolean(session && !isAuthSessionExpired(session))
 }
 
+/**
+ * 新建并保存一个云端作品（草稿 + 封面图）。
+ * @param draft 要保存的图纸草稿
+ * @param coverPath 封面图本地路径（先上传取 fileId）
+ * @param title 作品标题，缺省「未命名作品」
+ */
 export async function saveNewCloudWork(
   draft: PatternDraft,
   coverPath: string,
@@ -66,6 +88,13 @@ export async function saveNewCloudWork(
   return persistCloudWork({ draft, coverPath, title })
 }
 
+/**
+ * 覆盖更新已存在的云端作品。
+ * @param workId 目标作品 id
+ * @param draft 新图纸草稿
+ * @param coverPath 新封面图本地路径
+ * @param title 新标题
+ */
 export async function updateCloudWork(
   workId: string,
   draft: PatternDraft,
@@ -75,6 +104,7 @@ export async function updateCloudWork(
   return persistCloudWork({ workId, draft, coverPath, title })
 }
 
+/** 仅修改云端作品标题，不上传图纸。 */
 export async function renameCloudWork(workId: string, title: string): Promise<CloudWorkSummary> {
   const response = await apiRequest<unknown>({
     path: `/api/works/${encodeURIComponent(workId)}`,
@@ -85,6 +115,12 @@ export async function renameCloudWork(workId: string, title: string): Promise<Cl
   return parseWorkSummary(response)
 }
 
+/**
+ * 分页拉取云端作品列表，支持按状态筛选与关键字搜索。
+ * @param options.page 页码（默认 1）；pageSize 默认 50
+ * @param options.status 仅取 'draft' 或 'completed'
+ * @param options.query 标题/关键字搜索串
+ */
 export async function fetchCloudWorks(options: {
   page?: number
   pageSize?: number
@@ -104,6 +140,7 @@ export async function fetchCloudWorks(options: {
   return parseWorkList(response)
 }
 
+/** 按 id 拉取云端作品完整详情（含图纸数据）。 */
 export async function fetchCloudWork(workId: string): Promise<CloudWorkDetail> {
   const response = await apiRequest<unknown>({
     path: `/api/works/${encodeURIComponent(workId)}`,
@@ -112,6 +149,10 @@ export async function fetchCloudWork(workId: string): Promise<CloudWorkDetail> {
   return parseWorkDetail(response)
 }
 
+/**
+ * 分页拉取云端收藏列表。
+ * @param options.page 页码（默认 1）；pageSize 默认 50
+ */
 export async function fetchCloudFavorites(options: {
   page?: number
   pageSize?: number
@@ -127,6 +168,11 @@ export async function fetchCloudFavorites(options: {
   return parseFavoriteList(response)
 }
 
+/**
+ * 设置/取消某作品的云端收藏状态。
+ * @param workId 作品 id
+ * @param favorite true 收藏，false 取消
+ */
 export async function setCloudFavorite(workId: string, favorite: boolean): Promise<FavoriteUpdateResponse> {
   const response = await apiRequest<unknown>({
     path: `/api/works/${encodeURIComponent(workId)}/favorite`,
@@ -148,6 +194,7 @@ export async function setCloudFavorite(workId: string, favorite: boolean): Promi
   }
 }
 
+/** 删除云端作品（软/硬删由服务端决定）。 */
 export async function deleteCloudWork(workId: string): Promise<void> {
   await apiRequest<unknown>({
     path: `/api/works/${encodeURIComponent(workId)}`,
@@ -156,6 +203,10 @@ export async function deleteCloudWork(workId: string): Promise<void> {
   })
 }
 
+/**
+ * 把云端摘要（作品或收藏）转成本地统一列表项 WorkItem，封面 URL 做归一化。
+ * @param summary 云端作品摘要或收藏摘要
+ */
 export function cloudSummaryToWorkItem(summary: CloudWorkSummary | CloudFavoriteSummary): WorkItem {
   return {
     id: summary.id,
@@ -175,6 +226,10 @@ export function cloudSummaryToWorkItem(summary: CloudWorkSummary | CloudFavorite
   }
 }
 
+/**
+ * 把云端作品详情还原为本地 PatternDraft（用于重新编辑）；封面不回写，sourceImagePath 留空。
+ * @param detail 云端作品详情
+ */
 export function cloudDetailToDraft(detail: CloudWorkDetail): PatternDraft {
   const pattern = detail.pattern
   return {
@@ -197,6 +252,11 @@ export function cloudDetailToDraft(detail: CloudWorkDetail): PatternDraft {
   }
 }
 
+/**
+ * 把本地草稿转成云端持久化结构：去重建调色板（palette），每格只存调色板下标，透明格记 -1。
+ * 同时校验网格数据完整（cells 数 = width*height），不完整直接抛错。
+ * @param draft 本地图纸草稿
+ */
 export function draftToPersistedPattern(draft: PatternDraft): PersistedPattern {
   if (draft.cells.length !== draft.settings.width * draft.settings.height) {
     throw new ApiError('当前作品网格数据不完整，请重新生成', { code: 'INVALID_PATTERN' })
@@ -204,7 +264,9 @@ export function draftToPersistedPattern(draft: PatternDraft): PersistedPattern {
   const palette: PersistedPattern['palette'] = []
   const paletteIndexes = new Map<string, number>()
   const cells = draft.cells.map((cell) => {
+    // 透明格用下标 -1 表示，省去调色板里的透明项
     if (cell.color === 'transparent') return -1
+    // 以「色号\u0000颜色」为键去重建调色板，相同色只保留一份；色号缺失则自动补 C01..
     const key = `${cell.colorCode}\u0000${cell.color.toLowerCase()}`
     const existing = paletteIndexes.get(key)
     if (existing !== undefined) return existing
@@ -224,6 +286,7 @@ export function draftToPersistedPattern(draft: PatternDraft): PersistedPattern {
   }
 }
 
+// 上传封面图，返回服务端 fileId，供创建作品时引用
 async function uploadCover(token: string, filePath: string): Promise<string> {
   const response = await apiUploadFile<unknown>({
     path: '/api/files/upload',
@@ -238,6 +301,7 @@ async function uploadCover(token: string, filePath: string): Promise<string> {
   return response.file.id
 }
 
+// 新建或更新云端作品的统一入口：先上传封面，再按是否有 workId 决定 POST/PUT
 async function persistCloudWork(input: {
   readonly workId?: string
   readonly draft: PatternDraft
@@ -251,6 +315,7 @@ async function persistCloudWork(input: {
     path: isNew ? '/api/works' : `/api/works/${encodeURIComponent(input.workId)}`,
     method: isNew ? 'POST' : 'PUT',
     token,
+    // 新建作品带幂等键，重复提交不会产生多个副本
     ...(isNew ? { headers: { 'Idempotency-Key': `create-${input.draft.id}` } } : {}),
     data: {
       title: input.title,
@@ -263,6 +328,7 @@ async function persistCloudWork(input: {
   return parseWorkSummary(response)
 }
 
+// 取当前登录 token，未登录或过期直接抛 UNAUTHORIZED，由调用方兜底提示
 function requireToken(): string {
   const session = loadAuthSession()
   if (!session || isAuthSessionExpired(session)) {
@@ -306,6 +372,7 @@ function parseWorkDetail(value: unknown): CloudWorkDetail {
   return { ...summary, pattern }
 }
 
+// 解析并严格校验作品摘要字段；任何字段类型不符都抛 INVALID_RESPONSE
 function parseWorkSummary(value: unknown): CloudWorkSummary {
   if (!isRecord(value)
     || typeof value.id !== 'string'
@@ -339,6 +406,7 @@ function parseWorkSummary(value: unknown): CloudWorkSummary {
   }
 }
 
+// 解析并校验持久化图纸：校验 schemaVersion=1、网格尺寸与 cells 长度一致、下标合法
 function parsePersistedPattern(value: Record<string, unknown>): PersistedPattern {
   if (value.schemaVersion !== 1
     || !isFiniteNumber(value.width)
@@ -356,6 +424,7 @@ function parsePersistedPattern(value: Record<string, unknown>): PersistedPattern
     return { code: item.code, color: item.color }
   })
   const cells = value.cells.map((cell) => {
+    // 每个格子下标必须是 -1（透明）或落在调色板范围内，否则数据损坏
     if (!Number.isInteger(cell) || (cell as number) < -1 || (cell as number) >= palette.length) {
       throw invalidResponse()
     }

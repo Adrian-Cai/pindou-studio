@@ -1,5 +1,15 @@
-﻿import type { PatternCell, PatternDraft } from '../../../models/pattern'
+﻿/**
+ * 编辑器绘制与坐标换算服务：把 PatternDraft 画到 2d canvas，并处理屏幕↔格子坐标、视图变换、连通域填充。
+ *
+ * 职责：提供 drawPatternViewport（按当前缩放/平移只画可见格，性能友好）、drawPatternOnCanvas（整图绘制，用于封面）、
+ *       计算适配尺寸 calculateFittedImageSize、缩放锚点 scaleAroundViewportPoint、平移边界 clampViewTranslation、
+ *       屏幕触点转格子 screenPointToGridCell、油漆桶 fillConnectedCells；不负责手势状态机（在 editor 页）。
+ * 调用方：packages/editor/index.ts（编辑器页）。
+ * 关键点：所有绘制用「拼豆圆点」风格（带阴影/高光）；坐标换算以 viewport 中心为原点，scale/translate 描述图片相对中心的位置。
+ */
+import type { PatternCell, PatternDraft } from '../../../models/pattern'
 
+/** 2d canvas 上下文的最小子集（绘制拼豆点所需 API）。 */
 export interface PatternCanvasContext {
   fillStyle: string
   globalAlpha: number
@@ -40,6 +50,12 @@ export interface GridCell {
   index: number
 }
 
+/**
+ * 把整张图纸按「拼豆圆点」风格画满整个 canvas（用于导出封面）。
+ * @param context 2d canvas 上下文
+ * @param canvasWidth/canvasHeight 画布尺寸（CSS px）
+ * @param draft 图纸草稿
+ */
 export function drawPatternOnCanvas(
   context: PatternCanvasContext,
   canvasWidth: number,
@@ -52,6 +68,7 @@ export function drawPatternOnCanvas(
   const rows = draft.settings.height
   const cellWidth = canvasWidth / columns
   const cellHeight = canvasHeight / rows
+  // 圆点半径取格宽高较小者的 0.44，留出格间缝隙
   const radius = Math.min(cellWidth, cellHeight) * 0.44
 
   draft.cells.forEach((cell, index) => {
@@ -60,6 +77,7 @@ export function drawPatternOnCanvas(
     const row = Math.floor(index / columns)
     const centerX = column * cellWidth + cellWidth / 2
     const centerY = row * cellHeight + cellHeight / 2
+    // 先画一层半透明黑色作为右下阴影，制造立体感
     context.globalAlpha = 0.18
     context.fillStyle = '#000000'
     context.beginPath()
@@ -70,6 +88,7 @@ export function drawPatternOnCanvas(
     context.beginPath()
     context.arc(centerX, centerY, radius, 0, Math.PI * 2)
     context.fill()
+    // 圆点够大时再点一个白色高光，增强拼豆质感
     if (radius >= 1.8) {
       context.globalAlpha = 0.34
       context.fillStyle = '#ffffff'
@@ -81,6 +100,12 @@ export function drawPatternOnCanvas(
   context.globalAlpha = 1
 }
 
+/**
+ * 在离屏导出画布上整图重绘并导出封面 PNG 临时路径，供保存作品时上传。
+ * @param draft 图纸草稿
+ * @param component 当前页实例（用于 createSelectorQuery 的 .in）
+ * @returns 封面图临时文件路径
+ */
 export function exportPatternCoverImage(
   draft: PatternDraft,
   component: WechatMiniprogram.Page.TrivialInstance,
@@ -132,8 +157,10 @@ export function drawPatternViewport(
   const rows = draft.settings.height
   const cellWidth = image.cellWidth * transform.scale
   const cellHeight = image.cellHeight * transform.scale
+  // 图片左上角在 viewport 中的坐标：以 viewport 中心为原点，再偏移 translate 与图片半宽
   const imageLeft = viewportWidth / 2 + transform.translateX - image.width * transform.scale / 2
   const imageTop = viewportHeight / 2 + transform.translateY - image.height * transform.scale / 2
+  // 只遍历落在 viewport 内的格子，避免整图重绘（大图缩放时性能关键）
   const firstColumn = Math.max(0, Math.floor(-imageLeft / cellWidth))
   const lastColumn = Math.min(columns - 1, Math.floor((viewportWidth - imageLeft) / cellWidth))
   const firstRow = Math.max(0, Math.floor(-imageTop / cellHeight))
@@ -255,6 +282,7 @@ export function screenPointToGridCell(
   if (transform.scale <= 0 || image.cellWidth <= 0 || image.cellHeight <= 0) return null
   const localX = touchClientX - viewportRect.left
   const localY = touchClientY - viewportRect.top
+  // 反向套用 scale/translate，把屏幕坐标换算回 100% 图片下的像素坐标
   const imageX = (
     (localX - viewportRect.width / 2 - transform.translateX) / transform.scale
     + image.width / 2
@@ -274,6 +302,15 @@ export function screenPointToGridCell(
   return { row, column, index: row * draft.settings.width + column }
 }
 
+/**
+ * 油漆桶/连通域填充：从 startIndex 出发，把 4 邻接且与 target 同色的整片区域替换为 replacement。
+ * 原地修改 cells；用 visited 集合防止回环死循环。
+ * @param cells 网格数组（行优先）
+ * @param startIndex 起点格子索引
+ * @param width/height 网格尺寸
+ * @param target 被填充的目标色（匹配条件）
+ * @param replacement 替换成的新色
+ */
 export function fillConnectedCells(
   cells: PatternCell[],
   startIndex: number,
@@ -291,6 +328,7 @@ export function fillConnectedCells(
     const cell = cells[index]
     if (!cell || !sameCell(cell, target)) continue
     cells[index] = { ...replacement }
+    // 把上下左右 4 邻接格子入队，下一轮继续扩散
     const column = index % width
     const row = Math.floor(index / width)
     if (column > 0) queue.push(index - 1)
@@ -300,6 +338,7 @@ export function fillConnectedCells(
   }
 }
 
+/** 判断两格是否为同一颜色（同时比 color 与 colorCode）。 */
 export function sameCell(left: PatternCell, right: PatternCell): boolean {
   return left.color === right.color && left.colorCode === right.colorCode
 }

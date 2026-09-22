@@ -1,3 +1,12 @@
+/**
+ * 「我的作品」列表页：展示/筛选/搜索本地+云端作品，支持打开、改名、删除、下载。
+ *
+ * 职责：聚合 appStore 中的作品与云端作品（登录时拉取并写入本地），按 tab/搜索过滤渲染；
+ *       打开云端作品时取详情还原草稿并跳转编辑器/结果页；不负责图纸生成与绘制。
+ * 调用方：tabBar 第 2 项（路由 /pages/projects/index）。
+ * 关键点：AI 生成中的任务以特殊 id 'ai-active-task' 伪造成一条作品置顶显示，订阅生成管理器实时刷新；
+ *       封面加载失败回退到占位图（COVER_FALLBACK_PATH）。
+ */
 import type { WorkItem } from '../../models/pattern'
 import {
   cloudDetailToDraft,
@@ -28,6 +37,7 @@ const tabs = [
   { id: 'draft', label: '草稿' },
   { id: 'completed', label: '已完成' },
 ] as const
+// 封面加载失败时的占位图
 const COVER_FALLBACK_PATH = '/assets/icons/image-upload.svg'
 
 Page({
@@ -71,6 +81,7 @@ Page({
   },
 
   async refreshWorks() {
+    // 登录时拉取云端作品覆盖本地云端列表；失败则保留本地缓存继续展示
     if (hasCloudSession()) {
       this.setData({ loading: true })
       try {
@@ -91,6 +102,7 @@ Page({
     const currentDraft = state.currentDraft
     const allWorks: WorkView[] = state.works.map((work) => {
       const isDraft = work.status === 'draft'
+      // 缺尺寸的作品尝试用当前草稿补（尺寸待云端同步时显示「尺寸待同步」）
       const width = work.width ?? (currentDraft?.id === work.id ? currentDraft.settings.width : 0)
       const height = work.height ?? (currentDraft?.id === work.id ? currentDraft.settings.height : 0)
       return {
@@ -197,6 +209,7 @@ Page({
   },
 
   async openWorkById(id: string, edit: boolean) {
+    // AI 生成中任务跳到 AI 生成页查看进度
     if (id === 'ai-active-task') {
       wx.navigateTo({ url: '/packages/ai-generation/index' })
       return
@@ -205,6 +218,7 @@ Page({
     const work = state.works.find((item) => item.id === id)
     if (!work) return
     if (work.isCloud) {
+      // 云端作品：先取完整详情还原草稿，再跳转（编辑→编辑器页，查看→结果页）
       wx.showLoading({ title: '正在读取', mask: true })
       try {
         const detail = await fetchCloudWork(id)
@@ -290,6 +304,7 @@ Page({
     this.setData({ renameSaving: true })
     try {
       await checkTextContent(title)
+      // 云端作品走 renameCloudWork，本地作品直接改 store
       if (work.isCloud) {
         const summary = await renameCloudWork(id, title)
         await appStore.saveWork(cloudSummaryToWorkItem(summary))
@@ -397,6 +412,7 @@ function validateWorkTitle(value: string, originalTitle: string) {
   return { title, error: '', canSave: true }
 }
 
+// 近 30 天内的作品算「最近」
 function isRecent(timestamp: number) {
   return Date.now() - timestamp <= 30 * 24 * 60 * 60 * 1000
 }

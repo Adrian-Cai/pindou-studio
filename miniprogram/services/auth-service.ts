@@ -1,6 +1,16 @@
+/**
+ * 登录相关接口封装（小程序端网络层）。
+ *
+ * 职责：把微信登录 code 换成服务端 token、拉取当前用户 profile、删除账号、修改昵称，
+ *       以及把服务端返回的原始 JSON 解析/校验成强类型结构。不直接持有登录态——token 的
+ *       存取交给 token-storage，登录态的状态机由 store/auth-store 维护。
+ * 调用方：store/auth-store。
+ * 关键点：所有解析函数都做严格字段校验，缺失或类型不符直接抛 INVALID_RESPONSE，防止脏数据进 store。
+ */
 import type { AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
 import { ApiError, apiRequest } from './http-client'
 
+/** 微信登录：拿 wx.login 的 code 调 /api/auth/login，返回含 token 的 AuthSession。 */
 export async function loginWithWechat(): Promise<AuthSession> {
   const code = await getWechatLoginCode()
   const response = await apiRequest<unknown>({
@@ -11,6 +21,7 @@ export async function loginWithWechat(): Promise<AuthSession> {
   return parseLoginResponse(response)
 }
 
+/** 携带 token 调用 /api/users/me，返回完整 profile（user/stats/quota/privacy）。 */
 export async function fetchCurrentUser(token: string): Promise<CurrentUserProfile> {
   const response = await apiRequest<unknown>({
     path: '/api/users/me',
@@ -19,6 +30,7 @@ export async function fetchCurrentUser(token: string): Promise<CurrentUserProfil
   return parseCurrentUserResponse(response)
 }
 
+/** 携带 token 调用 /api/users/me 的 DELETE，注销当前账号（成功后由调用方负责本地登出）。 */
 export async function deleteCurrentUser(token: string): Promise<void> {
   await apiRequest<unknown>({
     path: '/api/users/me',
@@ -27,6 +39,7 @@ export async function deleteCurrentUser(token: string): Promise<void> {
   })
 }
 
+/** 携带 token 修改昵称（/api/users/me PUT），返回更新后的用户基础信息。 */
 export async function updateNickname(token: string, nickname: string): Promise<AuthUser> {
   const response = await apiRequest<unknown>({
     path: '/api/users/me',
@@ -40,6 +53,7 @@ export async function updateNickname(token: string, nickname: string): Promise<A
 function getWechatLoginCode(): Promise<string> {
   return new Promise((resolve, reject) => {
     wx.login({
+      // 微信登录最长等待 10 秒，超时视为失败
       timeout: 10_000,
       success: ({ code }) => {
         if (code) {
@@ -60,6 +74,7 @@ function parseLoginResponse(value: unknown): AuthSession {
   const user = parseUser(value.user)
   if (
     typeof value.token !== 'string'
+    // token 至少 16 位才视为有效，防服务端返回异常短串
     || value.token.length < 16
     || typeof value.expiresAt !== 'string'
     || !Number.isFinite(Date.parse(value.expiresAt))

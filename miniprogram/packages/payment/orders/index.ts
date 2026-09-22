@@ -1,3 +1,11 @@
+/**
+ * 我的订单页：展示当前用户的充值订单列表。
+ *
+ * 职责：拉取订单并做展示层格式化（状态文案、金额、时间、订单号尾号），失败时提供重试入口。
+ * 调用方：账户页「我的订单」入口，路由 /packages/payment/orders。
+ * 关键点：放在 onShow 而非 onLoad，这样从支付页返回时能立刻看到最新订单；
+ *         未登录直接落到 unauthorized 态，不发请求。
+ */
 import type { OrderItem, OrderStatus } from '../../../models/order'
 import { fetchOrders } from '../services/order-service'
 import { hasCloudSession } from '../../../services/work-service'
@@ -12,6 +20,7 @@ type OrderView = OrderItem & {
   orderSuffix: string
 }
 
+/** 订单状态到中文文案的映射，与 models/order 的 OrderStatus 一一对应。 */
 const statusLabels: Record<OrderStatus, string> = {
   pending: '待支付',
   paid: '支付成功',
@@ -61,6 +70,10 @@ Page({
   },
 })
 
+/**
+ * 订单转展示模型：补上状态文案、状态样式类、金额与时间的格式化文本。
+ * 订单号只展示后 8 位（orderSuffix），避免长 id 撑破列表。
+ */
 function toOrderView(order: OrderItem): OrderView {
   return {
     ...order,

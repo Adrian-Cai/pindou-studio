@@ -1,3 +1,11 @@
+/**
+ * 收藏页：展示用户收藏的作品，支持搜索、分类标签、排序与取消收藏。
+ *
+ * 职责：合并云端收藏与本地缓存后做筛选展示；不负责收藏的云端写入（写操作见 work-service.setCloudFavorite）。
+ * 调用方：账户页「我的收藏」入口，路由 /packages/account/favorites。
+ * 关键点：云端收藏是分页接口，需要循环翻页直到拉满 total，且单页为空时立即停止以防死循环；
+ *         云端拉取失败不阻断页面，降级展示本地缓存；过滤与排序都在本地 allWorks 上做，不重复请求。
+ */
 import type { WorkItem } from '../../../models/pattern'
 import {
   cloudSummaryToWorkItem,
@@ -43,6 +51,7 @@ Page({
       try {
         let response = await fetchCloudFavorites()
         const cloudFavorites = [...response.items]
+        // 分页拉满：直到累计数量达到 total；若某页返回空则跳出，避免接口异常时死循环
         while (cloudFavorites.length < response.total && response.items.length > 0) {
           response = await fetchCloudFavorites({
             page: response.page + 1,
@@ -123,6 +132,10 @@ Page({
     })
   },
 
+  /**
+   * 打开作品详情。
+   * 三条分支：当前草稿直接进结果页；本地作品先恢复本地 draft；云端作品需先拉详情再写入 store。
+   */
   async openWork(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
     const state = appStore.getSnapshot()
@@ -175,6 +188,7 @@ Page({
   stopPropagation() {},
 })
 
+/** 7 天内视为「最近收藏」（7 × 24 × 60 × 60 × 1000 毫秒）。 */
 function isRecent(timestamp: number) {
   return Date.now() - timestamp <= 7 * 24 * 60 * 60 * 1000
 }

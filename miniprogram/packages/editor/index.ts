@@ -1,3 +1,13 @@
+/**
+ * 编辑器页：图纸手绘编辑 + 画布手势 + 撤销重做 + 保存。
+ *
+ * 职责：承载 2d canvas 画布，处理单指平移/双指缩放手势与画笔/橡皮/吸管/填充等触摸操作，
+ *       维护 undo/redo 栈，把编辑结果保存为本地或云端作品并跳转结果页；
+ *       不负责图片生成（那是生成页）与图纸渲染像素计算（交给 pattern-editor-service）。
+ * 调用方：生成页保存后 / AI 生成完成后 navigateTo 到此页（路由 /packages/editor/index）。
+ * 关键点：手势与绘制共用一套 touch 回调；用 _canvasRenderVersion 版本号防止异步测量/绘制竞态
+ *       （旧回调若版本对不上直接丢弃）；底部控制面板复用公共组件 editor-control-panel。
+ */
 import { resolveGenerationMode, type GenerationMode, type PatternCell, type PatternDraft } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
 import {
@@ -42,9 +52,10 @@ interface ToastState {
   message: string
 }
 
+// 撤销/重做最多保留 20 步，超出丢弃最早的快照
 const EDIT_HISTORY_LIMIT = 20
 
-/** 缩放范围 */
+/** 缩放范围：1x ~ 3x，按钮每步 0.2 */
 const SCALE_MIN = 1
 const SCALE_MAX = 3
 const SCALE_STEP = 0.2
@@ -83,7 +94,7 @@ Page({
   _canvasRenderVersion: 0,
 
   _isPinching: false,
-  /** pinch 开始时两指距离 */
+  /** pinch 开始时两指距离（像素），用于求缩放比 */
   _pinchStartDist: 0,
   /** pinch 开始时 scale */
   _pinchStartScale: SCALE_DEFAULT,
@@ -94,6 +105,7 @@ Page({
   _pinchStartMidY: 0,
 
   onLoad(options?: Record<string, string | undefined>) {
+    // AI 生成中的预览或待定草稿都直接跳到 AI 生成页，复用其加载/等待 UI
     const previewRequested = options?.preview === 'generating' || options?.preview === 'ai'
     if (previewRequested) {
       wx.redirectTo({ url: '/packages/ai-generation/index' })
@@ -154,6 +166,7 @@ Page({
     this._singleTouchActive = false
   },
 
+  // 统计图纸出现过的颜色并按使用频次排序，取前 16 个作为可选调色板
   getPaletteColors(draft: PatternDraft): string[] {
     const counts = new Map<string, number>()
     draft.cells.forEach((cell) => {
@@ -193,6 +206,7 @@ Page({
   measureViewport(resetView: boolean) {
     const draft = this.data.draft
     if (!draft) return
+    // 递增版本号：本次测量开始前的旧异步回调若版本对不上则丢弃，避免竞态覆盖
     const renderVersion = ++this._canvasRenderVersion
     this._viewportRect = null
     this._fittedImage = null
@@ -203,6 +217,7 @@ Page({
       .select('.workspace')
       .fields({ rect: true, size: true })
       .exec((results) => {
+        // 期间若发生重测，本次结果作废
         if (renderVersion !== this._canvasRenderVersion) return
         const rect = results[0] as CanvasRect | undefined
         if (!rect?.width || !rect.height) return
@@ -268,6 +283,7 @@ Page({
 
         const canvas = result.node
         const context = canvas.getContext('2d')
+        // 按设备像素比放大 canvas 物理分辨率，再 scale 让绘制用 CSS px 坐标，保证高清不糊
         const pixelRatio = wx.getWindowInfo().pixelRatio || 1
         canvas.width = Math.round(viewport.width * pixelRatio)
         canvas.height = Math.round(viewport.height * pixelRatio)
@@ -327,6 +343,7 @@ Page({
   onWorkspaceTouchStart(event: WechatMiniprogram.TouchEvent) {
     if (!this.data.canvasReady) return
     const touches = event.touches
+    // 双指直接进 pinch（缩放）；单指且非 pinch 中才记为一次绘制触摸
     if (touches.length >= 2) {
       this._beginPinch(touches[0], touches[1])
       return
@@ -339,6 +356,7 @@ Page({
   onWorkspaceTouchMove(event: WechatMiniprogram.TouchEvent) {
     if (!this.data.canvasReady) return
     const touches = event.touches
+    // 移动中只有双指参与缩放，单指平移不在此处理（由 fill/pencil 用端点落格）
     if (touches.length >= 2) {
       if (!this._isPinching) this._beginPinch(touches[0], touches[1])
       this._updatePinch(touches[0], touches[1])
@@ -350,6 +368,7 @@ Page({
     if (!this.data.canvasReady) return
     const touches = event.touches
     if (this._isPinching) {
+      // 还有两指则继续；松开到 <2 指结束 pinch，并屏蔽剩余手指直到完全抬起，避免误触
       if (touches.length >= 2) return
       this._endPinch()
       this._blockSingleTouchUntilRelease = touches.length > 0
@@ -361,6 +380,7 @@ Page({
       return
     }
     if (touches.length > 0) return
+    // 单指抬起：若本次是有效的绘制触摸，按落点执行工具
     const touch = event.changedTouches[0]
     const shouldExecute = this._singleTouchActive && Boolean(touch)
     this._singleTouchActive = false
@@ -404,6 +424,7 @@ Page({
 
     const viewport = this._viewportRect
     if (!viewport) return
+    // 缩放比 = 起始 scale × 当前双指距离 / 起始双指距离，再 clamp 到允许范围
     const rawScale = this._pinchStartScale * (dist / this._pinchStartDist)
     const newScale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, rawScale))
     const midX = (t0.clientX + t1.clientX) / 2 - viewport.left
@@ -469,6 +490,7 @@ Page({
       if (!draft) return
       const pickedCell = draft.cells[cell.index]
       if (!pickedCell || pickedCell.color === 'transparent') return
+      // 吸管：把落点颜色设为当前画笔色并自动切回 pencil 方便继续画
       this.setData({
         selectedColor: pickedCell.color,
         selectedColorCode: pickedCell.colorCode,
@@ -488,6 +510,7 @@ Page({
     const tool = this.data.activeTool
     let nextCell: PatternCell
     if (tool === 'eraser') {
+      // 橡皮：把该格改回透明；已是透明则不动（避免无谓的撤销栈）
       if (currentCell.color === 'transparent') return
       nextCell = { color: 'transparent', colorCode: '' }
     } else {
@@ -509,6 +532,7 @@ Page({
     if (!replacement || sameCell(currentCell, replacement)) return
 
     const nextCells = draft.cells.map((c) => ({ ...c }))
+    // 连通域填充：把与落点颜色相同且相连的区域整片替换成当前色
     fillConnectedCells(
       nextCells,
       cell.index,
@@ -520,11 +544,13 @@ Page({
     this.commitEdit(nextCells)
   },
 
-  // ─── Undo / Redo ─────────────────────────────────────────────────────────
+  // ─── 撤销 / 重做 ─────────────────────────────────────────────────────────
+  // 每个栈元素是「整张网格的快照」，编辑前把旧网格压入 undo，redo 复用被覆盖的快照
 
   commitEdit(cells: PatternCell[]) {
     const draft = this.data.draft
     if (!draft) return
+    // 提交一次编辑：把编辑前网格压入 undo 栈（限长），清空 redo 栈
     const undoStack = [...this.data.undoStack, draft.cells.map((cell) => ({ ...cell }))]
       .slice(-EDIT_HISTORY_LIMIT)
     this.applyEditedCells(cells, undoStack, [])
@@ -534,6 +560,7 @@ Page({
     const draft = this.data.draft
     const previous = this.data.undoStack[this.data.undoStack.length - 1]
     if (!draft || !previous) return
+    // 撤销：弹出 undo 栈顶作为当前网格，被覆盖的当前网格压入 redo 栈
     const undoStack = this.data.undoStack.slice(0, -1)
     const redoStack = [...this.data.redoStack, draft.cells.map((cell) => ({ ...cell }))]
       .slice(-EDIT_HISTORY_LIMIT)
@@ -544,6 +571,7 @@ Page({
     const draft = this.data.draft
     const next = this.data.redoStack[this.data.redoStack.length - 1]
     if (!draft || !next) return
+    // 重做：弹出 redo 栈顶作为当前网格，当前网格压回 undo 栈
     const undoStack = [...this.data.undoStack, draft.cells.map((cell) => ({ ...cell }))]
       .slice(-EDIT_HISTORY_LIMIT)
     const redoStack = this.data.redoStack.slice(0, -1)
@@ -645,6 +673,7 @@ Page({
     try {
       const state = appStore.getSnapshot()
       const existing = state.works.find((item) => item.id === draft.id)
+      // 本地作品记录：先按草稿 id 找是否已存在（决定后续是更新还是新建云端作品）
       const localWork = {
           id: draft.id,
           title: existing?.title ?? '未命名作品',
@@ -660,12 +689,14 @@ Page({
           isCloud: false,
       }
       if (!hasCloudSession()) {
+        // 未登录：仅存本机，syncStatus 标记 guest
         await appStore.saveLocalDraft(draft)
         await appStore.saveWork({ ...localWork, syncStatus: 'guest' })
         wx.showToast({ title: '已保存到本机', icon: 'success' })
       } else {
         const coverPath = await exportPatternCoverImage(draft, this)
         try {
+          // 已同步或云端的作品走更新，否则按新作品保存
           const summary = existing?.syncStatus === 'synced' || existing?.isCloud
             ? await updateCloudWork(existing.id, draft, coverPath, existing.title)
             : await saveNewCloudWork(draft, coverPath, existing?.title ?? '未命名作品')
@@ -676,6 +707,7 @@ Page({
           await appStore.setCurrentDraft(savedDraft)
           wx.showToast({ title: '已保存到云端', icon: 'success' })
         } catch (error) {
+          // 云端失败：按网络错误与否标记为 pending（联网自动同步）或 failed
           const pending = isNetworkError(error)
           await queueWorkForSync({
             ...localWork,

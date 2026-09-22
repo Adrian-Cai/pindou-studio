@@ -1,3 +1,11 @@
+/**
+ * 充值页（/packages/payment/recharge）：展示 AI 生成次数套餐并发起购买。
+ *
+ * 职责：onShow 读取并刷新当前 AI 额度；拉取可购买套餐列表；选中套餐后调支付、
+ *       支付成功跳支付结果页（带上 orderId 轮询）。不做下单/验签逻辑——委托 payment-service。
+ * 调用方：tabBar「我的」内的「充值」入口。
+ * 关键点：支付被用户取消只提示“已取消”，其他错误弹窗展示；finally 兜底复位 loading。
+ */
 import { authStore } from '../../../store/auth-store'
 import {
   fetchAiGenerationPackages,

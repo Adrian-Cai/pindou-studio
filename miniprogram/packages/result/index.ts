@@ -1,3 +1,12 @@
+/**
+ * 结果页：展示生成的拼豆图纸并提供下载（成品图/施工图/材料清单/色板）与收藏、改名。
+ *
+ * 职责：按 tab 懒渲染各 canvas 图（缩略图/成品图/高清施工图），处理下载半屏交互与配额扣减、
+ *       云端收藏切换、作品改名；不负责图纸像素绘制（交给 pattern-render-service）与云端下载接口（result-download-service）。
+ * 调用方：编辑器页保存后 navigateTo（路由 /packages/result/index）。
+ * 关键点：canvas 渲染用「已渲染 key」去重，切 draft 才重渲；下载带幂等键并区分云端扣费/本地计数；
+ *       chart 宽高按 32rpx/格 估算，用于提前占位避免滚动抖动。
+ */
 import { DOWNLOAD_CONFIGS } from './config/download'
 import type { DownloadSheetState, DownloadTabConfig } from './config/download'
 import type { DownloadFileType, PatternDraft, WorkItem } from '../../models/pattern'
@@ -110,6 +119,7 @@ Page({
       : { items: [], totalCount: 0 }
     const materials = materialSummary.items
     const beadCount = materialSummary.totalCount
+    // 用内容指纹判断当前 draft 是否已渲染过，避免每次 onShow 重复重绘 canvas
     const draftRenderKey = draft ? createDraftRenderKey(draft) : ''
     const shouldRenderPatternImages = draftRenderKey !== this.data.renderedDraftKey
 
@@ -128,6 +138,7 @@ Page({
             colorCount: materials.length,
           }
           : null,
+        // 施工图按 32rpx/格 估算占位尺寸，提前撑开滚动区避免渲染时抖动
         chartWidthRpx: draft ? draft.settings.width * 32 : 0,
         chartHeightRpx: draft ? draft.settings.height * 32 : 0,
         renderedDraftKey: draftRenderKey,
@@ -204,6 +215,7 @@ Page({
   async toggleFavorite() {
     const draft = this.data.draft
     if (!draft || this.data.favoriteUpdating) return
+    // 递增令牌：若期间刷新收藏状态的请求先回来，用旧结果会被丢弃
     this.favoriteRefreshToken += 1
     if (!hasCloudSession()) {
       wx.showToast({ title: '收藏失败，请先登录', icon: 'none' })
@@ -265,6 +277,7 @@ Page({
           wx.showToast({ title: '作品名称不能超过 20 个字符', icon: 'none' })
           return
         }
+        // 禁止控制字符/DEL，避免脏标题写入存储或数据库
         if (/[\u0000-\u001f\u007f]/u.test(nextTitle)) {
           wx.showToast({ title: '作品名称包含不可用字符', icon: 'none' })
           return
@@ -407,6 +420,7 @@ Page({
       const summary = this.data.summary
       if (!draft || !summary) throw new Error('作品信息不存在')
 
+      // 优先云端扣费（返回最新剩余配额）；未登录/失败则走本地计数
       const cloudQuota = await executeCloudDownload(draft, fileType, this.data.downloadIdempotencyKey)
       const nextQuota = cloudQuota !== null
         ? cloudQuota
@@ -418,6 +432,7 @@ Page({
             fileType,
           )
       if (nextQuota === null) throw new Error('下载次数状态已变化，请刷新后重试')
+      // 云端未扣费（如额度走本地）则仅本地记一笔下载
       if (cloudQuota === null) authStore.recordLocalDownload(nextQuota)
 
       this.setData({
@@ -543,6 +558,7 @@ Page({
     wx.switchTab({ url: '/pages/home/index' })
   },
 
+  // 只渲染「当前可见且尚未生成」的 canvas 图：成品/缩略图 + 切到施工图 tab 时的施工图
   async renderVisibleCanvases() {
     const draft = this.data.draft
     if (!draft || !this.data.canvasReady) return

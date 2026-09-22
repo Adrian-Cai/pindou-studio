@@ -1,3 +1,12 @@
+/**
+ * 结果页下载服务：绘制材料清单/色板下载图，并把图片存相册、扣减云端/本地下载配额。
+ *
+ * 职责：drawMaterialsDownload/drawPaletteDownload 负责两种下载图的文字与色块排版（纯 canvas 绘制，被渲染服务调用）；
+ *       saveImageToAlbum 存相册；executeCloudDownload 走云端扣费，recordLocalDownloadResult 走本地计数；
+ *       不负责图纸网格绘制（那是 pattern-render-service）。
+ * 调用方：packages/result/index.ts、pattern-render-service.ts。
+ * 关键点：每色坐标按固定行高硬编码排版（materials 72px/行、palette 4 列），与结果页估算的画布高度需对应。
+ */
 import { ApiError } from '../../../services/http-client'
 import type { DownloadFileType, PatternDraft } from '../../../models/pattern'
 import {
@@ -28,6 +37,10 @@ interface DownloadHeader {
   fileTitle: string
 }
 
+/**
+ * 绘制材料清单下载图：表头 + 每色一行（色号/颜色块/数量/占比）。
+ * 坐标按固定行高排版（每行 72px 起），需与结果页 materialsCanvasHeight 估算一致。
+ */
 export function drawMaterialsDownload(
   context: DownloadCanvasContext,
   header: DownloadHeader,
@@ -62,6 +75,10 @@ export function drawMaterialsDownload(
   })
 }
 
+/**
+ * 绘制色板参考下载图：每色一个色块 + 色号 + 用量，4 列网格排版。
+ * 坐标按固定列宽/行高排版（4 列×210px、行高 190px），需与结果页 paletteCanvasHeight 一致。
+ */
 export function drawPaletteDownload(
   context: DownloadCanvasContext,
   header: DownloadHeader,
@@ -69,6 +86,7 @@ export function drawPaletteDownload(
 ) {
   drawDownloadHeader(context, header)
   materials.forEach((item, index) => {
+    // 4 列网格排布：列=index%4，行=floor(index/4)
     const column = index % 4
     const row = Math.floor(index / 4)
     const left = 40 + column * 210
@@ -84,6 +102,7 @@ export function drawPaletteDownload(
   })
 }
 
+/** 把临时图片保存到系统相册；用户拒绝授权或取消会 reject。 */
 export function saveImageToAlbum(filePath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     wx.saveImageToPhotosAlbum({
@@ -94,6 +113,7 @@ export function saveImageToAlbum(filePath: string): Promise<void> {
   })
 }
 
+/** 把下载/保存异常映射成用户友好的提示文案（未扣次数等场景单独说明）。 */
 export function friendlyDownloadError(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
   if (error instanceof ApiError && error.code === 'QUOTA_INSUFFICIENT') return '下载额度不足，未创建下载记录'
@@ -118,10 +138,15 @@ function drawDownloadHeader(context: DownloadCanvasContext, header: DownloadHead
   context.fillText(header.workTitle, 40, 108)
 }
 
+/** 生成下载幂等键：时间戳 + 随机串，防止网络重试重复扣费。 */
 export function createDownloadIdempotencyKey(): string {
   return `export-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+/**
+ * 未登录/非云端作品时，在本地记一笔下载并返回最新本地剩余配额（由 appStore 计算）。
+ * @returns 最新剩余下载次数，状态异常返回 null
+ */
 export function recordLocalDownloadResult(
   draft: PatternDraft,
   title: string,
@@ -142,6 +167,10 @@ export function recordLocalDownloadResult(
   })
 }
 
+/**
+ * 云端作品下载：带幂等键调用服务端扣费，写本地下载记录并刷新配额。
+ * @returns 云端返回的最新剩余配额；非云端作品返回 null（交由本地计数）
+ */
 export async function executeCloudDownload(
   draft: PatternDraft,
   fileType: DownloadFileType,

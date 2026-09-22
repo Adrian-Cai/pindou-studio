@@ -1,6 +1,16 @@
+/**
+ * 微信支付下单与拉起支付（小程序端网络层）。
+ *
+ * 职责：获取 AI 生成套餐列表、创建支付订单并调起 wx.requestPayment、判断支付取消、
+ *       把服务端 JSON 解析成强类型（套餐/支付参数/创建回执）。不直接处理回调——
+ *       微信支付回调由服务端 wechat-pay-client 验签处理。
+ * 调用方：packages/payment 下各页面（recharge、payment-success 等）。
+ * 关键点：下单带 Idempotency-Key 防重复扣款；支付参数必须校验 prepay_id= 前缀；未登录直接抛 UNAUTHORIZED。
+ */
 import { ApiError, apiRequest } from './http-client'
 import { isAuthSessionExpired, loadAuthSession } from './token-storage'
 
+/** 拉起 wx.requestPayment 所需的小程序支付参数（RSA 签名）。 */
 export interface WeChatPaymentParameters {
   timeStamp: string
   nonceStr: string
@@ -9,11 +19,13 @@ export interface WeChatPaymentParameters {
   paySign: string
 }
 
+/** 创建支付订单的回执：订单号 + 拉起支付所需的参数。 */
 export interface CreatePaymentResponse {
   orderId: string
   payment: WeChatPaymentParameters
 }
 
+/** AI 生成次数套餐：id、可生成次数、展示价、文案标签。 */
 export interface AiGenerationPackage {
   id: string
   count: number
@@ -21,6 +33,7 @@ export interface AiGenerationPackage {
   label: string
 }
 
+/** 获取可购买的 AI 生成套餐列表（/api/packages），返回前端展示用结构。 */
 export async function fetchAiGenerationPackages(): Promise<AiGenerationPackage[]> {
   const response = await apiRequest<unknown>({ path: '/api/packages' })
   return parsePackages(response)
@@ -40,11 +53,13 @@ async function createAiGenerationPayment(
     token: requireToken(),
     headers: { 'Idempotency-Key': idempotencyKey },
     data: { packageId: normalizedPackageId },
+    // 下单接口超时 15 秒，避免长时间阻塞支付流程
     timeoutMs: 15_000,
   })
   return parseCreatePayment(response)
 }
 
+/** 购买 AI 套餐：创建订单后立即拉起微信支付，返回 orderId（用于跳支付成功页轮询结果）。 */
 export async function payForAiGenerationPackage(packageId: string): Promise<CreatePaymentResponse> {
   const created = await createAiGenerationPayment(packageId)
   await requestWechatPayment(created.payment)
@@ -61,15 +76,18 @@ function requestWechatPayment(payment: WeChatPaymentParameters): Promise<void> {
   })
 }
 
+// 幂等键：时间戳 + 随机串，确保同一笔购买重复点击不会生成多个订单/重复扣款
 function createPaymentIdempotencyKey(): string {
   return `payment-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`
 }
 
+/** 判断 wx.requestPayment 的失败是否为“用户主动取消”（errMsg 含 requestPayment:fail cancel）。 */
 export function isWechatPaymentCancelled(error: unknown): boolean {
   const message = isRecord(error) && typeof error.errMsg === 'string' ? error.errMsg : ''
   return message.includes('requestPayment:fail cancel')
 }
 
+/** 把支付失败错误归一化为用户可读文案，无 message 时回退默认提示。 */
 export function paymentErrorMessage(error: unknown): string {
   return error instanceof Error && error.message
     ? error.message
@@ -98,6 +116,7 @@ function parsePaymentParameters(value: Record<string, unknown>): WeChatPaymentPa
     || typeof value.nonceStr !== 'string'
     || !value.nonceStr
     || typeof value.package !== 'string'
+    // package 必须以 prepay_id= 开头，否则不是合法的小程序支付参数
     || !value.package.startsWith('prepay_id=')
     || typeof value.paySign !== 'string'
     || !value.paySign

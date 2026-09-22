@@ -1,8 +1,18 @@
+/**
+ * 图片前置处理：选图、校验格式、压缩/转码、以及由图片生成图纸草稿。
+ *
+ * 职责：封装 wx.chooseImage 选图、按文件头校验 JPG/PNG/WEBP、把大图压缩到最长边
+ *       1024 用于内容安全与上传、并调用标准生成流程产出 PatternDraft；不负责云端读写与下载。
+ * 调用方：生成页（standard / AI）在拿到用户图片后调用。
+ * 关键点：部分真机/开发者工具禁止直接读选择器临时路径文件头，此时跳过校验交由 <image> 解码；
+ *       createPendingDraft 只用于 AI 等待态占位，无真实网格。
+ */
 import { DEFAULT_PATTERN_SETTINGS } from '../config/product'
 import type { GenerationMode, PatternDraft, PatternSettings } from '../models/pattern'
 import { ApiError } from './http-client'
 import { generateStandardPatternCells } from './pattern-generation/standard-generator'
 
+/** 不支持的图片格式错误（文件头校验失败）。 */
 export class UnsupportedImageFormatError extends ApiError {
   constructor() {
     super('仅支持 JPG、PNG、WEBP 格式', { code: 'UNSUPPORTED_IMAGE' })
@@ -10,6 +20,7 @@ export class UnsupportedImageFormatError extends ApiError {
   }
 }
 
+/** 图片解码失败错误（无法获取尺寸或绘制）。 */
 export class ImageDecodeError extends ApiError {
   constructor() {
     super('图片无法读取，请换一张重试', { code: 'IMAGE_DECODE_ERROR' })
@@ -17,6 +28,10 @@ export class ImageDecodeError extends ApiError {
   }
 }
 
+/**
+ * 调起相册/相机选图，并做格式校验，返回临时路径；用户取消返回 null。
+ * @returns 选中的原图临时路径，或 null（取消/无图）
+ */
 export async function chooseSourceImage(): Promise<string | null> {
   let result: WechatMiniprogram.ChooseImageSuccessCallbackResult
   try {
@@ -42,6 +57,12 @@ export async function chooseSourceImage(): Promise<string | null> {
   return sourceImagePath
 }
 
+/**
+ * 把原图处理成适合内容安全检测与上传的版本：校验格式、小体积 JPEG 直接复用，
+ * 否则离屏 canvas 缩放到最长边 1024 再转 jpg(0.8)，失败回退 wx.compressImage。
+ * @param sourceImagePath 原图临时路径
+ * @returns 处理后图片的临时路径
+ */
 export async function prepareImageForContentSecurity(sourceImagePath: string): Promise<string> {
   let header: Uint8Array | null = null
   try {
@@ -63,7 +84,7 @@ export async function prepareImageForContentSecurity(sourceImagePath: string): P
   const maxSide = 1_024
   const currentMaxSide = Math.max(sourceWidth, sourceHeight)
 
-  // 如果原图已经是小体积的 JPEG，可直接复用
+  // 小体积 JPEG（≤300KB 且最长边已 ≤1024）可直接上传，省一次压缩
   if (header && isJpeg(header) && currentMaxSide <= maxSide) {
     const size = await getFileSize(sourceImagePath)
     if (size !== null && size <= 300 * 1024) {
@@ -147,6 +168,12 @@ function isImagePickerCancel(error: unknown): boolean {
   return typeof errMsg === 'string' && errMsg.toLowerCase().includes('cancel')
 }
 
+/**
+ * 由图片 + 设置生成一份标准模式图纸草稿（调用标准生成流程产出网格）。
+ * @param sourceImagePath 已处理的原图路径
+ * @param settings 图纸设置（与默认值合并）
+ * @param generationMode 生成模式，默认 'standard'
+ */
 export async function createDraft(
   sourceImagePath: string,
   settings: Partial<PatternSettings>,
@@ -218,6 +245,7 @@ function readFileHeader(filePath: string): Promise<Uint8Array> {
   })
 }
 
+/** 判断文件头字节是否为受支持的 JPG / PNG / WEBP 格式。 */
 export function isSupportedImageHeader(bytes: Uint8Array): boolean {
   return isJpeg(bytes) || isPng(bytes) || isWebp(bytes)
 }
@@ -227,6 +255,7 @@ function isJpeg(bytes: Uint8Array): boolean {
 }
 
 function isPng(bytes: Uint8Array): boolean {
+  // PNG 固定 8 字节文件签名
   const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
   return signature.every((byte, index) => bytes[index] === byte)
 }

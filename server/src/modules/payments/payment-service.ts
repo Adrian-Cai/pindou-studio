@@ -1,3 +1,14 @@
+/**
+ * 支付服务：套餐列表、订单列表、下单（JSAPI）与支付回调处理。
+ *
+ * 职责：串联「订单表 + 微信支付网关 + 额度账本」；不负责微信协议细节（见 wechat-pay-client）。
+ * 调用方：http 路由层的 /api/packages、/api/orders、/api/payments、/api/payments/notify。
+ * 关键点：订单 id 由 userId + idempotencyKey 推导，重复下单天然幂等；
+ *         下单用两级 advisory lock（用户级 + 订单级）串行化，避免同一用户并发建单；
+ *         回调必须校验商户号、appId、订单号、金额、付款人五项一致后才置为 paid；
+ *         到账只写一条 purchase_grant 额度流水（ON CONFLICT DO NOTHING），重复回调不会重复加额度；
+ *         订单快照字段（package_label_snapshot 等）是下单瞬间的副本，套餐后续改价不影响历史订单。
+ */
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { AppError, idempotencyConflict, invalidArgument, notFound, unauthorized } from "../../shared/app-error";
 import {
@@ -37,6 +48,7 @@ export interface CreatePaymentResponse {
   readonly payment: PaymentParameters;
 }
 
+/** 订单状态机：pending 待支付 → paid 已支付 / failed 失败 / closed 已关闭，paid 后可 refunded。 */
 export type OrderStatus = "pending" | "paid" | "failed" | "closed" | "refunded";
 
 export interface OrderListOptions {
@@ -175,6 +187,7 @@ function orderResponse(row: OrderRow): OrderItem {
   };
 }
 
+/** 校验套餐可否支付：必须是 CNY、价格与额度为正、且是 AI 生成次数（不支持会员类套餐）。 */
 function ensurePayablePackage(row: PackageRow | undefined): PackageRow {
   if (!row) throw notFound("套餐不存在或已下架");
   if (

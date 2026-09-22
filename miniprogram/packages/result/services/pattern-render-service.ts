@@ -1,3 +1,12 @@
+/**
+ * 图纸渲染服务：把 PatternDraft 画成各类下载/展示图（缩略图、成品图、施工图、材料清单、色板）。
+ *
+ * 职责：封装 2d canvas 取节点、按设备像素比高清绘制、导出临时图片的通用流程，并提供四种图的绘制实现；
+ *       材料清单/色板的具体排版复用 result-download-service 的 draw*Download 函数。不负责配额与下载接口。
+ * 调用方：packages/result/index.ts（结果页）。
+ * 关键点：所有绘制统一按 pixelRatio（≤2）放大物理分辨率再 scale，避免高清屏模糊；
+ *       施工图（chart）为网格+色号文字的「十字绣式」底图，HD 版固定 24px/格。
+ */
 import type { PatternDraft } from '../../../models/pattern'
 import {
   drawMaterialsDownload,
@@ -8,7 +17,9 @@ import {
   type MaterialItem,
 } from '../utils'
 
+// 缩略图尺寸（rpx），按屏幕宽度换算成像素
 const THUMB_SIZE_RPX = 176
+// 材料清单/色板下载图的固定画布宽度（px）
 export const DOWNLOAD_CANVAS_WIDTH = 900
 
 interface PatternCanvas {
@@ -43,6 +54,7 @@ interface CanvasQueryResult {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ComponentContext = any
 
+// 按选择器取出画布节点与尺寸，取不到抛错（canvas 未在 wxml 渲染时会失败）
 function queryCanvas(context: ComponentContext, selector: string): Promise<CanvasQueryResult> {
   return new Promise((resolve, reject) => {
     wx.createSelectorQuery()
@@ -60,6 +72,7 @@ function queryCanvas(context: ComponentContext, selector: string): Promise<Canva
   })
 }
 
+// 把离屏 canvas 导出为 PNG 临时文件，供预览/保存到相册
 function exportCanvas(canvas: PatternCanvas, context: ComponentContext): Promise<string> {
   return new Promise((resolve, reject) => {
     wx.canvasToTempFilePath(
@@ -75,7 +88,13 @@ function exportCanvas(canvas: PatternCanvas, context: ComponentContext): Promise
   })
 }
 
+/**
+ * 绘制列表用缩略图（拼豆圆点风格），返回临时图片路径。
+ * @param context 页实例
+ * @param draft 图纸草稿
+ */
 export async function drawThumbnail(context: ComponentContext, draft: PatternDraft): Promise<string> {
+  // rpx→px：750rpx 为设计基准屏宽；pixelRatio 上限 2 控制内存
   const thumbSizePx = Math.round((THUMB_SIZE_RPX / 750) * wx.getWindowInfo().windowWidth)
   const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
 
@@ -138,6 +157,11 @@ export async function drawThumbnail(context: ComponentContext, draft: PatternDra
   return exportCanvas(canvasNode, context)
 }
 
+/**
+ * 绘制成品大图（与缩略图同款圆点风格），返回临时图片路径，用于结果页展示与分享。
+ * @param context 页实例
+ * @param draft 图纸草稿
+ */
 export async function drawPreviewImage(context: ComponentContext, draft: PatternDraft): Promise<string> {
   const result = await queryCanvas(context, '#previewRenderCanvas')
   const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
@@ -186,6 +210,10 @@ export async function drawPreviewImage(context: ComponentContext, draft: Pattern
   return exportCanvas(canvas, context)
 }
 
+/**
+ * 绘制施工图的「普通版 + 高清版」两张图，分别用于屏内预览与下载/放大查看。
+ * @returns { chartSrc, chartHdSrc } 两张临时图片路径
+ */
 export async function drawChartImages(
   context: ComponentContext,
   draft: PatternDraft,
@@ -222,6 +250,7 @@ async function drawChartCanvas(
   ctx.strokeStyle = '#d9d9d9'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
+  // 色号字号随格子大小自适应，限制在 7~10px 之间
   ctx.font = `${Math.max(7, Math.min(10, cellWidth * 0.52))}px sans-serif`
 
   draft.cells.forEach((cell, index) => {
@@ -229,11 +258,13 @@ async function drawChartCanvas(
     const row = Math.floor(index / draft.settings.width)
     const x = column * cellWidth
     const y = row * cellHeight
+    // 每格填背景色（透明格填白），再描网格线，形成十字绣式底图
     ctx.fillStyle = cell.color === 'transparent' ? '#ffffff' : cell.color
     ctx.fillRect(x, y, cellWidth, cellHeight)
     ctx.strokeRect(x, y, cellWidth, cellHeight)
 
     if (cell.colorCode) {
+      // 字号颜色取与底色对比度高的黑/白；色号去掉前导 C0/C 只显示数字
       ctx.fillStyle = getTextColor(cell.color)
       ctx.fillText(cell.colorCode.replace(/^C0?/, ''), x + cellWidth / 2, y + cellHeight / 2)
     }
@@ -246,6 +277,7 @@ async function drawChartHdCanvas(
   selector: string,
   draft: PatternDraft,
 ): Promise<PatternCanvas> {
+  // HD 版固定 24px/格，尺寸由网格数决定，不随屏幕缩放（保证打印清晰）
   const CHART_HD_CELL_PX = 24
   const totalWidth = draft.settings.width * CHART_HD_CELL_PX
   const totalHeight = draft.settings.height * CHART_HD_CELL_PX
@@ -295,6 +327,10 @@ async function drawChartHdCanvas(
   return canvas
 }
 
+/**
+ * 绘制材料清单下载图（每色用量汇总），返回临时图片路径。
+ * @param materials 各色用量列表；beadCount 总珠数；height 由结果页按条数估算的画布高度
+ */
 export async function drawMaterialsDownloadImage(
   context: ComponentContext,
   materials: MaterialItem[],
@@ -321,6 +357,10 @@ export async function drawMaterialsDownloadImage(
   return exportCanvas(canvas.node, context)
 }
 
+/**
+ * 绘制色板参考下载图（各色色块+色号），返回临时图片路径。
+ * @param materials 各色列表；height 由结果页按行数估算的画布高度
+ */
 export async function drawPaletteDownloadImage(
   context: ComponentContext,
   materials: MaterialItem[],

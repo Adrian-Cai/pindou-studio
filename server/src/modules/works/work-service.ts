@@ -1,3 +1,13 @@
+/**
+ * 服务端作品持久化与所有权：用 Postgres 存储/读取/收藏/删除作品，全程校验归属。
+ *
+ * 职责：PostgresWorkService 封装作品的 create/update/list/get/delete/setFavorite/listFavorites，
+ *       写入时校验封面文件归属、用事务保证 works 与 patterns 两张表一致、用幂等键防重复提交；
+ *       读路径统一经 assertWorkOwner 鉴权。不负责图纸内容的算法（那是小程序端）。
+ * 调用方：works 模块的路由层（HTTP 接口）。
+ * 关键点：作品软删除（deleted_at）；收藏用 pindou_favorites 表；pattern 以 JSONB 存 palette/cells；
+ *       create 用 idempotency key 生成确定性 workId，重复提交返回首次结果而非报错。
+ */
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { createIdempotentWorkId } from "../../shared/identity";
 import { AppError, forbidden, idempotencyConflict, notFound } from "../../shared/app-error";
@@ -5,6 +15,7 @@ import { toIso } from "../../shared/date-time";
 import { rollbackTransaction } from "../../shared/transaction";
 import { validatePersistedPattern, type GenerationMode, type PersistedPattern, type ValidatedPattern } from "./pattern";
 
+/** 作品状态：草稿或已完成。 */
 export type WorkStatus = "draft" | "completed";
 
 export interface WorkSummary {
@@ -119,6 +130,7 @@ export class PostgresWorkService {
   public constructor(private readonly pool: Pool, private readonly now: () => Date = () => new Date()) {}
 
   public async create(input: CreateWorkInput): Promise<WorkSummary> {
+    // 由 userId + 幂等键生成确定性 workId：同一键重复提交会得到同一 id，便于去重
     const workId = createIdempotentWorkId(input.userId, input.idempotencyKey);
     const currentTime = this.now();
     const client = await this.pool.connect();
@@ -126,6 +138,7 @@ export class PostgresWorkService {
       await client.query("BEGIN");
       const existing = await readWorkDetail(client, workId);
       if (existing) {
+        // 已存在且归属相同、请求内容一致 → 直接返回首次结果（幂等），否则判定冲突
         if (existing.user_id !== input.userId || existing.deleted_at) throw idempotencyConflict();
         if (!sameRequest(existing, input)) throw idempotencyConflict();
         await client.query("COMMIT");
@@ -202,6 +215,7 @@ export class PostgresWorkService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      // 加行锁读现有作品，并校验未被删除且归属当前用户
       const existing = await readWorkSummary(client, input.workId, true);
       if (!existing || existing.deleted_at) throw notFound("作品不存在");
       if (existing.user_id !== input.userId) throw forbidden("作品不属于当前用户");
@@ -343,11 +357,13 @@ export class PostgresWorkService {
       [userId, workId],
     );
     const row = result.rows[0];
+    // 查不到时先走 assertWorkOwner：区分「不存在」与「不属于当前用户」两种 404/403
     if (!row) await assertWorkOwner(this.pool, workId, userId);
     return mapDetail(row as WorkRow);
   }
 
   public async delete(userId: string, workId: string): Promise<void> {
+    // 软删除：置 deleted_at，确认归属后执行
     await assertWorkOwner(this.pool, workId, userId);
     await this.pool.query(
       `UPDATE pindou_works SET deleted_at = $3, updated_at = $3
@@ -492,6 +508,7 @@ async function readWorkSummary(
   return result.rows[0] ?? null;
 }
 
+// 比较已存在记录与本次请求内容是否一致（标题/封面/状态/图案全同），用于幂等判定
 function sameRequest(existing: WorkRow, input: CreateWorkInput): boolean {
   if (existing.title !== input.title || existing.cover_file_id !== input.coverFileId || existing.status !== input.status) return false;
   const existingPattern = mapPattern(existing);
@@ -526,6 +543,7 @@ function mapFavoriteSummary(row: WorkRow): FavoriteWorkSummary {
   return { ...mapSummary(row), favoritedAt: toIso(row.favorited_at) };
 }
 
+// 由数据库行拼出 PersistedPattern，并把 JSONB 字段交给 validatePersistedPattern 校验
 function mapPattern(row: WorkRow): PersistedPattern {
   const pattern = {
     schemaVersion: row.schema_version,
@@ -544,6 +562,7 @@ function generationModeFromRow(row: Pick<WorkRow, "generation_mode">): Generatio
   return "standard";
 }
 
+// 把 JSONB 字段（可能为字符串）解析为对象；解析失败视为图案损坏
 function parseJson(value: unknown): unknown {
   if (typeof value !== "string") return value;
   try {
@@ -553,6 +572,7 @@ function parseJson(value: unknown): unknown {
   }
 }
 
+// 鉴权：确认作品存在且未被删除且归属当前用户，否则抛 notFound/forbidden
 async function assertWorkOwner(pool: Pool, workId: string, userId: string): Promise<void> {
   const result = await pool.query<OwnershipRow>(
     "SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1",

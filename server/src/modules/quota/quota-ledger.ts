@@ -1,10 +1,23 @@
+/**
+ * 额度账本：以「流水账」方式管理用户的下载次数与 AI 生成次数。
+ *
+ * 职责：只做额度的发放（每日免费额度）、读取与扣减桶判定，不直接写扣减流水（由各业务服务自己写 transaction）。
+ * 调用方：downloads/quota-download-service（下载扣次）、payments/payment-service（充值到账）、
+ *         http 路由层（查询额度）。
+ * 关键点：额度不存余额字段，而是对 pindou_quota_transactions 求和得出，避免并发下余额被覆盖；
+ *         所有调用方必须先 lockQuotaUser 行锁用户，再读写额度；
+ *         PG 的 bigint 返回为字符串，统一经 nonNegativeInteger 转换，防止 JS 数值精度问题。
+ */
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { unauthorized } from "../../shared/app-error";
 import { createEntityId } from "../../shared/identity";
 
+/** 额度种类：标准模式下载次数、AI 生成次数。 */
 export type QuotaKind = "standard_download" | "ai_generation";
+/** 额度桶：每日免费额度、购买所得额度；扣减时优先用免费额度。 */
 export type QuotaBucket = "daily_free" | "purchased";
 
+/** 额度聚合查询的单行结果，PG bigint 以字符串返回。 */
 interface QuotaRow extends QueryResultRow {
   readonly daily_free: string;
   readonly used_today: string;
@@ -24,6 +37,10 @@ function nonNegativeInteger(value: string | number): number {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
+/**
+ * 对额度用户加行锁（SELECT ... FOR UPDATE），必须在同一事务内先于任何额度读写调用。
+ * 用户不存在或已软删除时抛 401，防止给失效用户记账。
+ */
 export async function lockQuotaUser(client: PoolClient, userId: string): Promise<void> {
   const result = await client.query(
     `SELECT id
@@ -56,6 +73,10 @@ export async function ensureDailyGrant(
   );
 }
 
+/**
+ * 聚合某用户某类额度的当前状态。
+ * 注意：purchased（购买所得）不受 quota_date 限制，只有 daily_free 才按天统计并跨天重置。
+ */
 export async function readQuota(
   client: Pick<Pool, "query"> | Pick<PoolClient, "query">,
   userId: string,
@@ -103,6 +124,7 @@ export function availableQuota(quota: QuotaValues): number {
   return quota.dailyRemaining + quota.purchased;
 }
 
+/** 决定本次扣减走哪个桶：先用免费额度，用完再用购买额度；都为 0 时返回 null 表示额度不足。 */
 export function debitBucket(quota: QuotaValues): QuotaBucket | null {
   if (quota.dailyRemaining > 0) return "daily_free";
   if (quota.purchased > 0) return "purchased";

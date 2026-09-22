@@ -1,6 +1,16 @@
+/**
+ * 支付结果页：支付完成后跳转到此页确认权益是否到账。
+ *
+ * 职责：轮询订单状态并刷新 AI 生成额度，把结果渲染成「成功 / 处理中 / 失败」三态之一。
+ * 调用方：packages/payment/recharge 拉起微信支付成功后跳转，路由 /packages/payment/payment-success?orderId=xxx。
+ * 关键点：微信支付回调与前端跳转存在时序差，回调可能晚于本页加载，因此这里做最多 6 次、
+ *         每次间隔 1 秒的轮询；只有订单变为 paid 才判定成功，failed/closed/refunded 判定失败，
+ *         6 次仍未出结果时落到 pending，提示用户去「我的」查看，避免误报支付失败。
+ */
 import { authStore } from '../../../store/auth-store'
 import { fetchOrders } from '../services/order-service'
 
+/** 页面三态：loading 等待首次查询 / paid 已到账 / pending 超时未确认 / failed 明确失败。 */
 type PaymentResultState = 'loading' | 'paid' | 'pending' | 'failed'
 
 Page({
@@ -80,6 +90,7 @@ Page({
   },
 })
 
+/** 分转元：服务端金额一律以「分」存储，展示时除以 100 并保留两位小数。 */
 function formatFen(priceFen: number): string {
   return (priceFen / 100).toFixed(2)
 }
