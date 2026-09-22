@@ -3,6 +3,7 @@ import {
   aiGenerationFailure,
   type AiGeneration,
   type AiGenerationFailure,
+  type AiOutputContentType,
   type AiOutputFile,
 } from './ai-generation-service'
 
@@ -84,15 +85,19 @@ function parseAiOutputFile(value: unknown): AiOutputFile | undefined {
   if (
     !nonEmptyString(value.id)
     || !nonEmptyString(value.url)
-    || value.contentType !== 'image/png'
+    || !isAiOutputContentType(value.contentType)
     || !isNonNegativeInteger(value.size)
   ) return undefined
   return {
     id: value.id,
     url: value.url.trim(),
-    contentType: 'image/png',
+    contentType: value.contentType,
     size: value.size,
   }
+}
+
+function isAiOutputContentType(value: unknown): value is AiOutputContentType {
+  return value === 'image/jpeg' || value === 'image/png' || value === 'image/webp'
 }
 
 function parseStatus(value: unknown): AiGeneration['status'] | undefined {

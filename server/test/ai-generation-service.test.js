@@ -6,6 +6,17 @@ const { ProviderError } = require("../dist/modules/ai/hunyuan-image-provider.js"
 
 const NOW = new Date("2026-09-01T04:00:00.000Z");
 
+const PROVIDER_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+const PROVIDER_JPEG = Buffer.concat([
+  Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10, 0x45, 0x78, 0x69, 0x66]),
+  Buffer.alloc(512, 0x11),
+  Buffer.from([0xff, 0xd9]),
+]);
+
 function harness({
   available = 3,
   providerOutputUrl = "https://aigc-image.cos.myqcloud.com/output.png",
@@ -15,6 +26,7 @@ function harness({
   inputFileType = "ai_input",
   downloadError = null,
   saveError = null,
+  providerOutput = PROVIDER_PNG,
 } = {}) {
   let job = null;
   let outputFile = null;
@@ -111,17 +123,19 @@ function harness({
     },
     async downloadOutput() {
       if (downloadError) throw downloadError;
-      return Buffer.from("provider-png");
+      return providerOutput;
     },
   };
   let saveCount = 0;
+  let savedOutput = null;
   const storage = {
     async readObject() {
       if (!inputAvailable) return null;
       return { buffer: Buffer.from("input-png"), contentType: "image/png" };
     },
-    async save() {
+    async save(kind, _buffer, filename, contentType) {
       saveCount += 1;
+      savedOutput = { kind, filename, contentType };
       events.push({ type: "storage_save" });
       if (saveError) throw saveError;
       return { objectKey: "ai/ai_output_test.png", publicUrl: "https://cdn.example/output.png", contentType: "image/png", byteSize: 12, width: 1024, height: 1024 };
@@ -145,6 +159,7 @@ function harness({
     get debitCount() { return debitCount; },
     get createCount() { return createCount; },
     get saveCount() { return saveCount; },
+    get savedOutput() { return savedOutput; },
   };
 }
 
@@ -165,6 +180,20 @@ async function advanceUntilTerminal(state, jobId) {
   }
   return result;
 }
+
+test("AI output keeps the real provider format when the upstream returns JPEG", async () => {
+  const state = harness({ providerOutput: PROVIDER_JPEG });
+  const created = await state.service.create(REQUEST);
+  const result = await advanceUntilTerminal(state, created.id);
+
+  assert.equal(result.status, "succeeded");
+  assert.equal(state.saveCount, 1);
+  assert.deepEqual(state.savedOutput, {
+    kind: "ai_output",
+    filename: "output.jpg",
+    contentType: "image/jpeg",
+  });
+});
 
 test("AI state machine persists output and debits ai_generation exactly once after success", async () => {
   const state = harness();
@@ -321,4 +350,140 @@ test("output storage failures enter a failed terminal state without quota debit"
   assert.equal(result.status, "failed");
   assert.equal(result.failure.code, "AI_GENERATION_FAILED");
   assert.equal(state.debitCount, 0);
+});
+
+const CLEANUP_NOW = new Date("2026-09-22T04:00:00.000Z");
+const CLEANUP_OLD = new Date("2026-09-12T04:00:00.000Z");
+const CLEANUP_EXPIRED = new Date("2026-09-13T04:00:00.000Z");
+const CLEANUP_FUTURE = new Date("2026-09-30T04:00:00.000Z");
+
+function createCleanupHarness() {
+  const assets = new Map([
+    ["file_input_1", { id: "file_input_1", object_key: "ai/input-1.png", deleted_at: null }],
+    ["file_input_2", { id: "file_input_2", object_key: "ai/input-2.png", deleted_at: null }],
+    ["file_output_1", { id: "file_output_1", object_key: "ai/output-1.png", deleted_at: null }],
+  ]);
+  const jobs = [
+    { id: "aijob_queued", input_file_id: "file_input_1", output_file_id: null, status: "queued", error_code: null, completed_at: null, updated_at: CLEANUP_OLD, expires_at: CLEANUP_EXPIRED },
+    { id: "aijob_processing", input_file_id: "file_input_1", output_file_id: null, status: "processing", error_code: null, completed_at: null, updated_at: CLEANUP_OLD, expires_at: CLEANUP_EXPIRED },
+    { id: "aijob_succeeded", input_file_id: "file_input_2", output_file_id: "file_output_1", status: "succeeded", error_code: null, completed_at: CLEANUP_OLD, updated_at: CLEANUP_OLD, expires_at: CLEANUP_EXPIRED },
+    { id: "aijob_finished", input_file_id: "file_input_2", output_file_id: null, status: "failed", error_code: "AI_PROVIDER_ERROR", completed_at: CLEANUP_OLD, updated_at: CLEANUP_OLD, expires_at: CLEANUP_EXPIRED },
+    { id: "aijob_fresh", input_file_id: "file_input_1", output_file_id: null, status: "succeeded", error_code: null, completed_at: CLEANUP_OLD, updated_at: CLEANUP_OLD, expires_at: CLEANUP_FUTURE },
+  ];
+  const byId = new Map(jobs.map((job) => [job.id, job]));
+  const statements = [];
+  const removals = [];
+
+  const applyJobsUpdate = (ids, currentTime) => {
+    for (const id of ids) {
+      const job = byId.get(id);
+      const wasSucceeded = job.status === "succeeded";
+      job.status = "failed";
+      job.error_code = wasSucceeded ? "AI_RESULT_EXPIRED" : (job.error_code ?? "AI_TASK_EXPIRED");
+      job.completed_at = job.completed_at ?? currentTime;
+      job.updated_at = currentTime;
+    }
+  };
+  const applyAssetUpdate = (ids, currentTime) => {
+    for (const id of ids) {
+      const asset = assets.get(id);
+      if (asset && asset.deleted_at === null) asset.deleted_at = currentTime;
+    }
+  };
+
+  const client = {
+    async query(sql, parameters = []) {
+      statements.push({ sql, parameters });
+      if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.includes("FOR UPDATE OF jobs SKIP LOCKED")) {
+        const expired = jobs.filter((job) => job.expires_at <= CLEANUP_NOW);
+        // 守卫写在 SQL 里：一旦有人把它删掉，这里就退化成旧行为（返回全部过期行），
+        // 第二轮会重新产生 UPDATE，测试随即失败。
+        const guarded = /jobs\.completed_at IS NULL/.test(sql) && /jobs\.status = 'succeeded'/.test(sql);
+        const selected = guarded
+          ? expired.filter((job) => job.completed_at === null || job.status === "succeeded")
+          : expired;
+        return {
+          rows: selected.map((job) => ({
+            id: job.id,
+            input_file_id: job.input_file_id,
+            input_object_key: assets.get(job.input_file_id).object_key,
+            output_file_id: job.output_file_id,
+            output_object_key: job.output_file_id ? assets.get(job.output_file_id).object_key : null,
+            status: job.status,
+          })),
+        };
+      }
+      if (sql.includes("SET status = 'failed'") && sql.includes("WHERE id = ANY")) {
+        applyJobsUpdate(parameters[0], parameters[1]);
+        return { rows: [] };
+      }
+      if (sql.includes("SET deleted_at = COALESCE(deleted_at, $2)")) {
+        applyAssetUpdate(parameters[0], parameters[1]);
+        return { rows: [] };
+      }
+      if (sql.includes("FROM pindou_file_assets files")) return { rows: [] };
+      if (sql.includes("SET deleted_at = $2")) {
+        applyAssetUpdate(parameters[0], parameters[1]);
+        return { rows: [] };
+      }
+      throw new Error(`unexpected SQL: ${sql}`);
+    },
+    release() {},
+  };
+  const pool = {
+    async connect() { return client; },
+    async query(sql, parameters) { return client.query(sql, parameters); },
+  };
+  const storage = {
+    async readObject() { return null; },
+    async save() { throw new Error("unused in cleanup test"); },
+    async remove(objectKey) { removals.push(objectKey); },
+  };
+  const unused = async () => { throw new Error("unused in cleanup test"); };
+  const service = new PostgresAiGenerationService(
+    pool,
+    { configured: true, name: "hunyuan", model: "HY-Image-v3.0", createTask: unused, downloadOutput: unused },
+    storage,
+    { dailyStandardDownloads: 9, dailyAiGenerations: 3 },
+    () => CLEANUP_NOW,
+  );
+  return { jobs, byId, assets, statements, removals, service };
+}
+
+function countUpdateStatements(statements) {
+  return statements.filter((statement) => statement.sql.trimStart().toUpperCase().startsWith("UPDATE")).length;
+}
+
+function cleanupSnapshot(jobs) {
+  return jobs.map((job) => ({ id: job.id, status: job.status, errorCode: job.error_code, completedAt: job.completed_at, updatedAt: job.updated_at }));
+}
+
+test("cleanupExpired expires each job once instead of restamping the whole backlog every run", async () => {
+  const state = createCleanupHarness();
+  await state.service.cleanupExpired();
+
+  assert.equal(state.byId.get("aijob_queued").status, "failed");
+  assert.equal(state.byId.get("aijob_queued").error_code, "AI_TASK_EXPIRED");
+  assert.equal(state.byId.get("aijob_processing").error_code, "AI_TASK_EXPIRED");
+  assert.equal(state.byId.get("aijob_succeeded").status, "failed");
+  assert.equal(state.byId.get("aijob_succeeded").error_code, "AI_RESULT_EXPIRED");
+  assert.deepEqual(state.byId.get("aijob_succeeded").completed_at, CLEANUP_OLD);
+  assert.equal(state.byId.get("aijob_fresh").status, "succeeded");
+  assert.deepEqual(state.byId.get("aijob_fresh").updated_at, CLEANUP_OLD);
+
+  assert.equal(state.byId.get("aijob_finished").error_code, "AI_PROVIDER_ERROR");
+  assert.deepEqual(state.byId.get("aijob_finished").updated_at, CLEANUP_OLD);
+
+  const afterFirst = cleanupSnapshot(state.jobs);
+  const removalsAfterFirst = [...state.removals];
+  assert.ok(countUpdateStatements(state.statements) > 0);
+  assert.ok(removalsAfterFirst.length > 0);
+  state.statements.length = 0;
+
+  await state.service.cleanupExpired();
+
+  assert.equal(countUpdateStatements(state.statements), 0, "second sweep must not issue any UPDATE");
+  assert.deepEqual(state.removals, removalsAfterFirst, "second sweep must not remove objects again");
+  assert.deepEqual(cleanupSnapshot(state.jobs), afterFirst, "second sweep must not modify any row");
 });

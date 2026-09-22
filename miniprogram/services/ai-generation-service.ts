@@ -20,11 +20,12 @@ export type AiGenerationStyle = 'natural' | 'cartoon' | 'minimal'
 export type AiGenerationDetailLevel = 'low' | 'medium' | 'high'
 export type AiGenerationBackgroundMode = 'keep' | 'simplify' | 'remove'
 export type AiInputContentType = 'image/jpeg' | 'image/png' | 'image/webp'
+export type AiOutputContentType = 'image/jpeg' | 'image/png' | 'image/webp'
 
 export interface AiOutputFile {
   id: string
   url: string
-  contentType: 'image/png'
+  contentType: AiOutputContentType
   size: number
 }
 

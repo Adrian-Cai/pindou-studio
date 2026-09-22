@@ -420,11 +420,15 @@ SDK 调用参数为：
 ```json
 {
   "requestId": "<CloudBase请求ID>",
-  "fileID": "cloud://<env-id>/ai-images/<generated>.png"
+  "fileID": "cloud://<env-id>/ai-images/<generated>.<png|jpg|webp>",
+  "contentType": "image/png | image/jpeg | image/webp",
+  "size": 172543
 }
 ```
 
-该接口为同步调用，不需要服务端向混元再次查询。项目自己的任务接口仍保留 `queued -> processing -> succeeded/failed` 状态，用于避免小程序长时间等待 HTTP 请求。云存储 `fileID` 只在服务端内部使用，下载后校验为 PNG，再写入项目自己的 AI 文件存储；`provider_output_url` 暂存该内部文件引用，成功持久化后清空。
+云函数的 `contentType` 与文件名后缀按**下载字节的真实魔数**判定，不依赖模型临时地址可能缺失的 `content-type` 响应头；混元图生图实际可能返回 JPEG。
+
+该接口为同步调用，不需要服务端向混元再次查询。项目自己的任务接口仍保留 `queued -> processing -> succeeded/failed` 状态，用于避免小程序长时间等待 HTTP 请求。云存储 `fileID` 只在服务端内部使用，下载后按真实字节魔数识别格式（支持 PNG / JPEG / WEBP），再按实际格式写入项目自己的 AI 文件存储；`provider_output_url` 暂存该内部文件引用，成功持久化后清空。
 
 ## 9. 额度与幂等规则
 

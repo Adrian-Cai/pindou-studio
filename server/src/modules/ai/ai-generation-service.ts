@@ -14,8 +14,11 @@ import {
   readQuota,
 } from "../quota/quota-ledger";
 import {
+  detectOutputFormat,
+  isSupportedOutputFormat,
   ProviderError,
   type AiGenerationProvider,
+  type SupportedOutputFormat,
 } from "./hunyuan-image-provider";
 import { aiPublicFailure, type AiPublicFailure } from "./error-contract";
 import { AI_PROMPT_VERSION, buildAiPrompt } from "./prompt-template";
@@ -148,6 +151,14 @@ function mapJob(row: AiJobRow): AiGenerationResponse {
 function failureCode(error: unknown): string {
   if (error instanceof AppError) return error.code.slice(0, 80);
   return "AI_GENERATION_INTERNAL_ERROR";
+}
+
+function outputFileName(
+  format: SupportedOutputFormat,
+): { readonly filename: string; readonly contentType: string } {
+  if (format === "jpeg") return { filename: "output.jpg", contentType: "image/jpeg" };
+  if (format === "webp") return { filename: "output.webp", contentType: "image/webp" };
+  return { filename: "output.png", contentType: "image/png" };
 }
 
 const JOB_SELECT = `SELECT jobs.id, jobs.user_id, jobs.input_file_id,
@@ -353,9 +364,19 @@ export class PostgresAiGenerationService {
       }
       return mapJob(await this.markFailed(job.user_id, job.id, failureCode(error)));
     }
+    const detectedFormat = detectOutputFormat(output);
+    if (!isSupportedOutputFormat(detectedFormat)) {
+      return mapJob(await this.markFailed(job.user_id, job.id, "AI_PROVIDER_OUTPUT_INVALID"));
+    }
+    const outputName = outputFileName(detectedFormat);
     let stored: StoredAiFile;
     try {
-      stored = await this.storage.save("ai_output", output, "output.png", "image/png");
+      stored = await this.storage.save(
+        "ai_output",
+        output,
+        outputName.filename,
+        outputName.contentType,
+      );
     } catch (error: unknown) {
       return mapJob(await this.markFailed(job.user_id, job.id, failureCode(error)));
     }

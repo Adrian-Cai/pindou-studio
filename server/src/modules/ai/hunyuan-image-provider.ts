@@ -197,12 +197,15 @@ export class HunyuanImageProvider implements AiGenerationProvider {
     try {
       const output = await this.imageModel.downloadFile(fileId);
       const maximumOutputBytes = this.requireConfig().maximumOutputBytes;
-      if (output.length === 0 || output.length > maximumOutputBytes || !isPng(output)) {
+      const format = detectOutputFormat(output);
+      // 云函数落盘时可能把上游返回的 JPEG 误标成 PNG，因此按真实字节魔数识别，
+      // 接受 png / jpeg / webp，而不是只认 PNG。
+      if (output.length === 0 || output.length > maximumOutputBytes || !isSupportedOutputFormat(format)) {
         logOutputRejected({
           reason: "output_format_rejected",
           fileId,
           byteSize: output.length,
-          detectedFormat: detectOutputFormat(output),
+          detectedFormat: format,
           signatureHex: output.subarray(0, 16).toString("hex"),
           maximumOutputBytes,
         });
@@ -299,6 +302,12 @@ function isPng(value: Buffer): boolean {
 }
 
 export type ProviderOutputFormat = "png" | "jpeg" | "webp" | "empty" | "unknown";
+
+export type SupportedOutputFormat = "png" | "jpeg" | "webp";
+
+export function isSupportedOutputFormat(value: ProviderOutputFormat): value is SupportedOutputFormat {
+  return value === "png" || value === "jpeg" || value === "webp";
+}
 
 export function detectOutputFormat(value: Buffer): ProviderOutputFormat {
   if (value.length === 0) return "empty";

@@ -72,6 +72,30 @@ test("Hunyuan provider accepts the wx-server-sdk cloud function file result", as
   assert.equal(output.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
 });
 
+test("Hunyuan provider accepts JPEG output even when the cloud function labels it PNG", async () => {
+  const jpeg = Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10, 0x45, 0x78, 0x69, 0x66]),
+    Buffer.alloc(512, 0x11),
+    Buffer.from([0xff, 0xd9]),
+  ]);
+  const imageModel = {
+    generateImage: async () => ({
+      request_id: "request_jpeg_123",
+      fileID: "cloud://env/ai-images/result.png",
+      contentType: "image/png",
+      data: [],
+    }),
+    downloadFile: async () => jpeg,
+  };
+  const provider = new HunyuanImageProvider(config, fetch, imageModel);
+  const submission = await provider.createTask("data:image/png;base64,AA==", "生成精致图片");
+  const output = await provider.downloadOutput(submission.outputUrl);
+
+  assert.equal(submission.outputUrl, "cloud-file:cloud://env/ai-images/result.png");
+  assert.equal(output.length, jpeg.length);
+  assert.equal(output.subarray(0, 3).toString("hex"), "ffd8ff");
+});
+
 test("Hunyuan provider normalizes quota, auth and temporary upstream failures", async () => {
   const busyProvider = new HunyuanImageProvider(config, fetch, {
     generateImage: async () => { throw Object.assign(new Error("upstream busy"), { statusCode: 503 }); },

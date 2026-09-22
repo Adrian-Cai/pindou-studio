@@ -68,9 +68,6 @@ export class FileSystemAiFileStorage implements AiFileStorage {
     ) {
       throw new AppError(413, "AI_IMAGE_DIMENSIONS_TOO_LARGE", "AI 图片尺寸超过限制");
     }
-    if (kind === "ai_output" && image.extension !== "png") {
-      throw invalidArgument("AI 输出必须是 PNG 图片");
-    }
     const storedName = `${kind}_${randomUUID().replace(/-/g, "")}.${image.extension}`;
     await mkdir(this.directory, { recursive: true });
     try {

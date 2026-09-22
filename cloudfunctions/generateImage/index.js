@@ -180,16 +180,25 @@ function downloadImage(imageUrl) {
         }
         chunks.push(chunk)
       })
-      response.on('end', () => finish(null, {
-        buffer: Buffer.concat(chunks),
-        contentType,
-      }))
+      response.on('end', () => {
+        const buffer = Buffer.concat(chunks)
+        // 模型临时地址可能缺失 content-type 头，回退成 image/png 会把 JPEG 误标成 PNG
+        finish(null, { buffer, contentType: resolveContentType(buffer, contentType) })
+      })
       response.on('error', (error) => finish(error))
     })
 
     request.setTimeout(120000, () => request.destroy(new Error('图片下载超时')))
     request.on('error', (error) => finish(error))
   })
+}
+
+function resolveContentType(buffer, headerContentType) {
+  const detected = detectImageFormat(buffer)
+  if (detected === 'jpeg') return 'image/jpeg'
+  if (detected === 'png') return 'image/png'
+  if (detected === 'webp') return 'image/webp'
+  return headerContentType || 'image/png'
 }
 
 function fileExtension(contentType) {
