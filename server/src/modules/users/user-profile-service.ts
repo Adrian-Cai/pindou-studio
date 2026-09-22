@@ -1,3 +1,14 @@
+/**
+ * 用户资料服务：个人资料读取、昵称/头像更新、隐私偏好、注销账号。
+ *
+ * 职责：围绕 pindou_users 的资料与统计；额度只做「读」（发放与扣减在 quota / payments / downloads）。
+ * 调用方：http 路由层的 /api/me、/api/me/privacy、/api/me/avatar、/api/me/delete。
+ * 关键点：注销是软删除 + 级联软删除（会话吊销、作品、收藏、文件资产），并把 openid 一并清空，
+ *         保证同一微信号可以重新注册；
+ *         云存储文件在数据库事务提交之后才清理，且单个文件失败只记日志不回滚，避免残留阻塞注销；
+ *         隐私项 localOnly 与 cloudSync 互斥，任一置 true 会把另一个置 false；
+ *         统计计数与额度查询并行发起，减少一次往返。
+ */
 import type { Pool, QueryResultRow } from "pg";
 import type { ServerConfig } from "../../config/env";
 import type { AiFileStorage } from "../files/ai-file-storage";
@@ -119,6 +130,7 @@ function nonNegativeInteger(value: string): number {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
+/** 隐私偏好默认值：默认仅本地存储、不云同步，允许服务通知、不做个性化推荐。 */
 const DEFAULT_PRIVACY_PREFERENCES = {
   localOnly: true,
   cloudSync: false,
@@ -265,6 +277,10 @@ export class PostgresUserProfileService implements UserProfileService {
     return mapPrivacy(row);
   }
 
+  /**
+   * 局部更新隐私偏好。事务内先 FOR UPDATE 读当前值，未传的字段保持原值。
+   * localOnly 与 cloudSync 互斥：任一侧被显式置 true，另一侧强制置 false。
+   */
   public async updatePrivacyPreferences(
     userId: string,
     patch: PrivacyPreferencesPatch,
@@ -384,6 +400,7 @@ export class PostgresUserProfileService implements UserProfileService {
     await this.cleanupDeletedAssets(userId, avatarUrl, deletedAssets);
   }
 
+  /** 清理云存储上的头像、封面与 AI 输入输出文件；未注入 assetCleanup 依赖时整体跳过。 */
   private async cleanupDeletedAssets(
     userId: string,
     avatarUrl: string | null,
@@ -402,6 +419,7 @@ export class PostgresUserProfileService implements UserProfileService {
     }
   }
 
+  /** 单个文件删除：失败只记结构化日志，不向上抛，避免一个文件卡住整个注销流程。 */
   private async removeAsset(
     userId: string,
     fileType: string,

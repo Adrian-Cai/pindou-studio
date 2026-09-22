@@ -1,3 +1,13 @@
+/**
+ * 认证仓储：用户与登录会话的持久化。
+ *
+ * 职责：只做 pindou_users / pindou_auth_sessions 两表的读写；不负责微信 code2session 调用
+ *      （见 wechat-client）与 token 签发（见 authenticator）。
+ * 调用方：auth/auth-service（登录流程编排）。
+ * 关键点：用户靠 openid_hash 唯一，同一微信号重复登录走 UPSERT，不会重复建号；
+ *         只存 openid 的哈希与密文，不明文落库；token 同样只存哈希，泄露数据库也无法伪造登录态；
+ *         会话是否过期/吊销/用户注销由 authenticator 判定，这里只原样返回字段。
+ */
 import type { Pool, QueryResultRow } from "pg";
 import { AppError } from "../../shared/app-error";
 import { rollbackTransaction } from "../../shared/transaction";
@@ -44,6 +54,10 @@ function userRecord(row: UserRow): UserRecord {
 export class PostgresAuthRepository implements AuthRepository {
   public constructor(private readonly pool: Pool) {}
 
+  /**
+   * 登录落库：同一事务内「幂等创建/更新用户」+「插入会话」。
+   * 用户已软删除时抛 403 ACCOUNT_DISABLED，会话也不会创建。
+   */
   public async createLogin(input: CreateLoginInput): Promise<UserRecord> {
     const client = await this.pool.connect();
     try {
@@ -80,6 +94,7 @@ export class PostgresAuthRepository implements AuthRepository {
     }
   }
 
+  /** 按 token 哈希查会话，并带出用户是否已注销；查不到返回 null（交由上层抛 401）。 */
   public async findSessionByTokenHash(tokenHash: string): Promise<SessionRecord | null> {
     const result = await this.pool.query<SessionRow>(
       `SELECT session.user_id,

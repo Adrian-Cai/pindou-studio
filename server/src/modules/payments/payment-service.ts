@@ -278,6 +278,15 @@ export class PostgresPaymentService implements PaymentService {
     };
   }
 
+  /**
+   * 创建支付订单并调微信下单。
+   *
+   * @param input.idempotencyKey 客户端幂等键，与 userId 共同决定订单 id，重复提交返回同一订单
+   * @throws idempotencyConflict 幂等键已用于其他订单
+   * @throws ORDER_NOT_PAYABLE 订单已不是 pending（已支付或已关闭）
+   * @throws NEW_USER_PACKAGE_NOT_ELIGIBLE 新人套餐且用户已有成功购买记录
+   * @throws PAYMENT_IDENTITY_UNAVAILABLE 用户 openid 缺失或解密失败，需重新登录
+   */
   public async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse> {
     if (!this.gateway.configured) {
       throw new AppError(503, "PAYMENT_NOT_CONFIGURED", "微信支付尚未完成服务端配置");
@@ -412,6 +421,11 @@ export class PostgresPaymentService implements PaymentService {
     }
   }
 
+  /**
+   * 处理微信支付回调：验签 → 比对订单 → 置为 paid → 写入购买额度流水。
+   *
+   * @returns duplicate=true 表示该回调是重复通知（订单早已到账），不做二次发放
+   */
   public async handleNotification(input: PaymentNotificationInput): Promise<{ readonly duplicate: boolean }> {
     const notification = this.gateway.verifyNotification(input);
     const client = await this.pool.connect();
@@ -480,6 +494,7 @@ export class PostgresPaymentService implements PaymentService {
         throw new AppError(409, "ORDER_GRANT_INVALID", "订单额度类型快照无效");
       }
 
+      // 回调未带支付完成时间时用当前时间兜底，避免 paid_at 为空
       const paidAt = notification.paidAt ?? this.now();
       await client.query(
         `UPDATE pindou_orders
