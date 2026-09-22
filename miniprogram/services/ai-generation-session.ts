@@ -1,3 +1,11 @@
+/**
+ * AI 生成任务的本地会话持久化（Storage 封装）。
+ *
+ * 职责：把进行中的 AI 任务状态（jobId、输入/输出文件、样式参数、源图路径等）读写到本地 Storage，
+ *       使任务能在小程序重启/切后台后恢复续跑。不负责网络请求与状态机。
+ * 调用方：ai-generation-flow（每次阶段迁移后保存）、ai-generation-manager、AI 生成页 packages/ai-generation。
+ * 关键点：Storage key 带固定版本号 v1；读回时严格校验结构，损坏数据直接视为“无会话”返回 null。
+ */
 import type { PatternSettings } from '../models/pattern'
 import type {
   AiGenerationBackgroundMode,
@@ -24,6 +32,7 @@ export interface AiGenerationSession {
 
 export const AI_GENERATION_SESSION_STORAGE_KEY = 'pindou-ai-generation-session-v1'
 
+/** 生成幂等键，格式 ai-<时间戳>-<随机串>，用于服务端防重复建单。 */
 export function createIdempotencyKey(): string {
   return `ai-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`
 }
@@ -43,6 +52,7 @@ export function loadAiGenerationSession(): AiGenerationSession | null {
   }
 }
 
+/** 任务完成或取消后清理本地快照。 */
 export function clearAiGenerationSession(): void {
   try {
     wx.removeStorageSync(AI_GENERATION_SESSION_STORAGE_KEY)
@@ -51,6 +61,7 @@ export function clearAiGenerationSession(): void {
   }
 }
 
+/** 结构校验：逐一确认各字段类型合法，任一不符即判定为非会话数据。 */
 function isAiGenerationSession(value: unknown): value is AiGenerationSession {
   if (!isRecord(value)) return false
   return (

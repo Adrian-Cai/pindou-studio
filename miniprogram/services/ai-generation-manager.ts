@@ -1,3 +1,13 @@
+/**
+ * AI 生成全局单例任务管理器：让 AI 生成任务在用户离开页面后仍能后台继续轮询直到完成。
+ *
+ * 职责：持有唯一的 AiGenerationFlow 实例，向页面暴露 attachView/detachView/retry/cancel 等控制；
+ *       当页面未挂载（无 viewCallbacks）时，任务成功后自动把草稿落库到本地作品库。
+ *       不负责具体网络请求与状态机（见 ai-generation-flow），也不负责响应解析（见 ai-generation-parser）。
+ * 调用方：app.ts 启动时 init() 恢复上次未完成任务；AI 生成页 packages/ai-generation 通过 attachView 接管状态展示。
+ * 关键点：单例保证全局只有一条生成流程；allowBackground 控制切后台时是否继续轮询——
+ *       页面 onHide 会 detachView，但 manager 仍持有 flow，任务可在后台跑完。
+ */
 import {
   AiGenerationFlow,
   type AiGenerationFlowCallbacks,
@@ -119,6 +129,7 @@ export class AiGenerationManager {
 
     const flowState = this.flow?.getState()
     const isFailed = session.status === 'failed' || flowState?.pageState === 'failed'
+    // 非失败即视为进行中（用于列表里展示“生成中”态）
     const isProcessing = !isFailed
 
     let stateTitle = 'AI 正在生成'
@@ -197,4 +208,5 @@ export class AiGenerationManager {
   }
 }
 
+/** 全局单例，其他模块统一从本导出引用，避免重复创建流程。 */
 export const aiGenerationManager = new AiGenerationManager()

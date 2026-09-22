@@ -1,3 +1,12 @@
+/**
+ * 内容安全检测服务封装（文本 / 图片）。
+ *
+ * 职责：封装 /api/content-security 的文本与图片检测接口；图片检测在遇到网络错误时自动重试一次。
+ *       不负责图片选择、也不负责把检测结果关联到 AI 任务（由 ai-generation-flow / session 处理）。
+ * 调用方：发布前文本校验、AI 生成前的图片安全检测（其 checkId 作为 securityCheckId 透传给生成接口）。
+ * 关键点：仅 NETWORK_ERROR 才重试一次（间隔 500ms），业务类拒绝（如内容含违规）不重试；
+ *       检测成功返回 safe=true 与 checkId，供后续 AI 任务关联。
+ */
 import { ApiError, apiRequest, apiUploadFile } from './http-client'
 import { ensureLoggedInSession } from './session-service'
 
@@ -21,6 +30,13 @@ export async function checkTextContent(content: string): Promise<void> {
   }
 }
 
+/**
+ * 上传并检测图片是否合规，返回检测结果（含 checkId）。
+ * @param filePath 本地图片路径
+ * @param onUploadProgress 上传进度回调
+ * @returns 成功时 safe=true 并带 checkId
+ * @throws ApiError 网络失败会自动重试一次；内容违规时抛 CONTENT_RISKY
+ */
 export async function checkImageContent(
   filePath: string,
   onUploadProgress?: (progress: number) => void,
@@ -90,6 +106,7 @@ function logContentSecurityError(event: string, error: unknown): void {
   console.error(event, metadata)
 }
 
+/** 把底层错误归一成内容安全的统一错误：违规文案保持友好，其余统一为不可用提示。 */
 function normalizeContentSecurityError(error: unknown): ApiError {
   if (error instanceof ApiError && error.code === 'CONTENT_RISKY') {
     return new ApiError('你发布的内容含违规信息，请修改后重试', {

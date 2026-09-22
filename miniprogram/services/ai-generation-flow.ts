@@ -43,12 +43,14 @@ export interface AiGenerationFlowState {
   action: PublicErrorAction
 }
 
+/** 状态机向页面/后台回调的钩子：状态变化、源图就绪、草稿生成完成。 */
 export interface AiGenerationFlowCallbacks {
   onStateChange: (state: AiGenerationFlowState) => void
   onSourceImage?: (sourceImagePath: string) => void
   onDraftReady: (draft: Awaited<ReturnType<typeof createDraft>>) => Promise<void>
 }
 
+/** 构造参数：回调钩子 + 是否允许切后台后继续轮询（allowBackground）。 */
 export type AiGenerationFlowOptions = AiGenerationFlowCallbacks & {
   allowBackground?: boolean
 }
@@ -99,6 +101,7 @@ export class AiGenerationFlow {
     this.allowBackground = Boolean(options.allowBackground)
   }
 
+  /** 启动流程：等价触发一次 onShow，从本地会话恢复任务。 */
   start(): void {
     this.onShow()
   }
@@ -107,6 +110,7 @@ export class AiGenerationFlow {
     return { ...this.state }
   }
 
+  /** 页面挂载时接管展示：合并回调并立即回放当前状态与源图。 */
   attachView(callbacks: Partial<AiGenerationFlowCallbacks>): void {
     this.callbacks = { ...this.callbacks, ...callbacks }
     callbacks.onStateChange?.({ ...this.state })
@@ -116,15 +120,19 @@ export class AiGenerationFlow {
     }
   }
 
+  /** 页面/后台重新可见时调用：恢复轮询或重续被中断的请求。 */
   onShow(): void {
     this.hidden = false
     if (this.destroyed || this.finished) return
     if (!this.started) {
+      // 首次进入：从本地会话恢复任务
       this.started = true
       void this.resumeSession()
     } else if (this.state.pageState === 'failed' && !this.resumeAfterRequest) {
+      // 已失败且非主动重试：保持失败态，不自动续跑
       return
     } else if (this.resumeAfterRequest || (!this.polling && !this.submitting && !this.processing && this.pollTimer === null)) {
+      // 之前被中断（切后台）或空闲：续跑
       this.resumeAfterRequest = false
       void this.resumeSession()
     }
@@ -139,22 +147,28 @@ export class AiGenerationFlow {
     if (this.polling || this.submitting || this.processing) this.resumeAfterRequest = true
   }
 
+  /** 彻底销毁流程（任务取消/页面卸载且无需后台续跑时调用）。 */
   destroy(): void {
     this.destroyed = true
     this.hidden = true
     this.clearPollTimer()
     this.clearLongWaitTimer()
+    // 使所有在途请求回调失效
     this.requestSequence += 1
     this.resumeAfterRequest = false
   }
 
+  /** 用户点击重试：依据当前 retryMode 选择续跑环节（重新生成/查询/下载或转换）。 */
   async retry(): Promise<void> {
+    // 不可重试、或已有流程在跑、或已销毁时忽略
     if (!this.state.retryable || this.polling || this.submitting || this.processing || this.destroyed) return
     if (this.state.retryMode === 'generation') {
+      // 任务尚未提交成功：从上传/提交环节重来
       await this.retryGeneration()
       return
     }
     if (this.state.retryMode === 'query') {
+      // 查询阶段失败：用已有 jobId 重新轮询
       const session = loadAiGenerationSession()
       if (session?.jobId) {
         this.session = session
@@ -163,6 +177,7 @@ export class AiGenerationFlow {
       }
       return
     }
+    // 下载/转换阶段失败：复用上次成功的 generation 直接重跑后续
     if (this.lastGeneration) {
       void this.completeGeneration(this.lastGeneration, ++this.requestSequence)
     } else {
@@ -228,6 +243,7 @@ export class AiGenerationFlow {
     }
   }
 
+  /** 根据查询结果做状态迁移：排队/处理中则继续轮询；失败/取消则报错；成功则进入下载+转换。 */
   private async handleGeneration(generation: AiGeneration, requestSequence: number): Promise<void> {
     if (generation.status === 'queued' || generation.status === 'processing') {
       const session = this.requireSession()
@@ -264,6 +280,7 @@ export class AiGenerationFlow {
     await this.completeGeneration(generation, requestSequence)
   }
 
+  /** 任务成功后的收尾：下载产物（已下载则复用）→ 标准图案引擎转换 → 回调草稿就绪。 */
   private async completeGeneration(generation: AiGeneration, requestSequence: number): Promise<void> {
     if (!generation.outputFile || this.processing) return
     this.processing = true
@@ -272,6 +289,7 @@ export class AiGenerationFlow {
     try {
       const session = this.requireSession()
       let outputImagePath = session.outputImagePath
+      // 本地尚无产物，或已下载文件损坏：重新下载
       if (!outputImagePath || !(await isAiOutputImageAvailable(outputImagePath))) {
         if (this.isStale(requestSequence)) return
         this.updateState({
@@ -294,6 +312,7 @@ export class AiGenerationFlow {
         statusMessage: '',
         retryMode: 'converting',
       })
+      // 用输出图生成标准拼豆网格 draft（ai 模式）
       const draft = await createDraft(outputImagePath, session.settings, 'ai')
       if (this.isStale(requestSequence)) return
       await this.callbacks.onDraftReady(draft)
@@ -301,6 +320,7 @@ export class AiGenerationFlow {
       this.finished = true
     } catch (error) {
       if (this.isStale(requestSequence)) return
+      // 网络/产物损坏走下载重试；其余（转换失败等）走转换重试
       const retryMode: AiGenerationFlowRetryMode = error instanceof ApiError
         && (error.code === 'NETWORK_ERROR' || error.code === 'AI_OUTPUT_INVALID')
         ? 'download'
@@ -315,6 +335,7 @@ export class AiGenerationFlow {
     }
   }
 
+  /** 从上传/提交环节重跑整个生成：复用已上传文件则跳过上传，新任务换用新幂等键。 */
   private async retryGeneration(): Promise<void> {
     const previous = loadAiGenerationSession()
     if (!previous) {
@@ -327,6 +348,7 @@ export class AiGenerationFlow {
       inputFileId,
       jobId: null,
       outputImagePath: '',
+      // 已有 jobId 说明之前提交过，重试必须用新幂等键防止服务端重复建单
       idempotencyKey: previous.jobId ? createIdempotencyKey() : previous.idempotencyKey,
       status: inputFileId ? 'creating' : 'uploading',
     }
@@ -347,6 +369,7 @@ export class AiGenerationFlow {
     this.submitting = true
     try {
       if (!inputFileId) {
+        // 没有已上传文件：先用内容安全处理后的图重新上传
         const inputImagePath = session.inputImagePath || await prepareImageForContentSecurity(session.sourceImagePath)
         if (this.isStale(requestSequence)) return
         const uploaded = await uploadAiInput(inputImagePath, session.securityCheckId)
@@ -401,6 +424,7 @@ export class AiGenerationFlow {
     }
   }
 
+  /** 进入失败态：清零计时器，按 failure 的 action/retryable 决定展示「重试/买次数/切标准模式」。 */
   private setFailure(
     message: string,
     retryMode: AiGenerationFlowRetryMode,
@@ -463,6 +487,7 @@ export class AiGenerationFlow {
     return requestSequence !== this.requestSequence || this.destroyed || (!this.allowBackground && this.hidden) || this.finished
   }
 
+  /** 取得当前会话（内存优先，回退读本地）；缺失则抛错，调用方应已确保存在。 */
   private requireSession(): AiGenerationSession {
     const session = this.session ?? loadAiGenerationSession()
     if (!session) throw new Error('AI 任务会话不存在')

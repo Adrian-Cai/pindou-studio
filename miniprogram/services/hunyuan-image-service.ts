@@ -1,3 +1,12 @@
+/**
+ * 混元生图 Cloud Function 调用封装（文生图，区别于拼豆 AI 生成主链路）。
+ *
+ * 职责：调用云函数 generateImage 根据 prompt 生成图片，拿到 fileID 后再换取临时访问 URL。
+ *       不负责拼豆网格转换（那是标准图案引擎的事），也不做内容安全检测。
+ * 调用方：需要文生图能力的入口（部分模板/创作场景）。
+ * 关键点：prompt 长度上限 500 字；云函数调用失败统一收口为 IMAGE_GENERATION_FAILED / CLOUD_FUNCTION_ERROR；
+ *       云函数返回 error 字段时优先采用其文案。
+ */
 import { initCloud } from '../config/cloud'
 import { ApiError } from './http-client'
 
@@ -27,11 +36,18 @@ interface CloudFunctionResult {
   code?: unknown
 }
 
+/**
+ * 调用混元生图云函数生成图片，并返回可访问的临时 URL。
+ * @param input 提示词与可选尺寸（缺省 1024x1024）
+ * @returns 含 fileID、url、contentType、size、revisedPrompt 的结果
+ * @throws ApiError 提示词为空/过长、云函数失败、返回数据非法、临时 URL 获取失败
+ */
 export async function generateHunyuanImage(
   input: GenerateHunyuanImageInput,
 ): Promise<HunyuanImageResult> {
   const prompt = input.prompt.trim()
   if (!prompt) throw new ApiError('请输入提示词', { code: 'INVALID_PROMPT' })
+  // 提示词上限 500 字，超出直接拦截
   if (prompt.length > 500) {
     throw new ApiError('提示词最多 500 字', { code: 'INVALID_PROMPT' })
   }
@@ -83,6 +99,7 @@ async function getCloudFileUrl(fileID: string): Promise<string> {
   try {
     const response = await wx.cloud.getTempFileURL({ fileList: [fileID] })
     const file = response.fileList[0]
+    // 云存储状态 0 表示可用，否则视为获取失败
     if (!file || file.status !== 0 || !file.tempFileURL) {
       throw new Error(file?.errMsg || '云存储文件地址获取失败')
     }

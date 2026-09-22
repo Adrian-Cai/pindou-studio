@@ -1,3 +1,12 @@
+/**
+ * AI 生成页（分包 packages/ai-generation）：展示生成进度并承接最终跳转。
+ *
+ * 职责：作为 AiGenerationFlow 的“视图层”——把流程状态映射成页面 UI（进度条/提示文案/失败态），
+ *       草稿就绪后跳转编辑器；提供重试、购买次数、切标准模式、重选图片等用户操作。
+ *       不实现生成逻辑（在 ai-generation-flow / manager），仅做展示与编排。
+ * 调用方：小程序路由进入本页；通过 aiGenerationManager.attachView 接管后台任务状态。
+ * 关键点：onHide/onUnload 会 detachView 释放界面回调，但 manager 仍可在后台把任务跑完（见 allowBackground）。
+ */
 import { type AiGenerationFlowState } from '../../services/ai-generation-flow'
 import { DEFAULT_AI_OPTIONS } from '../../services/ai-generation-service'
 import { createDraft } from '../../services/image-service'
@@ -19,7 +28,7 @@ const GENERATING_STATES: ReadonlySet<string> = new Set([
   'converting',
 ])
 
-/** 各生成阶段展示的近似进度（服务端任务没有精确百分比，用“约 N%”呈现） */
+/** 各生成阶段展示的近似进度（服务端任务没有精确百分比，用“约 N%”呈现，仅用于安抚用户） */
 const GENERATING_PROGRESS: Record<string, number> = {
   uploading: 12,
   submitting: 28,
@@ -102,6 +111,7 @@ Page({
       panelWidth: session.settings.width,
       panelHeight: session.settings.height,
       panelColorLimit: session.settings.colorLimit,
+      // 图案尚未生成，颗粒数按满格（宽×高）预估展示
       panelBeadCount: session.settings.width * session.settings.height,
     })
   },
@@ -123,6 +133,7 @@ Page({
     wx.showLoading({ title: '正在切换', mask: true })
     try {
       const draft = await createDraft(session.sourceImagePath, session.settings, 'standard')
+      // 放弃后台 AI 任务，改用标准模式直接生成草稿并跳转
       aiGenerationManager.cancelActiveTask()
       await appStore.setCurrentDraft(draft)
       await redirectToEditor()
@@ -147,6 +158,7 @@ Page({
   },
 })
 
+/** 用 redirectTo 跳转到编辑器页（生成完成后替换当前页，避免返回又触发生成）。 */
 function redirectToEditor(): Promise<void> {
   return new Promise((resolve, reject) => {
     wx.redirectTo({
@@ -157,11 +169,17 @@ function redirectToEditor(): Promise<void> {
   })
 }
 
+/**
+ * 进入页面时确保存在一条 AI 任务会话：复用草稿里待生成的标记（ai-pending- 前缀）的源图与安检结果。
+ * 已存在未失败会话则补充 securityCheckId/inputImagePath；否则新建一条 uploading 状态的会话。
+ */
 function ensureAiSession(): void {
   const draft = appStore.getSnapshot().currentDraft
+  // 仅当草稿处于“待 AI 生成”状态才需要建立会话
   if (!draft?.id.startsWith('ai-pending-')) return
   const existing = loadAiGenerationSession()
   if (existing?.sourceImagePath === draft.sourceImagePath && existing.status !== 'failed') {
+    // 同图已有会话：已上传/已提交则无需重建，仅补填安检信息
     if (existing.inputFileId || existing.jobId) return
     try {
       saveAiGenerationSession({

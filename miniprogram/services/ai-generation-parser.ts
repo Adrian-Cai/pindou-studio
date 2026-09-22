@@ -7,6 +7,12 @@ import {
   type AiOutputFile,
 } from './ai-generation-service'
 
+/**
+ * 将服务端单个 AI 生成任务的响应校验并解析为 AiGeneration。
+ * @param value 接口原始返回（unknown）
+ * @returns 校验通过的 AiGeneration
+ * @throws ApiError 任意字段缺失/类型不符/状态与产物不匹配时抛 INVALID_RESPONSE
+ */
 export function parseAiGeneration(value: unknown): AiGeneration {
   if (!isRecord(value)) throw invalidResponse()
 
@@ -22,6 +28,7 @@ export function parseAiGeneration(value: unknown): AiGeneration {
   const backgroundMode = parseBackgroundMode(value.backgroundMode)
   let failure: AiGenerationFailure | null | undefined
   if (value.failure === undefined) {
+    // 未显式给 failure：尝试从 errorCode 反查（兼容旧接口）
     failure = typeof value.errorCode === 'string' ? aiGenerationFailure(value) : null
   } else if (value.failure === null) {
     failure = null
@@ -29,6 +36,7 @@ export function parseAiGeneration(value: unknown): AiGeneration {
     failure = parseFailure(value.failure)
   }
 
+  // 终态一致性校验：成功必须有产物；失败/取消必须有 failure；进行中则不得带 failure
   if (
     !id
     || !generationMode

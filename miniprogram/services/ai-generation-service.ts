@@ -1,3 +1,13 @@
+/**
+ * AI 生成任务的接口封装：上传输入图、创建/查询任务、下载产物，以及错误码到中文提示的映射。
+ *
+ * 职责：封装小程序端对 /api/ai/generations 等接口的请求与响应解析；把服务端/网络错误码
+ *       统一翻译成用户可读文案（aiGenerationErrorMessage）。不负责状态机与轮询（见 ai-generation-flow）、
+ *       本地会话持久化（见 ai-generation-session）、也不负责页面展示。
+ * 调用方：ai-generation-flow（生成主流程）、content-security-service（传入 securityCheckId）、AI 生成页 packages/ai-generation。
+ * 关键点：所有网络异常统一收口为 NETWORK_ERROR；错误码别名与文案集中维护在 normalizeFailureCode / aiGenerationErrorMessage，
+ *       新增错误码时两处都要补充。
+ */
 import { buildAiFileUrl } from '../config/api'
 import {
   ApiError,
@@ -9,6 +19,7 @@ import {
 import { ensureLoggedInSession } from './session-service'
 import { parseAiGeneration } from './ai-generation-parser'
 
+/** AI 生成任务的生命周期状态；succeeded / failed / canceled 为终态。 */
 export type AiGenerationStatus =
   | 'queued'
   | 'processing'
@@ -16,12 +27,18 @@ export type AiGenerationStatus =
   | 'failed'
   | 'canceled'
 
+/** 生成风格：自然 / 卡通 / 极简。 */
 export type AiGenerationStyle = 'natural' | 'cartoon' | 'minimal'
+/** 细节丰富程度。 */
 export type AiGenerationDetailLevel = 'low' | 'medium' | 'high'
+/** 背景处理方式：保留 / 简化 / 去除。 */
 export type AiGenerationBackgroundMode = 'keep' | 'simplify' | 'remove'
+/** 输入图片允许的内容类型。 */
 export type AiInputContentType = 'image/jpeg' | 'image/png' | 'image/webp'
+/** 输出图片允许的内容类型。 */
 export type AiOutputContentType = 'image/jpeg' | 'image/png' | 'image/webp'
 
+/** 服务端返回的生成结果文件（已成功的产物）。 */
 export interface AiOutputFile {
   id: string
   url: string
@@ -61,6 +78,7 @@ export interface AiGeneration {
   completedAt: string | null
 }
 
+/** 创建 AI 生成任务的入参；idempotencyKey 用于服务端防重复提交。 */
 export interface CreateAiGenerationRequest {
   inputFileId: string
   style: AiGenerationStyle
@@ -69,6 +87,7 @@ export interface CreateAiGenerationRequest {
   idempotencyKey: string
 }
 
+/** 创建任务时未显式传参使用的默认生成选项（风格/细节/背景）。 */
 export const DEFAULT_AI_OPTIONS = {
   style: 'natural',
   detailLevel: 'medium',
@@ -127,6 +146,12 @@ export async function createAiGeneration(
   }
 }
 
+/**
+ * 按 jobId 查询单个 AI 生成任务的最新状态（轮询调用）。
+ * @param jobId 任务标识，格式必须为 aijob_ 前缀
+ * @returns 最新的 AiGeneration
+ * @throws ApiError jobId 非法或网络失败
+ */
 export async function getAiGeneration(jobId: string): Promise<AiGeneration> {
   assertJobId(jobId)
   try {
@@ -153,6 +178,7 @@ export function downloadAiOutput(outputUrl: string): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     wx.downloadFile({
       url,
+      // 下载生成产物超时 60s
       timeout: 60_000,
       success: (response) => {
         if (response.statusCode !== 200 || !response.tempFilePath) {
@@ -178,6 +204,11 @@ export function downloadAiOutput(outputUrl: string): Promise<string> {
   })
 }
 
+/**
+ * 校验本地图片路径是否能被微信识别为有效图片（用于判断已下载产物是否损坏）。
+ * @param filePath 本地图片路径（空串直接返回 false）
+ * @returns true 表示图片可读取
+ */
 export function isAiOutputImageAvailable(filePath: string): Promise<boolean> {
   if (!filePath.trim()) return Promise.resolve(false)
   return new Promise((resolve) => {
@@ -189,6 +220,10 @@ export function isAiOutputImageAvailable(filePath: string): Promise<boolean> {
   })
 }
 
+/**
+ * 把任意错误（ApiError 或服务端 failure）映射成给用户看的中文文案。
+ * 这是错误码 -> 文案的唯一权威映射表，新增错误码需在此补充分支。
+ */
 export function aiGenerationErrorMessage(error: unknown): string {
   const failure = aiGenerationFailure(error)
   const code = failure?.code ?? errorCode(error)
@@ -302,6 +337,7 @@ function assertCreateInput(input: CreateAiGenerationRequest): void {
 }
 
 function assertJobId(jobId: string): void {
+  // jobId 必须以 aijob_ 前缀，且仅含字母数字与 - _，防止传入脏数据
   if (!/^aijob_[A-Za-z0-9_-]+$/u.test(jobId)) {
     throw new ApiError('AI 任务标识无效', { code: 'INVALID_RESPONSE' })
   }
