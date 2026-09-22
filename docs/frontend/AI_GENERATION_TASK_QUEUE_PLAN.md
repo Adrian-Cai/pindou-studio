@@ -441,7 +441,8 @@ async startAiCreating(): Promise<void> {
 > 决策点：是否仍跳转到 AI 生成页？
 > **建议改为不跳转**，直接 toast + 顶部胶囊「N 个生成中 · 查看」。
 > 理由：跳转本身就意味着"我要等它"，与 G1 冲突；且跳转后返回再进会重新触发 attach。
-> 若产品坚持保留进度页，则必须带 `?taskId=` 且作为**详情/进度页**而非"唯一生成页"。
+> 若产品坚持保留进度页，则必须带 `?taskId=`，且该页面按 §10.3 改造为**任务详情页**
+> （可绑定任意任务），而不是现在的"唯一生成页"（靠全局单例 session 猜任务）。
 
 新增轻量提示（`pages/home/index.wxml` 顶部）：
 
@@ -595,7 +596,86 @@ export function migrateLegacyAiSession(): void {
 - [ ] 顶部新增「生成中 N 个」胶囊入口
 - [ ] `onShow` 订阅 `aiTaskManager.subscribeAll()` 刷新胶囊计数
 
-### 10.2 `pages/projects/index.ts`
+### 10.2 作品卡片三态设计（生成中 / 失败 / 完成）
+
+> 产品确认：AI 任务在作品页以**真实作品记录**呈现（与方案方向一致）。
+> 现有 `projects/index.wxml` 已有 `isAiGenerating` / `isAiFailed` 分支骨架（L56-78 状态 pill、
+> 操作行裁剪、L79-89 查看进度/查看重试），主要工作是把数据源从虚拟 `ai-active-task`
+> 换成真实 `WorkItem`，并补齐下表细节。
+
+| | 生成中（`ai_pending`） | 失败（`ai_failed`） | 完成（`draft`/`completed`） |
+|---|---|---|---|
+| **封面** | 原图 + 半透明遮罩 + 进度「约 N%」 | 原图 + 灰色遮罩 + 失败标识 | 原图（现状） |
+| **标题** | 默认「AI 拼豆图」（本地字段，随时可改） | 同左 | 用户标题 |
+| **状态标签** | `生成中`（绿） | `生成失败`（红） | `草稿` / `已完成` |
+| **元信息** | `96×96 · 32色`（按任务设置预填）+ 提交时间 | 同左 + **一行失败原因**（`failureMessage`） | 现状 |
+| **操作行** | 仅「取消任务」 | 「重试」+「重命名」+「删除」 | 重命名/下载/删除（现状） |
+| **点卡片** | 进任务详情页看进度 | 进任务详情页看原因 | 正常打开 |
+
+设计说明与边界：
+
+1. **封面不空白**：原图在发起时已永久化（§7.1），生成中显示原图 + 遮罩 + 进度，
+   比"纯占位灰块"信息量大得多，用户能认出这是哪张图。遮罩用 `position:absolute` 覆盖层，
+   不动 `project-card__cover` 本体。
+2. **生成中为什么不给「重命名」**：产品要求三个操作全部置灰。技术上重命名只是本地字段
+   本可放开，但保持"生成中 = 只读 + 可取消"的心智更简单，采纳。
+3. **失败态为什么放开「重命名」**：失败后作品已经存在（只是没图纸），标题属于本地数据，
+   与任务成败无关；同时给「重试」作为唯一主操作。
+4. **失败原因直接上卡片**：一行 `failureMessage`（如「AI 生成次数不足，请购买次数」），
+   避免用户必须点进去才知道为什么失败。文案复用 `aiGenerationErrorMessage()` 的映射。
+5. **按失败类型区分重试动作**：
+   - `retryable=true`（网络/服务繁忙/超时等）→ 「重试」
+   - `VIEW_BENEFITS`（次数不足）→ 「购买次数」
+   - `SELECT_IMAGE` / `CONTENT_REJECTED`（图片本身不行）→ 不给重试，按钮文案「重新选图生成」，
+     点击回首页（复用旧图没有意义）
+   - `USE_STANDARD_MODE`（AI 服务不可用）→ 「用标准模式生成」
+6. **失败不吞次数**：配额在服务端 `create` 时扣减、任务失败时退还（后端既有约定，
+   见 `AI_GENERATION_DESIGN.md`），客户端只负责展示 `failureCode` 对应文案，不自行判断。
+7. **任务被取消**（用户主动删卡片）：直接 `cancelTask` + 删记录，不留失败态。
+   只有**服务端/网络导致的失败**才走 `ai_failed`。
+
+对应的 WXML 改动点（现有骨架上微调）：
+
+```xml
+<!-- 操作行：三态分流 -->
+<view wx:if="{{item.status === 'ai_pending'}}" class="project-card__actions-inline">
+  <view class="project-card__action-inline project-card__action-inline--danger"
+        data-id="{{item.id}}" catchtap="cancelAiTask">取消任务</view>
+</view>
+<view wx:elif="{{item.status === 'ai_failed'}}" class="project-card__actions-inline">
+  <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="retryAiTask">重试</view>
+  <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="startRename">重命名</view>
+  <view class="project-card__action-inline project-card__action-inline--danger"
+        data-id="{{item.id}}" catchtap="deleteWork">删除</view>
+</view>
+<view wx:else class="project-card__actions-inline"><!-- 现状 --></view>
+```
+
+进度/失败遮罩（封面右上角叠一层）：
+
+```xml
+<view class="project-card__cover-wrap">
+  <image class="project-card__cover" src="{{item.coverPath}}" ... />
+  <view wx:if="{{item.status === 'ai_pending'}}" class="project-card__overlay">
+    <text>{{item.progressText}}</text>
+  </view>
+  <view wx:elif="{{item.status === 'ai_failed'}}" class="project-card__overlay project-card__overlay--failed">
+    <text>生成失败</text>
+  </view>
+</view>
+```
+
+数据侧（`refreshVisibleWorks`）给每条 AI 记录补派生字段：
+
+```ts
+progressText: status === 'ai_pending' ? `约 ${aiProgress}%` : undefined,
+failureMessage: status === 'ai_failed' ? work.failureMessage : undefined,
+```
+
+`refreshVisibleWorks()` 的触发源：`aiTaskManager.subscribeAll()`（任务每次 patch 都会 notify），
+进度数字随 tick 自然刷新，无需页面自己起定时器。
+
+### 10.2.1 `pages/projects/index.ts`
 
 - [ ] **删除** `id: 'ai-active-task'` 虚拟卡片（L107-129）
 - [ ] 改为从 `appStore.works` 渲染真实记录：
@@ -610,15 +690,66 @@ export function migrateLegacyAiSession(): void {
 - [ ] 删除所有 `id === 'ai-active-task'` 特判（L162/164/192/200/242/327/336）
 - [ ] 删除逻辑改为：`isAiTaskWork(work)` → `aiTaskManager.cancelTask(work.id)`
 - [ ] 失败卡片增加「重试」按钮 → `aiTaskManager.retryTask(work.id)`
+- [ ] 点 pending/failed 卡片 → `navigateTo('/packages/ai-generation/index?taskId=' + work.id + '&from=projects')`
+      （当前是**不带参**的裸跳转，正是靠全局单例 session 才能"猜"出任务的原因）
 - [ ] 订阅改为 `subscribeAll()`，`onShow` 订阅 / `onHide` 退订
 
-### 10.3 `packages/ai-generation/index.ts`
+### 10.3 任务详情页：复用 `packages/ai-generation`，不新建页面
 
-- [ ] `onLoad(query)` 读取 `taskId`；缺省时取最近一个活跃任务；都没有则 `switchTab` 回首页
-- [ ] `attachView(taskId, callbacks)` 改为 `aiTaskManager.subscribeTask(taskId, ...)`
-- [ ] 删除 `ensureAiSession()`
-- [ ] 页面定位改为「某个任务的详情页 / 进度页」
+> **澄清**：项目当前没有独立的任务详情页，`packages/ai-generation/index` 是唯一的
+> 「AI 生成等待页」（`page-layout title="AI 生成"`，内容为进度卡 + 失败态按钮组）。
+> 本方案**不新建页面**，而是把它改造为「任务详情页」，同时承担两个入口：
+> ① 首页发起后（若保留跳转）看进度；② 从作品页点某条 pending/failed 记录进来查看/操作。
+
+**为什么复用而不是新建**：两个入口要展示的东西本质相同（任务状态、进度、失败原因、
+重试/取消），新建页面会导致两套几乎相同的状态渲染逻辑各自演化，是这次出问题的同款隐患。
+代价是这个页面要同时覆盖「等待中」和「查看详情」两种语气，靠 `taskId` + 状态区分。
+
+#### 10.3.1 路由与入参
+
+```
+/packages/ai-generation/index?taskId=<taskId>&from=<home|projects>
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `taskId` | 否 | 绑定的任务。缺省时取最近一个活跃任务；**都没有 → `switchTab` 回首页**（不再出现"无任务却停在生成页"） |
+| `from` | 否 | `home` / `projects`，仅影响底部 tab 高亮与返回意图，默认 `home` |
+
+#### 10.3.2 页面改造清单
+
+- [ ] `onLoad(query)` 解析 `taskId` / `from`，`selectedTab` 由 `from` 决定（`projects` → 1，否则 0）
+- [ ] `aiTaskManager.subscribeTask(taskId, listener)` 替代 `aiGenerationManager.attachView()`
+- [ ] **删除 `ensureAiSession()`**（就是它无条件覆盖全局会话）
 - [ ] `onHide/onUnload` 只退订，**不再影响任务执行**
+- [ ] 页面 `onShow` 时重新拉取一次任务快照（后台回来后状态可能已变）
+
+#### 10.3.3 需要补齐的能力（当前页面没有的）
+
+现有页面只覆盖「生成中」和「失败」两态，改造后必须补齐：
+
+| 能力 | 现状 | 改造后 |
+|------|------|--------|
+| **排队中**（`created` / 等待并发槽位） | ❌ 无对应 UI，会落到 `loading` 卡 | 新增：显示「排队中，前方还有 N 个」+ 取消按钮 |
+| **取消任务** | ❌ 失败态只有「返回首页」 | 所有非终态都提供「取消生成」按钮 → `aiTaskManager.cancelTask()` |
+| **任务元信息** | ⚠️ 仅生成中通过底部面板展示尺寸/色数 | 卡片区常驻：原图缩略图 + 尺寸 × 色数 + 提交时间 |
+| **成功后的去向** | 一律 `redirectTo` 编辑器 | 按来源区分：<br>· `from=home`（刚发起）→ 跳编辑器<br>· `from=projects`（回看）→ **不跳转**，卡片变「已完成」+ 「查看作品」按钮 |
+| **任务已完成/已取消后来访** | ❌ 会卡在 loading | 终态任务直接进入只读态：`succeeded` 显示「查看作品」，`failed` 显示失败原因 + 重试 |
+
+#### 10.3.4 页面状态映射
+
+| task.status | 展示 | 主操作 |
+|-------------|------|--------|
+| `created` | 排队中卡片（含队列位次） | 取消生成 |
+| `uploading` / `submitting` / `queued` / `processing` / `downloading` / `converting` | `generating-preview-card` + 阶段进度 | 取消生成 |
+| `succeeded` | 成功卡片 | 查看作品 |
+| `failed` | 失败卡片 + `failureMessage` | 重试（retryable）/ 购买（VIEW_BENEFITS）/ 重选图（SELECT_IMAGE）/ 用标准模式 |
+
+#### 10.3.5 一个必须处理的边界
+
+用户停留在该页面时任务才完成 —— 当前实现 `onDraftReady` 里直接 `redirectTo` 编辑器，
+改造后若 `from=projects` 不应强制跳转（用户只是回来看一眼）。
+判断方式：`onLoad` 时记下 `from`，`onDraftReady` 回调里按 `from` 分流。
 
 ### 10.4 `components/generating-preview-card`
 
@@ -632,7 +763,7 @@ export function migrateLegacyAiSession(): void {
 | 阶段 | 内容 | 风险 | 产出 |
 |------|------|------|------|
 | **P0 止血**（必做） | 任务化：ai-task-store + manager 多任务 + 首页不跳转 + 作品占位落库 | 中（改主链路） | 主链路不再阻塞 |
-| **P1 完善** | 作品页真实卡片 + 重试/取消 + 详情页 `taskId` 绑定 + 图片永久化 | 低 | 完整任务管理闭环 |
+| **P1 完善** | 作品页真实卡片 + 重试/取消 + 生成页改造为任务详情页（`?taskId=` 绑定、补齐排队/取消/元信息）+ 图片永久化 | 低 | 完整任务管理闭环 |
 | **P2 增强** | 冷启动自愈、`onAppShow` catch-up、超时判定、迁移脚本 | 低 | 异常场景兜底 |
 | **P3 可选** | 后端 `GET /api/ai/generations`（列表，支持跨设备恢复）、订阅消息通知 | 中（需后端排期） | 换设备可恢复 |
 
@@ -656,6 +787,10 @@ export function migrateLegacyAiSession(): void {
 | T10 | 首页连续点 5 次生成 | 不会重复建任务；按钮有 submitting 防抖 |
 | T11 | 任务成功时用户在首页 | 只更新作品 + 轻提醒，不强制跳转 |
 | T12 | 15 分钟未出结果 | 自动标记失败（超时），可重试 |
+| T13 | 作品页点任务 A 的 pending 卡片 | 进入**任务 A** 的详情页（不是"最近一个任务"） |
+| T14 | 详情页点「取消生成」 | 任务停止轮询，返回作品页后卡片已消失 |
+| T15 | 任务已完成后，再从作品页点进详情页 | 显示「查看作品」，不卡在 loading，不重复生成 |
+| T16 | 详情页任务失败且不可重试 | 展示失败原因 + 「返回作品页」，无无效按钮 |
 
 ---
 
@@ -685,5 +820,5 @@ export function migrateLegacyAiSession(): void {
 | `store/app-store.ts` | 作品存储 | 不变（复用 `saveWork`/`deleteWork`） |
 | `pages/home/index.ts` | 发起生成 | 改为建任务，不阻塞 |
 | `pages/projects/index.ts` | 作品列表 | 去虚拟卡片，用真实记录 |
-| `packages/ai-generation/index.ts` | 生成页 | 改为任务详情页 |
+| `packages/ai-generation/index.ts` | AI 生成等待页 | 改造为任务详情页（**不新建页面**），见 §10.3 |
 | `app.ts` | 启动 | 增加 `onShow`/`onHide` 生命周期 |
