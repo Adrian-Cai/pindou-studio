@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { AppError, invalidArgument } from "../../shared/app-error";
 import { validateCoverImage, type ValidatedImage } from "./image-validation";
 
+/** 文件用途：AI 输入图或 AI 生成产物。 */
 export type AiFileKind = "ai_input" | "ai_output";
 
 export interface StoredAiFile {
@@ -34,7 +35,9 @@ export interface AiFileStorageLimits {
   readonly maximumPixels: number;
 }
 
+/** 公开访问路由前缀：read(publicPath) 仅接受此前缀下的路径。 */
 const ROUTE_PREFIX = "/api/media/ai/";
+/** 文件名白名单：<kind>_<32位hex>.<扩展名>，删除前用于防误删其它文件。 */
 const FILE_PATTERN = /^(ai_input|ai_output)_[a-f0-9]{32}\.(jpg|png|webp)$/u;
 
 export class FileSystemAiFileStorage implements AiFileStorage {
@@ -71,6 +74,7 @@ export class FileSystemAiFileStorage implements AiFileStorage {
     const storedName = `${kind}_${randomUUID().replace(/-/g, "")}.${image.extension}`;
     await mkdir(this.directory, { recursive: true });
     try {
+      // 用 wx 标志：若同名文件已存在则失败，避免随机名冲突时覆盖已有产物。
       await writeFile(join(this.directory, storedName), buffer, { flag: "wx" });
     } catch {
       throw new AppError(500, "FILE_STORAGE_ERROR", "AI 文件存储失败");
@@ -85,16 +89,19 @@ export class FileSystemAiFileStorage implements AiFileStorage {
     };
   }
 
+  /** 按公开 URL 路径读取文件（仅接受 /api/media/ai/ 前缀）。 */
   public async read(publicPath: string): Promise<{ readonly buffer: Buffer; readonly contentType: string } | null> {
     if (!publicPath.startsWith(ROUTE_PREFIX)) return null;
     return this.readFilename(publicPath.slice(ROUTE_PREFIX.length));
   }
 
+  /** 按 objectKey（ai/<文件名>）读取文件。 */
   public async readObject(objectKey: string): Promise<{ readonly buffer: Buffer; readonly contentType: string } | null> {
     if (!objectKey.startsWith("ai/")) return null;
     return this.readFilename(objectKey.slice(3));
   }
 
+  /** 删除一个 AI 文件：先校验 objectKey 前缀与文件名白名单，再 unlink，缺失不算错误。 */
   public async remove(objectKey: string): Promise<void> {
     if (!objectKey.startsWith("ai/")) return;
     const filename = objectKey.slice(3);

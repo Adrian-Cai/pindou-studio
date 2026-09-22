@@ -1,3 +1,13 @@
+/**
+ * 混元（hunyuan）图生图 provider 封装。
+ *
+ * 职责：对 AI 生成主链路屏蔽混元 SDK / 云存储的差异，提供统一的
+ *       createTask（提交生图）与 downloadOutput（取回产物）接口，
+ *       并把上游各类异常归一化成 ProviderError（携带 kind，用于重试/失败判定）。
+ * 调用方：ai-generation-service.ts（submit 调 createTask，completeOutputInternal 调 downloadOutput）。
+ * 关键点：产物格式以「下载字节的真实魔数」判定（png/jpeg/webp），而非临时地址的
+ *       content-type 头——历史上头缺失导致 JPEG 被误标成 PNG，进而整批任务失败。
+ */
 import { HUNYUAN_IMAGE_MODEL, type HunyuanImageConfig } from "../../config/env";
 import { AppError } from "../../shared/app-error";
 import cloudbase = require("@cloudbase/node-sdk");
@@ -17,6 +27,7 @@ export interface ProviderFailure {
   readonly kind: ProviderFailureKind;
 }
 
+/** 归一化后的 provider 异常；用 failure.kind 让上层区分额度/限流/超时/不可用/坏输出。 */
 export class ProviderError extends AppError {
   public constructor(
     public readonly failure: ProviderFailure,
@@ -62,6 +73,7 @@ function string(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+/** 按失败种类构造一个 ProviderError 的小工具，默认 code/message 跟随 kind。 */
 function providerFailure(
   kind: ProviderFailureKind = "UNKNOWN",
   providerCode: string | null = null,
@@ -89,6 +101,12 @@ export class HunyuanImageProvider implements AiGenerationProvider {
     return this.config.enabled ? this.config.model : HUNYUAN_IMAGE_MODEL;
   }
 
+  /**
+   * 提交一次图生图任务。
+   * @param imageDataUrl 输入图（data URL 形式）交给混元做参考图。
+   * @param prompt 由 prompt-template 拼好的生图提示词。
+   * @returns requestId（幂等/对账用）+ outputUrl（云文件引用或临时下载地址）。
+   */
   public async createTask(imageDataUrl: string, prompt: string): Promise<ProviderTaskSubmission> {
     const config = this.requireConfig();
     if (!this.imageModel) throw new AppError(503, "AI_PROVIDER_NOT_CONFIGURED", "AI 图像服务尚未完成配置");
@@ -160,6 +178,8 @@ export class HunyuanImageProvider implements AiGenerationProvider {
       }
       throw providerFailure("INVALID_OUTPUT", null, response.status, "AI_PROVIDER_OUTPUT_INVALID", "AI 服务输出图片不可用");
     }
+    // URL 直链分支：仍按 provider 返回的 content-type 头做 PNG 校验（直链场景上游带正确头）。
+    // 注意：常见的 "cloud-file:" 分支走 downloadCloudFile，改按真实魔数判定，不受此头影响。
     if (response.headers.get("content-type")?.split(";", 1)[0] !== "image/png") {
       throw providerFailure("INVALID_OUTPUT", null, response.status, "AI_PROVIDER_OUTPUT_INVALID", "AI 服务输出图片不可用");
     }
@@ -234,6 +254,7 @@ export class HunyuanImageProvider implements AiGenerationProvider {
     return this.config;
   }
 
+  /** 带 AbortSignal 超时的 fetch 封装；超时归一为 TIMEOUT，其它网络错误归一为 UNAVAILABLE。 */
   private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
     const config = this.requireConfig();
     try {
@@ -251,6 +272,7 @@ export class HunyuanImageProvider implements AiGenerationProvider {
   }
 }
 
+/** 按配置初始化混元云 SDK 并包裹出 imageModel；disabled 时返回 null（provider 即不可用）。 */
 function createImageModel(config: HunyuanImageConfig): HunyuanImageModel | null {
   if (!config.enabled) return null;
   const app = cloudbase.init({
@@ -321,6 +343,7 @@ export function detectOutputFormat(value: Buffer): ProviderOutputFormat {
   return "unknown";
 }
 
+/** 从云文件 ID 的尾缀提取扩展名（小写），诊断用；无扩展名时返回 "none"。 */
 function outputFileExtension(fileId: string): string {
   const match = /\.([A-Za-z0-9]{1,8})$/u.exec(fileId.trim());
   return match ? match[1]!.toLowerCase() : "none";
@@ -406,6 +429,7 @@ function providerErrorCode(kind: ProviderFailureKind): string {
   return "AI_PROVIDER_ERROR";
 }
 
+/** 把失败种类翻译成 HTTP 状态码（超时 504、不可用/限流 503、其余 502）。 */
 function providerErrorStatus(kind: ProviderFailureKind): number {
   if (kind === "TIMEOUT") return 504;
   if (kind === "UNAVAILABLE" || kind === "QUOTA_EXHAUSTED" || kind === "RATE_LIMITED") return 503;

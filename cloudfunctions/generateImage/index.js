@@ -13,6 +13,10 @@ const ALLOWED_SIZES = ['1024x1024', '1280x720', '720x1280', '1280x1280']
 const MAX_PROMPT_LENGTH = 500
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
+/**
+ * 云函数入口：解析入参并触发一次混元生图，产物上传云存储后回包。
+ * 入参：{ prompt, imageDataUrl?, size? }；成功回包含 fileID/contentType/size/revisedPrompt/requestId。
+ */
 exports.main = async (event) => {
   const payload = parsePayload(event)
   if (!payload) {
@@ -233,6 +237,7 @@ function serializeError(error) {
   }
 }
 
+/** 诊断用：优先读微信上下文 ENV，否则回退 TCB_ENV / SCF_NAMESPACE；仅供日志，不参与环境绑定。 */
 function currentEnv() {
   try {
     if (typeof cloud.getWXContext === 'function') {

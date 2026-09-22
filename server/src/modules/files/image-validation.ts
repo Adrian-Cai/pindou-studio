@@ -2,6 +2,7 @@ import { inflateSync } from "node:zlib";
 import { extname } from "node:path";
 import { invalidArgument } from "../../shared/app-error";
 
+/** 校验通过的图片信息：扩展名、规范 content-type 与像素宽高。 */
 export interface ValidatedImage {
   readonly extension: "jpg" | "png" | "webp";
   readonly contentType: "image/jpeg" | "image/png" | "image/webp";
@@ -55,6 +56,7 @@ function dimensions(width: number, height: number, format: ValidatedImage["exten
   return { extension: format, contentType, width, height };
 }
 
+/** 逐 chunk 解析 PNG：校验 IHDR/IDAT/IEND、CRC32、位深色彩类型，并解压 IDAT 复核尺寸。 */
 function validatePng(buffer: Buffer): ValidatedImage {
   let offset = 8;
   let width = 0;
@@ -228,6 +230,7 @@ function validateWebp(buffer: Buffer): ValidatedImage {
   throw invalidArgument("封面 WEBP 图片无法解码");
 }
 
+/** 标准 CRC-32（多项式 0xEDB88320）实现，用于校验 PNG chunk 完整性。 */
 function crc32(buffer: Buffer): number {
   let crc = 0xffffffff;
   for (const byte of buffer) {

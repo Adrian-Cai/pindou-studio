@@ -1,3 +1,13 @@
+/**
+ * AI 生成任务服务（主链路服务端核心）。
+ *
+ * 职责：创建 AI 生图任务、驱动任务状态机（queued→processing→succeeded/failed/canceled）、
+ *       扣减额度、落库产物文件、把 provider 异常归一为失败/重试，并批量清理过期任务。
+ *       不直接调混元，而是通过注入的 AiGenerationProvider 与 AiFileStorage 协作。
+ * 调用方：HTTP 路由层（建任务、查询任务接口）；cleanupExpired 由进程启动 + 每小时定时器驱动。
+ * 关键点：幂等靠 user + idempotencyKey 的 advisory 锁 + 唯一约束；产物格式按真实魔数判定，
+ *       不依赖 provider 临时地址的 content-type 头（历史坑：JPEG 被误标 PNG 致整批失败）。
+ */
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import type { ServerConfig } from "../../config/env";
 import { aiQuotaInsufficient, AppError, idempotencyConflict, notFound } from "../../shared/app-error";
@@ -87,6 +97,7 @@ interface AiJobRow extends QueryResultRow {
   readonly expires_at: Date | string;
 }
 
+/** pindou_file_assets 输入文件的精简投影，建任务时用于校验输入是否有效。 */
 interface FileRow extends QueryResultRow {
   readonly user_id: string;
   readonly file_type: string;
@@ -148,11 +159,13 @@ function mapJob(row: AiJobRow): AiGenerationResponse {
   };
 }
 
+/** 从异常取内部错误码；是 AppError 取其 code（截断 80 字符），否则兜底内部错误码。 */
 function failureCode(error: unknown): string {
   if (error instanceof AppError) return error.code.slice(0, 80);
   return "AI_GENERATION_INTERNAL_ERROR";
 }
 
+/** 按真实检测到的产物格式决定落库文件名与 contentType（jpg/jpeg、webp、默认 png）。 */
 function outputFileName(
   format: SupportedOutputFormat,
 ): { readonly filename: string; readonly contentType: string } {
@@ -187,6 +200,12 @@ export class PostgresAiGenerationService {
     private readonly retentionMs = DEFAULT_RETENTION_MS,
   ) {}
 
+  /**
+   * 创建（或幂等复用）一个 AI 生成任务。
+   * 流程：校验 provider 可用 → advisory 锁 + 幂等键去重 → 校验输入文件 → 检查当日额度/并发上限
+   *      → 落库 queued 任务 → 后台异步 advance 推进到 processing/产出。
+   * @param input 入参见 CreateAiGenerationInput；requestId 仅用于日志追踪。
+   */
   public async create(input: CreateAiGenerationInput): Promise<AiGenerationResponse> {
     if (!this.provider.configured) {
       console.error(JSON.stringify({
@@ -256,6 +275,7 @@ export class PostgresAiGenerationService {
         if (availableQuota(quota) <= active) throw aiQuotaInsufficient();
 
         const id = createEntityId("aijob");
+        // 任务保留期：过期后由 cleanupExpired 统一判失败并清理关联文件。
         const expiresAt = new Date(currentTime.getTime() + this.retentionMs);
         const inserted = await client.query<AiJobRow>(
           `INSERT INTO pindou_ai_generation_jobs (
@@ -297,11 +317,19 @@ export class PostgresAiGenerationService {
     return mapJob(job);
   }
 
+  /** 查询任务：读取后顺带推进状态机（处理中的任务会尝试收口产出）。 */
   public async get(userId: string, jobId: string, requestId?: string): Promise<AiGenerationResponse> {
     const job = await this.readJob(this.pool, userId, jobId);
     return this.advance(job, requestId);
   }
 
+  /**
+   * 状态机推进：根据当前状态决定下一步。
+   * - queued：提交给 provider（submit），拿到产出地址则进入收口；
+   * - processing 无 requestId：超过提交超时则判失败；
+   * - processing 已过期：判失败；已有产出地址：收口落库；
+   * - 终态：直接映射返回。
+   */
   private async advance(job: AiJobRow, requestId: string | undefined = undefined): Promise<AiGenerationResponse> {
     if (job.status === "queued") {
       const submitted = await this.submit(job.user_id, job.id, requestId);
@@ -312,6 +340,7 @@ export class PostgresAiGenerationService {
     }
     if (job.status !== "processing") return mapJob(job);
     if (!job.provider_request_id) {
+      // 已置 processing 但 provider 没回 requestId，且超过提交超时 → 判定提交超时失败。
       if (
         job.started_at
         && this.now().getTime() - new Date(job.started_at).getTime() > PROVIDER_SUBMISSION_TIMEOUT_MS
@@ -320,6 +349,7 @@ export class PostgresAiGenerationService {
       }
       return mapJob(job);
     }
+    // 任务整体保留期（expires_at）已过 → 过期失败。
     if (new Date(job.expires_at).getTime() <= this.now().getTime()) {
       return mapJob(await this.markFailed(job.user_id, job.id, "AI_TASK_EXPIRED"));
     }
@@ -327,6 +357,10 @@ export class PostgresAiGenerationService {
     return this.completeOutput(job, job.provider_output_url, requestId);
   }
 
+  /**
+   * 收口产物的并发去重壳：同一 job 同时只跑一次 completeOutputInternal，
+   * 完成后从 Map 移除，避免重复下载/落库。
+   */
   private async completeOutput(
     job: AiJobRow,
     outputUrl: string,
@@ -343,6 +377,10 @@ export class PostgresAiGenerationService {
     }
   }
 
+  /**
+   * 实际收口：下载产物字节 → 按真实魔数判定格式（png/jpeg/webp）→ 落库文件 → 标记成功。
+   * 下载失败区分可重试（限流/超时/不可用，保留任务）与不可重试（直接判失败）。
+   */
   private async completeOutputInternal(
     job: AiJobRow,
     outputUrl: string,
@@ -383,6 +421,11 @@ export class PostgresAiGenerationService {
     return mapJob(await this.complete(job.user_id, job.id, stored));
   }
 
+  /**
+   * 把 queued 任务推进到 processing 并向 provider 提交生图；写入 requestId + 产出地址。
+   * 并发安全：FOR UPDATE 锁 + 乐观条件（status='processing' AND provider_request_id IS NULL），
+   * 重复提交只会用首次结果覆盖/复用。
+   */
   private async submit(userId: string, jobId: string, requestId?: string): Promise<AiJobRow> {
     const client = await this.pool.connect();
     let claimed: AiJobRow;
@@ -432,6 +475,7 @@ export class PostgresAiGenerationService {
     let providerSubmission: Awaited<ReturnType<AiGenerationProvider["createTask"]>>;
     const submissionStartedAt = Date.now();
     try {
+      // 把输入图编码成 data URL 交给 provider（混元要求以 data URL 形式携带参考图）。
       const imageDataUrl = `data:${claimed.input_content_type};base64,${input.buffer.toString("base64")}`;
       providerSubmission = await this.provider.createTask(
         imageDataUrl,
@@ -487,6 +531,7 @@ export class PostgresAiGenerationService {
         this.quotaConfig.dailyAiGenerations, currentTime,
       );
       const quota = await readQuota(client, userId, "ai_generation", quotaDate);
+      // 扣一次额度；若当日额度已用尽则判失败并清理落库产物（避免产生无法计费的产出）。
       const bucket = debitBucket(quota);
       if (!bucket) {
         const failed = await this.updateFailed(client, current.id, "AI_QUOTA_UNAVAILABLE_AT_COMPLETION");
@@ -574,6 +619,7 @@ export class PostgresAiGenerationService {
     }
   }
 
+  /** 实际写入 failed 状态 + error_code（截断 80 字符）+ completed_at，并打失败日志。 */
   private async updateFailed(client: PoolClient, jobId: string, errorCode: string): Promise<AiJobRow> {
     const currentTime = this.now();
     const result = await client.query<AiJobRow>(
@@ -589,6 +635,12 @@ export class PostgresAiGenerationService {
     return result.rows[0]!;
   }
 
+  /**
+   * 批量清理过期任务：由进程启动 + 每小时定时器驱动。
+   * 1) 把已到 expires_at 的未终结任务（及已 succeeded 的过期结果）置失败并软删关联文件；
+   * 2) 清理从未被任何任务引用的孤儿输入文件。
+   * 用 FOR UPDATE SKIP LOCKED 避免与其它清理/推进事务互相阻塞。
+   */
   public async cleanupExpired(): Promise<void> {
     const currentTime = this.now();
     const client = await this.pool.connect();
@@ -697,6 +749,7 @@ function isTransientProviderError(error: unknown): boolean {
   return false;
 }
 
+/** 把 ProviderError 的失败种类翻译成对外公开的错误码（配额/超时/繁忙/失败等）。 */
 function providerPublicCode(error: ProviderError): string {
   if (error.failure.kind === "QUOTA_EXHAUSTED") return "AI_SERVICE_UNAVAILABLE";
   if (error.failure.kind === "TIMEOUT") return "AI_TIMEOUT";

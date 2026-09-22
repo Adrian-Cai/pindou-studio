@@ -1,3 +1,13 @@
+/**
+ * AI 生成链路的公开错误码契约。
+ *
+ * 职责：把内部错误码（如 AI_PROVIDER_TIMEOUT）统一翻译成面向小程序前端的
+ *       安全错误（code/message/category/retryable/action），并附带 HTTP 状态码；
+ *       不暴露内部 provider 细节，不抛错误，不做任何业务逻辑。
+ * 调用方：ai-generation-service.ts（mapJob 输出 failure、按 http 状态回包）。
+ */
+
+/** 错误归属分类：决定前端如何提示（用户额度 / 输入 / 内容审核 / provider / 内部）。 */
 export type AiErrorCategory = "USER" | "INPUT" | "CONTENT" | "PROVIDER" | "INTERNAL";
 export type AiErrorAction = "VIEW_BENEFITS" | "SELECT_IMAGE" | "USE_STANDARD_MODE" | "RETRY";
 
@@ -124,6 +134,11 @@ export function aiPublicFailure(code: string | null): AiPublicFailure | null {
   };
 }
 
+/**
+ * 取某内部错误码对应的 HTTP 状态码。
+ * @param code 内部错误码。
+ * @param fallback 查不到定义时使用的兜底状态码。
+ */
 export function aiPublicHttpStatus(code: string, fallback: number): number {
   const publicCode = INTERNAL_TO_PUBLIC_CODE[code] ?? code;
   return FAILURE_DEFINITIONS[publicCode]?.httpStatus ?? fallback;
