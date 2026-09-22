@@ -11,6 +11,10 @@ server/data/
 project.private.config.json
 .pattern-test-build/
 
+# 临时脚本与其输出（一次性排查 / 扫描产物，勿提交）
+.tmp*
+*.tmp
+
 docs/ui/*
 .agents/*
 
