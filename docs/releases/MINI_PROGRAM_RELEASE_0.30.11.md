@@ -65,7 +65,7 @@
 3. 作品同步不变式测试通过：`node test/work-sync/run-tests.js` ✅（已通过，12/12）
 4. 版本号一致：`package.json`、`package-lock.json` 均为 `0.30.11` ✅
 5. ⚠️ **在微信云开发重新部署 `cloudfunctions/generateImage` 云函数**（含依赖），否则角标仍是「AI生成」
-6. 变更同步推送：`cnb/master`、`wechat/master` ✅（均为 `d685802`）；`origin/master` ⚠️ 待补推（GitHub 需本地代理，代理未开时直连被重置）
+6. 变更同步推送：`cnb/master`、`origin/master`、`wechat/master` ✅（三端均为 `e8067c1`）
 7. 清除微信开发者工具缓存后重新编译，确认小程序版本显示为 `0.30.11`。
 
 ## 提审验收重点
@@ -85,8 +85,7 @@
 - [x] 服务端类型检查（本次不改服务端，无回归）
 - [x] 版本号一致：`package.json` / `package-lock.json` 均为 `0.30.11`
 - [x] 待提交 diff 审查：无遗留调试代码、无新增 TODO/FIXME
-- [x] 变更已同步推送 `cnb/master`、`wechat/master`（均为 `d685802`）
-- [ ] 变更已同步推送 `origin/master`（GitHub 直连被重置，需本地代理 `127.0.0.1:7897` 开启后补推）
+- [x] 变更已同步推送 `cnb/master`、`origin/master`、`wechat/master`（三端均为 `e8067c1`）
 - [ ] **在微信云开发重新部署 `generateImage` 云函数**
 - [ ] 真机验收 T1–T20（0.30.10 遗留，重点 T3 杀 App 恢复、T4 切后台 5 分钟、T9 旧版本升级迁移）
 - [ ] iPhone、Android 真机验证（首页入队横条、角标文案、启动容错）
