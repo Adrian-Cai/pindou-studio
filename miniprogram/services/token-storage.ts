@@ -49,10 +49,13 @@ function parseSession(value: unknown): AuthSession | null {
 function parseUser(value: unknown): AuthUser | null {
   if (!isRecord(value) || typeof value.id !== 'string' || !value.id) return null
   if (value.nickname !== null && typeof value.nickname !== 'string') return null
+  // 与 services/auth-service.ts 的 parseUser 保持同一口径：头像要如实读回来。
+  // 写死 null 的话，冷启动从 storage 恢复的会话会丢掉已保存的头像。
+  const avatarUrl = typeof value.avatarUrl === 'string' && value.avatarUrl ? value.avatarUrl : null
   return {
     id: value.id,
     nickname: value.nickname,
-    avatarUrl: null,
+    avatarUrl,
   }
 }
 

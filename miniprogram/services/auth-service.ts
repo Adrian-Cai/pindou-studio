@@ -152,7 +152,11 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
 function parseUser(value: unknown): AuthUser | null {
   if (!isRecord(value) || typeof value.id !== 'string' || !value.id) return null
   if (value.nickname !== null && typeof value.nickname !== 'string') return null
-  return { id: value.id, nickname: value.nickname, avatarUrl: null }
+  // 服务端 /api/auth/login 与 /api/users/me 都会下 avatarUrl。
+  // 这里不能图省事写死 null —— 那会让头像永远显示占位图。
+  // 缺字段不是「数据损坏」，口径放宽成 null（头像本来就可空），不要因此把整段登录态判成无效。
+  const avatarUrl = typeof value.avatarUrl === 'string' && value.avatarUrl ? value.avatarUrl : null
+  return { id: value.id, nickname: value.nickname, avatarUrl }
 }
 
 function invalidResponse(): ApiError {

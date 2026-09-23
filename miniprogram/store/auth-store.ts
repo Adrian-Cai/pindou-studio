@@ -154,17 +154,35 @@ export class AuthStore {
         this.expireSession()
         return
       }
-      // 刷新接口失败但本地有缓存：激活账号并退回离线 profile，标记 isOffline，保证页面仍可用
-      const cachedUser = session.profile?.user ?? session.user
-      await appStore.activateAccount(cachedUser.id)
-      this.setState({
-        status: 'authenticated',
-        user: cachedUser,
-        profile: session.profile ?? null,
-        isOffline: true,
-        errorMessage: friendlyAuthError(error),
-      })
+      // 刷新接口失败但本地有缓存：退到离线 profile，保证页面仍然可用
+      await this.fallbackToOffline(session, error)
     }
+  }
+
+  /**
+   * 网络刷新失败后的离线降级。
+   *
+   * 注意：本地会话完全可能既没有 profile.user 也没有 user（历史脏数据 / 写入中断），
+   * 此时解引用会抛 TypeError —— 而这里正是「接口已经失败」的兜底路径，
+   * 在兜底里再抛一次等于完全没有兜底，页面会永远卡在 refreshing。
+   * 拿不到用户身份时应判定登录过期让用户重新登录，而不是硬撑出一个残缺态。
+   * @returns 是否成功降级到离线可用态
+   */
+  private async fallbackToOffline(session: AuthSession, error: unknown): Promise<boolean> {
+    const cachedUser = session.profile?.user ?? session.user
+    if (!cachedUser?.id) {
+      this.expireSession()
+      return false
+    }
+    await appStore.activateAccount(cachedUser.id)
+    this.setState({
+      status: 'authenticated',
+      user: cachedUser,
+      profile: session.profile ?? null,
+      isOffline: true,
+      errorMessage: friendlyAuthError(error),
+    })
+    return true
   }
 
   /** 刷新标准下载额度（dailyFree/usedToday/purchased/remaining），写入本地 profile 缓存；过期则进 expired。 */
@@ -391,16 +409,8 @@ export class AuthStore {
         this.expireSession()
         return
       }
-      // 刷新接口失败但本地有缓存：激活账号并退回离线 profile，标记 isOffline，保证页面仍可用
-      const cachedUser = session.profile?.user ?? session.user
-      await appStore.activateAccount(cachedUser.id)
-      this.setState({
-        status: 'authenticated',
-        user: cachedUser,
-        profile: session.profile ?? null,
-        isOffline: true,
-        errorMessage: friendlyAuthError(error),
-      })
+      // 刷新接口失败但本地有缓存：退到离线 profile，保证页面仍然可用
+      await this.fallbackToOffline(session, error)
     }
   }
 
@@ -437,13 +447,29 @@ export class AuthStore {
     await appStore.activateAccount(userId)
     if (appStore.getGuestWorkCount() > 0) await appStore.adoptGuestWorks(userId)
     try {
-      const [works, firstFavorites] = await Promise.all([fetchCloudWorks(), fetchCloudFavorites({ pageSize: 50 })])
+      const PAGE_SIZE = 50
+      // 分页上限：哪怕是服务端分页字段失灵，也不能让用户在这个循环里无限打请求。
+      // 收藏不会无限增长，按 total 取一轮最多也就几页，给足余量即可。
+      const MAX_PAGES = 20
+      const [works, firstFavorites] = await Promise.all([
+        fetchCloudWorks(),
+        fetchCloudFavorites({ page: 1, pageSize: PAGE_SIZE }),
+      ])
       const cloudFavorites = [...firstFavorites.items]
-      let favorites = firstFavorites
-      // 分页拉取全部收藏：每页 50 条，循环累加直到取满 total
-      while (cloudFavorites.length < favorites.total && favorites.items.length > 0) {
-        favorites = await fetchCloudFavorites({ page: favorites.page + 1, pageSize: favorites.pageSize })
-        cloudFavorites.push(...favorites.items)
+      // 页码用**本地计数器**推进，不信服务端回的 page/pageSize：
+      // 那两个字段一旦缺失，undefined + 1 会变成 NaN，请求反复打到同一页，
+      // items 永远非空而 total 永远追不上 —— 死循环 + 请求风暴。
+      let page = 1
+      while (page < MAX_PAGES && cloudFavorites.length < firstFavorites.total && firstFavorites.items.length > 0) {
+        page += 1
+        const next = await fetchCloudFavorites({ page, pageSize: PAGE_SIZE })
+        // 服务端无视页码返回了同一批 id：继续翻下去只会重复 append
+        if (next.items.length === 0) break
+        const before = cloudFavorites.length
+        for (const item of next.items) {
+          if (!cloudFavorites.some((existing) => existing.id === item.id)) cloudFavorites.push(item)
+        }
+        if (cloudFavorites.length === before) break
       }
       await appStore.replaceCloudWorks(works.items.map(cloudSummaryToWorkItem))
       await appStore.replaceCloudFavorites(cloudFavorites.map(cloudSummaryToWorkItem))
