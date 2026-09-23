@@ -255,6 +255,47 @@ test("new user test package is rejected after any paid AI purchase", async () =>
   );
 });
 
+test("new user gate can be switched off for payment integration testing", async () => {
+  let eligibilityQueryCount = 0;
+  const pool = clientPool((sql) => {
+    if (sql === "BEGIN" || sql === "COMMIT" || sql.includes("pg_advisory_xact_lock")) return { rows: [] };
+    // 断言不是「抛没抛错」，而是「限购查询根本没执行」：只断言错误文案的话，
+    // 任何别的分支先抛错都会让用例假绿。
+    if (sql.includes("status = 'paid'")) {
+      eligibilityQueryCount += 1;
+      return { rows: [{ found: 1 }] };
+    }
+    if (sql.includes("FROM pindou_orders") && !sql.includes("JOIN pindou_users")) return { rows: [] };
+    if (sql.includes("FROM pindou_packages")) {
+      return { rows: [packageRow({ id: "ai_generation_new_user_5", price_fen: 10, quota_amount: 5 })] };
+    }
+    // 走到用户查询 = 限购分支确实被跳过了（上面那条用例里这里是「不该到达」）
+    if (sql.includes("FROM pindou_users")) throw new Error("GATE_OFF_REACHED_USER_QUERY");
+    throw new Error(`unexpected SQL: ${sql}`);
+  });
+  const service = new PostgresPaymentService(
+    pool,
+    fakeVirtualGateway(),
+    fakeLegacyGateway(),
+    SECRET,
+    () => NOW,
+    undefined,
+    false,
+  );
+  const error = await service
+    .createPayment({
+      userId: "usr_a",
+      packageId: "ai_generation_new_user_5",
+      idempotencyKey: "repeat-purchase",
+    })
+    .then(() => null, (reason) => reason);
+  assert.equal(eligibilityQueryCount, 0, "关掉开关后不应再查历史购买记录");
+  assert.ok(
+    !/仅限首次购买/.test(error?.message ?? ""),
+    `关掉开关后不应再报限购，实际：${error?.message}`,
+  );
+});
+
 /** 构造发货所需的假 Pool：返回一笔 pending 订单。
  *
  * 第二参数 `candidates` 用于补单轮询：给定时，「扫描待发货订单」那条查询会返回它们，
