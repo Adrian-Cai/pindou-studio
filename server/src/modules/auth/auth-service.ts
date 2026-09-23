@@ -4,6 +4,7 @@ import {
   createEntityId,
   createOpaqueToken,
   encryptOpenid,
+  encryptSessionKey,
   hashOpenid,
   hashToken,
 } from "../../shared/identity";
@@ -40,6 +41,12 @@ export class AuthService implements AuthLoginService {
     const user = await this.repository.createLogin({
       openidHash: hashOpenid(wechatSession.openid, this.config.openidHashSecret),
       openidCiphertext: encryptOpenid(wechatSession.openid, this.config.openidHashSecret),
+      // 每次登录都刷新 session_key：它有时效且是虚拟支付 signature 的签名密钥，
+      // 留旧值会让用户在下次支付时报 -15007。为 null 表示本次未取到，支付时再引导重登。
+      sessionKeyCiphertext: encryptSessionKey(
+        wechatSession.sessionKey,
+        this.config.openidHashSecret,
+      ),
       proposedUserId: createEntityId("usr"),
       sessionId: createEntityId("ses"),
       tokenHash: hashToken(token),

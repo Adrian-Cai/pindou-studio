@@ -30,6 +30,11 @@ interface SessionRow extends QueryResultRow {
 export interface CreateLoginInput {
   readonly openidHash: string;
   readonly openidCiphertext: string;
+  /**
+   * 加密后的 session_key。可为 null（未能取到登录态密钥），
+   * 此时仍应完成登录，虚拟支付环节再提示用户重新登录。
+   */
+  readonly sessionKeyCiphertext: string | null;
   readonly proposedUserId: string;
   readonly sessionId: string;
   readonly tokenHash: string;
@@ -64,14 +69,22 @@ export class PostgresAuthRepository implements AuthRepository {
       await client.query("BEGIN");
       const users = await client.query<UserRow>(
         `INSERT INTO pindou_users (
-           id, openid_hash, openid_ciphertext, nickname, avatar_url, created_at, updated_at, deleted_at
+           id, openid_hash, openid_ciphertext, session_key_ciphertext,
+           nickname, avatar_url, created_at, updated_at, deleted_at
          )
-         VALUES ($1, $2, $3, NULL, NULL, $4, $4, NULL)
+         VALUES ($1, $2, $3, $4, NULL, NULL, $5, $5, NULL)
          ON CONFLICT (openid_hash) DO UPDATE
            SET openid_ciphertext = EXCLUDED.openid_ciphertext,
+               session_key_ciphertext = EXCLUDED.session_key_ciphertext,
                updated_at = EXCLUDED.updated_at
          RETURNING id, nickname, avatar_url, deleted_at`,
-        [input.proposedUserId, input.openidHash, input.openidCiphertext, input.now],
+        [
+          input.proposedUserId,
+          input.openidHash,
+          input.openidCiphertext,
+          input.sessionKeyCiphertext,
+          input.now,
+        ],
       );
       const user = users.rows[0];
       if (!user) throw new Error("用户幂等创建后无法读取记录");

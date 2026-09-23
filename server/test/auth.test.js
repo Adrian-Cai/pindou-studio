@@ -54,7 +54,7 @@ test("same WeChat openid reuses the user and creates independent opaque sessions
   const repository = new InMemoryAuthRepository();
   const service = new AuthService(
     repository,
-    { async exchangeCode() { return { openid: "private-openid" }; } },
+    { async exchangeCode() { return { openid: "private-openid", sessionKey: "test-session-key" }; } },
     authConfig,
     () => fixedNow,
   );
@@ -79,7 +79,7 @@ test("a deleted WeChat account registers as a fresh user", async () => {
   const repository = new InMemoryAuthRepository();
   const service = new AuthService(
     repository,
-    { async exchangeCode() { return { openid: "private-openid" }; } },
+    { async exchangeCode() { return { openid: "private-openid", sessionKey: "test-session-key" }; } },
     authConfig,
     () => fixedNow,
   );
@@ -96,7 +96,7 @@ test("invalid login code is rejected before calling WeChat", async () => {
   let called = false;
   const service = new AuthService(
     new InMemoryAuthRepository(),
-    { async exchangeCode() { called = true; return { openid: "unused" }; } },
+    { async exchangeCode() { called = true; return { openid: "unused", sessionKey: "unused" }; } },
     authConfig,
   );
   await assert.rejects(() => service.login("   "), (error) => {
