@@ -103,7 +103,7 @@
 
 ## 已知限制
 
-1. **发货轮询补单：配置与解析已入库，定时任务的改动仍在本地未提交**。官方要求「发货推送分支与发货轮询分支至少实现一个，两者结合更可靠」。本版入库了 `VirtualPayReconcileConfig` 与解析（`e58e8e8` / `4f85353`，含区间约束），但**真正起定时器的那段 `server/src/index.ts` 改动尚未提交**——`reconcilePendingOrders()` 的轮询要等它入库才真正运行。**提审前必须确认该改动已入库并部署**，否则推送丢失或 15 次重试耗尽时，订单仍会永久停在 pending：用户已扣款、次数不到账、系统无告警。
+1. **发货轮询补单已闭环（告警阈值仍需按实际单量调）**。官方要求「发货推送分支与发货轮询分支至少实现一个，两者结合更可靠」。本版入库了 `VirtualPayReconcileConfig` 与解析（`e58e8e8` / `4f85353`，含区间约束），起定时器的那段 `server/src/index.ts` 也已落地：进程启动先跑一次 `reconcilePendingOrders()`（捞回重启期间丢失的推送），再按 `intervalMs` 周期执行，并在 `close()` 里 `clearInterval`。配套 8 例测试覆盖宽限期、查询失败不中断批次、付款人身份缺失时上报而非丢弃、网关未配置时空转。至此推送丢失或 15 次重试耗尽时，不再静默停在 pending。剩余风险是告警阈值需按实际单量调整（见第 4 条），且退款链路仍缺失（见第 2 条）。
 2. **退款链路缺失**：DB 有 `refunded` 状态与 `refund` 额度流水，但服务端没有 `/xpay/refund_order` 与 `xpay_refund_notify` 处理；更糟的是 `app.ts` 的 `DELIVERY_EVENT` 只认 `xpay_goods_deliver_notify`，其余 `xpay_*` 事件（退款、投诉、风控）一律回 `ErrCode=0` 静默吞掉。
 3. **iOS 退款问询不应答**：`xpay_subscribe_ios_refund_query_notify` 连续 3 次、3 秒内不应答，平台会向 Apple 返回「不确定」，退款决定权完全交给 Apple。
 4. **运行期配置项新增（部署时需一并设置）**：`VIRTUAL_PAY_RECONCILE_INTERVAL_MS`（默认 5 分钟，下限 1 分钟——查单是带 AppKey 签名的上游请求，太密会被限流）、`VIRTUAL_PAY_RECONCILE_GRACE_MS`（默认 3 分钟，给发货推送留出正常到达时间）、`VIRTUAL_PAY_RECONCILE_STALE_AFTER_MS`（默认 30 分钟，超时升级告警）、`VIRTUAL_PAY_RECONCILE_BATCH_SIZE`（默认 100）。都有区间校验与默认值，不配也能起，但告警阈值建议按实际单量调。
