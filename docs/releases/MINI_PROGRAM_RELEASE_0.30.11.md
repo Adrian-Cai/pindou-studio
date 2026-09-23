@@ -12,6 +12,7 @@
 
 | 提交 | 说明 |
 | --- | --- |
+| `d685802` | `release: v0.30.11 生图角标改为品牌名、首页入队横条与启动容错` — 版本号、CHANGELOG、提审说明 |
 | `27617fb` | `docs(releases): 归档 0.25 / 0.28 历史提审说明` |
 | `6f7abdd` | `fix(miniprogram): 启动项逐项容错,避免单点异常中断后续初始化` — app.ts |
 | `90b476d` | `feat(ai): 用顶部横条通知替换首页生成中胶囊` — pages/home 三件套 + ai-generation-manager |
