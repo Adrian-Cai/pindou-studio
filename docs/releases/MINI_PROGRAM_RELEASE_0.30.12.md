@@ -8,13 +8,14 @@
 
 `0.30.12`
 
-## 本次提交（HEAD 见文末）
+## 本次提交（HEAD `cd888d8`）
 
 | 提交 | 说明 |
 | --- | --- |
-| `997cf88` | `refactor(miniprogram): 本机与云端共用一套网格压缩编码` — models/pattern.ts、services/work-service.ts |
-| `42a3268` | `fix(miniprogram): 落盘压缩图纸并在 storage 写满时自救裁剪` — store/app-store.ts、pages/projects/index.ts |
+| `cd888d8` | `release: v0.30.12 修复本机存储写满后全面报错` — 版本号、CHANGELOG、提审说明 |
 | `a1f5966` | `test(miniprogram): 补充本机 storage 配额用例` — test/work-sync/ |
+| `42a3268` | `fix(miniprogram): 落盘压缩图纸并在 storage 写满时自救裁剪` — store/app-store.ts、pages/projects/index.ts |
+| `997cf88` | `refactor(miniprogram): 本机与云端共用一套网格压缩编码` — models/pattern.ts、services/work-service.ts |
 
 上一版本基线：`27617fb`（0.30.11 提审说明收尾）。
 
