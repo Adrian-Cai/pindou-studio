@@ -3,7 +3,10 @@
 > 目标：把 AI 生成从「全局单任务 + 阻塞式等待页」改造为「多任务队列 + 作品占位卡片」，
 > 让上一轮生成不再阻塞主链路，成功写入作品、失败留在作品里可重试。
 
-版本：v1 · 状态：待评审 · 影响面：小程序主包 services / pages/home / pages/projects / packages/ai-generation
+版本：v1 · 状态：**P0 / P1 / P2 已落地** · 影响面：小程序主包 services / pages/home / pages/projects / packages/ai-generation
+
+> 实施进度见文末 §15。核心链路已按本方案改造完成并通过 `npm run typecheck`，
+> 但 §12 验收用例尚未在真机跑完，上线前仍需按 T1–T20 过一遍。
 
 ---
 
@@ -589,12 +592,12 @@ export function migrateLegacyAiSession(): void {
 
 ### 10.1 `pages/home/index.ts`
 
-- [ ] 删除 `createPendingDraft` 传参链路，改为 `aiTaskManager.createTask()`
-- [ ] `startAiCreating` 不再 `navigateToAiGeneration`（或改为带 `taskId` 的详情跳转）
-- [ ] 增加 `submitting` 状态，`generating` 语义收窄
-- [ ] 新增 `persistImage()` 调用（图片永久化）
-- [ ] 顶部新增「生成中 N 个」胶囊入口
-- [ ] `onShow` 订阅 `aiTaskManager.subscribeAll()` 刷新胶囊计数
+- [x] 删除 `createPendingDraft` 传参链路，改为 `aiTaskManager.createTask()`
+- [x] `startAiCreating` 不再 `navigateToAiGeneration`（改为 toast + 顶部胶囊入口）
+- [x] 增加 `submitting` 状态，`generating` 语义收窄
+- [x] 新增 `persistImage()` 调用（图片永久化）
+- [x] 顶部新增「生成中 N 个」胶囊入口
+- [x] `onShow` 订阅 `aiTaskManager.subscribeAll()` 刷新胶囊计数（`onHide` 退订）
 
 ### 10.2 作品卡片三态设计（生成中 / 失败 / 完成）
 
@@ -726,8 +729,8 @@ retryLabel: retryActionLabel(work.failureCode),     // 重试 / 购买次数 / �
 
 ### 10.2.2 `pages/projects/index.ts`
 
-- [ ] **删除** `id: 'ai-active-task'` 虚拟卡片（L107-129）
-- [ ] 改为从 `appStore.works` 渲染真实记录：
+- [x] **删除** `id: 'ai-active-task'` 虚拟卡片（L107-129）
+- [x] 改为从 `appStore.works` 渲染真实记录：
   ```ts
   const works = state.works.map((work) => ({
     ...work,
@@ -737,17 +740,17 @@ retryLabel: retryActionLabel(work.failureCode),     // 重试 / 购买次数 / �
     statusLabel: statusLabel(work),     // 草稿 / 已完成 / AI生成中 / 生成失败
   }))
   ```
-- [ ] 删除所有 `id === 'ai-active-task'` 特判（L162/164/192/200/242/327/336）
-- [ ] 删除逻辑改为：`isAiTaskWork(work)` → `aiTaskManager.cancelTask(work.id)`
-- [ ] 失败卡片增加「重试」入口 → `aiTaskManager.retryTask(work.id)`
-- [ ] WXML：AI 态**不再**渲染 `project-card__actions-inline`（L73-78）与
+- [x] 删除所有 `id === 'ai-active-task'` 特判（L162/164/192/200/242/327/336）
+- [x] 删除逻辑改为：`isAiTaskWork(work)` → `aiTaskManager.cancelTask(work.id)`
+- [x] 失败卡片增加「重试」入口 → `aiTaskManager.retryTask(work.id)`
+- [x] WXML：AI 态**不再**渲染 `project-card__actions-inline`（L73-78）与
       `project-card__continue`（L79-89），改用 §10.2.1 的 `__failure` + `__taskline`
       （完成态两处保持原样）
-- [ ] 新增 `cancelAiTask` / `retryAiTask` 方法，均带 `catchtap`，容器 `stopPropagation`
+- [x] 新增 `cancelAiTask` / `retryAiTask` 方法，均带 `catchtap`，容器 `stopPropagation`
       避免误触发 `openWork`
-- [ ] 点 pending/failed 卡片 → `navigateTo('/packages/ai-generation/index?taskId=' + work.id + '&from=projects')`
+- [x] 点 pending/failed 卡片 → `navigateTo('/packages/ai-generation/index?taskId=' + work.id + '&from=projects')`
       （当前是**不带参**的裸跳转，正是靠全局单例 session 才能"猜"出任务的原因）
-- [ ] 订阅改为 `subscribeAll()`，`onShow` 订阅 / `onHide` 退订
+- [x] 订阅改为 `subscribeAll()`，`onShow` 订阅 / `onHide` 退订
 
 ### 10.3 任务详情页：复用 `packages/ai-generation`，不新建页面
 
@@ -773,11 +776,11 @@ retryLabel: retryActionLabel(work.failureCode),     // 重试 / 购买次数 / �
 
 #### 10.3.2 页面改造清单
 
-- [ ] `onLoad(query)` 解析 `taskId` / `from`，`selectedTab` 由 `from` 决定（`projects` → 1，否则 0）
-- [ ] `aiTaskManager.subscribeTask(taskId, listener)` 替代 `aiGenerationManager.attachView()`
-- [ ] **删除 `ensureAiSession()`**（就是它无条件覆盖全局会话）
-- [ ] `onHide/onUnload` 只退订，**不再影响任务执行**
-- [ ] 页面 `onShow` 时重新拉取一次任务快照（后台回来后状态可能已变）
+- [x] `onLoad(query)` 解析 `taskId` / `from`，`selectedTab` 由 `from` 决定（`projects` → 1，否则 0）
+- [x] `aiTaskManager.subscribeTask(taskId, listener)` 替代 `aiGenerationManager.attachView()`
+- [x] **删除 `ensureAiSession()`**（就是它无条件覆盖全局会话）
+- [x] `onHide/onUnload` 只退订，**不再影响任务执行**
+- [x] 页面 `onShow` 时重新拉取一次任务快照（后台回来后状态可能已变）
 
 #### 10.3.3 需要补齐的能力（当前页面没有的）
 
@@ -808,8 +811,13 @@ retryLabel: retryActionLabel(work.failureCode),     // 重试 / 购买次数 / �
 
 ### 10.4 `components/generating-preview-card`
 
-- [ ] 复用为作品列表里的 pending/failed 卡片（接受 `isFailed` / `progress` / `phaseLabel`）
-- [ ] 失败态展示 `failureMessage` + 「重试」
+- [x] 复用为生成中的进度卡片（沿用现有 `generating-preview-card`，未改动组件）
+- [ ] 复用为**作品列表里**的 pending/failed 卡片（接受 `isFailed` / `progress` / `phaseLabel`）
+- [x] 失败态展示 `failureMessage` + 「重试」
+
+> 偏离说明：作品列表的 AI 态最终没有直接复用 `generating-preview-card`——它自带 100% 宽的
+> 巨型居中版式，放进列表会导致卡片高度参差。改为封面叠加遮罩 + 一行文字链接（§10.2.1），
+> 高度与完成态卡片一致。该组件仍在任务详情页承担生成中进度展示。
 
 ---
 
@@ -869,15 +877,57 @@ retryLabel: retryActionLabel(work.failureCode),     // 重试 / 购买次数 / �
 
 | 文件 | 现状职责 | 改造动作 |
 |------|----------|----------|
-| `services/ai-generation-session.ts` | 单例会话 | **删除**（保留迁移函数） |
-| `services/ai-task-store.ts` | — | **新增** |
-| `services/ai-generation-manager.ts` | 单 flow 管理 | 重写为多任务管理器 |
-| `services/ai-generation-flow.ts` | 绑定单例 session 的状态机 | 改为绑定 `taskId` |
-| `services/ai-generation-service.ts` | API 封装 | 不变 |
-| `services/image-service.ts` | 草稿生成 | `createDraft` 支持指定 id；新增 `persistImage` |
-| `models/pattern.ts` | 数据模型 | `WorkItem.status` 扩展 |
-| `store/app-store.ts` | 作品存储 | 不变（复用 `saveWork`/`deleteWork`） |
-| `pages/home/index.ts` | 发起生成 | 改为建任务，不阻塞 |
-| `pages/projects/index.ts` | 作品列表 | 去虚拟卡片，用真实记录 |
-| `packages/ai-generation/index.ts` | AI 生成等待页 | 改造为任务详情页（**不新建页面**），见 §10.3 |
-| `app.ts` | 启动 | 增加 `onShow`/`onHide` 生命周期 |
+| `services/ai-generation-session.ts` | 单例会话 | ✅ **已删除**（迁移逻辑迁入 `ai-task-store.ts`） |
+| `services/ai-task-store.ts` | — | ✅ **新增** |
+| `services/ai-generation-manager.ts` | 单 flow 管理 | ✅ 重写为多任务管理器 |
+| `services/ai-generation-flow.ts` | 绑定单例 session 的状态机 | ✅ 改为绑定 `taskId` |
+| `services/ai-generation-service.ts` | API 封装 | ✅ 不变（仅注释更新） |
+| `services/image-service.ts` | 草稿生成 | ✅ `createDraft` 支持指定 id；新增 `persistImage`；删除 `createPendingDraft` |
+| `models/pattern.ts` | 数据模型 | ✅ `WorkItem.status` 扩展 + `isAiTaskWork` / `isWorkDraft` |
+| `store/app-store.ts` | 作品存储 | ✅ `saveWork` 让 AI 占位作品只存本机（不进云同步队列） |
+| `pages/home/index.ts` | 发起生成 | ✅ 改为建任务，不阻塞 |
+| `pages/projects/index.ts` | 作品列表 | ✅ 去虚拟卡片，用真实记录 |
+| `packages/ai-generation/index.ts` | AI 生成等待页 | ✅ 改造为任务详情页（**未新建页面**），见 §10.3 |
+| `app.ts` | 启动 | ✅ 增加 `onShow`/`onHide` 生命周期 |
+
+---
+
+## 15. 实施进度（本次改动）
+
+### 15.1 已完成
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| P0 止血 | `ai-task-store` + manager 多任务 + 首页不跳转 + 作品占位落库 | ✅ |
+| P1 完善 | 作品页真实卡片 + 重试/取消 + 生成页改为任务详情页 + 图片永久化 | ✅ |
+| P2 增强 | 冷启动自愈、`onAppShow` catch-up、超时判定、迁移脚本 | ✅ |
+| P3 可选 | 后端任务列表接口、订阅消息 | ⬜ 未做（需后端排期） |
+
+静态校验：`npm run typecheck` 零错误。**尚未做真机/模拟器回归**。
+
+### 15.2 关键实现取舍
+
+1. **`saveWork` 增了 AI 占位豁免**：`ai_pending` / `ai_failed` 的作品一律 `syncStatus: 'guest'`
+   存本机。否则登录态下会进待同步队列，而占位作品没有 draft，`work-sync-service` 必然报
+   「作品图案数据不完整」并把它标成同步失败。只有任务成功才重新落为 `pending`。
+2. **flow 不再持有定时器**：`needsPoll()` / `pollOnce()` 由 manager 单个 tick 串行驱动。
+   `waitingLong` 也从定时器改成按 `processingSince` 现算，避免 N 个任务 N 个 timeout。
+3. **flow 不再自己写 storage 的同时再改 UI**：所有状态先落到 `AiTask`，
+   再由manager 的 `applyTaskToWorkItem()` 单向对齐到 `WorkItem`——这是「任务」与「作品」
+   唯一的对齐点，两边不会各自演化。
+4. **`applyFailure` 复用 failureMessage**：卡片上的失败原因统一由 `aiGenerationErrorMessage()`
+   产出，与详情页展示同源。
+5. **「AI 占位作品不上云」在三处同步生效**：`saveWork()`、`adoptGuestWorks()`（登录迁移游客作品时
+   也不能把在跑的 AI 占位作品塞进待同步队列）、以及任务成功后的重新落库。只改 `saveWork()` 会漏掉第二条路径。
+6. **下载/转换阶段的失败单独定 retryMode**：`completeGenerationSteps` 单独包一层 try/catch，
+   网络/产物损坏 → `download`，其余 → `converting`；否则会统一落到 `generation`，按钮显示成「重新生成」。
+
+### 15.3 遗留与待确认
+
+| # | 事项 | 说明 |
+|---|------|------|
+| 1 | **失败态的重命名入口** | §10.2 表格里失败卡片只有「查看进度 · 重试 · 删除」，但设计说明第 3 条又说失败态应放开重命名。本次按**表格**实现，失败卡片没有重命名入口。需要产品二选一。 |
+| 2 | **后端 `aiRateLimiter` 阈值** | 客户端 `MAX_CONCURRENT = 2` 是估计值，**仍需与后端确认**。已按 §13 缓解措施实现 `RATE_LIMITED` 自动排队重试（15s/30s/60s 三档，复用同一幂等键避免重复扣次数，超出 3 次才判失败）。 |
+| 3 | **验收用例未跑** | §12 的 T1–T20 全部需要在真机/模拟器验证，尤其是 T3（杀 App 恢复）、T4（切后台 5 分钟）、T9（旧版本升级迁移）。 |
+| 4 | ~~**图片永久化会占用用户存储**~~ | ✅ 已补 `pruneAiTaskImages()`：冷启动时扫描永久化目录，删除「无任务引用且文件名时间戳超过 7 天」的孤儿文件。目录名常量 `AI_IMAGE_DIRECTORY` 由 `ai-task-store` 导出、`image-service.persistImage()` 共用，避免两边各写一份导致扫不到。 |
+| 5 | **标准模式链路未入队** | 首页标准模式仍是同步 loading 生成（`startCreating` 未改），与原方案一致（只有 AI 走队列）。 |
