@@ -31,6 +31,9 @@ const typeLabels: Record<DownloadFileType, string> = {
   palette: '色板参考',
 }
 
+/** 封面加载失败时的占位图：没有它，失效的封面会在列表里留一个空白格。 */
+const COVER_FALLBACK_PATH = '/assets/icons/image-upload.svg'
+
 Page({
   data: {
     tabs,
@@ -115,6 +118,17 @@ Page({
     this.setData({ records })
   },
 
+  handleCoverError(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    const record = this.data.allRecords.find((item) => item.id === id)
+    if (!record || record.coverPath === COVER_FALLBACK_PATH) return
+    const allRecords = this.data.allRecords.map((item) => item.id === id
+      ? { ...item, coverPath: COVER_FALLBACK_PATH }
+      : item)
+    this.setData({ allRecords }, () => this.applyFilters())
+  },
+
   showFilter() {
     wx.showActionSheet({
       itemList: ['按时间从新到旧', '按作品名称'],
@@ -164,6 +178,7 @@ function formatDateTime(timestamp: number) {
 function toDownloadView(record: DownloadRecord): DownloadView {
   return {
     ...record,
+    coverPath: record.coverPath || COVER_FALLBACK_PATH,
     typeLabel: typeLabels[record.fileType],
     typeClass: `download-type--${record.fileType}`,
     dateText: formatDateTime(record.downloadedAt),

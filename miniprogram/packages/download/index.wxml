@@ -28,7 +28,13 @@
 
     <view wx:if="{{records.length}}" class="download-list">
       <view class="download-card ui-card" wx:for="{{records}}" wx:key="id">
-        <image class="download-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
+        <image
+          class="download-card__cover"
+          src="{{item.coverPath}}"
+          mode="aspectFill"
+          data-id="{{item.id}}"
+          binderror="handleCoverError"
+        />
         <view class="download-card__content">
           <view class="download-card__title">{{item.title}}</view>
           <view class="download-type {{item.typeClass}}">{{item.typeLabel}}</view>

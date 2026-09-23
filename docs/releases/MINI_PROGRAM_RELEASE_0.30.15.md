@@ -13,7 +13,7 @@
 
 修复首页「示例图片」与「我的」页头像在真机上空白，并把这次事故的两个成因固化成静态守卫。
 
-涉及文件（16 个）：
+涉及文件（19 个）：
 
 | 文件 | 改动性质 |
 | --- | --- |
@@ -28,6 +28,8 @@
 | `test/miniprogram-assets/` | 新增本地图片资源守卫（2 例） |
 | `.github/workflows/ci.yml` | 新增 `Miniprogram local image asset check` 步骤 |
 | `docs/frontend/MINI_PROGRAM_RULES.md` | 新增「包内静态图片禁止使用 WebP」规则 |
+| `miniprogram/packages/download/index.wxml` | 封面 `binderror` 兜底 |
+| `miniprogram/packages/download/index.ts` | `handleCoverError` + 占位图常量 |
 | `package.json` / `package-lock.json` | 版本号 `0.30.15` |
 
 上一版本基线：v0.30.14（第二轮 AI 扫描修复批次）。
@@ -56,7 +58,9 @@ v0.16.0 的「图片资源转 WebP」把 5 张本地图从 PNG/JPG 转成了 web
 
 4. **`docs/frontend/MINI_PROGRAM_RULES.md`「图片处理」补规则**：包内静态图片禁止 WebP（含原因、血泪教训、替代方案），并补一条排查口径——**图片空白时先看该 `<image>` 有没有 CSS `background`**：有背景色说明元素本身渲染正常、只是资源没解出来，此时优先怀疑格式与路径，而不是布局。这条口径能把本次的排查路径从「翻布局样式」直接拉回「核对资源」。
 
-5. **没有采用 `webp="true"`**：官方文档写了该属性，但社区到 2025-09 仍有 Android 机型（尤其带透明通道的 webp）设置后依旧不显示的反馈，且它是 WebView 特有属性、未来切 Skyline 渲染会整段失效。省包体 490KB 不值得把「真机能不能显示」押在一个逐标签、逐机型都要验的属性上。
+5. **下载记录页封面补上加载失败兜底**：顺带做了全量图片引用核查（160 个 `<image>`、其中 21 个动态 src），三个列表页里作品页与收藏页都有 `binderror` 兜底到 `image-upload.svg`，下载记录页是唯一漏的一处——封面地址失效时列表里留一个空白格且无提示。补 `handleCoverError` 与 `coverPath || COVER_FALLBACK_PATH`，与另两页同一套口径。**核查结果：字面量 `/assets` 引用 74 条全部命中真实文件，5 张位图全部可解码，全项目已无 webp**；69 个 svg 里仅 `project-empty.svg` 用了内部 `clipPath` 引用（WebView 下正常，切 Skyline 才失效），不构成当前问题。
+
+6. **没有采用 `webp="true"`**：官方文档写了该属性，但社区到 2025-09 仍有 Android 机型（尤其带透明通道的 webp）设置后依旧不显示的反馈，且它是 WebView 特有属性、未来切 Skyline 渲染会整段失效。省包体 490KB 不值得把「真机能不能显示」押在一个逐标签、逐机型都要验的属性上。
 
 ## 影响范围
 
