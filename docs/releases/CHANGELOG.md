@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 0.30.16
+
+主线是**支付合规**：AI 生成次数属于虚拟商品，官方要求小程序内售卖虚拟商品必须走「小程序虚拟支付」，它也是 **iOS 端唯一合法通道**（普通 `wx.requestPayment` 在 iOS 上无法购买虚拟商品）。本版把客户端从 `wx.requestPayment` 换成 `wx.requestVirtualPayment`，服务端补齐签名客户端、发货推送验真与 `session_key` 加密落库。另一部分是 OCR 扫描第三轮加固在小程序侧的落地，集中在**静默失败**——既不报错、现象又完全看不出根因的那些地方。
+
+- **小程序虚拟支付接入**：`payment-service.ts` 改为调 `wx.requestVirtualPayment`，并补三道前置：`signData` 必须原样透传（本地哪怕按同样字段重新 `stringify`，一个空格差异都会让 `paySig` 校验失败）；`parseSignData` 解析失败抛明确错误（否则微信只回一句笼统的 -15001，排查时看不出是服务端下发问题还是客户端解析问题）；`canUseVirtualPayment()` **先过基础库 2.19.2 门槛再看 `canIUse`**（部分宿主存在接口却不起作用，只看 `canIUse` 不够）。
+- **虚拟支付错误码翻译成可行动文案**：新增常见错误码映射（`-15007` 登录态失效请重新登录、`-15010` 商品暂不可购买、`-15013` 价格异常、`-15021` 下单过于集中等），不再让用户对着 raw code 发呆。用户取消仍以结构化的 `errCode === -2` 判定，不依赖会随版本与语言变化的 `errMsg`。
+- **服务端虚拟支付签名与发货验真**：`virtual-pay-client.ts` 按官方规则算 `paySig = HMAC-SHA256(appKey, "requestVirtualPayment&" + signData)` 与 `signature = HMAC-SHA256(sessionKey, signData)`；`signData` 由 `buildSignData()` 单点生成，既原样下发又作为签名输入，避免第二份序列化实现各自演化。**发货推送不带签名，因此发货前强制 `query_order` 反向验真**（fail-closed）。配套 SQL `014_virtual_payment_support.sql`。
+- **`session_key` 加密落库并每次登录刷新**：它是虚拟支付用户态签名 `signature` 的计算密钥，留旧值会让用户下次支付报 `-15007`。现在登录时一并加密写入、每次登录刷新；**严禁打进日志或下发客户端**——泄露意味着他人可以伪造该用户的支付签名。
+- **服务端未签发支付参数时不再谎报「套餐数据无法识别」**：下单成功但 `virtual` 为 `null`（虚拟支付未启用或服务端降级）时，原先在解析阶段就抛通用 `invalidResponse`，文案是「无法识别的套餐数据」，而订单其实已经建好——会把排查方向整个带偏。改为让 `payForAiGenerationPackage` 统一抛「支付参数已失效，请重新发起支付」。
+- **图纸渲染挡住非法网格尺寸**：新增 `requireGridSize` / `requireCanvasHeight` 在绘制前校验。宽高为 0 会让 `cellWidth` 算成 Infinity、NaN 会污染所有坐标，而 canvas 拿到非法坐标**既不抛错也不画东西**，表现只是「导出了一张空白图」，从现象完全追不回网格尺寸坏了。
+- **材料统计与落盘用同一把尺子量颜色**：`summarizeMaterials` 的 key 改为颜色小写归一，与 `models/pattern` 的 `encodePatternCells` 同口径。否则 `#FF0000` 与 `#ff0000` 在材料表里算两种色（出现两行同样的红）、落盘编码时却合并成一种——同一个作品在两处给出不同的色数。
+- **`getTextColor` 只认 6 位十六进制**：原来只校验长度，而 `'gggggg'` 长度也是 6，`parseInt` 全部得到 NaN，亮度比较恒为 false，于是**任何**脏色值都会返回白字——白底上的白字等于看不见。进不了合法色值域就走深色兜底。
+- **`rgbToHex` 通道收敛到 0~255**：越界分量（负数、>255、NaN）会拼出 `-1`、`NaN` 这种不是两位十六进制的串，得到的 `#xxxxxx` 根本不是合法颜色；canvas 和 WXML 都不会报错，只表现为「这一格不显示」。非有限数落到 0（黑），至少保证产出仍是合法颜色。
+- **`median-cut` 不再污染调用方的数组**：桶分裂前的 `sort` 是原地排序，直接用调用方的 `pixels` 会把人家的行优先顺序改掉，这种污染不报错、只会让结果悄悄不对；改为复制一份入桶。空桶取均值会得到 NaN 三元组（`fillStyle` 拿到 NaN 静默不绘制），改为直接抛错——按项目约定不用「合法值」掩盖异常。
+- **作品重命名不再写回陈旧快照**：`await checkTextContent` 期间可能已完成一次云同步，本地作品被换成云端记录（id 都变了），此时再把 await 之前那份快照写回去，等于把已被替换掉的旧记录塞回列表——用户看到的是「重命名成功，但列表里多了一份同名旧作品」。改为 await 后重新取一次，取不到就提示刷新后重试。
+- **云端作品新建拒绝空 id**：新建的幂等键由 `draft.id` 派生，id 为空时键退化成 `'create-'`，所有空 id 的新建会被服务端当成同一笔去重——用户存了两份作品、云端只留下一份，且全程无任何报错。改为明确失败。
+- **登录态三个时间字段用同一把尺子**：`createdAt` / `quota.resetsAt` / `aiGeneration.resetsAt` 补 `Date.parse` 有限性校验。只判 `typeof string` 会放过「看起来像时间、解析却是 NaN」的脏串，下游拿去做倒计时就渲染出 NaN。
+- **其它健壮性**：`download-service` 的 `fileType` 与 `query` 一律做 URL 转义（原先只有 `query` 转义，两处口径不一致，将来往这里传外部输入就会漏编码）；`main-tab-bar` 的 `currentSelected` 默认 `-1`（默认 `0` 会让「作品」「我的」页在计算出应高亮项之前先闪一帧首页高亮）；「关于」页缺少文案时不弹空内容对话框（只有标题没有内容的弹框看起来像加载失败）。
+- **测试**：新增 `test/payment/`（13 例，覆盖 signData 透传、基础库兜底、取消判定、错误码翻译、缺签名拒绝拉起等）与 `test/pattern-generation/phase-7-ocr-hardening.test.js`；拼豆图生成用例 62/62。
+
 ## 0.30.15
 
 修复首页示例图与「我的」页头像在真机上长期空白，并补上防止复发的静态守卫。
