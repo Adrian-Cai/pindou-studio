@@ -4,7 +4,8 @@
 - 范围：`miniprogram/`（119 个文件送审，148 个被规则过滤）
 - 成本：16m13s / 约 210 万 token（input 186 万 + output 24 万）
 - 分布：**bug 139 / maintainability 98 / performance 14 / security 13 / other 5**；严重度 **high 39 / medium 131 / low 99**
-- 原始结果：`.tmp-ocr-scan-miniprogram.txt`（269 条）；medium+high 摘录：`.tmp-ocr-significant.txt`
+- 原始结果：一次性本地产物（`.tmp-ocr-scan-miniprogram.txt` 269 条、medium+high 摘录 `.tmp-ocr-significant.txt`）。
+  这两个文件属于临时文件、按 `.gitignore` 的 `.tmp*` 规则**未纳入版本库**，已于整理工作区时清理；扫描结论以本文档为准，不必再找原始文件。
 
 处置结论：`已修` 32 / `驳回` 114 / `降级` 118 —— **269 条全部给出结论，无悬空项**。
 `驳回` = 误报或有意设计（说明列已注明理由）；`降级` = 问题成立但严重度被高估（多为触发条件苛刻或属加固建议），本轮不改代码。

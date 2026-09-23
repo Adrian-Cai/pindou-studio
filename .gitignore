@@ -14,6 +14,7 @@ project.private.config.json
 # 临时脚本与其输出（一次性排查 / 扫描产物，勿提交）
 .tmp*
 *.tmp
+*-output.txt
 .run-tests-capture.js
 .test-out.txt
 .test-summary.txt
