@@ -8,6 +8,8 @@
  *       防止脏数据进入本地；保存新建作品带幂等键避免重复提交。
  */
 import {
+  decodePatternCells,
+  encodePatternCells,
   isGenerationMode,
   type GenerationMode,
   type PatternDraft,
@@ -232,6 +234,9 @@ export function cloudSummaryToWorkItem(summary: CloudWorkSummary | CloudFavorite
  */
 export function cloudDetailToDraft(detail: CloudWorkDetail): PatternDraft {
   const pattern = detail.pattern
+  // 下标越界/调色板缺失意味着图纸数据损坏，按无效响应处理，不让脏数据进编辑器
+  const cells = decodePatternCells(pattern)
+  if (!cells) throw invalidResponse()
   return {
     id: detail.id,
     sourceImagePath: '',
@@ -243,12 +248,7 @@ export function cloudDetailToDraft(detail: CloudWorkDetail): PatternDraft {
       colorLimit: pattern.settings.colorLimit,
       brand: pattern.settings.brand,
     },
-    cells: pattern.cells.map((paletteIndex) => {
-      if (paletteIndex === -1) return { color: 'transparent', colorCode: '' }
-      const paletteItem = pattern.palette[paletteIndex]
-      if (!paletteItem) throw invalidResponse()
-      return { color: paletteItem.color, colorCode: paletteItem.code }
-    }),
+    cells,
   }
 }
 
@@ -261,28 +261,16 @@ export function draftToPersistedPattern(draft: PatternDraft): PersistedPattern {
   if (draft.cells.length !== draft.settings.width * draft.settings.height) {
     throw new ApiError('当前作品网格数据不完整，请重新生成', { code: 'INVALID_PATTERN' })
   }
-  const palette: PersistedPattern['palette'] = []
-  const paletteIndexes = new Map<string, number>()
-  const cells = draft.cells.map((cell) => {
-    // 透明格用下标 -1 表示，省去调色板里的透明项
-    if (cell.color === 'transparent') return -1
-    // 以「色号\u0000颜色」为键去重建调色板，相同色只保留一份；色号缺失则自动补 C01..
-    const key = `${cell.colorCode}\u0000${cell.color.toLowerCase()}`
-    const existing = paletteIndexes.get(key)
-    if (existing !== undefined) return existing
-    const index = palette.length
-    paletteIndexes.set(key, index)
-    palette.push({ code: cell.colorCode || `C${String(index + 1).padStart(2, '0')}`, color: cell.color })
-    return index
-  })
+  // 与本机落盘共用 models/pattern 的编码，避免两处压缩逻辑各自演化
+  const packed = encodePatternCells(draft.cells)
   return {
     schemaVersion: 1,
     generationMode: draft.generationMode,
     width: draft.settings.width,
     height: draft.settings.height,
     settings: { colorLimit: draft.settings.colorLimit, brand: draft.settings.brand },
-    palette,
-    cells,
+    palette: packed.palette,
+    cells: packed.cells,
   }
 }
 

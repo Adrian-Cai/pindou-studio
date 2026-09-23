@@ -3,10 +3,12 @@
  *
  * 职责：统一 GenerationMode、PatternSettings、PatternCell、PatternDraft（编辑态）、
  *       PersistedPattern（云端持久化态，去重建调色板、每格存下标）、WorkItem（列表项）、下载相关类型；
- *       提供 isGenerationMode / resolveGenerationMode 两个类型守卫。不含任何业务逻辑与 IO。
- * 调用方：生成流程、编辑器、结果页、作品列表、各 service 都引用这里的类型。
+ *       提供 isGenerationMode / resolveGenerationMode 两个类型守卫，以及网格压缩用的
+ *       encodePatternCells / decodePatternCells。不含任何业务逻辑与 IO。
+ * 调用方：生成流程、编辑器、结果页、作品列表、各 service 都引用这里的类型；
+ *       本地落盘（store/app-store）与云端上传（services/work-service）共用同一套网格编码。
  * 关键点：透明格在 PatternCell 用 color='transparent'、colorCode='' 表示；
- *       在 PersistedPattern 里透明格存 -1，其余存 palette 下标以压缩体积。
+ *       在 PersistedPattern / CompactDraft 里透明格存 -1，其余存 palette 下标以压缩体积。
  */
 
 /** 生成模式：standard=标准图片转图纸；ai=AI 生成。 */
@@ -69,6 +71,60 @@ export interface PersistedPattern {
   settings: Pick<PatternSettings, 'colorLimit' | 'brand'>
   palette: PersistedPaletteItem[]
   cells: number[]
+}
+
+/** 紧凑网格：调色板去重后每格只留一个下标，透明格 -1。本机落盘与云端共用这一套编码。 */
+export interface CompactPatternCells {
+  palette: PersistedPaletteItem[]
+  cells: number[]
+}
+
+/** 落盘用草稿：cells 不再是逐格对象，压成调色板下标数组，JSON 体积约为原来的 1/5。 */
+export type CompactDraft = Omit<PatternDraft, 'cells'> & CompactPatternCells
+
+/**
+ * 把逐格颜色压成「调色板 + 下标数组」。
+ *
+ * 本机 storage 只有 10MB 且按小程序整体配额计，逐格对象（{color,colorCode}×N）撑不了几份草稿；
+ * 压成下标后单份 3600 格的图纸从 ~160KB 降到 ~15KB。色号缺失时按调色板顺序补 C01、C02…
+ * @param cells 编辑态网格
+ */
+export function encodePatternCells(cells: readonly PatternCell[]): CompactPatternCells {
+  const palette: PersistedPaletteItem[] = []
+  const paletteIndexes = new Map<string, number>()
+  const packed = cells.map((cell) => {
+    // 透明格用下标 -1 表示，省去调色板里的透明项
+    if (cell.color === 'transparent') return -1
+    // 以「色号\u0000颜色」为键去重，相同色只保留一份
+    const key = `${cell.colorCode}\u0000${cell.color.toLowerCase()}`
+    const existing = paletteIndexes.get(key)
+    if (existing !== undefined) return existing
+    const index = palette.length
+    paletteIndexes.set(key, index)
+    palette.push({ code: cell.colorCode || `C${String(index + 1).padStart(2, '0')}`, color: cell.color })
+    return index
+  })
+  return { palette, cells: packed }
+}
+
+/**
+ * encodePatternCells 的逆运算。
+ * @returns 还原后的网格；下标越界/字段缺失等脏数据返回 null，由调用方决定丢弃还是降级
+ */
+export function decodePatternCells(payload: CompactPatternCells): PatternCell[] | null {
+  if (!Array.isArray(payload?.palette) || !Array.isArray(payload?.cells)) return null
+  const cells: PatternCell[] = []
+  for (const index of payload.cells) {
+    if (index === -1) {
+      cells.push({ color: 'transparent', colorCode: '' })
+      continue
+    }
+    if (!Number.isInteger(index)) return null
+    const paletteItem = payload.palette[index as number]
+    if (!paletteItem) return null
+    cells.push({ color: paletteItem.color, colorCode: paletteItem.code })
+  }
+  return cells
 }
 
 /**
