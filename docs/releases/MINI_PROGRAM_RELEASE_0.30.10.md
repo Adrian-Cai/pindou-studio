@@ -9,9 +9,15 @@
 
 ## 建议提交信息
 
-- `refactor(ai): AI 生成任务化改造，多任务队列替代全局单例`
-- `docs(plan): 同步 AI 生成任务化改造实施进度`
-- `release: v0.30.10 AI 生成任务化改造`
+## 本次提交（基线 HEAD `ce4b2c5`）
+
+| 提交 | 说明 |
+| --- | --- |
+| `ce4b2c5` | `release: v0.30.10 AI 生成任务化改造` — 版本号、CHANGELOG、提审说明 |
+| `e52fc97` | `docs(plan): 同步 AI 生成任务化改造实施进度` — 方案文档 §15 进度与遗留项 |
+| `fa5583c` | `refactor(ai): AI 生成任务化改造，多任务队列替代全局单例` — 全部代码改动 |
+
+上一版本基线：`df0ba59`。三个远端 `cnb/master`、`origin/master`、`wechat/master` 均已同步至 `ce4b2c5`。
 
 ## 版本概述
 
@@ -85,7 +91,7 @@
 - [x] 服务端类型检查（本次不改服务端，无回归）
 - [x] 版本号一致：`package.json` / `package-lock.json` 均为 `0.30.10`
 - [x] 待提交 diff 审查：无遗留调试代码、无新增 TODO/FIXME（新增 9 处 `console.*` 均为错误分支日志）
-- [ ] 变更已同步推送 `cnb/master`、`origin/master`、`wechat/master`
+- [x] 变更已同步推送 `cnb/master`、`origin/master`、`wechat/master`（三端 HEAD 均为 `ce4b2c5`）
 - [ ] 真机验收 T1–T20（重点 T3 杀 App 恢复、T4 切后台 5 分钟、T9 旧版本升级迁移）
 - [ ] iPhone、Android 真机验证（多任务并发、占位卡片三态、任务详情页）
 - [ ] 小程序端值与交互验收（首页零阻塞、作品页卡片操作）
