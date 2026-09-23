@@ -77,21 +77,26 @@ Page({
 function toOrderView(order: OrderItem): OrderView {
   return {
     ...order,
-    statusLabel: statusLabels[order.status],
+    statusLabel: statusLabels[order.status] ?? String(order.status ?? ''),
     statusClass: `order-status--${order.status}`,
     amountText: `¥ ${formatFen(order.priceFen)}`,
     createdAtText: formatDateTime(order.createdAt),
     paidAtText: order.paidAt ? formatDateTime(order.paidAt) : '',
-    orderSuffix: order.id.slice(-8),
+    orderSuffix: String(order.id ?? '').slice(-8),
   }
 }
 
 function formatFen(priceFen: number): string {
+  // 金额是有限数才格式化：NaN 会渲染成刺眼的「¥ NaN」，
+  // 比留空更容易让用户以为自己付错了钱。
+  if (typeof priceFen !== 'number' || !Number.isFinite(priceFen)) return '0.00'
   return (priceFen / 100).toFixed(2)
 }
 
 function formatDateTime(value: string): string {
   const date = new Date(value)
+  // 非法日期会输出 'NaN-NaN-NaN NaN:NaN'，直接空串交给列表展示「—」
+  if (Number.isNaN(date.getTime())) return ''
   const datePart = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
   return `${datePart} ${timePart}`

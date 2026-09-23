@@ -96,11 +96,18 @@ export async function createDownload(
   fileType: DownloadFileType,
   idempotencyKey: string,
 ): Promise<CreateDownloadResponse> {
+  // 幂等键是「不重复扣次数」的唯一凭证，必须在使用前验明：
+  // 空串会让服务端拿不到去重依据（重试就是真扣两次），
+  // 而误复用的键会把两次不同下载折叠成一笔，用户少拿一份文件却不自知。
+  const trimmedKey = idempotencyKey.trim()
+  if (!trimmedKey) {
+    throw new Error('下载幂等键缺失，请重新发起下载')
+  }
   const response = await apiRequest<unknown>({
     path: '/api/downloads',
     method: 'POST',
     token: requireToken(),
-    headers: { 'Idempotency-Key': idempotencyKey },
+    headers: { 'Idempotency-Key': trimmedKey },
     data: { workId, fileType },
   })
   return parseCreateDownload(response)

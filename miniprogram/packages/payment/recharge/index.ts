@@ -8,6 +8,7 @@
  */
 import { authStore } from '../../../store/auth-store'
 import {
+  createPaymentIdempotencyKey,
   fetchAiGenerationPackages,
   isWechatPaymentCancelled,
   payForAiGenerationPackage,
@@ -26,6 +27,8 @@ Page({
     dailyFreeRemaining: 0,
     purchasedQuota: 0,
     paymentLoading: false,
+    /** 本次购买的幂等键：成功或明确取消前一直复用，避免重复下单。 */
+    paymentIdempotencyKey: '',
   },
 
   onShow() {
@@ -84,17 +87,22 @@ Page({
     const selectedPackage = this.data.packages[this.data.selected]
     if (!selectedPackage || this.data.paymentLoading) return
 
-    this.setData({ paymentLoading: true })
+    // 幂等键绑定「这一次购买意图」：失败重试复用同一个键（服务端据此去重），
+    // 用户主动取消才清掉 —— 每次现造一个会让去重形同虚设，重复下单即重复扣款。
+    const idempotencyKey = this.data.paymentIdempotencyKey || createPaymentIdempotencyKey()
+    this.setData({ paymentLoading: true, paymentIdempotencyKey: idempotencyKey })
     try {
-      const created = await payForAiGenerationPackage(selectedPackage.id)
-      this.setData({ paymentLoading: false })
+      const created = await payForAiGenerationPackage(selectedPackage.id, idempotencyKey)
+      this.setData({ paymentLoading: false, paymentIdempotencyKey: '' })
       wx.navigateTo({
         url: `/packages/payment/payment-success/index?orderId=${encodeURIComponent(created.orderId)}`,
       })
     } catch (error) {
       if (isWechatPaymentCancelled(error)) {
+        this.setData({ paymentIdempotencyKey: '' })
         wx.showToast({ title: '已取消支付', icon: 'none' })
       } else {
+        // 其余失败保留同一个键，让用户「再试一次」仍归属同一笔
         wx.showModal({
           title: '支付未完成',
           content: paymentErrorMessage(error),

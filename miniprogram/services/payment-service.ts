@@ -41,7 +41,7 @@ export async function fetchAiGenerationPackages(): Promise<AiGenerationPackage[]
 
 async function createAiGenerationPayment(
   packageId: string,
-  idempotencyKey: string = createPaymentIdempotencyKey(),
+  idempotencyKey: string,
 ): Promise<CreatePaymentResponse> {
   const normalizedPackageId = packageId.trim()
   if (!normalizedPackageId || !idempotencyKey.trim()) {
@@ -59,11 +59,32 @@ async function createAiGenerationPayment(
   return parseCreatePayment(response)
 }
 
-/** 购买 AI 套餐：创建订单后立即拉起微信支付，返回 orderId（用于跳支付成功页轮询结果）。 */
-export async function payForAiGenerationPackage(packageId: string): Promise<CreatePaymentResponse> {
-  const created = await createAiGenerationPayment(packageId)
+/**
+ * 购买 AI 套餐：创建订单后立即拉起微信支付，返回 orderId（用于跳支付成功页轮询结果）。
+ *
+ * @param idempotencyKey **必须按用户「一次购买意图」生成并持有**。最早这里是在内部
+ *   每次调用都现场造一个默认值，于是同一次点击走到两次（或页面重进入）就被判成两笔不同订单，
+ *   服务端去重完全失效。因此必须由调用方（UI 手势）在发起前生成、并在重试时复用同一个键。
+ */
+export async function payForAiGenerationPackage(
+  packageId: string,
+  idempotencyKey: string,
+): Promise<CreatePaymentResponse> {
+  const normalizedKey = idempotencyKey.trim()
+  if (!normalizedKey) {
+    throw new ApiError('支付参数无效，请重新发起支付', { code: 'INVALID_ARGUMENT' })
+  }
+  const created = await createAiGenerationPayment(packageId, normalizedKey)
   await requestWechatPayment(created.payment)
   return created
+}
+
+/**
+ * 生成一次购买意图的幂等键（时间戳 + 随机串）。
+ * 调用方应把它存在页面状态里：**同一次点击的重试必须复用同一个键**，否则服务端会当成新订单。
+ */
+export function createPaymentIdempotencyKey(): string {
+  return `payment-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`
 }
 
 function requestWechatPayment(payment: WeChatPaymentParameters): Promise<void> {
@@ -74,11 +95,6 @@ function requestWechatPayment(payment: WeChatPaymentParameters): Promise<void> {
       fail: (error) => reject(error),
     })
   })
-}
-
-// 幂等键：时间戳 + 随机串，确保同一笔购买重复点击不会生成多个订单/重复扣款
-function createPaymentIdempotencyKey(): string {
-  return `payment-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`
 }
 
 /** 判断 wx.requestPayment 的失败是否为“用户主动取消”（errMsg 含 requestPayment:fail cancel）。 */

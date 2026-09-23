@@ -65,13 +65,11 @@ Page({
           }
         }
       } catch (error) {
-        if (attempt === 5) {
-          this.setData({
-            paymentState: 'failed',
-            paymentMessage: error instanceof Error ? error.message : '支付结果查询失败，请稍后到“我的订单”查看',
-          })
-          return
-        }
+        // 查询失败 ≠ 支付失败。这里是**网络/接口**出错，订单状态仍是未知的：
+        // 用户已经付过钱，把「没查到结果」渲染成「支付失败」会直接引发客诉。
+        // 因此只记日志并继续重试，最后一次也失败时落到下面的 pending 兜底。
+        // 「明确失败」只能来自上面 order.status 的 failed/closed/refunded。
+        console.error('查询支付结果失败', error)
       }
       if (attempt < 5) await wait(1_000)
     }
