@@ -3,7 +3,7 @@
  *
  * 职责：封装小程序端对 /api/ai/generations 等接口的请求与响应解析；把服务端/网络错误码
  *       统一翻译成用户可读文案（aiGenerationErrorMessage）。不负责状态机与轮询（见 ai-generation-flow）、
- *       本地会话持久化（见 ai-generation-session）、也不负责页面展示。
+ *       本地任务持久化（见 ai-task-store）、也不负责页面展示。
  * 调用方：ai-generation-flow（生成主流程）、content-security-service（传入 securityCheckId）、AI 生成页 packages/ai-generation。
  * 关键点：所有网络异常统一收口为 NETWORK_ERROR；错误码别名与文案集中维护在 normalizeFailureCode / aiGenerationErrorMessage，
  *       新增错误码时两处都要补充。

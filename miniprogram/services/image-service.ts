@@ -5,12 +5,13 @@
  *       1024 用于内容安全与上传、并调用标准生成流程产出 PatternDraft；不负责云端读写与下载。
  * 调用方：生成页（standard / AI）在拿到用户图片后调用。
  * 关键点：部分真机/开发者工具禁止直接读选择器临时路径文件头，此时跳过校验交由 <image> 解码；
- *       createPendingDraft 只用于 AI 等待态占位，无真实网格。
+ *       persistImage 负责把临时路径落到 USER_DATA_PATH，AI 任务的封面与重试都依赖它。
  */
 import { DEFAULT_PATTERN_SETTINGS } from '../config/product'
 import type { GenerationMode, PatternDraft, PatternSettings } from '../models/pattern'
 import { ApiError } from './http-client'
 import { generateStandardPatternCells } from './pattern-generation/standard-generator'
+import { aiImageDirectoryPath } from './ai-task-store'
 
 /** 不支持的图片格式错误（文件头校验失败）。 */
 export class UnsupportedImageFormatError extends ApiError {
@@ -169,15 +170,17 @@ function isImagePickerCancel(error: unknown): boolean {
 }
 
 /**
- * 由图片 + 设置生成一份标准模式图纸草稿（调用标准生成流程产出网格）。
+ * 由图片 + 设置生成一份图纸草稿（调用相应的生成引擎产出网格）。
  * @param sourceImagePath 已处理的原图路径
  * @param settings 图纸设置（与默认值合并）
  * @param generationMode 生成模式，默认 'standard'
+ * @param options.id 指定草稿 ID；AI 任务需要让草稿 ID 与作品 ID（taskId）一致
  */
 export async function createDraft(
   sourceImagePath: string,
   settings: Partial<PatternSettings>,
   generationMode: GenerationMode = 'standard',
+  options?: { id?: string },
 ): Promise<PatternDraft> {
   const normalizedSettings: PatternSettings = {
     ...DEFAULT_PATTERN_SETTINGS,
@@ -187,7 +190,7 @@ export async function createDraft(
   const now = Date.now()
 
   return {
-    id: 'draft-' + now,
+    id: options?.id?.trim() || 'draft-' + now,
     sourceImagePath,
     createdAt: now,
     generationMode,
@@ -197,34 +200,55 @@ export async function createDraft(
 }
 
 /**
- * 创建仅用于等待 AI 结果的临时草稿。
- * 它不代表可保存的作品，真实网格会在 AI 输出完成后由 createDraft 生成。
+ * 把临时图片复制到永久目录（wx.env.USER_DATA_PATH），避免 App 重启后临时路径失效。
+ * 复制失败时回退原路径——退化成本地的旧行为，不该让用户连生成都发起不了。
+ * @param sourceImagePath 待永久化的图片路径
+ * @returns 可长期使用的图片路径
  */
-export function createPendingDraft(
-  sourceImagePath: string,
-  settings: Partial<PatternSettings>,
-  contentSecurityCheckId?: string,
-  contentSecurityImagePath?: string,
-): PatternDraft {
-  const normalizedSettings: PatternSettings = {
-    ...DEFAULT_PATTERN_SETTINGS,
-    ...settings,
-  }
-  const now = Date.now()
+export async function persistImage(sourceImagePath: string): Promise<string> {
+  const source = sourceImagePath.trim()
+  if (!source) return sourceImagePath
+  const userPath = wx.env.USER_DATA_PATH
+  if (source.startsWith(userPath)) return source
 
-  return {
-    id: `ai-pending-${now}`,
-    sourceImagePath,
-    contentSecurityCheckId: contentSecurityCheckId?.trim() || undefined,
-    contentSecurityImagePath: contentSecurityImagePath?.trim() || undefined,
-    createdAt: now,
-    generationMode: 'ai',
-    settings: normalizedSettings,
-    cells: Array.from(
-      { length: normalizedSettings.width * normalizedSettings.height },
-      () => ({ color: 'transparent', colorCode: '' }),
-    ),
+  // 目录名与清理逻辑共用同一个常量，避免两边各写一份导致孤儿文件扫不到
+  const directory = aiImageDirectoryPath()
+  const target = `${directory}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}${imageExtension(source)}`
+  try {
+    ensureDirectory(directory)
+    await copyFile(source, target)
+    return target
+  } catch (error) {
+    console.warn('图片永久化失败，回退使用原路径', error)
+    return source
   }
+}
+
+function ensureDirectory(directory: string): void {
+  try {
+    wx.getFileSystemManager().mkdirSync(directory, true)
+  } catch (error) {
+    // 目录已存在时 mkdir 会抛错，属于预期情况；真正建目录失败由后续 copyFile 兜报错
+    console.warn('创建图片目录失败', error)
+  }
+}
+
+function copyFile(srcPath: string, destPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    wx.getFileSystemManager().copyFile({
+      srcPath,
+      destPath,
+      success: () => resolve(),
+      fail: (error) => reject(error instanceof Error ? error : new Error(String(error?.errMsg ?? 'copyFile failed'))),
+    })
+  })
+}
+
+function imageExtension(filePath: string): string {
+  const matched = /\.(\w+)$/u.exec(filePath)
+  const extension = matched?.[1]?.toLowerCase()
+  if (extension === 'png' || extension === 'webp' || extension === 'jpeg') return `.${extension}`
+  return '.jpg'
 }
 
 function readFileHeader(filePath: string): Promise<Uint8Array> {

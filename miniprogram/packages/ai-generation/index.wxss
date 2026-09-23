@@ -42,6 +42,24 @@
   font-size: 26rpx;
 }
 
+.ai-generation-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+
+.ai-generation-meta__item {
+  color: var(--color-text-secondary, #5f6963);
+  font-size: 24rpx;
+  line-height: 36rpx;
+}
+
+.ai-generation-meta__item--muted {
+  color: var(--color-text-tertiary, #8b918d);
+}
+
 .ai-generation-card {
   margin-top: 24rpx;
   padding: 40rpx 32rpx;

@@ -1,4 +1,4 @@
-import { createDraft, prepareImageForContentSecurity } from './image-service'
+import { createDraft, persistImage, prepareImageForContentSecurity } from './image-service'
 import {
   aiGenerationFailure,
   aiGenerationErrorMessage,
@@ -11,22 +11,25 @@ import {
   type AiGenerationFailure,
 } from './ai-generation-service'
 import {
-  clearAiGenerationSession,
-  createIdempotencyKey,
-  loadAiGenerationSession,
-  saveAiGenerationSession,
-  type AiGenerationSession,
-} from './ai-generation-session'
+  getAiTask,
+  isAiTaskTerminal,
+  isFilePathAlive,
+  patchAiTask,
+  type AiTask,
+  type AiTaskStatus,
+} from './ai-task-store'
 import { ApiError, type PublicErrorAction } from './http-client'
+import type { PatternDraft } from '../models/pattern'
 
 export type AiGenerationFlowPageState =
-  | 'loading'
+  | 'waiting'
   | 'uploading'
   | 'submitting'
   | 'queued'
   | 'processing'
   | 'downloading'
   | 'converting'
+  | 'succeeded'
   | 'failed'
 
 export type AiGenerationFlowRetryMode = 'generation' | 'query' | 'download' | 'converting'
@@ -43,32 +46,37 @@ export interface AiGenerationFlowState {
   action: PublicErrorAction
 }
 
-/** 状态机向页面/后台回调的钩子：状态变化、源图就绪、草稿生成完成。 */
-export interface AiGenerationFlowCallbacks {
-  onStateChange: (state: AiGenerationFlowState) => void
-  onSourceImage?: (sourceImagePath: string) => void
-  onDraftReady: (draft: Awaited<ReturnType<typeof createDraft>>) => Promise<void>
-}
-
-/** 构造参数：回调钩子 + 是否允许切后台后继续轮询（allowBackground）。 */
-export type AiGenerationFlowOptions = AiGenerationFlowCallbacks & {
-  allowBackground?: boolean
+/** 单个任务的驱动选项：任务 ID + 状态变更回调；草稿由 manager 统一落库。 */
+export interface AiGenerationFlowOptions {
+  taskId: string
+  onStateChange: (taskId: string) => void
+  onDraftReady?: (taskId: string, draft: PatternDraft) => Promise<void>
 }
 
 const POLL_INTERVAL_MS = 4_000
 const LONG_WAIT_MS = 60_000
 const NETWORK_BACKOFF_MS = [8_000, 15_000, 30_000] as const
+/** 撞限流后的排队退避：比网络退避更长，给服务端限流窗口留出恢复时间 */
+const RATE_LIMIT_BACKOFF_MS = [15_000, 30_000, 60_000] as const
+const MAX_RATE_LIMIT_RETRIES = RATE_LIMIT_BACKOFF_MS.length
 
 /**
- * AI 任务的轮询、输出下载和 Standard Pattern Engine 转换共用流程。
- * 页面只负责展示状态和承接最终草稿，避免不同入口各自维护一套状态机。
+ * 单条 AI 任务的执行器：负责「上传 → 创建 → 轮询 → 下载 → 转网格」这一条链。
+ *
+ * 一个实例只绑定一个 taskId，所有状态只读写自己那一条 AiTask，
+ * 因此多条任务可以并存，互不覆盖（旧方案的单例 session 正是被新任务覆盖才导致永久加载）。
+ * 自身不持有任何定时器：什么时候该动由 `needsPoll()` 告诉 AiTaskManager，
+ * 由 manager 的单个 tick 串行驱动，避免每个任务各起一个 setTimeout。
  *
  * 注意：本文件必须位于主包，app.ts 启动时会通过 ai-generation-manager 引用，
  * 放在分包内会导致主包无法 require。
  */
 export class AiGenerationFlow {
+  private readonly taskId: string
+  private readonly options: AiGenerationFlowOptions
+
   private state: AiGenerationFlowState = {
-    pageState: 'loading',
+    pageState: 'waiting',
     stateTitle: '正在恢复 AI 任务',
     stateDescription: '正在读取本地任务记录',
     statusMessage: '',
@@ -79,360 +87,326 @@ export class AiGenerationFlow {
     action: 'RETRY',
   }
 
-  private pollTimer: ReturnType<typeof setTimeout> | null = null
-  private longWaitTimer: ReturnType<typeof setTimeout> | null = null
-  private polling = false
-  private submitting = false
-  private processing = false
+  private busy = false
   private destroyed = false
-  private hidden = false
-  private started = false
   private finished = false
-  private resumeAfterRequest = false
-  private requestSequence = 0
+  private nextPollAt: number | null = null
   private networkFailureCount = 0
-  private session: AiGenerationSession | null = null
-  private lastGeneration: AiGeneration | null = null
-  private callbacks: AiGenerationFlowCallbacks
-  private readonly allowBackground: boolean
+  private rateLimitCount = 0
+  private processingSince: number | null = null
 
   constructor(options: AiGenerationFlowOptions) {
-    this.callbacks = options
-    this.allowBackground = Boolean(options.allowBackground)
+    this.taskId = options.taskId
+    this.options = options
+    this.resetStateFromTask()
   }
 
-  /** 启动流程：等价触发一次 onShow，从本地会话恢复任务。 */
-  start(): void {
-    this.onShow()
+  getTaskId(): string {
+    return this.taskId
   }
 
   getState(): AiGenerationFlowState {
-    return { ...this.state }
+    const waitingLong = this.processingSince !== null && Date.now() - this.processingSince > LONG_WAIT_MS
+    return { ...this.state, waitingLong }
   }
 
-  /** 页面挂载时接管展示：合并回调并立即回放当前状态与源图。 */
-  attachView(callbacks: Partial<AiGenerationFlowCallbacks>): void {
-    this.callbacks = { ...this.callbacks, ...callbacks }
-    callbacks.onStateChange?.({ ...this.state })
-    const sourceImagePath = this.session?.sourceImagePath ?? loadAiGenerationSession()?.sourceImagePath
-    if (sourceImagePath) {
-      callbacks.onSourceImage?.(sourceImagePath)
+  isFinished(): boolean {
+    return this.finished
+  }
+
+  /** 是否需要被 tick 驱动一次：未在请求中、未终态、已到下一次轮询时间。 */
+  needsPoll(): boolean {
+    if (this.destroyed || this.finished || this.busy) return false
+    return this.nextPollAt !== null && Date.now() >= this.nextPollAt
+  }
+
+  /** App 回到前台时的追赶：后台定时器不可靠，强制把下一次轮询拉到当下。 */
+  wake(): void {
+    if (this.destroyed || this.finished || this.busy) return
+    if (this.nextPollAt === null) this.nextPollAt = Date.now()
+    else this.nextPollAt = Math.min(this.nextPollAt, Date.now())
+  }
+
+  /**
+   * 推进一次任务。具体做什么由持久化的任务状态决定，
+   * 因此冷启动恢复、切后台回来、普通轮询走的是同一条路径。
+   */
+  async pollOnce(): Promise<void> {
+    if (this.busy || this.destroyed || this.finished) return
+    this.busy = true
+    this.nextPollAt = null
+    try {
+      const task = getAiTask(this.taskId)
+      if (!task) {
+        this.setFailure('没有找到可恢复的 AI 任务，请返回首页重新开始', 'generation', null)
+        return
+      }
+      if (isAiTaskTerminal(task.status)) {
+        this.syncTerminalState(task)
+        return
+      }
+      if (!task.jobId) {
+        await this.submit(task)
+        return
+      }
+      await this.query(task)
+    } catch (error) {
+      if (this.destroyed) return
+      this.setFailure(aiGenerationErrorMessage(error), 'generation', aiGenerationFailure(error))
+    } finally {
+      this.busy = false
     }
   }
 
-  /** 页面/后台重新可见时调用：恢复轮询或重续被中断的请求。 */
-  onShow(): void {
-    this.hidden = false
-    if (this.destroyed || this.finished) return
-    if (!this.started) {
-      // 首次进入：从本地会话恢复任务
-      this.started = true
-      void this.resumeSession()
-    } else if (this.state.pageState === 'failed' && !this.resumeAfterRequest) {
-      // 已失败且非主动重试：保持失败态，不自动续跑
-      return
-    } else if (this.resumeAfterRequest || (!this.polling && !this.submitting && !this.processing && this.pollTimer === null)) {
-      // 之前被中断（切后台）或空闲：续跑
-      this.resumeAfterRequest = false
-      void this.resumeSession()
-    }
-  }
-
-  onHide(): void {
-    if (this.allowBackground) return
-    this.hidden = true
-    this.clearPollTimer()
-    this.clearLongWaitTimer()
-    this.requestSequence += 1
-    if (this.polling || this.submitting || this.processing) this.resumeAfterRequest = true
-  }
-
-  /** 彻底销毁流程（任务取消/页面卸载且无需后台续跑时调用）。 */
+  /** 彻底销毁流程（任务取消时调用），后续 tick 不再驱动它。 */
   destroy(): void {
     this.destroyed = true
-    this.hidden = true
-    this.clearPollTimer()
-    this.clearLongWaitTimer()
-    // 使所有在途请求回调失效
-    this.requestSequence += 1
-    this.resumeAfterRequest = false
+    this.finished = true
+    this.nextPollAt = null
   }
 
-  /** 用户点击重试：依据当前 retryMode 选择续跑环节（重新生成/查询/下载或转换）。 */
-  async retry(): Promise<void> {
-    // 不可重试、或已有流程在跑、或已销毁时忽略
-    if (!this.state.retryable || this.polling || this.submitting || this.processing || this.destroyed) return
-    if (this.state.retryMode === 'generation') {
-      // 任务尚未提交成功：从上传/提交环节重来
-      await this.retryGeneration()
+  /** 从持久化的任务状态重建 UI 状态，并决定是否需要继续推进。 */
+  private resetStateFromTask(): void {
+    const task = getAiTask(this.taskId)
+    if (!task) {
+      this.nextPollAt = null
+      this.finished = true
       return
     }
-    if (this.state.retryMode === 'query') {
-      // 查询阶段失败：用已有 jobId 重新轮询
-      const session = loadAiGenerationSession()
-      if (session?.jobId) {
-        this.session = session
-        this.setPageStateFromSession(session)
-        void this.queryAiGeneration(session.jobId)
+    this.applyTaskStatus(task)
+    if (isAiTaskTerminal(task.status)) {
+      this.finished = true
+      this.nextPollAt = null
+      return
+    }
+    this.nextPollAt = Date.now()
+  }
+
+  private syncTerminalState(task: AiTask): void {
+    this.applyTaskStatus(task)
+    this.finished = true
+    this.nextPollAt = null
+  }
+
+  private applyTaskStatus(task: AiTask): void {
+    const description = describeStatus(task.status)
+    this.state = {
+      ...this.state,
+      pageState: description.pageState,
+      stateTitle: description.stateTitle,
+      stateDescription: description.stateDescription,
+      waitingLong: false,
+    }
+    if (task.status === 'queued' || task.status === 'processing') {
+      this.processingSince = task.startedAt ?? Date.now()
+    }
+    if (task.status === 'failed') {
+      this.applyFailure(task.failure)
+    }
+  }
+
+  /** 提交任务：缺 inputFileId 先上传，随后用幂等键创建远端任务。 */
+  private async submit(task: AiTask): Promise<void> {
+    let inputFileId = task.inputFileId
+    if (!inputFileId) {
+      if (!isFilePathAlive(task.sourceImagePath)) {
+        throw new ApiError('输入图片已失效，请重新选择图片', { code: 'AI_INPUT_FILE_UNAVAILABLE' })
       }
-      return
+      this.transition('uploading', 'generation')
+      patchAiTask(this.taskId, { status: 'uploading' })
+      const inputImagePath = task.inputImagePath && isFilePathAlive(task.inputImagePath)
+        ? task.inputImagePath
+        : await prepareImageForContentSecurity(task.sourceImagePath)
+      const uploaded = await uploadAiInput(inputImagePath, task.securityCheckId)
+      inputFileId = uploaded.id
+      patchAiTask(this.taskId, { inputFileId, inputImagePath })
     }
-    // 下载/转换阶段失败：复用上次成功的 generation 直接重跑后续
-    if (this.lastGeneration) {
-      void this.completeGeneration(this.lastGeneration, ++this.requestSequence)
-    } else {
-      await this.resumeSession()
+
+    this.transition('submitting', 'generation')
+    patchAiTask(this.taskId, { status: 'submitting' })
+    let generation: AiGeneration
+    try {
+      generation = await createAiGeneration({
+        inputFileId,
+        style: task.style,
+        detailLevel: task.detailLevel,
+        backgroundMode: task.backgroundMode,
+        idempotencyKey: task.idempotencyKey,
+      })
+    } catch (error) {
+      // 撞限流不算失败：排队稍后重试，且必须复用同一个幂等键，避免重试时被重复扣次数
+      if (error instanceof ApiError && error.code === 'RATE_LIMITED') {
+        this.handleRateLimited()
+        return
+      }
+      throw error
     }
+    patchAiTask(this.taskId, {
+      jobId: generation.id,
+      status: generation.status === 'succeeded' ? 'succeeded' : 'queued',
+      startedAt: Date.now(),
+    })
+    await this.handleGeneration(generation)
   }
 
-  private async resumeSession(): Promise<void> {
-    if (this.destroyed || (!this.allowBackground && this.hidden) || this.polling || this.submitting || this.processing || this.finished) return
-    const session = this.session ?? loadAiGenerationSession()
-    if (!session) {
-      this.setFailure('没有找到可恢复的 AI 任务，请返回首页重新开始', 'generation', null)
-      return
-    }
-    this.session = session
-    this.callbacks.onSourceImage?.(session.sourceImagePath)
-    if (session.status === 'failed') {
-      this.setFailure('AI 生成失败，请重试', 'generation', null)
-      return
-    }
-    if ((session.status === 'uploading' && !session.inputFileId)
-      || (session.status === 'creating' && session.inputFileId && !session.jobId)) {
-      await this.retryGeneration()
-      return
-    }
-    if (!session.jobId) {
-      this.setFailure('任务尚未创建，请返回首页重试', 'generation', null)
-      return
-    }
-    this.setPageStateFromSession(session)
-    await this.queryAiGeneration(session.jobId)
-  }
-
-  private async queryAiGeneration(jobId: string): Promise<void> {
-    if (this.destroyed || (!this.allowBackground && this.hidden) || this.finished) return
-    if (this.polling) {
-      this.resumeAfterRequest = true
-      return
-    }
-    this.polling = true
-    const requestSequence = ++this.requestSequence
+  /** 查询远端任务最新状态；网络异常走退避重试，不直接判失败。 */
+  private async query(task: AiTask): Promise<void> {
+    const jobId = task.jobId
+    if (!jobId) return
     try {
       const generation = await getAiGeneration(jobId)
-      if (this.isStale(requestSequence)) return
+      if (this.destroyed) return
       this.networkFailureCount = 0
-      this.lastGeneration = generation
-      await this.handleGeneration(generation, requestSequence)
+      await this.handleGeneration(generation)
     } catch (error) {
-      if (this.isStale(requestSequence)) return
+      if (this.destroyed) return
       if (error instanceof ApiError && error.code === 'NETWORK_ERROR') {
         this.networkFailureCount += 1
-        this.updateState({ statusMessage: '网络暂时不可用，正在稍后重试', retryMode: 'query' })
-        this.schedulePoll(this.networkBackoff())
-      } else {
-        this.setFailure(aiGenerationErrorMessage(error), 'query', aiGenerationFailure(error))
+        this.transition('processing', 'query')
+        this.updateState({ statusMessage: '网络暂时不可用，正在稍后重试' })
+        this.nextPollAt = Date.now() + this.networkBackoff()
+        return
       }
-    } finally {
-      this.polling = false
-      if (this.resumeAfterRequest && (this.allowBackground || !this.hidden) && !this.destroyed && !this.processing && !this.finished) {
-        this.resumeAfterRequest = false
-        void this.queryAiGeneration(jobId)
-      }
+      this.setFailure(aiGenerationErrorMessage(error), 'query', aiGenerationFailure(error))
     }
   }
 
   /** 根据查询结果做状态迁移：排队/处理中则继续轮询；失败/取消则报错；成功则进入下载+转换。 */
-  private async handleGeneration(generation: AiGeneration, requestSequence: number): Promise<void> {
+  private async handleGeneration(generation: AiGeneration): Promise<void> {
     if (generation.status === 'queued' || generation.status === 'processing') {
-      const session = this.requireSession()
-      this.session = { ...session, status: 'processing' }
-      saveAiGenerationSession(this.session)
-      const queued = generation.status === 'queued'
-      this.updateState({
-        pageState: queued ? 'queued' : 'processing',
-        stateTitle: queued ? '任务已排队' : 'AI 正在优化图片',
-        stateDescription: queued ? '正在等待 AI 开始处理' : '图片完成优化后将继续生成拼豆图',
-        statusMessage: '',
-        showPurchase: false,
-        retryMode: 'generation',
+      patchAiTask(this.taskId, {
+        status: generation.status === 'queued' ? 'queued' : 'processing',
+        startedAt: Date.now(),
       })
-      this.scheduleLongWait()
-      this.schedulePoll(POLL_INTERVAL_MS)
+      this.transition(generation.status === 'queued' ? 'queued' : 'processing', 'generation')
+      this.nextPollAt = Date.now() + POLL_INTERVAL_MS
       return
     }
 
     if (generation.status === 'failed' || generation.status === 'canceled') {
-      this.session = { ...this.requireSession(), status: 'failed' }
-      saveAiGenerationSession(this.session)
       const failure = generation.status === 'canceled'
         ? canceledFailure()
         : generation.failure ?? aiGenerationFailure(generation)
-      this.setFailure(
-        generation.status === 'canceled' ? '任务已结束，请重新生成' : aiGenerationErrorMessage(generation),
-        'generation',
-        failure,
-      )
+      this.failTask(failure)
       return
     }
 
-    await this.completeGeneration(generation, requestSequence)
+    await this.completeGeneration(generation)
   }
 
-  /** 任务成功后的收尾：下载产物（已下载则复用）→ 标准图案引擎转换 → 回调草稿就绪。 */
-  private async completeGeneration(generation: AiGeneration, requestSequence: number): Promise<void> {
-    if (!generation.outputFile || this.processing) return
-    this.processing = true
-    this.clearPollTimer()
-    this.clearLongWaitTimer()
-    try {
-      const session = this.requireSession()
-      let outputImagePath = session.outputImagePath
-      // 本地尚无产物，或已下载文件损坏：重新下载
-      if (!outputImagePath || !(await isAiOutputImageAvailable(outputImagePath))) {
-        if (this.isStale(requestSequence)) return
-        this.updateState({
-          pageState: 'downloading',
-          stateTitle: '正在获取生成结果',
-          stateDescription: '正在读取 AI 优化图片',
-          statusMessage: '',
-          retryMode: 'download',
-        })
-        outputImagePath = await downloadAiOutput(generation.outputFile.url)
-        this.session = { ...session, outputImagePath, status: 'succeeded' }
-        saveAiGenerationSession(this.session)
-      }
-      if (this.isStale(requestSequence)) return
-
-      this.updateState({
-        pageState: 'converting',
-        stateTitle: '正在生成拼豆图',
-        stateDescription: 'AI 优化完成，正在使用标准图案引擎生成网格',
-        statusMessage: '',
-        retryMode: 'converting',
+  /** 远端成功后的收尾：下载产物（已下载则复用）→ 永久化 → 标准图案引擎转换 → 回调 manager 落库。 */
+  private async completeGeneration(generation: AiGeneration): Promise<void> {
+    if (!generation.outputFile) {
+      this.failTask({
+        code: 'AI_RESULT_INVALID',
+        message: 'AI 生成结果不可用，请重新生成',
+        category: 'PROVIDER',
+        retryable: true,
+        action: 'RETRY',
       })
-      // 用输出图生成标准拼豆网格 draft（ai 模式）
-      const draft = await createDraft(outputImagePath, session.settings, 'ai')
-      if (this.isStale(requestSequence)) return
-      await this.callbacks.onDraftReady(draft)
-      clearAiGenerationSession()
-      this.finished = true
+      return
+    }
+    const task = getAiTask(this.taskId)
+    if (!task) return
+
+    try {
+      await this.completeGenerationSteps(generation.outputFile.url, task)
     } catch (error) {
-      if (this.isStale(requestSequence)) return
+      if (this.destroyed) return
       // 网络/产物损坏走下载重试；其余（转换失败等）走转换重试
       const retryMode: AiGenerationFlowRetryMode = error instanceof ApiError
         && (error.code === 'NETWORK_ERROR' || error.code === 'AI_OUTPUT_INVALID')
         ? 'download'
         : 'converting'
       this.setFailure(aiGenerationErrorMessage(error), retryMode, aiGenerationFailure(error))
-    } finally {
-      this.processing = false
-      if (this.resumeAfterRequest && !this.destroyed && !this.hidden && !this.finished) {
-        this.resumeAfterRequest = false
-        void this.resumeSession()
-      }
     }
   }
 
-  /** 从上传/提交环节重跑整个生成：复用已上传文件则跳过上传，新任务换用新幂等键。 */
-  private async retryGeneration(): Promise<void> {
-    const previous = loadAiGenerationSession()
-    if (!previous) {
-      this.setFailure('输入图片已失效，请返回首页重新上传', 'generation', null)
+  private async completeGenerationSteps(outputUrl: string, task: AiTask): Promise<void> {
+    let outputImagePath = task.outputImagePath
+    if (!outputImagePath || !(await isAiOutputImageAvailable(outputImagePath))) {
+      this.transition('downloading', 'download')
+      patchAiTask(this.taskId, { status: 'downloading' })
+      outputImagePath = await persistImage(await downloadAiOutput(outputUrl))
+      patchAiTask(this.taskId, { outputImagePath })
+    }
+
+    this.transition('converting', 'converting')
+    patchAiTask(this.taskId, { status: 'converting' })
+    const draft = await createDraft(outputImagePath, task.settings, 'ai', { id: this.taskId })
+    if (this.destroyed) return
+
+    // 先让 manager 把草稿与作品落库，再判定任务成功——否则会出现“作品没存下来但任务已成功”
+    if (this.options.onDraftReady) {
+      await this.options.onDraftReady(this.taskId, draft)
+    }
+    patchAiTask(this.taskId, { status: 'succeeded', finishedAt: Date.now(), failure: null })
+    this.applyTaskStatus(getAiTask(this.taskId) ?? task)
+    this.finished = true
+    this.nextPollAt = null
+    this.notifyChange()
+  }
+
+  /**
+   * 撞到服务端限流：不判失败，按退避把任务放回队列稍后重试。
+   * 幂等键保持不变 —— 换了键重试有被重复扣次数的风险。
+   */
+  private handleRateLimited(): void {
+    this.rateLimitCount += 1
+    if (this.rateLimitCount > MAX_RATE_LIMIT_RETRIES) {
+      this.setFailure('请求过于频繁，请稍后重试', 'generation', {
+        code: 'RATE_LIMITED',
+        message: '请求过于频繁，请稍后重试',
+        category: 'PROVIDER',
+        retryable: true,
+        action: 'RETRY',
+      })
       return
     }
-    let inputFileId = previous.inputFileId
-    const session: AiGenerationSession = {
-      ...previous,
-      inputFileId,
-      jobId: null,
-      outputImagePath: '',
-      // 已有 jobId 说明之前提交过，重试必须用新幂等键防止服务端重复建单
-      idempotencyKey: previous.jobId ? createIdempotencyKey() : previous.idempotencyKey,
-      status: inputFileId ? 'creating' : 'uploading',
-    }
-    this.session = session
-    saveAiGenerationSession(session)
-    this.clearPollTimer()
-    this.clearLongWaitTimer()
-    this.updateState({
-      pageState: inputFileId ? 'submitting' : 'uploading',
-      stateTitle: inputFileId ? '正在创建 AI 任务' : '正在上传图片',
-      stateDescription: inputFileId ? '正在提交新的生成请求' : '正在准备 AI 输入图片',
+    this.transition('submitting', 'generation')
+    this.updateState({ statusMessage: '生成请求较多，正在排队重试' })
+    this.nextPollAt = Date.now() + RATE_LIMIT_BACKOFF_MS[this.rateLimitCount - 1]
+  }
+
+  /** 切到其他阶段：更新本地 UI 文案并通知订阅者。 */
+  private transition(status: AiTaskStatus, retryMode: AiGenerationFlowRetryMode): void {
+    const description = describeStatus(status)
+    this.state = {
+      ...this.state,
+      pageState: description.pageState,
+      stateTitle: description.stateTitle,
+      stateDescription: description.stateDescription,
       statusMessage: '',
-      showPurchase: false,
-      waitingLong: false,
-      retryMode: 'generation',
+      retryMode,
+    }
+    if (status === 'queued' || status === 'processing') {
+      this.processingSince = this.processingSince ?? Date.now()
+    }
+    this.notifyChange()
+  }
+
+  private failTask(failure: AiGenerationFailure | null): void {
+    patchAiTask(this.taskId, {
+      status: 'failed',
+      failure,
+      finishedAt: Date.now(),
     })
-    const requestSequence = ++this.requestSequence
-    this.submitting = true
-    try {
-      if (!inputFileId) {
-        // 没有已上传文件：先用内容安全处理后的图重新上传
-        const inputImagePath = session.inputImagePath || await prepareImageForContentSecurity(session.sourceImagePath)
-        if (this.isStale(requestSequence)) return
-        const uploaded = await uploadAiInput(inputImagePath, session.securityCheckId)
-        if (this.isStale(requestSequence)) return
-        inputFileId = uploaded.id
-        this.session = { ...session, inputFileId, status: 'creating' }
-        saveAiGenerationSession(this.session)
-        this.updateState({
-          pageState: 'submitting',
-          stateTitle: '正在创建 AI 任务',
-          stateDescription: '正在提交新的生成请求',
-        })
-      }
-      if (!inputFileId) throw new ApiError('输入图片已失效，请重新上传', { code: 'IMAGE_DECODE_ERROR' })
-      const generation = await createAiGeneration({
-        inputFileId,
-        style: session.style,
-        detailLevel: session.detailLevel,
-        backgroundMode: session.backgroundMode,
-        idempotencyKey: session.idempotencyKey,
-      })
-      if (this.isStale(requestSequence)) return
-      this.session = {
-        ...(this.session ?? session),
-        jobId: generation.id,
-        status: generation.status === 'succeeded' ? 'succeeded' : 'processing',
-      }
-      saveAiGenerationSession(this.session)
-      this.lastGeneration = generation
-      await this.handleGeneration(generation, requestSequence)
-    } catch (error) {
-      if (this.destroyed || (!this.allowBackground && this.hidden)) return
-      this.setFailure(aiGenerationErrorMessage(error), 'generation', aiGenerationFailure(error))
-    } finally {
-      this.submitting = false
-      if (this.resumeAfterRequest && !this.destroyed && (this.allowBackground || !this.hidden) && !this.finished) {
-        this.resumeAfterRequest = false
-        void this.resumeSession()
-      }
-    }
+    const task = getAiTask(this.taskId)
+    this.applyTaskStatus(task ?? { status: 'failed' } as AiTask)
+    this.finished = true
+    this.nextPollAt = null
+    this.notifyChange()
   }
 
-  private setPageStateFromSession(session: AiGenerationSession): void {
-    if (session.status === 'uploading') {
-      this.updateState({ pageState: 'uploading', stateTitle: '正在上传图片', stateDescription: '请稍候，不要关闭页面' })
-    } else if (session.status === 'creating') {
-      this.updateState({ pageState: 'submitting', stateTitle: '正在创建 AI 任务', stateDescription: '正在提交生成请求' })
-    } else if (session.status === 'succeeded') {
-      this.updateState({ pageState: 'converting', stateTitle: '正在生成拼豆图', stateDescription: '正在使用标准图案引擎生成网格' })
-    } else if (session.jobId) {
-      this.updateState({ pageState: 'processing', stateTitle: 'AI 正在优化图片', stateDescription: '图片完成优化后将继续生成拼豆图' })
-    }
-  }
-
-  /** 进入失败态：清零计时器，按 failure 的 action/retryable 决定展示「重试/买次数/切标准模式」。 */
+  /** 进入失败态：按 failure 的 action/retryable 决定展示「重试/买次数/切标准模式」。 */
   private setFailure(
     message: string,
     retryMode: AiGenerationFlowRetryMode,
     failure: AiGenerationFailure | null,
   ): void {
-    this.clearPollTimer()
-    this.clearLongWaitTimer()
-    const resolvedFailure = failure ?? aiGenerationFailure({ errorCode: 'AI_GENERATION_FAILED' })!
+    const resolvedFailure = failure ?? aiGenerationFailure({ errorCode: 'AI_GENERATION_FAILED' })
+    this.failTask(resolvedFailure)
+    if (!resolvedFailure) return
     const action = resolvedFailure.action
     const retryable = resolvedFailure.retryable && action === 'RETRY'
     let stateTitle: string
@@ -443,7 +417,8 @@ export class AiGenerationFlow {
     } else {
       stateTitle = 'AI 生成失败'
     }
-    this.updateState({
+    this.state = {
+      ...this.state,
       pageState: 'failed',
       stateTitle,
       stateDescription: message,
@@ -453,60 +428,64 @@ export class AiGenerationFlow {
       retryable,
       action,
       waitingLong: false,
-    })
+    }
+    this.notifyChange()
   }
 
-  private updateState(next: Partial<AiGenerationFlowState>): void {
-    this.state = { ...this.state, ...next }
-    this.callbacks.onStateChange({ ...this.state })
-  }
-
-  private schedulePoll(delay: number): void {
-    this.clearPollTimer()
-    if (this.destroyed || (!this.allowBackground && this.hidden) || this.processing || this.finished) return
-    this.pollTimer = setTimeout(() => {
-      this.pollTimer = null
-      const jobId = this.session?.jobId ?? loadAiGenerationSession()?.jobId
-      if (jobId) void this.queryAiGeneration(jobId)
-    }, delay)
-  }
-
-  private scheduleLongWait(): void {
-    if (this.state.waitingLong || this.longWaitTimer !== null || this.destroyed || (!this.allowBackground && this.hidden)) return
-    this.longWaitTimer = setTimeout(() => {
-      this.longWaitTimer = null
-      if (!this.destroyed && (this.allowBackground || !this.hidden) && !this.processing && !this.finished) this.updateState({ waitingLong: true })
-    }, LONG_WAIT_MS)
+  private applyFailure(failure: AiGenerationFailure | null): void {
+    if (!failure) {
+      this.state = { ...this.state, action: 'RETRY', retryable: false, showPurchase: false }
+      return
+    }
+    const action = failure.action
+    this.state = {
+      ...this.state,
+      action,
+      retryable: failure.retryable && action === 'RETRY',
+      showPurchase: action === 'VIEW_BENEFITS',
+    }
+    if (failure.message) this.state = { ...this.state, stateDescription: failure.message }
   }
 
   private networkBackoff(): number {
     return NETWORK_BACKOFF_MS[Math.min(this.networkFailureCount - 1, NETWORK_BACKOFF_MS.length - 1)] ?? POLL_INTERVAL_MS
   }
 
-  private isStale(requestSequence: number): boolean {
-    return requestSequence !== this.requestSequence || this.destroyed || (!this.allowBackground && this.hidden) || this.finished
+  private updateState(next: Partial<AiGenerationFlowState>): void {
+    this.state = { ...this.state, ...next }
+    this.notifyChange()
   }
 
-  /** 取得当前会话（内存优先，回退读本地）；缺失则抛错，调用方应已确保存在。 */
-  private requireSession(): AiGenerationSession {
-    const session = this.session ?? loadAiGenerationSession()
-    if (!session) throw new Error('AI 任务会话不存在')
-    this.session = session
-    return session
+  private notifyChange(): void {
+    this.options.onStateChange(this.taskId)
   }
+}
 
-  private clearPollTimer(): void {
-    if (this.pollTimer !== null) {
-      clearTimeout(this.pollTimer)
-      this.pollTimer = null
-    }
-  }
-
-  private clearLongWaitTimer(): void {
-    if (this.longWaitTimer !== null) {
-      clearTimeout(this.longWaitTimer)
-      this.longWaitTimer = null
-    }
+function describeStatus(status: AiTaskStatus): {
+  pageState: AiGenerationFlowPageState
+  stateTitle: string
+  stateDescription: string
+} {
+  switch (status) {
+    case 'created':
+      return { pageState: 'waiting', stateTitle: '任务排队中', stateDescription: '正在等待其他任务让出生成名额' }
+    case 'uploading':
+      return { pageState: 'uploading', stateTitle: '正在上传图片', stateDescription: '正在准备 AI 输入图片' }
+    case 'submitting':
+      return { pageState: 'submitting', stateTitle: '正在创建 AI 任务', stateDescription: '正在提交生成请求' }
+    case 'queued':
+      return { pageState: 'queued', stateTitle: '任务已排队', stateDescription: '正在等待 AI 开始处理' }
+    case 'processing':
+      return { pageState: 'processing', stateTitle: 'AI 正在优化图片', stateDescription: '图片完成优化后将继续生成拼豆图' }
+    case 'downloading':
+      return { pageState: 'downloading', stateTitle: '正在获取生成结果', stateDescription: '正在读取 AI 优化图片' }
+    case 'converting':
+      return { pageState: 'converting', stateTitle: '正在生成拼豆图', stateDescription: 'AI 优化完成，正在使用标准图案引擎生成网格' }
+    case 'succeeded':
+      return { pageState: 'succeeded', stateTitle: 'AI 生成完成', stateDescription: '图纸已保存到作品，可以开始编辑' }
+    case 'failed':
+    default:
+      return { pageState: 'failed', stateTitle: 'AI 生成失败', stateDescription: '生成过程发生异常，请重试' }
   }
 }
 

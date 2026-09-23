@@ -1,4 +1,4 @@
-import { isGenerationMode, type DownloadRecord, type PatternDraft, type WorkItem } from '../models/pattern'
+import { isAiTaskWork, isGenerationMode, type DownloadRecord, type PatternDraft, type WorkItem } from '../models/pattern'
 
 interface Workspace { currentDraft: PatternDraft | null; localDrafts: Record<string, PatternDraft>; works: WorkItem[]; favoriteIds: string[]; downloadQuota: number; downloadQuotaDate: string; downloadRecords: DownloadRecord[] }
 interface PersistedState { version: 2; guest: Workspace; accounts: Record<string, Workspace> }
@@ -59,7 +59,10 @@ export class AppStore {
     const guest = this.persisted.guest
     const account = this.getActiveWorkspace()
     const ids = new Set(guest.works.map((work) => work.id))
-    const works = guest.works.map((work) => ({ ...work, syncStatus: 'pending' as const, ownerId: userId, isCloud: false, syncError: undefined }))
+    // AI 占位作品没有图纸，进不了云同步队列；否则登录后会被 sync 判「图案数据不完整」
+    const works = guest.works.map((work) => isAiTaskWork(work)
+      ? { ...work, syncStatus: 'guest' as const, ownerId: undefined, isCloud: false, syncError: undefined }
+      : { ...work, syncStatus: 'pending' as const, ownerId: userId, isCloud: false, syncError: undefined })
     account.works = mergeWorks(works, account.works)
     account.favoriteIds = unique([...account.favoriteIds, ...guest.favoriteIds.filter((id) => ids.has(id))])
     account.localDrafts = { ...guest.localDrafts, ...account.localDrafts }
@@ -83,7 +86,9 @@ export class AppStore {
       this.cloudWorks = mergeWorks([{ ...work, syncStatus: 'synced', isCloud: true }], this.cloudWorks)
       this.updateFavoriteId(work.id, work.isFavorite)
     } else {
-      const normalized: WorkItem = this.activeUserId
+      // AI 任务占位作品还没有图纸，强行进待同步队列只会让 sync 因缺 draft 而失败，一律只存本机
+      const localOnly = isAiTaskWork(work)
+      const normalized: WorkItem = !localOnly && this.activeUserId
         ? { ...work, syncStatus: work.syncStatus === 'failed' ? 'failed' : 'pending' as const, ownerId: this.activeUserId, isCloud: false }
         : { ...work, syncStatus: 'guest' as const, ownerId: undefined, isCloud: false }
       const w = this.getActiveWorkspace(); w.works = mergeWorks([normalized], w.works)

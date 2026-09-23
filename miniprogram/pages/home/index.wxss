@@ -143,6 +143,58 @@ page {
 }
 
 /* ════════════════════════════════
+   生成中任务入口（有任务时才显示）
+════════════════════════════════ */
+.home__task-badge {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 72rpx;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 24rpx;
+  padding: 0 24rpx;
+  border: 0;
+  border-radius: var(--radius-card-small);
+  background: var(--color-ai-soft);
+  box-shadow: var(--shadow-card);
+  transition: var(--transition-press);
+}
+
+.home__task-badge:active {
+  opacity: 0.84;
+  transform: scale(0.98);
+}
+
+.home__task-badge-dot {
+  flex: 0 0 16rpx;
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  background: var(--color-ai);
+}
+
+.home__task-badge-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-ai-text);
+  font-size: 26rpx;
+  font-weight: 500;
+  line-height: 40rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home__task-badge-link {
+  flex-shrink: 0;
+  color: var(--color-ai-text);
+  font-size: 24rpx;
+  line-height: 40rpx;
+}
+
+/* ════════════════════════════════
    公共 Section 块
 ════════════════════════════════ */
 .section-block {

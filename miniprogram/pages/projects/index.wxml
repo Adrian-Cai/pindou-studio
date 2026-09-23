@@ -45,18 +45,37 @@
         aria-role="button"
         aria-label="查看作品 {{item.title}}"
       >
-        <image class="project-card__cover" src="{{item.coverPath}}" data-id="{{item.id}}" mode="aspectFill" binderror="handleCoverError" />
+        <view class="project-card__cover-wrap">
+          <image class="project-card__cover" src="{{item.coverPath}}" data-id="{{item.id}}" mode="aspectFill" binderror="handleCoverError" />
+          <!-- AI 态封面叠加层：原图缩略图上层加半透明遮罩，不动封面本体 -->
+          <view wx:if="{{item.isAiGenerating}}" class="project-card__overlay">
+            <text class="project-card__overlay-text">{{item.aiProgress}}%</text>
+          </view>
+          <view wx:elif="{{item.isAiFailed}}" class="project-card__overlay project-card__overlay--failed">
+            <text class="project-card__overlay-text">生成失败</text>
+          </view>
+        </view>
         <view class="project-card__body">
           <view class="project-card__header">
             <view class="project-card__info">
               <view class="project-card__title">{{item.title}}</view>
               <view class="project-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>
               <view class="project-card__date">{{item.updatedText}}</view>
+              <!-- 失败原因：紧跟在时间行下面，避免用户必须点进去才知道为什么失败 -->
+              <view wx:if="{{item.isAiFailed}}" class="project-card__failure">{{item.failureMessage}}</view>
+              <!-- AI 态操作：收成一行文字链接，卡片高度与完成态保持一致 -->
+              <view wx:if="{{item.isAiTask}}" class="project-card__taskline" catchtap="stopPropagation">
+                <text wx:if="{{item.isAiGenerating}}" class="project-card__taskline-text">约 {{item.aiProgress}}%</text>
+                <text class="project-card__taskline-link" data-id="{{item.id}}" catchtap="openWork">查看进度</text>
+                <text wx:if="{{item.isAiFailed && item.canRetry}}" class="project-card__taskline-link" data-id="{{item.id}}" catchtap="retryAiTask">{{item.retryLabel}}</text>
+                <text class="project-card__taskline-link project-card__taskline-link--danger" data-id="{{item.id}}" catchtap="cancelAiTask">{{item.isAiGenerating ? '取消任务' : '删除'}}</text>
+              </view>
             </view>
-            <text class="status-pill {{item.isAiGenerating ? 'status-pill--ai-generating' : (item.isAiFailed ? 'status-pill--danger' : (item.isDraft ? 'status-pill--draft' : ''))}}">{{item.statusLabel}}</text>
+            <text class="status-pill {{item.isAiFailed ? 'status-pill--danger' : (item.isDraft && !item.isAiTask ? 'status-pill--draft' : '')}}">{{item.statusLabel}}</text>
             <text wx:if="{{item.syncLabel}}" class="status-pill status-pill--draft">{{item.syncLabel}}</text>
           </view>
-          <view wx:if="{{!item.isAiGenerating && !item.isAiFailed}}" class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
+          <!-- 完成态保持原有的图标操作行 + 底部「继续编辑」，AI 态不渲染 -->
+          <view wx:if="{{!item.isAiTask}}" class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
             <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="startRename" aria-role="button" aria-label="重命名作品 {{item.title}}">
               <image class="project-card__action-icon" src="/assets/icons/iconsax/edit-2.svg" mode="aspectFit" aria-hidden="true" />
               <text>重命名</text>
@@ -70,22 +89,16 @@
               <text>删除</text>
             </view>
           </view>
-          <view wx:else class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
-            <view class="project-card__action-inline project-card__action-inline--danger" data-id="{{item.id}}" catchtap="deleteWork" aria-role="button" aria-label="取消任务 {{item.title}}">
-              <image class="project-card__action-icon" src="/assets/icons/iconsax/trash.svg" mode="aspectFit" aria-hidden="true" />
-              <text>取消任务</text>
-            </view>
-          </view>
           <view
-            wx:if="{{item.isDraft}}"
+            wx:if="{{item.isDraft && !item.isAiTask}}"
             class="project-card__continue"
             data-id="{{item.id}}"
             catchtap="editWork"
             aria-role="button"
-            aria-label="{{item.isAiGenerating ? '查看进度' : (item.isAiFailed ? '查看重试' : '继续编辑')}} {{item.title}}"
+            aria-label="继续编辑 {{item.title}}"
           >
-            <image class="project-card__continue-icon" src="{{item.isAiGenerating ? '/assets/icons/iconsax/clock.svg' : '/assets/icons/iconsax/edit-2.svg'}}" mode="aspectFit" aria-hidden="true" />
-            <text>{{item.isAiGenerating ? '查看进度' : (item.isAiFailed ? '查看重试' : '继续编辑')}}</text>
+            <image class="project-card__continue-icon" src="/assets/icons/iconsax/edit-2.svg" mode="aspectFit" aria-hidden="true" />
+            <text>继续编辑</text>
           </view>
         </view>
       </view>

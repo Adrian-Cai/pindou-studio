@@ -71,7 +71,14 @@ export interface PersistedPattern {
   cells: number[]
 }
 
-/** 作品列表统一项（本地/云端通用），含同步状态与收藏信息。 */
+/**
+ * 作品列表统一项（本地/云端通用），含同步状态与收藏信息。
+ *
+ * status 语义：
+ * - draft / completed：已有真实图纸的普通作品
+ * - ai_pending：AI 任务进行中的占位记录（尚无图纸，workId === aiTaskId）
+ * - ai_failed：AI 任务失败的占位记录（同上，带 failureCode/failureMessage）
+ */
 export interface WorkItem {
   id: string
   title: string
@@ -82,7 +89,7 @@ export interface WorkItem {
   colorCount: number
   width?: number
   height?: number
-  status?: 'draft' | 'completed'
+  status?: WorkStatus
   /** 本地副本与云端的真实同步状态。 */
   syncStatus?: 'guest' | 'pending' | 'synced' | 'failed'
   /** pending / failed 作品归属的账号；游客作品不带该字段。 */
@@ -94,6 +101,24 @@ export interface WorkItem {
   /** 云端摘要携带的收藏状态；进入 AppStore 后由 favoriteIds 统一派生。 */
   isFavorite?: boolean
   favoritedAt?: number
+  /** 关联的任务 ID，非 AI 作品不带 */
+  aiTaskId?: string
+  /** 失败原因，卡片上直接展示 */
+  failureCode?: string
+  failureMessage?: string
+}
+
+/** 作品状态：ai_pending / ai_failed 是 AI 任务的占位态，其余为真实图纸态。 */
+export type WorkStatus = 'draft' | 'completed' | 'ai_pending' | 'ai_failed'
+
+/** 是否为 AI 任务的占位作品（生成中或生成失败，尚无图纸）。 */
+export function isAiTaskWork(work: Pick<WorkItem, 'status'>): boolean {
+  return work.status === 'ai_pending' || work.status === 'ai_failed'
+}
+
+/** 是否为未完成的作品：AI 占位态与普通草稿都算。 */
+export function isWorkDraft(work: Pick<WorkItem, 'status'>): boolean {
+  return work.status !== 'completed'
 }
 
 /** 下载文件类型：成品图/施工图/材料清单/色板。 */

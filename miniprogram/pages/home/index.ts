@@ -1,9 +1,10 @@
 import { DEFAULT_PATTERN_SETTINGS } from '../../config/product'
-import { chooseSourceImage, createDraft, createPendingDraft, prepareImageForContentSecurity } from '../../services/image-service'
+import { chooseSourceImage, createDraft, persistImage, prepareImageForContentSecurity } from '../../services/image-service'
 import { checkImageContent } from '../../services/content-security-service'
 import { ApiError } from '../../services/http-client'
 import type { GenerationMode } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
+import { aiTaskManager } from '../../services/ai-generation-manager'
 
 type UploadStatus = 'empty' | 'uploading' | 'checking' | 'success' | 'rejected' | 'error'
 
@@ -98,6 +99,10 @@ Page({
     colorOptions: [16, 32, 64, 96],
     choosing: false,
     generating: false,
+    /** AI 任务入队中的防抖标记：不阻塞页面，只挡住重复点击 */
+    submitting: false,
+    /** 未完成的 AI 任务数，用于顶部胶囊入口 */
+    activeAiTaskCount: 0,
     uploadStatus: 'empty' as UploadStatus,
     /** -1 表示上传 SDK 尚未提供真实进度 */
     uploadProgress: -1,
@@ -113,24 +118,43 @@ Page({
     sampleImages: SAMPLE_IMAGES,
   },
 
+  _unsubscribeAiTasks: null as (() => void) | null,
+
   onShow() {
-    // tab 高亮由 page-layout selected-tab 属性管理；从编辑器返回时恢复当前草稿模式，重置生成中状态确保不阻塞后续操作。
-    const draft = appStore.getSnapshot().currentDraft
-    const isAiPending = draft?.id.startsWith('ai-pending-')
-    const generationMode = isAiPending
-      ? this.data.generationMode
-      : (draft?.generationMode === 'ai' && !AI_MODE_ENABLED
-        ? 'standard'
-        : draft?.generationMode ?? this.data.generationMode)
+    // tab 高亮由 page-layout selected-tab 属性管理；从编辑器返回时恢复当前草稿模式，重置按钮状态确保不阻塞后续操作。
+    const draftMode = appStore.getSnapshot().currentDraft?.generationMode
+    const generationMode = draftMode === 'ai' && !AI_MODE_ENABLED
+      ? 'standard'
+      : draftMode ?? this.data.generationMode
     this.setData({
       generating: false,
+      submitting: false,
       currentStep: this.data.uploadStatus === 'success' ? 2 : 1,
       generationMode,
     })
+    if (!this._unsubscribeAiTasks) {
+      this._unsubscribeAiTasks = aiTaskManager.subscribeAll(() => this.refreshAiTaskBadge())
+    }
+    this.refreshAiTaskBadge()
+  },
+
+  onHide() {
+    this._unsubscribeAiTasks?.()
+    this._unsubscribeAiTasks = null
   },
 
   onUnload() {
     currentUploadRequestId += 1
+    this._unsubscribeAiTasks?.()
+    this._unsubscribeAiTasks = null
+  },
+
+  refreshAiTaskBadge() {
+    this.setData({ activeAiTaskCount: aiTaskManager.getActiveCount() })
+  },
+
+  openAiTasks() {
+    wx.switchTab({ url: '/pages/projects/index' })
   },
 
   selectMode(event: WechatMiniprogram.TouchEvent) {
@@ -279,8 +303,12 @@ Page({
     }
   },
 
+  /**
+   * AI 模式：只负责把任务丢进队列——立刻返回、不跳转、不阻塞下一张图。
+   * 任务进度沉淀到作品页的占位卡片，由 aiTaskManager 在后台驱动。
+   */
   async startAiCreating(): Promise<void> {
-    if (this.data.generating) return
+    if (this.data.submitting) return
     if (!this.data.sourceImagePath) {
       wx.showToast({ title: '请先上传图片', icon: 'none' })
       return
@@ -295,39 +323,43 @@ Page({
       return
     }
 
-    this.setData({ generating: true, currentStep: 3 })
+    this.setData({ submitting: true })
     try {
-      await appStore.setCurrentDraft(createPendingDraft(
-        this.data.sourceImagePath,
-        this.data.settings,
-        this.data.securityCheckId,
-        this.data.contentSecurityImagePath,
-      ))
-      await navigateToAiGeneration()
-    } catch (error) {
-      wx.showToast({ title: error instanceof Error ? error.message : 'AI 生成页面打开失败，请重试', icon: 'none' })
-    } finally {
-      this.setData({
-        generating: false,
-        currentStep: this.data.uploadStatus === 'success' ? 2 : 1,
+      // 选图临时路径在 App 重启后会失效，永久化后才能保证封面不白图、重试可用
+      const sourceImagePath = await persistImage(this.data.sourceImagePath)
+      const inputImagePath = this.data.contentSecurityImagePath
+        ? await persistImage(this.data.contentSecurityImagePath)
+        : undefined
+
+      await aiTaskManager.createTask({
+        sourceImagePath,
+        inputImagePath,
+        securityCheckId: this.data.securityCheckId,
+        settings: { ...this.data.settings },
       })
+
+      wx.showToast({ title: '已加入生成队列', icon: 'none', duration: 1500 })
+      this.resetUploadState()
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : 'AI 任务创建失败，请重试', icon: 'none' })
+    } finally {
+      this.setData({ submitting: false })
     }
   },
-})
 
-function createIdempotentNavigationError(): ApiError {
-  return new ApiError('任务页面打开失败，请稍后重试', { code: 'NAVIGATION_ERROR' })
-}
-
-function navigateToAiGeneration(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    wx.navigateTo({
-      url: '/packages/ai-generation/index',
-      success: () => resolve(),
-      fail: () => reject(createIdempotentNavigationError()),
+  /** 清空选图状态，让用户可以立刻选下一张图继续生成。 */
+  resetUploadState() {
+    currentUploadRequestId += 1
+    this.setData({
+      sourceImagePath: '',
+      contentSecurityImagePath: '',
+      securityCheckId: '',
+      uploadStatus: 'empty',
+      uploadProgress: -1,
+      currentStep: 1,
     })
-  })
-}
+  },
+})
 
 function imageErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) return '上传失败，请稍后重试'

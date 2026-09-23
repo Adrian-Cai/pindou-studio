@@ -4,10 +4,11 @@
  * 职责：聚合 appStore 中的作品与云端作品（登录时拉取并写入本地），按 tab/搜索过滤渲染；
  *       打开云端作品时取详情还原草稿并跳转编辑器/结果页；不负责图纸生成与绘制。
  * 调用方：tabBar 第 2 项（路由 /pages/projects/index）。
- * 关键点：AI 生成中的任务以特殊 id 'ai-active-task' 伪造成一条作品置顶显示，订阅生成管理器实时刷新；
+ * 关键点：AI 生成任务是 appStore.works 里的**真实作品记录**（taskId === workId），
+ *       生成中/失败只是它的 status；因此重命名、删除、筛选无需任何特判。
  *       封面加载失败回退到占位图（COVER_FALLBACK_PATH）。
  */
-import type { WorkItem } from '../../models/pattern'
+import { isAiTaskWork, isWorkDraft, type WorkItem } from '../../models/pattern'
 import {
   cloudDetailToDraft,
   cloudSummaryToWorkItem,
@@ -19,7 +20,11 @@ import {
 } from '../../services/work-service'
 import { appStore } from '../../store/app-store'
 import { checkTextContent } from '../../services/content-security-service'
-import { aiGenerationManager } from '../../services/ai-generation-manager'
+import {
+  aiTaskManager,
+  canRetryTask,
+  retryActionLabel,
+} from '../../services/ai-generation-manager'
 
 type ProjectTab = 'all' | 'recent' | 'draft' | 'completed'
 type WorkView = WorkItem & {
@@ -28,8 +33,15 @@ type WorkView = WorkItem & {
   statusLabel: string
   isDraft: boolean
   syncLabel: string
-  isAiGenerating?: boolean
-  isAiFailed?: boolean
+  isAiTask: boolean
+  isAiGenerating: boolean
+  isAiFailed: boolean
+  /** 0-100，随 aiTaskManager 通知刷新 */
+  aiProgress: number
+  /** AI 卡片失败原因文案（ai_failed 才有） */
+  failureMessage: string
+  canRetry: boolean
+  retryLabel: string
 }
 const tabs = [
   { id: 'all', label: '全部' },
@@ -65,7 +77,7 @@ Page({
   onShow() {
     this.getTabBar()?.setData({ selected: 1, hidden: Boolean(this.data.renameWorkId) })
     if (!this._unsubscribeAiTask) {
-      this._unsubscribeAiTask = aiGenerationManager.subscribe(() => this.refreshVisibleWorks())
+      this._unsubscribeAiTask = aiTaskManager.subscribeAll(() => this.refreshVisibleWorks())
     }
     void this.refreshWorks()
   },
@@ -101,44 +113,33 @@ Page({
     const state = appStore.getSnapshot()
     const currentDraft = state.currentDraft
     const allWorks: WorkView[] = state.works.map((work) => {
-      const isDraft = work.status === 'draft'
+      const isAiTask = isAiTaskWork(work)
+      const isAiGenerating = work.status === 'ai_pending'
+      const isAiFailed = work.status === 'ai_failed'
       // 缺尺寸的作品尝试用当前草稿补（尺寸待云端同步时显示「尺寸待同步」）
       const width = work.width ?? (currentDraft?.id === work.id ? currentDraft.settings.width : 0)
       const height = work.height ?? (currentDraft?.id === work.id ? currentDraft.settings.height : 0)
+      const taskView = aiTaskManager.getTaskView(work.id)
       return {
         ...work,
         coverPath: work.coverPath || COVER_FALLBACK_PATH,
-        updatedText: formatDateTime(work.updatedAt),
+        updatedText: isAiTask
+          ? `${formatDateTime(work.createdAt ?? work.updatedAt)} 提交`
+          : formatDateTime(work.updatedAt),
         dimensions: width && height ? `${width}×${height}` : '尺寸待同步',
-        statusLabel: isDraft ? '草稿' : '已完成',
-        isDraft,
-        syncLabel: syncLabel(work),
+        statusLabel: statusLabel(work),
+        isDraft: isWorkDraft(work),
+        // AI 占位作品只存本机，展示同步标签只会让人困惑
+        syncLabel: isAiTask ? '' : syncLabel(work),
+        isAiTask,
+        isAiGenerating,
+        isAiFailed,
+        aiProgress: taskView?.progress ?? PHASE_FALLBACK_PROGRESS,
+        failureMessage: isAiFailed ? work.failureMessage ?? '生成失败，请重试' : '',
+        canRetry: isAiFailed && canRetryTask(work.failureCode),
+        retryLabel: retryActionLabel(work.failureCode),
       }
     })
-
-    const activeAiTask = aiGenerationManager.getActiveTask()
-    if (activeAiTask) {
-      const aiTaskWork: WorkView = {
-        id: 'ai-active-task',
-        title: activeAiTask.isFailed ? 'AI 拼豆图 (生成失败)' : 'AI 拼豆图 (生成中)',
-        coverPath: activeAiTask.sourceImagePath || COVER_FALLBACK_PATH,
-        generationMode: 'ai',
-        updatedAt: activeAiTask.createdAt,
-        beadCount: 0,
-        colorCount: activeAiTask.colorLimit,
-        width: activeAiTask.width,
-        height: activeAiTask.height,
-        status: 'draft',
-        updatedText: activeAiTask.isFailed ? '生成失败，点击查看' : (activeAiTask.stateTitle || '正在后台生成'),
-        dimensions: `${activeAiTask.width}×${activeAiTask.height}`,
-        statusLabel: activeAiTask.isFailed ? '生成失败' : 'AI生成中',
-        isDraft: true,
-        syncLabel: '',
-        isAiGenerating: activeAiTask.isProcessing,
-        isAiFailed: activeAiTask.isFailed,
-      }
-      allWorks.unshift(aiTaskWork)
-    }
 
     this.setData({
       allWorks,
@@ -171,9 +172,9 @@ Page({
     const activeTab = this.data.activeTab
     const works = this.data.allWorks.filter((work) => {
       if (query && !work.title.toLowerCase().includes(query)) return false
-      if (activeTab === 'recent') return work.id === 'ai-active-task' || isRecent(work.updatedAt)
+      if (activeTab === 'recent') return isRecent(work.updatedAt)
       if (activeTab === 'draft') return work.isDraft
-      if (activeTab === 'completed') return !work.isDraft && work.id !== 'ai-active-task'
+      if (activeTab === 'completed') return !work.isDraft
       return true
     })
     this.setData({ works })
@@ -201,22 +202,18 @@ Page({
 
   editWork(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
-    if (id === 'ai-active-task') {
-      wx.navigateTo({ url: '/packages/ai-generation/index' })
-      return
-    }
     void this.openWorkById(id, true)
   },
 
   async openWorkById(id: string, edit: boolean) {
-    // AI 生成中任务跳到 AI 生成页查看进度
-    if (id === 'ai-active-task') {
-      wx.navigateTo({ url: '/packages/ai-generation/index' })
-      return
-    }
     const state = appStore.getSnapshot()
     const work = state.works.find((item) => item.id === id)
     if (!work) return
+    // AI 占位作品：跳到对应任务的详情页看进度/重试
+    if (isAiTaskWork(work)) {
+      wx.navigateTo({ url: `/packages/ai-generation/index?taskId=${encodeURIComponent(id)}&from=projects` })
+      return
+    }
     if (work.isCloud) {
       // 云端作品：先取完整详情还原草稿，再跳转（编辑→编辑器页，查看→结果页）
       wx.showLoading({ title: '正在读取', mask: true })
@@ -253,7 +250,6 @@ Page({
 
   startRename(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
-    if (id === 'ai-active-task') return
     const work = this.data.allWorks.find((item) => item.id === id)
     if (!work) return
     this.getTabBar()?.setData({ hidden: true })
@@ -304,7 +300,7 @@ Page({
     this.setData({ renameSaving: true })
     try {
       await checkTextContent(title)
-      // 云端作品走 renameCloudWork，本地作品直接改 store
+      // 云端作品走 renameCloudWork，其余直接改本地 store
       if (work.isCloud) {
         const summary = await renameCloudWork(id, title)
         await appStore.saveWork(cloudSummaryToWorkItem(summary))
@@ -339,7 +335,6 @@ Page({
 
   downloadWork(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
-    if (id === 'ai-active-task') return
     if (!this.data.allWorks.some((work) => work.id === id)) return
     this.getTabBar()?.setData({ hidden: false })
     this.setData({ showPageNav: true }, () => {
@@ -347,23 +342,39 @@ Page({
     })
   },
 
+  /** AI 卡片「取消任务 / 删除」：停止任务 + 删除占位作品。 */
+  cancelAiTask(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    const work = this.data.allWorks.find((item) => item.id === id)
+    if (!work) return
+    const isGenerating = work.status === 'ai_pending'
+    wx.showModal({
+      title: isGenerating ? '取消任务？' : '删除这条记录？',
+      content: isGenerating
+        ? '确定要取消这个 AI 生成任务吗？'
+        : `确定要删除“${work.title}”吗？`,
+      cancelText: '保留',
+      confirmText: isGenerating ? '取消任务' : '删除',
+      confirmColor: '#e5484d',
+      success: ({ confirm }) => {
+        if (!confirm) return
+        void aiTaskManager.cancelTask(id).then(() => this.refreshVisibleWorks())
+      },
+    })
+  },
+
+  /** AI 卡片「重试」：图片/内容类问题不在这里重试（文案会引导用户重新选图）。 */
+  retryAiTask(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    const work = this.data.allWorks.find((item) => item.id === id)
+    if (!work?.canRetry) return
+    void aiTaskManager.retryTask(id).then(() => this.refreshVisibleWorks())
+  },
+
   deleteWork(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
-    if (id === 'ai-active-task') {
-      wx.showModal({
-        title: '取消任务？',
-        content: '确定要取消这个 AI 生成任务吗？',
-        cancelText: '保留',
-        confirmText: '取消任务',
-        confirmColor: '#e5484d',
-        success: ({ confirm }) => {
-          if (!confirm) return
-          aiGenerationManager.cancelActiveTask()
-          this.refreshVisibleWorks()
-        },
-      })
-      return
-    }
     const work = this.data.allWorks.find((item) => item.id === id)
     if (!work) return
     this.getTabBar()?.setData({ hidden: false })
@@ -402,6 +413,15 @@ Page({
     wx.showToast({ title: '已删除', icon: 'success' })
   },
 })
+
+/** 作品缺失任务记录时的兜底进度（例如任务记录已被清理但作品还在）。 */
+const PHASE_FALLBACK_PROGRESS = 0
+
+function statusLabel(work: WorkItem): string {
+  if (work.status === 'ai_pending') return '生成中'
+  if (work.status === 'ai_failed') return '生成失败'
+  return isWorkDraft(work) ? '草稿' : '已完成'
+}
 
 function validateWorkTitle(value: string, originalTitle: string) {
   const title = value.trim()

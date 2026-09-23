@@ -17,7 +17,7 @@ import {
   updateCloudWork,
 } from '../../services/work-service'
 import { isNetworkError, queueWorkForSync } from '../../services/work-sync-service'
-import { clearAiGenerationSession } from '../../services/ai-generation-session'
+import { aiTaskManager } from '../../services/ai-generation-manager'
 import {
   calculateFittedImageSize,
   clampViewTranslation,
@@ -33,6 +33,13 @@ import {
   type PatternCanvasContext,
   type ViewTransform,
 } from './services/pattern-editor-service'
+
+/** 跳到 AI 任务详情页：带上 taskId 才能定位到具体那条任务。 */
+function aiTaskDetailUrl(taskId?: string): string {
+  return taskId
+    ? `/packages/ai-generation/index?taskId=${encodeURIComponent(taskId)}&from=home`
+    : '/packages/ai-generation/index?from=home'
+}
 
 interface PatternCanvas {
   width: number
@@ -105,16 +112,17 @@ Page({
   _pinchStartMidY: 0,
 
   onLoad(options?: Record<string, string | undefined>) {
-    // AI 生成中的预览或待定草稿都直接跳到 AI 生成页，复用其加载/等待 UI
+    // 预览模式：跳到对应任务的详情页查看进度
     const previewRequested = options?.preview === 'generating' || options?.preview === 'ai'
     if (previewRequested) {
-      wx.redirectTo({ url: '/packages/ai-generation/index' })
+      wx.redirectTo({ url: aiTaskDetailUrl(options?.taskId) })
       return
     }
 
     let draft = appStore.getSnapshot().currentDraft
-    if (draft?.id.startsWith('ai-pending-')) {
-      wx.redirectTo({ url: '/packages/ai-generation/index' })
+    // AI 任务尚未完成的占位草稿：回到任务详情页，而不是进编辑器对着空网格发呆
+    if (draft && aiTaskManager.getTaskView(draft.id)?.isActive) {
+      wx.redirectTo({ url: aiTaskDetailUrl(draft.id) })
       return
     }
     if (!draft) {
@@ -127,7 +135,6 @@ Page({
     if (draft && draft.generationMode !== generationMode) {
       draft = { ...draft, generationMode }
     }
-    if (generationMode === 'standard') clearAiGenerationSession()
 
     const paletteColors = this.getPaletteColors(draft)
     const firstColor = paletteColors[0] ?? ''
@@ -157,7 +164,6 @@ Page({
   },
 
   selectNewImage() {
-    clearAiGenerationSession()
     void appStore.setCurrentDraft(null)
     wx.switchTab({ url: '/pages/home/index' })
   },

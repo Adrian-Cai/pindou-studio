@@ -1,25 +1,21 @@
 /**
- * AI 生成页（分包 packages/ai-generation）：展示生成进度并承接最终跳转。
+ * AI 任务详情页（分包 packages/ai-generation）：展示某一条 AI 生成任务的状态并提供操作。
  *
- * 职责：作为 AiGenerationFlow 的“视图层”——把流程状态映射成页面 UI（进度条/提示文案/失败态），
- *       草稿就绪后跳转编辑器；提供重试、购买次数、切标准模式、重选图片等用户操作。
- *       不实现生成逻辑（在 ai-generation-flow / manager），仅做展示与编排。
- * 调用方：小程序路由进入本页；通过 aiGenerationManager.attachView 接管后台任务状态。
- * 关键点：onHide/onUnload 会 detachView 释放界面回调，但 manager 仍可在后台把任务跑完（见 allowBackground）。
+ * 职责：通过 `?taskId=` 绑定具体任务，把 AiTaskView 映射成页面 UI
+ *       （排队中 / 生成中 / 已完成 / 失败），提供取消、重试、购买次数、切标准模式、查看作品等操作。
+ * 调用方：作品页点 pending/failed 卡片（`?taskId=&from=projects`）、
+ *        AI 生成完成后的一次性跳转（`?taskId=&from=home`）。
+ * 关键点：页面只订阅不驱动——onHide/onUnload 仅退订，任务照常在后台跑；
+ *        `from=home` 表示用户刚发起，成功后自动进编辑器；`from=projects` 表示回看，成功后不跳转。
  */
-import { type AiGenerationFlowState } from '../../services/ai-generation-flow'
-import { DEFAULT_AI_OPTIONS } from '../../services/ai-generation-service'
+import { aiTaskManager, type AiTaskView } from '../../services/ai-generation-manager'
+import type { AiTaskStatus } from '../../services/ai-task-store'
 import { createDraft } from '../../services/image-service'
-import { ApiError } from '../../services/http-client'
 import { appStore } from '../../store/app-store'
-import {
-  createIdempotencyKey,
-  loadAiGenerationSession,
-  saveAiGenerationSession,
-} from '../../services/ai-generation-session'
-import { aiGenerationManager } from '../../services/ai-generation-manager'
 
-const GENERATING_STATES: ReadonlySet<string> = new Set([
+type TaskFrom = 'home' | 'projects'
+
+const GENERATING_STATUSES: ReadonlySet<AiTaskStatus> = new Set<AiTaskStatus>([
   'uploading',
   'submitting',
   'queued',
@@ -28,96 +24,191 @@ const GENERATING_STATES: ReadonlySet<string> = new Set([
   'converting',
 ])
 
-/** 各生成阶段展示的近似进度（服务端任务没有精确百分比，用“约 N%”呈现，仅用于安抚用户） */
-const GENERATING_PROGRESS: Record<string, number> = {
-  uploading: 12,
-  submitting: 28,
-  queued: 45,
-  processing: 68,
-  downloading: 86,
-  converting: 94,
-}
-
-const DEFAULT_GENERATING_TIP = '正在为你优化图片细节，生成完成后即可开始编辑'
+const DEFAULT_TIP = '正在为你优化图片细节，生成完成后即可开始编辑'
 const LONG_WAIT_TIP = '处理时间比平时长一些，可以暂时离开，稍后回来继续查看'
 
 Page({
   data: {
-    pageState: 'loading',
-    stateTitle: '正在恢复 AI 任务',
-    stateDescription: '正在读取本地任务记录',
-    statusMessage: '',
+    selectedTab: 0,
+    hasTask: false,
     sourceImagePath: '',
     sourceImageError: false,
-    waitingLong: false,
-    showPurchase: false,
-    retryMode: 'generation',
-    retryable: true,
-    action: 'RETRY',
+    dimensions: '',
+    colorLimit: 0,
+    submittedAtText: '',
+    isQueued: false,
     isGenerating: false,
+    isSucceeded: false,
+    isFailed: false,
     progress: 0,
-    tipText: DEFAULT_GENERATING_TIP,
-    /** 生成中底部面板预填的图案参数（取自本次 AI 任务设置） */
+    queuePosition: 0,
+    stateTitle: '',
+    stateDescription: '',
+    statusMessage: '',
+    failureMessage: '',
+    tipText: DEFAULT_TIP,
+    showPurchase: false,
+    canRetry: false,
+    retryLabel: '重试',
+    action: 'RETRY',
+    /** 生成中底部面板预填的图案参数（取自任务设置） */
     panelWidth: 0,
     panelHeight: 0,
     panelColorLimit: 0,
     panelBeadCount: 0,
   },
 
-  onLoad() {
-    ensureAiSession()
-    this.syncPanelSettings()
-    aiGenerationManager.attachView({
-      onStateChange: (state) => this.applyFlowState(state),
-      onSourceImage: (sourceImagePath) => this.setData({ sourceImagePath, sourceImageError: false }),
-      onDraftReady: async (draft) => {
-        await appStore.setCurrentDraft(draft)
-        await redirectToEditor()
+  _taskId: '',
+  _from: 'home' as TaskFrom,
+  _unsubscribe: null as (() => void) | null,
+  _navigated: false,
+
+  onLoad(query?: Record<string, string | undefined>) {
+    const from: TaskFrom = query?.from === 'projects' ? 'projects' : 'home'
+    // 没带 taskId 时回退到最近一个任务；都没有就直接回首页，不再出现「无任务却停在生成页」
+    const taskId = aiTaskManager.resolveTaskId(query?.taskId)
+    if (!taskId) {
+      wx.showToast({ title: '没有进行中的 AI 任务', icon: 'none' })
+      wx.switchTab({ url: '/pages/home/index' })
+      return
+    }
+    this._taskId = taskId
+    this._from = from
+    this.setData({
+      selectedTab: from === 'projects' ? 1 : 0,
+    })
+    this.subscribe()
+  },
+
+  onShow() {
+    if (!this._taskId) return
+    this._navigated = false
+    if (!this._unsubscribe) this.subscribe()
+    // 后台回来状态可能已变，重新拉一次快照
+    this.syncTask()
+  },
+
+  onHide() {
+    this.unsubscribe()
+  },
+
+  onUnload() {
+    this.unsubscribe()
+  },
+
+  subscribe() {
+    const taskId = this._taskId
+    if (!taskId) return
+    this.unsubscribe()
+    this._unsubscribe = aiTaskManager.subscribeTask(taskId, () => this.syncTask())
+  },
+
+  unsubscribe() {
+    this._unsubscribe?.()
+    this._unsubscribe = null
+  },
+
+  syncTask() {
+    const taskId = this._taskId
+    if (!taskId) return
+    const view = aiTaskManager.getTaskView(taskId)
+    if (!view) {
+      // 任务记录已消失（用户在别处取消了）：别卡在详情页
+      this.unsubscribe()
+      wx.showToast({ title: '这个任务已不存在', icon: 'none' })
+      this.goBack()
+      return
+    }
+    this.applyView(view)
+    if (view.isSucceeded) void this.handleSucceeded()
+  },
+
+  applyView(view: AiTaskView) {
+    const isGenerating = GENERATING_STATUSES.has(view.status)
+    const isFailed = view.isFailed
+    const isSucceeded = view.isSucceeded
+    const isQueued = !isGenerating && !isFailed && !isSucceeded
+    this.setData({
+      hasTask: true,
+      sourceImagePath: view.sourceImagePath,
+      sourceImageError: false,
+      dimensions: `${view.width}×${view.height}`,
+      colorLimit: view.colorLimit,
+      submittedAtText: `${formatDateTime(view.createdAt)} 提交`,
+      isQueued,
+      isGenerating,
+      isSucceeded,
+      isFailed,
+      progress: view.progress,
+      queuePosition: view.queuePosition,
+      stateTitle: view.stateTitle,
+      stateDescription: view.stateDescription,
+      statusMessage: view.statusMessage,
+      failureMessage: view.failureMessage,
+      tipText: view.statusMessage || (view.waitingLong ? LONG_WAIT_TIP : DEFAULT_TIP),
+      showPurchase: view.showPurchase,
+      canRetry: view.canRetry,
+      retryLabel: view.retryLabel,
+      action: view.action,
+      panelWidth: view.width,
+      panelHeight: view.height,
+      panelColorLimit: view.colorLimit,
+      // 图案尚未生成，颗粒数按满格（宽×高）预估展示
+      panelBeadCount: view.width * view.height,
+    })
+  },
+
+  /** 成功后只在「刚发起」时自动进编辑器；回看时不抢走用户当前页面。 */
+  async handleSucceeded() {
+    if (this._from !== 'home' || this._navigated) return
+    const draft = appStore.getLocalDraft(this._taskId)
+    if (!draft) return
+    this._navigated = true
+    try {
+      await appStore.setCurrentDraft(draft)
+    } catch (error) {
+      console.error('设置当前草稿失败', error)
+    }
+    wx.redirectTo({ url: '/packages/editor/index' })
+  },
+
+  cancelTask() {
+    const taskId = this._taskId
+    if (!taskId) return
+    wx.showModal({
+      title: '取消生成？',
+      content: '取消后这条任务会从作品列表移除，需要重新选图生成。',
+      cancelText: '继续生成',
+      confirmText: '取消生成',
+      confirmColor: '#e5484d',
+      success: ({ confirm }) => {
+        if (!confirm) return
+        void aiTaskManager.cancelTask(taskId).then(() => {
+          this.unsubscribe()
+          this.goBack()
+        })
       },
     })
   },
 
-  onShow() {
-    aiGenerationManager.ensureFlowRunning()
-  },
-
-  onHide() {
-    aiGenerationManager.detachView()
-  },
-
-  onUnload() {
-    aiGenerationManager.detachView()
-  },
-
-  applyFlowState(state: AiGenerationFlowState) {
-    const isGenerating = GENERATING_STATES.has(state.pageState)
-    this.setData({
-      ...state,
-      isGenerating,
-      progress: isGenerating ? GENERATING_PROGRESS[state.pageState] ?? 0 : 0,
-      tipText: state.statusMessage
-        || (state.waitingLong ? LONG_WAIT_TIP : DEFAULT_GENERATING_TIP),
-    })
-  },
-
-  /**
-   * 生成中面板的尺寸/颜色沿用本次任务设置；
-   * 图案还没跑出来，颗粒数先按满格上限展示。
-   */
-  syncPanelSettings() {
-    const session = loadAiGenerationSession()
-    if (!session) return
-    this.setData({
-      panelWidth: session.settings.width,
-      panelHeight: session.settings.height,
-      panelColorLimit: session.settings.colorLimit,
-      // 图案尚未生成，颗粒数按满格（宽×高）预估展示
-      panelBeadCount: session.settings.width * session.settings.height,
-    })
-  },
-
   retry() {
-    void aiGenerationManager.retry()
+    const taskId = this._taskId
+    if (!taskId) return
+    void aiTaskManager.retryTask(taskId).then(() => this.syncTask())
+  },
+
+  async viewWork() {
+    const draft = appStore.getLocalDraft(this._taskId)
+    if (!draft) {
+      wx.showToast({ title: '作品数据尚未就绪，请稍后重试', icon: 'none' })
+      return
+    }
+    try {
+      await appStore.setCurrentDraft(draft)
+    } catch (error) {
+      console.error('设置当前草稿失败', error)
+    }
+    wx.redirectTo({ url: '/packages/result/index' })
   },
 
   purchaseAiGeneration() {
@@ -125,18 +216,18 @@ Page({
   },
 
   async useStandardMode() {
-    const session = loadAiGenerationSession()
-    if (!session) {
+    const view = aiTaskManager.getTaskView(this._taskId)
+    if (!view) {
       this.selectNewImage()
       return
     }
     wx.showLoading({ title: '正在切换', mask: true })
     try {
-      const draft = await createDraft(session.sourceImagePath, session.settings, 'standard')
-      // 放弃后台 AI 任务，改用标准模式直接生成草稿并跳转
-      aiGenerationManager.cancelActiveTask()
+      const draft = await createDraft(view.sourceImagePath, view.settings, 'standard')
+      // 放弃这条 AI 任务，改用标准模式生成的草稿
+      await aiTaskManager.cancelTask(this._taskId)
       await appStore.setCurrentDraft(draft)
-      await redirectToEditor()
+      wx.redirectTo({ url: '/packages/editor/index' })
     } catch (error) {
       wx.showToast({ title: error instanceof Error ? error.message : '标准模式生成失败，请重试', icon: 'none' })
     } finally {
@@ -145,8 +236,16 @@ Page({
   },
 
   selectNewImage() {
-    aiGenerationManager.cancelActiveTask()
+    void aiTaskManager.cancelTask(this._taskId)
     wx.switchTab({ url: '/pages/home/index' })
+  },
+
+  goBack() {
+    wx.navigateBack({
+      fail: () => wx.switchTab({
+        url: this._from === 'projects' ? '/pages/projects/index' : '/pages/home/index',
+      }),
+    })
   },
 
   backHome() {
@@ -158,56 +257,11 @@ Page({
   },
 })
 
-/** 用 redirectTo 跳转到编辑器页（生成完成后替换当前页，避免返回又触发生成）。 */
-function redirectToEditor(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    wx.redirectTo({
-      url: '/packages/editor/index',
-      success: () => resolve(),
-      fail: () => reject(new ApiError('编辑器打开失败，请稍后重试', { code: 'NAVIGATION_ERROR' })),
-    })
-  })
-}
-
-/**
- * 进入页面时确保存在一条 AI 任务会话：复用草稿里待生成的标记（ai-pending- 前缀）的源图与安检结果。
- * 已存在未失败会话则补充 securityCheckId/inputImagePath；否则新建一条 uploading 状态的会话。
- */
-function ensureAiSession(): void {
-  const draft = appStore.getSnapshot().currentDraft
-  // 仅当草稿处于“待 AI 生成”状态才需要建立会话
-  if (!draft?.id.startsWith('ai-pending-')) return
-  const existing = loadAiGenerationSession()
-  if (existing?.sourceImagePath === draft.sourceImagePath && existing.status !== 'failed') {
-    // 同图已有会话：已上传/已提交则无需重建，仅补填安检信息
-    if (existing.inputFileId || existing.jobId) return
-    try {
-      saveAiGenerationSession({
-        ...existing,
-        securityCheckId: draft.contentSecurityCheckId,
-        inputImagePath: draft.contentSecurityImagePath,
-      })
-    } catch (error) {
-      console.error('更新 AI 任务会话失败', error)
-    }
-    return
-  }
-  try {
-    saveAiGenerationSession({
-      idempotencyKey: createIdempotencyKey(),
-      generationMode: 'ai',
-      jobId: null,
-      inputFileId: null,
-      securityCheckId: draft.contentSecurityCheckId,
-      inputImagePath: draft.contentSecurityImagePath,
-      sourceImagePath: draft.sourceImagePath,
-      outputImagePath: '',
-      settings: { ...draft.settings },
-      ...DEFAULT_AI_OPTIONS,
-      status: 'uploading',
-      createdAt: Date.now(),
-    })
-  } catch (error) {
-    console.error('创建 AI 任务会话失败', error)
-  }
+function formatDateTime(timestamp: number) {
+  const date = new Date(timestamp)
+  const datePart = [date.getFullYear(), date.getMonth() + 1, date.getDate()]
+    .map((value, index) => index === 0 ? String(value) : String(value).padStart(2, '0'))
+    .join('-')
+  const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  return `${datePart} ${timePart}`
 }
