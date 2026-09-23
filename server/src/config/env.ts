@@ -54,6 +54,24 @@ export type VirtualPayConfig =
       readonly apiBaseUrl: string;
     };
 
+/**
+ * 虚拟支付发货补单（发货轮询）的调度参数。
+ *
+ * 官方要求「发货推送分支与发货轮询分支至少实现一个」；推送负责实时，轮询负责兜住
+ * 推送丢失的那部分订单，否则用户会遇到「钱扣了、次数没到账」且系统毫无告警。
+ * 与开关类配置不同，这里**不因虚拟支付未启用而整体关闭**：轮询内部会自行短路。
+ */
+export interface VirtualPayReconcileConfig {
+  /** 轮询间隔。不宜低于 1 分钟：查单是带 AppKey 签名的上游请求，太密会被限流。 */
+  readonly intervalMs: number;
+  /** 下单后多久才纳入补单，给发货推送留出正常到达的时间。 */
+  readonly graceMs: number;
+  /** pending 持续多久仍查不到已支付就升级为告警。 */
+  readonly staleAfterMs: number;
+  /** 单轮最多处置多少笔。 */
+  readonly batchSize: number;
+}
+
 export type HunyuanImageConfig =
   | { readonly enabled: false }
   | {
@@ -78,6 +96,7 @@ export interface ServerConfig {
   };
   readonly wechatPay: WeChatPayConfig;
   readonly virtualPay: VirtualPayConfig;
+  readonly virtualPayReconcile: VirtualPayReconcileConfig;
   readonly hunyuanImage: HunyuanImageConfig;
   readonly auth: {
     readonly openidHashSecret: string;
