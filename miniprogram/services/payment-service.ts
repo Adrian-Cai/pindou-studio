@@ -309,8 +309,15 @@ function parsePackages(value: unknown): AiGenerationPackage[] {
 function parseCreatePayment(value: unknown): CreatePaymentResponse {
   if (!isRecord(value)
     || typeof value.orderId !== 'string'
-    || !value.orderId
-    || !isRecord(value.virtual)) throw invalidResponse()
+    || !value.orderId) throw invalidResponse()
+  // virtual 为 null / undefined 是「单已建好、但服务端没签发支付参数」的可预期状态
+  // （虚拟支付未启用、或服务端降级到不拉起支付）。这里**不能**抛 invalidResponse：
+  // 那是一句「套餐数据无法识别」的口径，单其实建成功了，会把排查方向整个带偏。
+  // 交给 payForAiGenerationPackage 统一抛「支付参数已失效」，那里才说得清发生了什么。
+  if (value.virtual === null || value.virtual === undefined) {
+    return { orderId: value.orderId, virtual: null }
+  }
+  if (!isRecord(value.virtual)) throw invalidResponse()
   return {
     orderId: value.orderId,
     virtual: parseVirtualPayment(value.virtual),
