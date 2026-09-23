@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.30.12
+
+- 修复本机存储空间写满后全面报错：`AppStore` 把游客与所有账号的工作区存在单个 storage key 里，配额仅 10MB，而草稿的逐格对象是绝对大头且从不回收，攒二三十份就写满，之后每次 `setStorage` 都失败——作品页会把「本机写不进」谎报成「读取云端作品失败」，AI 已经生成好的图纸也因为落不了库被判失败。落盘改为「调色板 + 下标」压缩（40×40 图纸 160KB → 约 15KB），读取时按 `cells` 首元素类型自动兼容新旧格式、旧数据免迁移，格式损坏则整份丢弃（不降级成空网格——空画布是合法值，编辑器会照常打开并让用户保存回去覆盖现场）。
+- 新增两道容量闸与写满自救：草稿落盘上限 50 份、下载记录 60 条，超出丢最旧的；`persist()` 在配额写满时先自救（草稿裁到 8 份、记录裁到 10 条）再重写一次，仍失败才抛 `LocalStorageError`。自救裁的是**运行态**而非只裁落盘快照，避免页面还能打开一份重启即消失的草稿。
+- 合并本机与云端两份网格压缩实现：抽出 `models/pattern.ts` 的 `encodePatternCells` / `decodePatternCells`，`work-service` 的 `draftToPersistedPattern` / `cloudDetailToDraft` 改为复用，不再各自演化。
+- 作品页 `refreshWorks` 拆开网络失败与本机落盘失败两个 `catch`，各自给准确提示；loading 复位与重渲染收敛为单点出口。
+- 新增 `test/work-sync/local-storage-quota.test.js`（7 例，harness 用 JSON 长度近似配额并支持动态收紧），已做变异验证。
+
 ## 0.30.11
 
 - 生图角标文案改为「小露拼豆」：`generateImage` 云函数在 `generateImage()` 里传 `footnote`，覆盖平台默认烙的「AI生成」。平台标识**不支持关闭**（CloudBase 社区 issue #1317 中官方明确显式 + 隐式两个标识都必须加），SDK 只开放 `footnote` 自定义文案（上限 16 字符），因此只能换文案。**本次含云函数改动，需在微信云开发重新部署 `generateImage` 才生效。**
