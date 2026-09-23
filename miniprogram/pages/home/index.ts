@@ -33,6 +33,9 @@ interface SampleImage {
 // AI 模式正式开放时改为 true，即可恢复首页选择和启动链路。
 const AI_MODE_ENABLED = true
 
+/** 主按钮成功态停留时长（ms）：够读完「已加入生成队列」，又不长时间挡住下一次操作 */
+const SUBMIT_FEEDBACK_DURATION = 1800
+
 const GENERATION_MODES: GenerationModeOption[] = [
   {
     id: 'standard',
@@ -101,6 +104,8 @@ Page({
     generating: false,
     /** AI 任务入队中的防抖标记：不阻塞页面，只挡住重复点击 */
     submitting: false,
+    /** 主按钮就地成功态：入队成功后短暂置为 true，由定时器复位 */
+    submitSuccess: false,
     /** 未完成的 AI 任务数，用于顶部胶囊入口 */
     activeAiTaskCount: 0,
     uploadStatus: 'empty' as UploadStatus,
@@ -119,6 +124,10 @@ Page({
   },
 
   _unsubscribeAiTasks: null as (() => void) | null,
+
+  // 用 0 作为「无定时器」哨兵：clearTimeout(0) 是合法的空操作，
+  // 且 clearTimeout 的类型不接受 undefined。
+  _submitFeedbackTimer: 0 as ReturnType<typeof setTimeout>,
 
   onShow() {
     // tab 高亮由 page-layout selected-tab 属性管理；从编辑器返回时恢复当前草稿模式，重置按钮状态确保不阻塞后续操作。
@@ -145,6 +154,7 @@ Page({
 
   onUnload() {
     currentUploadRequestId += 1
+    clearTimeout(this._submitFeedbackTimer)
     this._unsubscribeAiTasks?.()
     this._unsubscribeAiTasks = null
   },
@@ -324,6 +334,9 @@ Page({
     }
 
     this.setData({ submitting: true })
+    // 用标记区分成功/失败：成功反馈必须等 submitting 复位后再给，
+    // 否则按钮仍处于 disabled，成功态样式会被 .home__submit[disabled] 压掉。
+    let queued = false
     try {
       // 选图临时路径在 App 重启后会失效，永久化后才能保证封面不白图、重试可用
       const sourceImagePath = await persistImage(this.data.sourceImagePath)
@@ -337,14 +350,29 @@ Page({
         securityCheckId: this.data.securityCheckId,
         settings: { ...this.data.settings },
       })
-
-      wx.showToast({ title: '已加入生成队列', icon: 'none', duration: 1500 })
-      this.resetUploadState()
+      queued = true
     } catch (error) {
       wx.showToast({ title: error instanceof Error ? error.message : 'AI 任务创建失败，请重试', icon: 'none' })
     } finally {
       this.setData({ submitting: false })
     }
+
+    if (!queued) return
+    this.showSubmitFeedback()
+    this.resetUploadState()
+  },
+
+  /**
+   * 入队成功的就地反馈：轻震动 + 主按钮原地变成功态，短暂停留后自动复位。
+   * 原先只弹一个居中 toast，而用户此刻的视线与手指都在底部按钮上，感知很弱。
+   */
+  showSubmitFeedback(): void {
+    wx.vibrateShort({ type: 'light', fail: () => undefined })
+    clearTimeout(this._submitFeedbackTimer)
+    this.setData({ submitSuccess: true })
+    this._submitFeedbackTimer = setTimeout(() => {
+      this.setData({ submitSuccess: false })
+    }, SUBMIT_FEEDBACK_DURATION)
   },
 
   /** 清空选图状态，让用户可以立刻选下一张图继续生成。 */

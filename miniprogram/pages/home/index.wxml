@@ -165,16 +165,16 @@
     </view>
   </view>
 
-  <!-- ⑥ 开始生成 -->
+  <!-- ⑥ 开始生成：入队成功后按钮原地切到成功态，作为比 toast 更就近的反馈 -->
   <button
-    class="button-primary home__submit"
+    class="button-primary home__submit {{submitSuccess ? 'home__submit--success' : ''}}"
     style="width: 100%;"
     bindtap="startCreating"
     disabled="{{generating || submitting || uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'rejected' || uploadStatus === 'error'}}"
     loading="{{generating || submitting}}"
-    aria-label="{{generating ? '正在生成' : (submitting ? '正在加入队列' : '开始生成')}}"
+    aria-label="{{submitSuccess ? '已加入生成队列' : (generating ? '正在生成' : (submitting ? '正在加入队列' : '开始生成'))}}"
   >
-    {{generating ? '正在生成' : (submitting ? '正在加入队列' : '开始生成')}}
+    {{submitSuccess ? '已加入生成队列' : (generating ? '正在生成' : (submitting ? '正在加入队列' : '开始生成'))}}
   </button>
 
 </view>

@@ -617,6 +617,19 @@ page {
   opacity: 0.72;
 }
 
+/* 提交成功态：按钮原地变成「已加入生成队列」，在指尖位置就近确认，替代原先的居中 toast */
+.home__submit--success {
+  background: var(--color-primary-pressed);
+  box-shadow: var(--shadow-success);
+  animation: home-submit-success-pop 320ms ease-out;
+}
+
+@keyframes home-submit-success-pop {
+  0% { transform: scale(0.94); }
+  55% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
 /* ════════════════════════════════
    小屏幕适配（≤ 340px / 320rpx 逻辑宽度）
    只调整统一变量，不单独给某一类示例图写尺寸
