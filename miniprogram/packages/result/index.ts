@@ -154,6 +154,9 @@ Page({
 
   async refreshFavoriteState(work?: WorkItem) {
     if (!work?.isCloud || !hasCloudSession()) return
+    // 用户正在手动切换收藏时不接受后台刷新的结果：切换请求已在服务端落库，
+    // 而这份数据是在切换前拉到的，晚一步回来就会把新状态覆盖成旧状态，且没有任何报错。
+    if (this.data.favoriteUpdating) return
     const refreshToken = ++this.favoriteRefreshToken
     try {
       const detail = await fetchCloudWork(work.id)
@@ -215,7 +218,7 @@ Page({
   async toggleFavorite() {
     const draft = this.data.draft
     if (!draft || this.data.favoriteUpdating) return
-    // 递增令牌：若期间刷新收藏状态的请求先回来，用旧结果会被丢弃
+    // 递增令牌：让**本次切换之前**发出的后台刷新结果作废（它拿到的是旧状态）
     this.favoriteRefreshToken += 1
     if (!hasCloudSession()) {
       wx.showToast({ title: '收藏失败，请先登录', icon: 'none' })
@@ -432,8 +435,11 @@ Page({
             fileType,
           )
       if (nextQuota === null) throw new Error('下载次数状态已变化，请刷新后重试')
-      // 云端未扣费（如额度走本地）则仅本地记一笔下载
-      if (cloudQuota === null) authStore.recordLocalDownload(nextQuota)
+      // 云端未扣费走的是本地计数，需要把结果同步给 authStore 做乐观更新。
+      // 注意语义：**这里传的是「当日免费额度还剩多少」，不是总剩余**。
+      // authStore.recordLocalDownload 内部会自行加上 purchased 算出 total remaining，
+      // 直接把 appStore.completeDownload 返回的总剩余丢进去，purchased 会被重复累加。
+      if (cloudQuota === null) authStore.recordLocalDownload(nextFreeRemaining(authStore, nextQuota))
 
       this.setData({
         quota: nextQuota,
@@ -625,3 +631,17 @@ Page({
     }
   },
 })
+
+/**
+ * 由「总剩余次数」反推「当日免费额度还剩多少」。
+ *
+ * authStore.recordLocalDownload 的入参语义是**当日免费剩余**（它内部会自己加 purchased
+ * 算出总剩余），而 appStore.completeDownload 返回的是已含 purchased 的**总剩余**。
+ * 两边直接对接会把 purchased 重复累加——用户买了 20 次，本地台账会凭空多出 20 次可用额度。
+ */
+function nextFreeRemaining(store: typeof authStore, totalRemaining: number): number {
+  const profile = store.getSnapshot().profile
+  // 没有 profile 时 recordLocalDownload 会直接返回，这里给什么值都不影响
+  if (!profile) return Math.max(0, totalRemaining)
+  return Math.max(0, totalRemaining - profile.quota.purchased)
+}

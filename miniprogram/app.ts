@@ -22,6 +22,20 @@ function runStartupSafely(warning: string, run: () => void): void {
   }
 }
 
+/**
+ * 异步版：接住 fire-and-forget 启动项的 Promise 拒绝。
+ *
+ * `void promise` 不会阻断 onLaunch，但一旦 reject 就是一条未捕获拒绝：
+ * 控制台看到的是无堆栈的 "Unhandled promise rejection"，
+ * 既掩盖了真实原因，又会在部分基础库上触发全局错误采集。
+ * 启动项「失败只降级」的契约要求它们同样走 warn 处理。
+ */
+function runStartupSafelyAsync(warning: string, run: () => Promise<unknown>): void {
+  Promise.resolve()
+    .then(run)
+    .catch((error) => console.warn(warning, error))
+}
+
 App<IAppOption>({
   globalData: {
     store: appStore,
@@ -31,10 +45,11 @@ App<IAppOption>({
     runStartupSafely('微信云开发初始化失败，生图功能暂不可用', () => initCloud())
     runStartupSafely('本地作品数据恢复失败', () => appStore.hydrate())
     runStartupSafely('AI 任务调度初始化失败', () => aiTaskManager.init())
-    void authStore.restore()
+    runStartupSafelyAsync('登录态恢复失败', () => authStore.restore())
     wx.onNetworkStatusChange(({ isConnected }) => {
       const userId = authStore.getSnapshot().user?.id
-      if (isConnected && userId) void syncPendingWorks(userId)
+      // 网络恢复时的补同步是尽力而为：失败了下次联网还会再试，没必要制造未捕获拒绝
+      if (isConnected && userId) runStartupSafelyAsync('补同步失败', () => syncPendingWorks(userId))
     })
   },
   // 小程序切后台后 JS 会被挂起，定时器不可靠：回前台时立刻追赶一次未完成的 AI 任务

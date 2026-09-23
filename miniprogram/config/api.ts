@@ -55,6 +55,22 @@ export function buildAiFileUrl(value: string): string {
 const LOCAL_COVER_URL_PATTERN = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(\/api\/media\/covers\/[^?#]+)$/u
 const RELATIVE_COVER_URL_PATTERN = /^\/api\/media\/covers\/[^?#]+$/u
 
+/** 头像走服务端媒体路由，形如 /api/media/avatars/avatar_<32hex>.<jpg|png|webp>。 */
+const RELATIVE_AVATAR_PATH_PATTERN = /^\/api\/media\/avatars\/[^?#]+$/u
+
+/**
+ * 把服务端下发的头像路径转成小程序可直接用于 <image src> 的 HTTPS 地址。
+ *
+ * 服务端只存路由相对路径（`FileSystemAvatarStorage. AVATAR_ROUTE_PREFIX`），
+ * 小程序不能拿它当本地路径用，必须补上 API 域名 —— 与封面走同一套收敛逻辑。
+ * 形如路径之外的取值（旧数据里的本地临时文件路径等）原样返回，交给页面自行兜底。
+ */
+export function normalizeAvatarUrl(value: string | null | undefined): string {
+  const url = value?.trim() ?? ''
+  if (!url) return ''
+  return RELATIVE_AVATAR_PATH_PATTERN.test(url) ? buildApiUrl(url) : url
+}
+
 /**
  * 将历史本地封面地址收敛到当前小程序可访问的 HTTPS API 地址。
  * 合法 CDN 地址保持不变，避免把外部对象存储地址错误改写。

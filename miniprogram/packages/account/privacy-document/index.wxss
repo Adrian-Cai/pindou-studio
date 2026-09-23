@@ -10,6 +10,18 @@
   padding: 36rpx 32rpx 56rpx;
 }
 
+/* 缓存兜底时的提示条：不阻塞阅读，但必须让人知道条款可能不是最新的 */
+.privacy-document-stale {
+  margin-bottom: 28rpx;
+  padding: 20rpx 24rpx;
+  border-radius: var(--radius-card-small);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-size: 24rpx;
+  line-height: 38rpx;
+  text-align: center;
+}
+
 .privacy-document-meta {
   margin-bottom: 32rpx;
   color: var(--color-text-tertiary);

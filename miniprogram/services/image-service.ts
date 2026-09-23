@@ -237,7 +237,11 @@ export async function stripAiWatermarkBand(sourceImagePath: string): Promise<str
 }
 
 /**
- * 由图片 + 设置生成一份图纸草稿（调用相应的生成引擎产出网格）。
+ * 由图片 + 设置生成一份图纸草稿。
+ *
+ * 注意 `generationMode` **只作为元信息写进草稿**，不改变调用哪个引擎：
+ * 无论 standard 还是 ai，图纸一律由 `generateStandardPatternCells` 产出 ——
+ * AI 模式是「先用 AI 生成一张图，再把这张图转成拼豆网格」，转网格这一步与标准模式同源。
  * @param sourceImagePath 已处理的原图路径
  * @param settings 图纸设置（与默认值合并）
  * @param generationMode 生成模式，默认 'standard'

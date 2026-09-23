@@ -7,6 +7,10 @@
     </view>
     <view wx:elif="{{empty}}" class="privacy-document-state">当前文档暂无内容</view>
     <view wx:else class="privacy-document-content ui-card">
+      <view wx:if="{{stale}}" class="privacy-document-stale">
+        <text>联网刷新失败，当前显示的是本地缓存版本，条款可能已更新</text>
+        <view class="privacy-document-retry" bindtap="retry">重新加载</view>
+      </view>
       <view class="privacy-document-meta">版本 {{version}} · 生效日期 {{effectiveAt}}</view>
       <rich-text nodes="{{content}}"></rich-text>
     </view>

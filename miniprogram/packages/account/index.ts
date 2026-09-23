@@ -7,6 +7,7 @@
  *         onUnload 必须取消订阅，否则 store 会一直持有已销毁页面的回调；
  *         退出登录前先弹确认框，明确告知会停止访问云端作品。
  */
+import { normalizeAvatarUrl } from '../../config/api'
 import { authStore, type AuthState } from '../../store/auth-store'
 
 /** 未设置头像时的默认头像。 */
@@ -55,7 +56,8 @@ Page({
 
     this.setData({
       accountName: user?.nickname?.trim() || '拼豆用户',
-      avatarPath: DEFAULT_AVATAR_PATH,
+      // 服务端下发的是路由相对路径（/api/media/avatars/...），必须补上域名才能给 <image> 用
+      avatarPath: normalizeAvatarUrl(user?.avatarUrl) || DEFAULT_AVATAR_PATH,
       accountRefreshing: authState.status === 'refreshing' || authState.status === 'updating',
     })
   },
