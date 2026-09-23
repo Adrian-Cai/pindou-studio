@@ -1,6 +1,6 @@
 import { authStore } from '../../../store/auth-store'
 
-const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.webp'
+const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.png'
 
 interface NicknameInputEvent {
   detail: { value?: string }

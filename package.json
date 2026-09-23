@@ -1,10 +1,11 @@
 {
   "name": "pindou_studio",
-  "version": "0.30.14",
+  "version": "0.30.15",
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test:pattern": "node test/pattern-generation/run-tests.js"
+    "test:pattern": "node test/pattern-generation/run-tests.js",
+    "test:assets": "node test/miniprogram-assets/run-tests.js"
   },
   "devDependencies": {
     "miniprogram-api-typings": "^5.2.3",

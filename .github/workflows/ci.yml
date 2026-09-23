@@ -41,6 +41,10 @@ jobs:
       - name: Pattern generation regression tests
         run: npm run test:pattern
 
+      # 本地图片资源守卫：防止包内 webp（真机不解码）与断链的 /assets 引用再次混入
+      - name: Miniprogram local image asset check
+        run: npm run test:assets
+
   server-static-check:
     name: Server Static Check
     runs-on: ubuntu-latest

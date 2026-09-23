@@ -11,7 +11,7 @@ import { normalizeAvatarUrl } from '../../config/api'
 import { authStore, type AuthState } from '../../store/auth-store'
 
 /** 未设置头像时的默认头像。 */
-const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.webp'
+const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.png'
 
 Page({
   data: {

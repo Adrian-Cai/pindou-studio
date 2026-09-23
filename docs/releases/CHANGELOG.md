@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.30.15
+
+修复首页示例图与「我的」页头像在真机上长期空白，并补上防止复发的静态守卫。
+
+- **本地 WebP 真机不解码（14 个版本没人发现）**：`image` 组件的 `webp` 属性官方说明是「默认不解析 webP 格式，只支持网络资源」，且属于 **WebView 特有属性**——包内 `.webp` 在开发者工具里正常显示（模拟器是 Chromium，原生支持 webp），真机上则整张空白且不报错。v0.16.0「图片资源转 WebP」把 `brand-avatar` 与 4 张 `home-sample-*` 转成 webp，此后首页「示例图片」与「我的」页头像一直是 CSS 背景色的空方块。
+- **还原 5 张图片为转格式前的原始文件**：`brand-avatar.png`（256×256 RGBA，同时恢复了被 webp 丢掉的透明通道）、`home-sample-standard-1/2.jpg`、`home-sample-ai-1/2.jpg`（512×512，同时也恢复了 webp 转换时被降到 240×240 的分辨率）。7 处引用（`pages/home/index.ts`、`pages/profile/index.wxml`、`pages/profile/index.ts`、`packages/account/index.ts`、`packages/account/profile-edit/index.ts`）同步改回 `.png` / `.jpg`。
+- **新增 `test/miniprogram-assets/`（2 例，已做变异验证）+ CI `Miniprogram local image asset check`**：① `assets/` 下禁止出现 `.webp`；② 源码里字面量引用的 `/assets/...` 必须真实存在且扩展名在白名单内。这两条恰好是本次事故的两个条件（格式不被解码 + 断链引用），而它们在工具里都是隐形的，以前只能靠真机肉眼发现。
+- **`docs/frontend/MINI_PROGRAM_RULES.md` 补规则与排查口径**：「包内静态图片禁止使用 WebP」；图片空白时先看该 `<image>` 有没有 CSS `background`——有背景色说明元素本身渲染正常、只是资源没解出来，优先怀疑格式与路径而不是布局。
+- 包体影响：主包 629KB → 1.09MB（图片 113KB → 603KB），2MB 上限内余量充足。若要继续压体积，应走「降分辨率 + JPEG 质量」，不要用换格式的方式省。
+
 ## 0.30.14
 
 第二轮 AI 扫描修复批次，聚焦「同一件事两套口径」导致的隐性错误，共 6 个文件。

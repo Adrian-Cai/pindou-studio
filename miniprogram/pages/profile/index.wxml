@@ -2,7 +2,7 @@
   <!-- ── 未登录状态 ── -->
   <view wx:if="{{!isLoggedIn}}" class="profile-page profile-guest">
     <view class="guest-body">
-      <image class="guest-avatar" src="/assets/icons/brand-avatar.webp" mode="aspectFit" />
+      <image class="guest-avatar" src="/assets/icons/brand-avatar.png" mode="aspectFit" />
       <view class="guest-title">登录后使用更多功能</view>
 
       <view class="guest-agreement">
@@ -229,7 +229,7 @@
     <view class="login-sheet__close" bindtap="closeLoginSheet" aria-role="button" aria-label="关闭登录弹层" hover-class="login-sheet__pressed">
       <image src="/assets/icons/login/close.svg" mode="aspectFit" aria-hidden="true" />
     </view>
-    <image class="login-sheet__avatar" src="/assets/icons/brand-avatar.webp" mode="aspectFit" />
+    <image class="login-sheet__avatar" src="/assets/icons/brand-avatar.png" mode="aspectFit" />
     <view class="login-sheet__title">登录小露拼豆</view>
     <view class="login-sheet__subtitle">
       <view>登录后即可保存作品，跨设备同步</view>

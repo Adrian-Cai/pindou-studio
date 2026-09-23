@@ -10,7 +10,7 @@ import {
   type AiGenerationPackage,
 } from '../../services/payment-service'
 
-const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.webp'
+const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.png'
 
 type ProfileSheet = 'none' | 'recharge' | 'login' | 'profile'
 type LoginUiState = 'idle' | 'loading' | 'error'

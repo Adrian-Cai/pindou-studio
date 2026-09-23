@@ -65,25 +65,25 @@ const GENERATION_MODES: GenerationModeOption[] = [
 
 const SAMPLE_IMAGES: SampleImage[] = [
   {
-    src: '/assets/samples/home-sample-standard-1.webp',
+    src: '/assets/samples/home-sample-standard-1.jpg',
     mode: 'standard',
     label: '标准模式',
     alt: '标准模式示例作品一',
   },
   {
-    src: '/assets/samples/home-sample-standard-2.webp',
+    src: '/assets/samples/home-sample-standard-2.jpg',
     mode: 'standard',
     label: '标准模式',
     alt: '标准模式示例作品二',
   },
   {
-    src: '/assets/samples/home-sample-ai-1.webp',
+    src: '/assets/samples/home-sample-ai-1.jpg',
     mode: 'ai',
     label: 'Ai 模式',
     alt: 'Ai 模式示例作品一',
   },
   {
-    src: '/assets/samples/home-sample-ai-2.webp',
+    src: '/assets/samples/home-sample-ai-2.jpg',
     mode: 'ai',
     label: 'Ai 模式',
     alt: 'Ai 模式示例作品二',
