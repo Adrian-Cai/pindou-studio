@@ -617,3 +617,214 @@ test("reconcile is a no-op when the virtual gateway is not configured", async ()
     capture.restore();
   }
 });
+
+/** 构造退款所需的假 Pool：订单默认已支付，购买额度剩余量可指定。 */
+function refundPool(options = {}) {
+  const updates = [];
+  const inserts = [];
+  const orderRow = {
+    id: "order_test",
+    user_id: "usr_a",
+    package_label_snapshot: "AI 精致生成 30 次",
+    quota_amount_snapshot: 30,
+    quota_kind_snapshot: "ai_generation",
+    status: "paid",
+    paid_at: NOW,
+    openid_ciphertext: ENCRYPTED_OPENID,
+    ...options.order,
+  };
+  const purchasedRemaining = options.purchasedRemaining ?? 30;
+  const pool = clientPool((sql, parameters) => {
+    if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+    // lockQuotaUser：SELECT id FROM pindou_users ... FOR UPDATE
+    if (sql.includes("FOR UPDATE") && sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
+    // readQuota 的聚合查询
+    if (sql.includes("SUM(amount) FILTER")) {
+      return {
+        rows: [{
+          daily_free: "0",
+          used_today: "0",
+          daily_remaining: "0",
+          purchased: String(purchasedRemaining),
+        }],
+      };
+    }
+    if (sql.includes("FOR UPDATE OF orders")) return { rows: options.missingOrder ? [] : [orderRow] };
+    if (sql.includes("FROM pindou_orders") && sql.includes("LIMIT 1")) {
+      return { rows: options.missingOrder ? [] : [orderRow] };
+    }
+    if (sql.includes("UPDATE pindou_orders")) {
+      pool.updates.push(parameters);
+      orderRow.status = "refunded";
+      return { rows: [] };
+    }
+    if (sql.includes("INSERT INTO pindou_quota_transactions")) {
+      pool.inserts.push(parameters);
+      return { rows: [{ id: "qt_refund_1" }] };
+    }
+    throw new Error(`unexpected SQL: ${sql}`);
+  });
+  pool.updates = updates;
+  pool.inserts = inserts;
+  return pool;
+}
+
+function refundInput(overrides = {}) {
+  return {
+    openId: OPENID,
+    mchOrderId: "order_test",
+    attach: "order_test",
+    wxRefundId: "wx_refund_1",
+    refundFeeFen: 990,
+    retCode: 0,
+    retMsg: null,
+    refundSuccTimestamp: Math.floor(NOW.getTime() / 1000),
+    ...overrides,
+  };
+}
+
+/**
+ * 退款扣回的核心不变式：**只扣还没消耗的部分**。
+ *
+ * 用户买 30 次、已经用掉 22 次，能收回的只有剩的 8 次。
+ * 硬扣 30 会把 purchased 打成 -22，而额度读取把负数钳成 0 ——
+ * 表面上余额归零看着正常，用户下次再买时新额度会被这个负余额悄悄吃掉。
+ */
+test("refund claws back only the quota the user has not consumed", async () => {
+  const pool = refundPool({ purchasedRemaining: 8 });
+  const capture = captureConsole();
+  try {
+    const outcome = await reconcileService(pool).handleRefund(refundInput());
+    assert.equal(outcome.applied, true);
+    assert.equal(outcome.clawedBack, 8);
+    assert.equal(pool.updates.length, 1);
+    // 流水金额必须是负数（扣减），且等于实际扣回量而不是发放量
+    assert.equal(pool.inserts.length, 1);
+    assert.equal(pool.inserts[0][3], -8);
+    const applied = capture.warnings.filter((entry) => entry.event === "virtual_payment_refund_applied");
+    assert.equal(applied[0].grantedAmount, 30);
+    assert.equal(applied[0].consumed, 22);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("a fully consumed purchase is still marked refunded but claws back nothing", async () => {
+  const pool = refundPool({ purchasedRemaining: 0 });
+  const capture = captureConsole();
+  try {
+    const outcome = await reconcileService(pool).handleRefund(refundInput());
+    assert.equal(outcome.applied, true);
+    assert.equal(outcome.clawedBack, 0);
+    // 订单必须仍然置为 refunded：不能因为扣不回额度就不记账，否则订单永远停在 paid
+    assert.equal(pool.updates.length, 1);
+    assert.equal(pool.inserts.length, 0);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("a failed refund leaves both the order and the quota untouched", async () => {
+  const pool = refundPool();
+  const capture = captureConsole();
+  try {
+    const outcome = await reconcileService(pool).handleRefund(refundInput({ retCode: 1, retMsg: "余额不足" }));
+    assert.equal(outcome.applied, false);
+    // 退款失败还扣额度，等于用户既没拿回钱也没了商品
+    assert.equal(pool.updates.length, 0);
+    assert.equal(pool.inserts.length, 0);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("refund of an unpaid order claws back nothing", async () => {
+  const pool = refundPool({ order: { status: "pending" } });
+  const capture = captureConsole();
+  try {
+    const outcome = await reconcileService(pool).handleRefund(refundInput());
+    assert.equal(outcome.applied, false);
+    assert.equal(pool.inserts.length, 0);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("a repeated refund push is idempotent", async () => {
+  const pool = refundPool({ purchasedRemaining: 8 });
+  const capture = captureConsole();
+  try {
+    const service = reconcileService(pool);
+    const first = await service.handleRefund(refundInput());
+    assert.equal(first.applied, true);
+    const second = await service.handleRefund(refundInput());
+    assert.equal(second.applied, false);
+    assert.equal(pool.inserts.length, 1);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("refund falls back to attach when the merchant order id is absent", async () => {
+  // iOS 退款通知只保证带 attach，不一定回传商户单号
+  const pool = refundPool({ purchasedRemaining: 30 });
+  const capture = captureConsole();
+  try {
+    const outcome = await reconcileService(pool)
+      .handleRefund(refundInput({ mchOrderId: null, attach: "order_test" }));
+    assert.equal(outcome.applied, true);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("a refund that cannot be located is reported instead of silently dropped", async () => {
+  const pool = refundPool();
+  const capture = captureConsole();
+  try {
+    const outcome = await reconcileService(pool)
+      .handleRefund(refundInput({ mchOrderId: null, attach: null }));
+    assert.equal(outcome.applied, false);
+    const alerts = capture.errors.filter((entry) => entry.event === "virtual_payment_refund_alert");
+    assert.equal(alerts.length, 1);
+    assert.equal(alerts[0].reason, "order_unlocatable");
+  } finally {
+    capture.restore();
+  }
+});
+
+test("iOS refund query rejects the refund for an already delivered order", async () => {
+  const pool = refundPool({ purchasedRemaining: 12 });
+  const answer = await reconcileService(pool).answerIosRefundQuery({
+    refundTimeSeconds: Math.floor(NOW.getTime() / 1000),
+    channelBill: "apple_bill_1",
+    productId: "product_30",
+    count: 1,
+    refundRequestReason: " unintended purchase",
+    provideStatus: 1,
+    payOrderId: "order_test",
+  });
+  assert.equal(answer.resultCode, 1);
+  // evidence 是必填的举证材料，空着等于放弃举证
+  assert.match(answer.evidence, /30 次/);
+  assert.match(answer.evidence, /剩余 12 次/);
+});
+
+test("iOS refund query allows the refund when nothing was delivered", async () => {
+  const pool = refundPool({ order: { status: "pending" } });
+  const answer = await reconcileService(pool).answerIosRefundQuery({ payOrderId: "order_test" });
+  assert.equal(answer.resultCode, 0);
+  assert.match(answer.evidence, /尚未交付/);
+});
+
+test("iOS refund query allows the refund when the order is unknown", async () => {
+  const pool = refundPool({ missingOrder: true });
+  const answer = await reconcileService(pool).answerIosRefundQuery({ payOrderId: "order_missing" });
+  assert.equal(answer.resultCode, 0);
+});
+
+test("iOS refund query never blocks a refund it cannot attribute", async () => {
+  const pool = refundPool();
+  const answer = await reconcileService(pool).answerIosRefundQuery({ payOrderId: null });
+  assert.equal(answer.resultCode, 0);
+});
