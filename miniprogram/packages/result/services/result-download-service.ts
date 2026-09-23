@@ -154,8 +154,10 @@ export function recordLocalDownloadResult(
   coverPath: string,
   fileType: DownloadFileType,
 ): number | null {
+  // 随机分量不能省：同毫秒内连点两次「保存」会算出同一个 id，第二次在 addDownloadRecord
+  // 里被视为同一条记录覆盖掉 —— 用户点了两次却只记了一次，本地下载记录对不上实际行为
   return appStore.completeDownload({
-    id: `download_${draft.id}_${fileType}_${Date.now()}`,
+    id: `download_${draft.id}_${fileType}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     workId: draft.id,
     title,
     coverPath,

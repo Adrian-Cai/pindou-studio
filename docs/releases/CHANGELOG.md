@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 0.30.14
+
+第二轮 AI 扫描修复批次，聚焦「同一件事两套口径」导致的隐性错误，共 6 个文件。
+
+- **失败码归一化收口（同一个错会给两句矛盾文案）**：服务端可能返回别名（`QUOTA_INSUFFICIENT`、`AI_PROVIDER_TIMEOUT`、`PAYLOAD_TOO_LARGE` 等），而 `aiGenerationErrorMessage` 里把这些别名和归一化后的码**并列写成多个 case**——同一个错误走「failure 对象」还是走「裸 ApiError」两条路径，会落到不同分支上，用户看到互相矛盾的提示。改为入口统一先过 `normalizeFailureCode`，映射表只写归一化后的码；`aiGenerationFailure` 把服务端给的码也一并归一化（它同样可能吐别名），保证 `failure.code` 只有一个取值空间，下游不必再猜这份码规整过没有。同时给三个文案各有意义、不应被合并进通用类目的码（`UNSUPPORTED_IMAGE` / `IMAGE_DECODE_ERROR` / `AI_TASK_EXPIRED`）保留独立文案并注明理由。
+- **`retryActionFor` 跟进同一套口径**：卡片操作按钮原先还认旧别名（`QUOTA_INSUFFICIENT`、`AI_QUOTA_UNAVAILABLE_AT_COMPLETION`），且漏了 `IMAGE_TOO_LARGE` / `RATE_LIMITED` / `AI_TASK_EXPIRED`——这些失败会落到默认操作上。改为只认归一化码并补齐分支，函数注释写明入参契约（必须已归一化），避免以后再有人重复归一化。
+- **`AiGenerationFailure` 契约被违反**：`aiGenerationFailure` 在 `category` / `action` 齐全但 `retryable` 缺失（`undefined`）时，会产出 retryable 不是布尔的对象，违反该接口的类型契约。补上真正的布尔判定。
+- **支付幂等键改用 CSPRNG**：原来用 `Math.random()` 生成随机分量，而这是一笔钱的去重凭据——同一毫秒内连点两次撞键的后果是用户付两次钱。改用 `wx.getRandomValues`（小程序环境没有 Web 的 crypto 全局），拿不到时降级并打 warning，不让配置异常直接崩在支付入口。
+- **微信支付失败对象归一成 ApiError**：`wx.requestPayment` 的 fail 回调给的是 `{ errMsg, errCode }` 裸对象，既非 Error 也非 ApiError；原先直接 reject，导致 `paymentErrorMessage`（只看 Error 实例）永远走兜底文案——用户明明自己取消支付，却看到「请稍后重试」。改为统一收成带 code 的 ApiError；取消判定从**子串匹配 errMsg**改为优先看结构化的 `errCode === -2`，因为 errMsg 会随基础库版本与系统语言变化。
+- **套餐解析不再卡死服务端内部字段**：`parsePackage` 原先连 `quotaKind === 'ai_generation'`、`membershipType === null`、`currency === 'CNY'`、`enabled === true` 一并校验并写死期望值——服务端一旦新增套餐种类，`parsePackages` 整份 map 抛错，用户界面上一个套餐都不剩，报错还是「无法识别的套餐数据」这种看不出所以然的文案。改为只校验真正要渲染的字段（id / label / quotaAmount / priceFen），其余属服务端内部约定，不该成为客户端能否渲染的前提。
+- **下载记录 id 补随机分量**：原先是 `download_<id>_<type>_<时间戳>`，同毫秒内连点两次「保存」会算出同一个 id，第二次被 `addDownloadRecord` 视为同一条记录覆盖掉——用户点了两次只记一次，本地下载记录与实际行为对不上。
+- **WeChat Canvas 基线不再因单个素材失败全轮中断**：原先任一素材读不到就整轮抛错，什么都不产出；缺一张图的排查成本远高于少一条记录。改为逐用例收集 `failures` 数组，其余继续跑；同时抽出 `TEST_ASSETS_DIR` 常量，换环境只改一处。
+
 ## 0.30.13
 
 首轮全量 AI 代码扫描（`open-code-review`）的修复批次，共 269 条发现、118 个文件送审。

@@ -5,8 +5,9 @@
  *       统一翻译成用户可读文案（aiGenerationErrorMessage）。不负责状态机与轮询（见 ai-generation-flow）、
  *       本地任务持久化（见 ai-task-store）、也不负责页面展示。
  * 调用方：ai-generation-flow（生成主流程）、content-security-service（传入 securityCheckId）、AI 生成页 packages/ai-generation。
- * 关键点：所有网络异常统一收口为 NETWORK_ERROR；错误码别名与文案集中维护在 normalizeFailureCode / aiGenerationErrorMessage，
- *       新增错误码时两处都要补充。
+ * 关键点：所有网络异常统一收口为 NETWORK_ERROR；错误码先经 normalizeFailureCode 归一化，
+ *       aiGenerationFailure / failureDefinition / retryActionFor 都只认归一化后的码，
+ *       新增错误码在这三处 + aiGenerationErrorMessage 一并补充（文案两处必须一致）。
  */
 import { buildAiFileUrl } from '../config/api'
 import {
@@ -222,15 +223,18 @@ export function isAiOutputImageAvailable(filePath: string): Promise<boolean> {
 
 /**
  * 把任意错误（ApiError 或服务端 failure）映射成给用户看的中文文案。
- * 这是错误码 -> 文案的唯一权威映射表，新增错误码需在此补充分支。
+ *
+ * 入口先把错误码过一遍 `normalizeFailureCode`，因此这里**只写归一化后的码**，
+ * 原始别名（如 AI_PROVIDER_TIMEOUT / AI_OUTPUT_INVALID）不要在此列 —— 否则
+ * 同一个错误会因为「走了 failure 对象」还是「走了裸 ApiError」两条路径，
+ * 落到不同 case 上，用户看到两句互相矛盾的提示。
  */
 export function aiGenerationErrorMessage(error: unknown): string {
   const failure = aiGenerationFailure(error)
-  const code = failure?.code ?? errorCode(error)
+  const rawCode = failure?.code ?? errorCode(error)
+  const code = rawCode ? normalizeFailureCode(rawCode) : null
   switch (code) {
-    case 'QUOTA_INSUFFICIENT':
     case 'USER_AI_QUOTA_EXHAUSTED':
-    case 'AI_QUOTA_UNAVAILABLE_AT_COMPLETION':
       return 'AI 生成次数不足，请购买次数'
     case 'AI_SERVICE_UNAVAILABLE':
       return '当前暂时无法完成 AI 生成\n请稍后再试，本次不会消耗生成次数'
@@ -246,32 +250,22 @@ export function aiGenerationErrorMessage(error: unknown): string {
       return '当前图片内容不支持生成，请重新选择一张图片'
     case 'AI_GENERATION_FAILED':
       return 'AI 生成失败，请稍后重试'
-    case 'AI_PROVIDER_NOT_CONFIGURED':
-    case 'AI_PROVIDER_UNAVAILABLE':
-    case 'AI_PROVIDER_ERROR':
-    case 'AI_GENERATION_INTERNAL_ERROR':
-    case 'AI_PROVIDER_TASK_FAILED':
-      return 'AI 服务暂时不可用'
-    case 'AI_PROVIDER_TIMEOUT':
-      return 'AI 处理超时，请稍后重试'
     case 'AI_INPUT_FILE_UNAVAILABLE':
       return '输入图片已失效，请重新上传'
     case 'CONTENT_SECURITY_CHECK_INVALID':
       return '图片检测结果已失效，请重新选择图片'
-    case 'AI_TASK_EXPIRED':
-      return '任务已过期，请重新生成'
-    case 'AI_OUTPUT_INVALID':
-    case 'AI_PROVIDER_OUTPUT_INVALID':
-      return 'AI 返回的图片无法使用'
-    case 'AI_IMAGE_DIMENSIONS_TOO_LARGE':
-    case 'PAYLOAD_TOO_LARGE':
+    case 'IMAGE_TOO_LARGE':
       return '图片过大，请更换图片'
     case 'RATE_LIMITED':
       return '请求过于频繁，请稍后重试'
+    // 以下三个原始码保留独立文案：它们各自的说明对用户有不同意义，
+    // 归一到通用类目会把「格式不支持」和「文件读不出来」说成同一句话。
     case 'UNSUPPORTED_IMAGE':
       return '仅支持 JPG、PNG、WEBP'
     case 'IMAGE_DECODE_ERROR':
       return '图片无法读取，请更换图片'
+    case 'AI_TASK_EXPIRED':
+      return '任务已过期，请重新生成'
     case 'NETWORK_ERROR':
       return '网络连接失败，请检查网络'
     case 'UNAUTHORIZED':
@@ -279,6 +273,8 @@ export function aiGenerationErrorMessage(error: unknown): string {
       return '登录状态已失效，请重新登录'
     case 'INVALID_RESPONSE':
       return '服务返回数据异常'
+    case 'INVALID_INPUT':
+      return 'AI 任务参数无效'
     default:
       return failure?.message || (error instanceof Error ? error.message : 'AI 生成失败，请稍后重试')
   }
@@ -287,11 +283,15 @@ export function aiGenerationErrorMessage(error: unknown): string {
 export function aiGenerationFailure(error: unknown): AiGenerationFailure | null {
   if (isRecord(error) && isRecord(error.failure)) {
     const failure = parseFailure(error.failure)
-    if (failure) return failure
+    // 服务端给的码也过一遍归一化：它可能吐别名。统一后 failure.code 才只有一个取值空间，
+    // 下游（重试动作判定、列表页文案）不必自己再猜这份码是不是已经规整过
+    if (failure) return { ...failure, code: normalizeFailureCode(failure.code) }
   }
-  if (error instanceof ApiError && error.category && error.action && error.retryable !== null) {
+  // retryable 必须是真正的布尔：category/action 齐全但 retryable 缺失（undefined）时，
+  // 走上面的 structured 分支会产出违反 AiGenerationFailure 契约的对象
+  if (error instanceof ApiError && error.category && error.action && typeof error.retryable === 'boolean') {
     return {
-      code: error.code,
+      code: normalizeFailureCode(error.code),
       message: error.message,
       category: error.category,
       retryable: error.retryable,
@@ -333,13 +333,13 @@ function assertCreateInput(input: CreateAiGenerationRequest): void {
     || !isStyle(input.style)
     || !isDetailLevel(input.detailLevel)
     || !isBackgroundMode(input.backgroundMode)
-  ) throw new ApiError('AI 任务参数无效', { code: 'INVALID_RESPONSE' })
+  ) throw new ApiError('AI 任务参数无效', { code: 'INVALID_INPUT' })
 }
 
 function assertJobId(jobId: string): void {
   // jobId 必须以 aijob_ 前缀，且仅含字母数字与 - _，防止传入脏数据
   if (!/^aijob_[A-Za-z0-9_-]+$/u.test(jobId)) {
-    throw new ApiError('AI 任务标识无效', { code: 'INVALID_RESPONSE' })
+    throw new ApiError('AI 任务标识无效', { code: 'INVALID_INPUT' })
   }
 }
 
@@ -375,8 +375,15 @@ function invalidResponse(): ApiError {
   return new ApiError('服务返回数据异常', { code: 'INVALID_RESPONSE' })
 }
 
+/**
+ * 统一收落成 ApiError。非 ApiError 的原始信息会被塞进 details.rawMessage，
+ * 否则超时之类以普通 Error 抛出的现场（堆栈外的可读性信息）到这儿就全丢了，
+ * 只剩一句笼统的「网络错误」，排查时无从下手。
+ */
 function asApiError(error: unknown, message: string, code: string): ApiError {
-  return error instanceof ApiError ? error : new ApiError(message, { code })
+  if (error instanceof ApiError) return error
+  const rawMessage = error instanceof Error ? error.message : String(error)
+  return new ApiError(message, { code, details: { rawMessage } })
 }
 
 function errorCode(error: unknown): string | null {
@@ -402,39 +409,54 @@ function parseFailure(value: Record<string, unknown>): AiGenerationFailure | nul
   }
 }
 
+/**
+ * 把服务端/网络层的各种错误码收敛成「归一化码」—— 重试动作、失败定义、文案三处
+ * 都只认这张表产出的结果，避免同一个错误在不同入口被判成不同类型。
+ *
+ * 注意：被映射到自身的码意味着「保留独立身份」。不要为了收拢数量把它们并到通用类目，
+ * 那会让语义不同的错误共用一句文案（历史上 IMAGE_DECODE_ERROR 被并成 INVALID_IMAGE，
+ * 「文件读不出来」就说成了「暂不支持」，用户一直换图也解决不了）。
+ */
 function normalizeFailureCode(code: string): string {
   const aliases: Record<string, string> = {
-    USER_AI_QUOTA_EXHAUSTED: 'USER_AI_QUOTA_EXHAUSTED',
     QUOTA_INSUFFICIENT: 'USER_AI_QUOTA_EXHAUSTED',
+    AI_QUOTA_UNAVAILABLE_AT_COMPLETION: 'USER_AI_QUOTA_EXHAUSTED',
     AI_PROVIDER_NOT_CONFIGURED: 'AI_SERVICE_UNAVAILABLE',
     AI_SUBMISSION_UNKNOWN: 'AI_SERVICE_UNAVAILABLE',
-    AI_PROVIDER_UNAVAILABLE: 'AI_SERVICE_BUSY',
-    AI_PROVIDER_ERROR: 'AI_GENERATION_FAILED',
-    AI_PROVIDER_TIMEOUT: 'AI_TIMEOUT',
     AI_SUBMISSION_TIMEOUT: 'AI_SERVICE_UNAVAILABLE',
-    AI_TASK_EXPIRED: 'AI_TIMEOUT',
+    AI_PROVIDER_UNAVAILABLE: 'AI_SERVICE_BUSY',
+    AI_PROVIDER_TIMEOUT: 'AI_TIMEOUT',
     AI_PROVIDER_OUTPUT_INVALID: 'AI_RESULT_INVALID',
     AI_PROVIDER_OUTPUT_TOO_LARGE: 'AI_RESULT_INVALID',
     AI_OUTPUT_INVALID: 'AI_RESULT_INVALID',
+    AI_PROVIDER_ERROR: 'AI_GENERATION_FAILED',
     AI_PROVIDER_TASK_FAILED: 'AI_GENERATION_FAILED',
     AI_GENERATION_INTERNAL_ERROR: 'AI_GENERATION_FAILED',
-    AI_QUOTA_UNAVAILABLE_AT_COMPLETION: 'USER_AI_QUOTA_EXHAUSTED',
-    UNSUPPORTED_IMAGE: 'INVALID_IMAGE',
-    IMAGE_DECODE_ERROR: 'INVALID_IMAGE',
     CONTENT_RISKY: 'CONTENT_REJECTED',
+    AI_IMAGE_DIMENSIONS_TOO_LARGE: 'IMAGE_TOO_LARGE',
+    PAYLOAD_TOO_LARGE: 'IMAGE_TOO_LARGE',
+    // 以下三个保留原样：各自对应不同的用户可行动作
+    UNSUPPORTED_IMAGE: 'UNSUPPORTED_IMAGE',
+    IMAGE_DECODE_ERROR: 'IMAGE_DECODE_ERROR',
+    AI_TASK_EXPIRED: 'AI_TASK_EXPIRED',
   }
   return aliases[code] ?? code
 }
 
 function failureDefinition(code: string): Omit<AiGenerationFailure, 'code'> | null {
   const definitions: Record<string, Omit<AiGenerationFailure, 'code'>> = {
-    USER_AI_QUOTA_EXHAUSTED: { message: 'AI 生成次数已用完', category: 'USER', retryable: false, action: 'VIEW_BENEFITS' },
-    INVALID_IMAGE: { message: '当前图片暂不支持生成', category: 'INPUT', retryable: false, action: 'SELECT_IMAGE' },
+    // message 必须和 aiGenerationErrorMessage 里同一码的文案一致，否则同一个失败
+    // 在任务卡片（走 message）和列表页（走 aiGenerationErrorMessage）上会显示两句话
+    USER_AI_QUOTA_EXHAUSTED: { message: 'AI 生成次数不足，请购买次数', category: 'USER', retryable: false, action: 'VIEW_BENEFITS' },
+    INVALID_IMAGE: { message: '当前图片暂不支持生成，请重新选择一张图片', category: 'INPUT', retryable: false, action: 'SELECT_IMAGE' },
+    UNSUPPORTED_IMAGE: { message: '仅支持 JPG、PNG、WEBP', category: 'INPUT', retryable: false, action: 'SELECT_IMAGE' },
+    IMAGE_DECODE_ERROR: { message: '图片无法读取，请更换图片', category: 'INPUT', retryable: false, action: 'SELECT_IMAGE' },
     AI_INPUT_FILE_UNAVAILABLE: { message: '输入图片已失效，请重新选择图片', category: 'INPUT', retryable: false, action: 'SELECT_IMAGE' },
-    CONTENT_REJECTED: { message: '当前图片内容不支持生成', category: 'CONTENT', retryable: false, action: 'SELECT_IMAGE' },
+    CONTENT_REJECTED: { message: '当前图片内容不支持生成，请重新选择一张图片', category: 'CONTENT', retryable: false, action: 'SELECT_IMAGE' },
     AI_SERVICE_UNAVAILABLE: { message: 'AI 生成暂时不可用', category: 'PROVIDER', retryable: false, action: 'USE_STANDARD_MODE' },
     AI_SERVICE_BUSY: { message: 'AI 生成服务繁忙，请稍后重试', category: 'PROVIDER', retryable: true, action: 'RETRY' },
     AI_TIMEOUT: { message: 'AI 生成超时，请稍后重试', category: 'PROVIDER', retryable: true, action: 'RETRY' },
+    AI_TASK_EXPIRED: { message: '任务已过期，请重新生成', category: 'PROVIDER', retryable: true, action: 'RETRY' },
     AI_RESULT_INVALID: { message: 'AI 生成结果不可用，请重新生成', category: 'PROVIDER', retryable: true, action: 'RETRY' },
     AI_GENERATION_FAILED: { message: 'AI 生成失败，请稍后重试', category: 'INTERNAL', retryable: true, action: 'RETRY' },
   }

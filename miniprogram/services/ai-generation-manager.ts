@@ -106,22 +106,31 @@ export function retryActionLabel(failureCode?: string): string {
   }
 }
 
+/**
+ * 按失败码决定卡片上的操作类型。
+ *
+ * 入参必须是**已归一化**的失败码（见 ai-generation-service.normalizeFailureCode）。
+ * 调用方拿到的 failureCode 都出自 aiGenerationFailure，已经过归一化，这里不再重复。
+ */
 function retryActionFor(failureCode?: string): PublicErrorAction {
   switch (failureCode) {
     case 'USER_AI_QUOTA_EXHAUSTED':
-    case 'QUOTA_INSUFFICIENT':
-    case 'AI_QUOTA_UNAVAILABLE_AT_COMPLETION':
       return 'VIEW_BENEFITS'
     case 'INVALID_IMAGE':
-    case 'AI_INPUT_FILE_UNAVAILABLE':
+    case 'UNSUPPORTED_IMAGE':
+    case 'IMAGE_DECODE_ERROR':
     case 'CONTENT_REJECTED':
+    case 'AI_INPUT_FILE_UNAVAILABLE':
       return 'SELECT_IMAGE'
     case 'AI_SERVICE_UNAVAILABLE':
       return 'USE_STANDARD_MODE'
     case 'AI_SERVICE_BUSY':
     case 'AI_TIMEOUT':
+    case 'AI_TASK_EXPIRED':
     case 'AI_RESULT_INVALID':
     case 'AI_GENERATION_FAILED':
+    case 'IMAGE_TOO_LARGE':
+    case 'RATE_LIMITED':
     case 'NETWORK_ERROR':
       return 'RETRY'
     default:
