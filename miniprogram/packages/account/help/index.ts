@@ -17,12 +17,17 @@ Page({
   },
 
   toggleQuestion(event: WechatMiniprogram.TouchEvent) {
+    // dataset 缺值时 Number(undefined) 是 NaN，openIndex 会被写坏且此后再也匹配不上任何一项
     const index = Number(event.currentTarget.dataset.index)
+    if (!Number.isInteger(index)) return
     this.setData({ openIndex: this.data.openIndex === index ? -1 : index })
   },
 
   openQuickHelp(event: WechatMiniprogram.TouchEvent) {
-    const id = String(event.currentTarget.dataset.id)
+    // 同理：缺值时 String(undefined) 得到 'undefined'，会掉进下面的 messages 兜底分支，
+    // 弹出一个内容为空的帮助弹窗，比什么都不做更糟
+    const id = event.currentTarget.dataset.id
+    if (!id) return
     if (id === 'feedback') {
       wx.navigateTo({ url: '/packages/account/feedback/index' })
       return

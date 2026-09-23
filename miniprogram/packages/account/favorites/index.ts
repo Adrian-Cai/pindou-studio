@@ -51,12 +51,14 @@ Page({
       try {
         let response = await fetchCloudFavorites()
         const cloudFavorites = [...response.items]
-        // 分页拉满：直到累计数量达到 total；若某页返回空则跳出，避免接口异常时死循环
+        // 分页拉满：页码用本地计数器推导，不能拿 response.page + 1 ——
+        // 服务端一旦不回显 page（字段缺失即 undefined），page+1 变成 NaN，
+        // 请求会反复命中第一页且 items 始终非空，累计条数永远追不上 total，死循环。
+        // 再加一道护栏：本轮没拉到新条目就停，不跟异常接口较劲。
+        let nextPage = 2
         while (cloudFavorites.length < response.total && response.items.length > 0) {
-          response = await fetchCloudFavorites({
-            page: response.page + 1,
-            pageSize: response.pageSize,
-          })
+          response = await fetchCloudFavorites({ page: nextPage, pageSize: 20 })
+          nextPage += 1
           cloudFavorites.push(...response.items)
         }
         await appStore.replaceCloudFavorites(cloudFavorites.map(cloudSummaryToWorkItem))
