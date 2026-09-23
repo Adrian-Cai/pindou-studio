@@ -144,3 +144,16 @@
 `代码修改完成 -> lint/test/build/typecheck -> 正常正确性审查 -> ponytail-review -> 修复审查问题 -> 必要时再次 ponytail-review -> 最终提交`
 
 如果当前 Agent/环境无法自动发现该 skill，必须直接读取 `.agents/skills/ponytail-review/SKILL.md` 并按其中规则人工执行，禁止因此跳过审查
+
+## 12. 提交信息规范
+
+提交信息必须使用统一前缀，详细规范见 docs/development/COMMIT_CONVENTION.md
+
+必须遵守：
+
+- 格式：`<type>(<scope>): <简体中文简述>`，标题一行且不加句号
+- type 只能取白名单内的值：feat / fix / refactor / perf / docs / chore / ci / test / release
+- scope 只能取白名单内的值：miniprogram / server / cloudfunctions / ai / works / payment / quota / auth / editor / result / account / ci / git / deps / plan / releases；选不出时可省略括号
+- 一个提交只做一件事
+- 禁止提交无前缀的信息（如「更新」「修复 bug」），禁止英文长句堆砌
+- 本仓库会自动提交并推送到 cnb / origin / wechat，禁止 rebase / force-push 改写已推送历史，确需改写必须先说明风险并取得确认

@@ -10,6 +10,7 @@
 - 修复 AI 精致生成必然失败的问题：混元图生图实际返回 JPEG，而模型临时地址缺失 `content-type` 响应头，云函数按 `|| 'image/png'` 回退把 JPEG 误标为 `.png`；服务端 `isPng()` 只认 PNG 魔数，导致任务恒定以 `AI_PROVIDER_OUTPUT_INVALID` 失败，小程序显示「AI 生成结果不可用，请重新生成」。
 - AI 输出改为按真实字节魔数识别格式：云函数按下载内容判定 `contentType` 与文件名后缀；服务端 `HunyuanImageProvider` 接受 PNG / JPEG / WEBP，`ai-generation-service` 按实际格式命名与标注 MIME，`ai-file-storage` 移除「AI 输出必须是 PNG」限制，小程序 `AiOutputFile.contentType` 同步支持三种格式。
 - 为 P0（AI 生成主链路）、P1（图纸转换与编辑、结果展示）、P2（登录账户、支付与额度）三条主链路补充中文注释：文件头写明职责/边界/调用方/关键点，导出成员加 JSDoc，行内只注释复杂分支、阈值、状态机、幂等与并发控制、SQL 与外部 API 调用，全部为纯注释改动（仅 5 处删除行，均为注释改写与 BOM 位移后原样补回的 import）。注释规范写入 `docs/development/CODE_RULES.md`。
+- 新增提交信息规范 `docs/development/COMMIT_CONVENTION.md`：统一 `<type>(<scope>): <中文简述>` 前缀，给出 type / scope 白名单与正反示例，并在 `AGENTS.md` 新增「12. 提交信息规范」设为强制要求。
 
 ## 0.30.8
 

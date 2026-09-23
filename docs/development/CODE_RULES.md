@@ -81,6 +81,16 @@ services/
 
 ---
 
+# 提交信息规范
+
+格式：
+
+`<type>(<scope>): <简体中文简述>`
+
+详细白名单与示例见 docs/development/COMMIT_CONVENTION.md
+
+---
+
 # 注释规范
 
 要求：
