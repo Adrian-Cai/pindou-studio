@@ -1,3 +1,17 @@
+<!-- 入队成功后的顶部横条通知：fixed 定位，top 由实测导航栏高度注入，不硬编码 -->
+<view
+  wx:if="{{tipVisible}}"
+  class="queue-tip"
+  style="top: {{tipTop}}px;"
+  bindtap="openAiTasks"
+  role="button"
+  aria-label="已加入生成队列，点击去作品页查看进度"
+>
+  <image class="queue-tip__icon" src="/assets/icons/iconsax/check.svg" mode="aspectFit" />
+  <text class="queue-tip__text">已加入生成队列，可去作品页查看</text>
+  <text class="queue-tip__arrow" aria-hidden="true">›</text>
+</view>
+
 <page-layout title="小露拼豆" home show-main-nav selected-tab="{{0}}">
 <view class="home-page">
 
@@ -16,19 +30,6 @@
         <view wx:if="{{index < generationSteps.length - 1}}" class="step-line" aria-hidden="true"></view>
       </block>
     </view>
-  </view>
-
-  <!-- ①·五 生成中任务入口：只在有未完成 AI 任务时出现，点击去作品页看进度 -->
-  <view
-    wx:if="{{activeAiTaskCount > 0}}"
-    class="home__task-badge"
-    bindtap="openAiTasks"
-    role="button"
-    aria-label="查看 {{activeAiTaskCount}} 个生成中的 AI 任务"
-  >
-    <view class="home__task-badge-dot" aria-hidden="true"></view>
-    <text class="home__task-badge-text">生成中 {{activeAiTaskCount}} 个</text>
-    <text class="home__task-badge-link">查看 ›</text>
   </view>
 
   <!-- ② 统一上传状态卡 -->

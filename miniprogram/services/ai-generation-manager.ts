@@ -268,11 +268,6 @@ export class AiTaskManager {
       .sort((left, right) => right.createdAt - left.createdAt)
   }
 
-  /** 非终态任务数量，用于首页「生成中 N 个」胶囊。 */
-  getActiveCount(): number {
-    return listActiveAiTasks().length
-  }
-
   /** 详情页缺省 taskId 时回退到最近一个活跃任务；都没有则返回 null（页面据此回首页）。 */
   resolveTaskId(preferred?: string): string | null {
     if (preferred && getAiTask(preferred)) return preferred

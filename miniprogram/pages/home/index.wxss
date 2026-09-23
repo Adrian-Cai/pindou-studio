@@ -143,43 +143,42 @@ page {
 }
 
 /* ════════════════════════════════
-   生成中任务入口（有任务时才显示）
+   入队成功后的顶部横条通知
+   独立于页面滚动：fixed 定位在导航栏下方，top 由 ts 注入实测高度
 ════════════════════════════════ */
-.home__task-badge {
-  box-sizing: border-box;
+.queue-tip {
+  position: fixed;
+  right: 32rpx;
+  left: 32rpx;
+  z-index: 100;
   display: flex;
-  width: 100%;
-  min-width: 0;
-  height: 72rpx;
+  box-sizing: border-box;
+  height: 88rpx;
   align-items: center;
-  gap: 12rpx;
-  margin-top: 24rpx;
+  gap: 14rpx;
+  margin-top: 12rpx;
   padding: 0 24rpx;
-  border: 0;
   border-radius: var(--radius-card-small);
-  background: var(--color-ai-soft);
-  box-shadow: var(--shadow-card);
-  transition: var(--transition-press);
+  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-gradient-end));
+  box-shadow: var(--shadow-primary);
+  animation: queue-tip-in 260ms ease-out;
 }
 
-.home__task-badge:active {
-  opacity: 0.84;
+.queue-tip:active {
   transform: scale(0.98);
 }
 
-.home__task-badge-dot {
-  flex: 0 0 16rpx;
-  width: 16rpx;
-  height: 16rpx;
-  border-radius: 50%;
-  background: var(--color-ai);
+.queue-tip__icon {
+  flex: 0 0 30rpx;
+  width: 30rpx;
+  height: 30rpx;
 }
 
-.home__task-badge-text {
+.queue-tip__text {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  color: var(--color-ai-text);
+  color: #fff;
   font-size: 26rpx;
   font-weight: 500;
   line-height: 40rpx;
@@ -187,11 +186,17 @@ page {
   white-space: nowrap;
 }
 
-.home__task-badge-link {
+/* 纯箭头：文案已说明去哪看，这里只保留「整条可点进去」的视觉暗示 */
+.queue-tip__arrow {
   flex-shrink: 0;
-  color: var(--color-ai-text);
-  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 30rpx;
   line-height: 40rpx;
+}
+
+@keyframes queue-tip-in {
+  from { opacity: 0; transform: translateY(-24rpx); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ════════════════════════════════

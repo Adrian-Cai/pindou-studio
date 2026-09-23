@@ -5,6 +5,7 @@ import { ApiError } from '../../services/http-client'
 import type { GenerationMode } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
 import { aiTaskManager } from '../../services/ai-generation-manager'
+import { getCustomNavigationMetrics } from '../../utils/navigation'
 
 type UploadStatus = 'empty' | 'uploading' | 'checking' | 'success' | 'rejected' | 'error'
 
@@ -35,6 +36,9 @@ const AI_MODE_ENABLED = true
 
 /** 主按钮成功态停留时长（ms）：够读完「已加入生成队列」，又不长时间挡住下一次操作 */
 const SUBMIT_FEEDBACK_DURATION = 1800
+
+/** 顶部队列提示条的停留时长（ms）：比按钮成功态长，因为它是带「查看」入口的通知 */
+const QUEUE_TIP_DURATION = 4000
 
 const GENERATION_MODES: GenerationModeOption[] = [
   {
@@ -106,8 +110,10 @@ Page({
     submitting: false,
     /** 主按钮就地成功态：入队成功后短暂置为 true，由定时器复位 */
     submitSuccess: false,
-    /** 未完成的 AI 任务数，用于顶部胶囊入口 */
-    activeAiTaskCount: 0,
+    /** 顶部队列提示条：入队成功后从导航栏下方滑入，数秒后自动收起 */
+    tipVisible: false,
+    /** 提示条的 top（px）：取实测导航栏底边，不硬编码顶部高度 */
+    tipTop: 0,
     uploadStatus: 'empty' as UploadStatus,
     /** -1 表示上传 SDK 尚未提供真实进度 */
     uploadProgress: -1,
@@ -123,11 +129,11 @@ Page({
     sampleImages: SAMPLE_IMAGES,
   },
 
-  _unsubscribeAiTasks: null as (() => void) | null,
-
   // 用 0 作为「无定时器」哨兵：clearTimeout(0) 是合法的空操作，
   // 且 clearTimeout 的类型不接受 undefined。
   _submitFeedbackTimer: 0 as ReturnType<typeof setTimeout>,
+
+  _queueTipTimer: 0 as ReturnType<typeof setTimeout>,
 
   onShow() {
     // tab 高亮由 page-layout selected-tab 属性管理；从编辑器返回时恢复当前草稿模式，重置按钮状态确保不阻塞后续操作。
@@ -141,30 +147,32 @@ Page({
       currentStep: this.data.uploadStatus === 'success' ? 2 : 1,
       generationMode,
     })
-    if (!this._unsubscribeAiTasks) {
-      this._unsubscribeAiTasks = aiTaskManager.subscribeAll(() => this.refreshAiTaskBadge())
-    }
-    this.refreshAiTaskBadge()
-  },
-
-  onHide() {
-    this._unsubscribeAiTasks?.()
-    this._unsubscribeAiTasks = null
   },
 
   onUnload() {
     currentUploadRequestId += 1
     clearTimeout(this._submitFeedbackTimer)
-    this._unsubscribeAiTasks?.()
-    this._unsubscribeAiTasks = null
+    clearTimeout(this._queueTipTimer)
   },
 
-  refreshAiTaskBadge() {
-    this.setData({ activeAiTaskCount: aiTaskManager.getActiveCount() })
-  },
-
+  /** 顶部队列提示条与「作品」页的入口：先收起提示再跳转 */
   openAiTasks() {
+    clearTimeout(this._queueTipTimer)
+    if (this.data.tipVisible) this.setData({ tipVisible: false })
     wx.switchTab({ url: '/pages/projects/index' })
+  },
+
+  /**
+   * 入队成功的顶部横条通知：从导航栏下方滑入，QUEUE_TIP_DURATION 后自动收起。
+   * 与主按钮成功态互补——按钮给指尖即时确认，横条给出「去哪看进度」的入口。
+   * 用 fixed 定位，所以无论页面滚到哪里，横条始终停在视口顶部。
+   */
+  showQueueTip(): void {
+    clearTimeout(this._queueTipTimer)
+    this.setData({ tipVisible: true, tipTop: getCustomNavigationMetrics().topBarHeight })
+    this._queueTipTimer = setTimeout(() => {
+      this.setData({ tipVisible: false })
+    }, QUEUE_TIP_DURATION)
   },
 
   selectMode(event: WechatMiniprogram.TouchEvent) {
@@ -359,6 +367,7 @@ Page({
 
     if (!queued) return
     this.showSubmitFeedback()
+    this.showQueueTip()
     this.resetUploadState()
   },
 
