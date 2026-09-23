@@ -15,6 +15,8 @@ const MIN_DOMINANT_NEIGHBORS = 5
 // 主色需占邻居至少 75% 才认为中心是噪点
 const MIN_DOMINANT_RATIO = 0.75
 // 中心格自身颜色在邻居中出现不超过 1 次才可能被替换
+// 注意计数口径：下面统计的 counts **只含 8 个邻居、不含中心格自己**，
+// 而 MAX_CENTER_SUPPORT 是拿它直接比的，语义即「邻居里有几个跟中心同色」。
 const MAX_CENTER_SUPPORT = 1
 // OKLab 距离平方阈值，两色比这更近才允许互相替换（约 0.05 感知差以内）
 const MAX_COLOR_DISTANCE_SQUARED = 0.05 * 0.05
@@ -95,11 +97,13 @@ export function cleanupPatternCells(
       return
     }
 
-    // 用邻居里第一个主色格覆盖中心格（保留其坐标即替换自身）
+    // 只把中心格换成主色格的颜色。PatternCell 只有 color / colorCode 两个字段、
+    // 不含坐标，位置由数组下标决定 —— 所以整格覆盖是安全的，
+    // 但不能因为将来给 PatternCell 加了坐标字段就继续这么写（那会把邻居的坐标套过来）。
     const replacement = neighbors.find(
       (neighbor) => neighbor.colorCode === dominantCode,
     )
-    if (replacement) cleaned[index] = { ...replacement }
+    if (replacement) cleaned[index] = { color: replacement.color, colorCode: replacement.colorCode }
   })
 
   return cleaned

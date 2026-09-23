@@ -155,6 +155,10 @@ export function drawPatternViewport(
   context.fillRect(0, 0, viewportWidth, viewportHeight)
   const columns = draft.settings.width
   const rows = draft.settings.height
+  // 缩放或格子尺寸退化到 <=0 时，下面所有除法都会产出 NaN/Infinity，
+  // 进而让循环边界 Math.floor(NaN) 恒为假、整张图静默不画（不报错，最难查的那种）。
+  // 与其画出一张空白图让人以为"图纸就是空的"，不如直接返回并保持上一帧。
+  if (transform.scale <= 0 || image.cellWidth <= 0 || image.cellHeight <= 0) return
   const cellWidth = image.cellWidth * transform.scale
   const cellHeight = image.cellHeight * transform.scale
   // 图片左上角在 viewport 中的坐标：以 viewport 中心为原点，再偏移 translate 与图片半宽

@@ -10,7 +10,7 @@
 import { MARD_COLORS } from '../../data/bead-palettes/mard'
 import { oklabDistanceSquared, rgbToOklab } from './color-space'
 import type { OKLab } from './color-space'
-import type { RGB } from './color-utils'
+import { pickNearest, type RGB } from './color-utils'
 import type { WeightedColorCandidate } from './median-cut'
 
 /** 一个拼豆实体色：色号 code、十六进制、RGB 与 OKLab（用于感知距离计算）。 */
@@ -135,18 +135,8 @@ export function selectMardPalette(
  */
 export function findNearestMardColor(color: RGB): BeadColor {
   const oklab = rgbToOklab(color)
-  let nearest = MARD_CLASSIC_PALETTE[0]
-  let nearestDistance = Number.POSITIVE_INFINITY
-
-  MARD_CLASSIC_PALETTE.forEach((candidate) => {
-    const distance = oklabDistanceSquared(oklab, candidate.oklab)
-    if (distance < nearestDistance) {
-      nearest = candidate
-      nearestDistance = distance
-    }
-  })
-
-  return nearest
+  // pickNearest 对空候选抛错，不给 undefined 流出去的机会
+  return pickNearest(MARD_CLASSIC_PALETTE, (candidate) => oklabDistanceSquared(oklab, candidate.oklab))
 }
 
 // 把 "#RRGGBB" 十六进制串解析成 RGB（色号数据只存 hex，绘制/距离需 RGB）

@@ -4,20 +4,35 @@ export interface RGB {
   b: number
 }
 
-export function findNearestColor(pixel: RGB, palette: RGB[]): RGB {
-  let nearest = palette[0]
-  let nearestDistance = Number.POSITIVE_INFINITY
-  palette.forEach((color) => {
-    const red = pixel.r - color.r
-    const green = pixel.g - color.g
-    const blue = pixel.b - color.b
-    const distance = red * red + green * green + blue * blue
-    if (distance < nearestDistance) {
-      nearest = color
-      nearestDistance = distance
+/**
+ * 在一组候选里挑「距离最小」的那个。
+ *
+ * 抽出来是为了收敛一类共性坑：手写这份循环时，空候选数组会让 `best` 停在初始值、
+ * 遍历体一次都不执行，函数**静默返回 `undefined`** —— 类型上是具名返回值，
+ * 运行时却是 undefined，下游拿到就直接崩，而且崩的位置离这里很远，极难定位。
+ * 所以这里规定死：**候选为空就抛错**，让问题在离根因最近的地方暴露。
+ *
+ * @param items 候选集合
+ * @param distance 每个候选的距离度量，越小越优
+ * @returns 距离最小的候选；入参为空时抛错
+ */
+export function pickNearest<T>(
+  items: readonly T[],
+  distance: (item: T) => number,
+): T {
+  let best: T | undefined
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (const item of items) {
+    const current = distance(item)
+    if (current < bestDistance) {
+      best = item
+      bestDistance = current
     }
-  })
-  return nearest
+  }
+  if (best === undefined) {
+    throw new Error('未能选出最近色：候选调色板为空')
+  }
+  return best
 }
 
 export function rgbToHex(color: RGB): string {
