@@ -18,8 +18,10 @@
 | `356fd75` | feat(payment): 接入虚拟支付链路，补齐 SQL、签名存储与测试（14 文件 +1791 −328） |
 | `b908783` | fix(auth): 调整登录与会话链路（`session_key` 加密落库，4 文件 +34 −7） |
 | `455a006` | fix(miniprogram): 修复图纸渲染、列表交互与作品同步问题（13 文件 +223 −14） |
+| `e8cb3fa` | fix(miniprogram): 补回候选色数量的非法值守卫（median-cut） |
 | `ef8e2f4` | chore(repo): 忽略测试临时产物并回填 Ponytail 优化计划执行状态 |
 | `6e3973e` | chore(git): 忽略 `*‑output.txt` 并说明 OCR 扫描原始产物已清理 |
+| `4f85353` | feat(payment): 补虚拟支付发货补单的调度配置解析与兜底窗口约束 |
 | `e58e8e8` | feat(payment): 补虚拟支付发货补单的调度配置类型 |
 | 本次版本提交 | `payment-service.ts` 修正未签发支付参数时的文案；`package.json` / `package-lock.json` 版本号 `0.30.16` |
 
@@ -61,7 +63,7 @@
 
 11. **`rgbToHex` 通道收敛到 0~255**：越界分量（负数 / >255 / NaN）会拼出 `-1`、`NaN` 这类不是两位十六进制的串，产出非法颜色；canvas 与 WXML 都不报错，只表现为「这一格不显示」。非有限数落到 0（黑），至少仍是合法颜色。
 
-12. **`median-cut` 复制入桶 + 空桶抛错**：桶分裂前的 `sort` 是原地排序，直接用调用方的 `pixels` 会改掉人家的行优先顺序（不报错、只让结果悄悄不对）；空桶取均值得到 NaN 三元组，`fillStyle` 拿到 NaN 静默不绘制，改为直接抛错——按项目约定不用「合法值」掩盖异常。
+12. **`median-cut` 复制入桶 + 空桶抛错 + 候选数守卫**：桶分裂前的 `sort` 是原地排序，直接用调用方的 `pixels` 会改掉人家的行优先顺序（不报错、只让结果悄悄不对），改为复制一份入桶；空桶取均值得到 NaN 三元组（`fillStyle` 拿到 NaN 静默不绘制），改为直接抛错——按项目约定不用「合法值」掩盖异常；候选数 `candidateLimit` 补回「必须是 ≥1 的有限整数」的守卫（`e8cb3fa`），否则传 NaN/0 时循环一次不跑、函数「正常返回」单色调色板，整条链路无报错，只看得到「颜色不对」。
 
 13. **作品重命名不再写回陈旧快照**：`await checkTextContent` 期间可能已完成一次云同步（本地作品被换成云端记录、id 都变了），此时把 await 之前的快照写回去，等于把已被替换的旧记录塞回列表——用户看到「重命名成功，但列表里多了一份同名旧作品」。改为 await 后重新取一次，取不到就提示刷新。
 
@@ -92,16 +94,16 @@
 
 ## 已知限制
 
-1. **发货轮询补单任务尚未实现（资损风险）**：官方要求「发货推送分支与发货轮询分支至少实现一个，两者结合更可靠」。本版只落了调度配置类型（`VirtualPayReconcileConfig`），**定时任务本体还没有**——推送丢失或 15 次重试耗尽时，订单会永久停在 pending，用户已扣款但次数不到账且无告警。下个版本必须补。
+1. **发货轮询补单：配置与解析已入库，定时任务的改动仍在本地未提交**。官方要求「发货推送分支与发货轮询分支至少实现一个，两者结合更可靠」。本版入库了 `VirtualPayReconcileConfig` 与解析（`e58e8e8` / `4f85353`，含区间约束），但**真正起定时器的那段 `server/src/index.ts` 改动尚未提交**——`reconcilePendingOrders()` 的轮询要等它入库才真正运行。**提审前必须确认该改动已入库并部署**，否则推送丢失或 15 次重试耗尽时，订单仍会永久停在 pending：用户已扣款、次数不到账、系统无告警。
 2. **退款链路缺失**：DB 有 `refunded` 状态与 `refund` 额度流水，但服务端没有 `/xpay/refund_order` 与 `xpay_refund_notify` 处理；更糟的是 `app.ts` 的 `DELIVERY_EVENT` 只认 `xpay_goods_deliver_notify`，其余 `xpay_*` 事件（退款、投诉、风控）一律回 `ErrCode=0` 静默吞掉。
 3. **iOS 退款问询不应答**：`xpay_subscribe_ios_refund_query_notify` 连续 3 次、3 秒内不应答，平台会向 Apple 返回「不确定」，退款决定权完全交给 Apple。
-4. **`median-cut` 的候选数校验当前被 `if (false)` 包住，未生效**：调用方传 NaN/0 时循环一次不跑、函数会「正常返回」单色调色板，整条链路无报错。启用前需确认调用方入参，本次未动。
+4. **运行期配置项新增（部署时需一并设置）**：`VIRTUAL_PAY_RECONCILE_INTERVAL_MS`（默认 5 分钟，下限 1 分钟——查单是带 AppKey 签名的上游请求，太密会被限流）、`VIRTUAL_PAY_RECONCILE_GRACE_MS`（默认 3 分钟，给发货推送留出正常到达时间）、`VIRTUAL_PAY_RECONCILE_STALE_AFTER_MS`（默认 30 分钟，超时升级告警）、`VIRTUAL_PAY_RECONCILE_BATCH_SIZE`（默认 100）。都有区间校验与默认值，不配也能起，但告警阈值建议按实际单量调。
 5. **运营侧需在 MP 后台确认**：道具/代币在「虚拟支付 → 道具管理」发布到**现网版本**，`pindou_packages.virtual_product_id` 与后台道具 ID、`price_fen` 与后台定价必须一致（不一致客户端报 `-15010` / `-15013`）；iOS 还需已配置**小程序简称**（Apple 支付要求 display name）与微信客户端 8.0.68+。
 6. **Windows / 鸿蒙端**：`canUseVirtualPayment()` 只按基础库版本 + `canIUse` 判定，没有平台分支，理论上不拦这两个端，但**未做真机验证**。
 
 ## 发布前置条件
 
-1. **部署后端**：虚拟支付链路（含 `virtual-pay-client.ts`、`/api/payments/virtual-notify`）、`session_key_ciphertext` 列、执行 `server/sql/014_virtual_payment_support.sql`。未部署则小程序端下单后拿不到支付参数。
+1. **部署后端**：虚拟支付链路（含 `virtual-pay-client.ts`、`/api/payments/virtual-notify`）、`session_key_ciphertext` 列、执行 `server/sql/014_virtual_payment_support.sql`。未部署则小程序端下单后拿不到支付参数。**另需确认发货补单轮询的定时器改动已入库**（见「已知限制」第 1 条），否则补单不会真正运行。
 2. **MP 后台配置**：虚拟支付道具发布到现网，道具 ID 与定价与 `pindou_packages` 表一致；iOS 端确认小程序简称已配置。
 3. **云函数**：`generateImage` 需在微信云开发重新部署（0.30.11 遗留，否则生图角标仍是「AI生成」）。
 
