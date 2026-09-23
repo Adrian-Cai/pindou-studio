@@ -11,6 +11,7 @@
 - **终态任务 TTL 起算点错误**：过期清理按 `createdAt` 算，一个很早提交、刚刚才跑完的任务会因创建时间超期被立刻清掉，用户还没看到结果卡片就没了。改为按 `finishedAt` 起算（`createdAt` 兜底）。
 - **持久化头像永远被清成 null**：`token-storage` 的 `parseUser` 写死 `avatarUrl: null`，冷启动恢复的会话会丢掉已保存的头像。修复并与 `auth-service` 的解析口径对齐；`CurrentUserProfile` 补文档明确 `quota` 字段由解析器保证齐全。
 - **支付幂等键每次调用都重生成（去重失效）**：`payForAiGenerationPackage` 原来在函数内部用默认参数现造 idempotency key，同一次点击走到两次就被服务端当成两笔订单。改为必须由调用方按「一次购买意图」生成并持有——`recharge` 页把它存进页面状态，失败重试复用同一个键，支付成功或用户主动取消才清空。
+- **云端作品读取的调用顺序错误（作品会跑到游客区）**：`setCurrentDraft` 内部靠 `cloudWorks` 里是否存在同 id 记录来判定归属，若找到就是云草稿、否则落到 `persisted.guest`。收藏页原先先 `setCurrentDraft` 再 `saveWork`，于是这份云作品在该判定眼里还不存在，被当成游客草稿存进游客区——用户账号下凭空少一份作品、游客区多一份脏数据，且全程无任何报错。改为**先 `saveWork` 落 WorkItem，再 `setCurrentDraft`**，并在 `AppStore.setCurrentDraft` 上写明这条前置条件。编辑器页与作品页的同类调用一并核正。
 - 其余健壮性收敛：`app.ts` 补 `runStartupSafelyAsync` 接住 fire-and-forget 启动项的 Promise 拒绝（否则控制台只有无堆栈的 Unhandled rejection）；`navigation` / `page-layout` 对 `getWindowInfo`、`getMenuButtonBoundingClientRect` 返回值做兜底；`download-service`、`image-service`、`payment-service` 等补齐空值与日期校验。
 - 测试跟进 `pickNearest` 重构：三个用例改用新函数并保留 V1 行为基线，**57/57 通过**。
 - ci：新增 OpenCodeReview GitHub Actions 工作流与项目专属评审规则（19 条），详见 `docs/development/OCR_CODE_REVIEW.md`。
