@@ -63,6 +63,60 @@ export interface DeliveryNotification {
   readonly attach: string | null;
 }
 
+/**
+ * 退款推送 xpay_refund_notify 的关键字段。
+ *
+ * 存在意义：退款**不由我们决定是否发生**。iOS 上开发者根本无法主动发起退款
+ * （官方：Apple 支付不支持开发者主动向用户发起退款），用户在 App Store 自助申请、
+ * Apple 自行审批；安卓/鸿蒙/Windows 走微信支付，商户可主动退、用户也能走客诉渠道。
+ * 两条路径退成了都会推这个事件，不接就等于「钱退了、虚拟商品还留在用户手里」。
+ */
+export interface RefundNotification {
+  readonly openId: string;
+  /** 退款单对应支付单的**商户单号**，即我们下单时的 outTradeNo。 */
+  readonly mchOrderId: string | null;
+  /**
+   * iOS 退款通知会附带下单时的 attach（我们填的是订单号）。
+   * 作为定位订单的兜底：个别渠道不回传商户单号时还能靠它找到订单。
+   */
+  readonly attach: string | null;
+  readonly wxRefundId: string | null;
+  /** 退款金额（分）。可能小于订单金额（部分退款），只用于记录与核对，不作为扣回依据。 */
+  readonly refundFeeFen: number | null;
+  /** 退款结果：0 为成功，非 0 为失败（失败时不应扣回任何额度）。 */
+  readonly retCode: number | null;
+  readonly retMsg: string | null;
+  readonly refundSuccTimestamp: number | null;
+}
+
+/** iOS 退款问询 xpay_subscribe_ios_refund_query_notify 的字段。 */
+export interface IosRefundQueryNotification {
+  readonly refundTimeSeconds: number | null;
+  /** Apple 支付票据号。 */
+  readonly channelBill: string | null;
+  readonly productId: string | null;
+  readonly count: number | null;
+  readonly refundRequestReason: string | null;
+  /** 平台侧的发货状态：0 未发货 / 1 已发货 / 2 发货中。仅作参考，判定以我方订单为准。 */
+  readonly provideStatus: number | null;
+  /** 退款对应的支付订单号。 */
+  readonly payOrderId: string | null;
+}
+
+/**
+ * iOS 退款问询的应答。
+ *
+ * 官方：Apple 会**重复三次**发起问询；连续 3 次、3 秒内均未应答，平台会向 Apple 返回
+ * 「不确定」，退款决定权完全交给 Apple。因此这里必须快速应答，
+ * 且 evidence 是必填项（用于退款审计）—— 空着等于放弃了举证机会。
+ */
+export interface IosRefundQueryAnswer {
+  /** 0 放过（建议退款）；1 拦截（拒绝退款）。 */
+  readonly resultCode: 0 | 1;
+  readonly resultInfo: string;
+  readonly evidence: string;
+}
+
 /** query_order 的标准化结果：只有 paid=true 才允许发货。 */
 export interface QueriedVirtualOrder {
   readonly paid: boolean;

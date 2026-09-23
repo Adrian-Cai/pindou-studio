@@ -20,8 +20,17 @@ import {
   decryptSessionKey,
 } from "../../shared/identity";
 import { rollbackTransaction } from "../../shared/transaction";
+import { shanghaiDate } from "../../shared/shanghai-time";
+import { lockQuotaUser, readQuota } from "../quota/quota-ledger";
 import type { PaymentNotificationInput, PaymentParameters, WeChatPaymentGateway } from "./wechat-pay-client";
-import type { DeliveryNotification, VirtualPayGateway, VirtualPaymentPayload } from "./virtual-pay-client";
+import type {
+  DeliveryNotification,
+  IosRefundQueryAnswer,
+  IosRefundQueryNotification,
+  RefundNotification,
+  VirtualPayGateway,
+  VirtualPaymentPayload,
+} from "./virtual-pay-client";
 
 const NEW_USER_TEST_PACKAGE_ID = "ai_generation_new_user_5";
 
@@ -118,6 +127,20 @@ export const DEFAULT_RECONCILE_OPTIONS: PendingOrderReconcileOptions = {
 /** 结构化日志里附带的订单号上限：告警要能一眼定位，但不能把日志刷成订单清单。 */
 const RECONCILE_ATTENTION_LOG_LIMIT = 20;
 
+/**
+ * 退款处置结果。
+ *
+ * `clawedBack` 是**实际扣回的次数**，不是购买次数：虚拟商品一旦被消耗就收不回来，
+ * 强行按整笔扣会把 `purchased` 打成负数，而额度读取会把负数钳成 0 ——
+ * 表面上看着没问题，用户下次再买时新额度会被这个负余额悄悄吃掉。
+ */
+export interface RefundOutcome {
+  /** 是否真的执行了退款（置为 refunded 且写入了扣回流水）。 */
+  readonly applied: boolean;
+  /** 本次实际扣回的额度次数。 */
+  readonly clawedBack: number;
+}
+
 /** 补单汇总：既是返回值，也是结构化日志的主体。 */
 export interface PendingOrderReconcileSummary {
   readonly scanned: number;
@@ -150,6 +173,19 @@ export interface PaymentService {
    * 两条路径最终都收敛到 `confirmAndGrant`，因此幂等与安全校验完全一致。
    */
   reconcilePendingOrders(): Promise<PendingOrderReconcileSummary>;
+  /**
+   * 处理退款推送：订单置 refunded，并扣回**尚未消耗**的购买额度。
+   *
+   * 注意这不是「支持退款」——退款是否发生由 Apple / 微信决定，我们只能事后知道。
+   * 不接的后果是钱退给用户、虚拟商品却还留在他手里。
+   */
+  handleRefund(input: RefundNotification): Promise<RefundOutcome>;
+  /**
+   * 应答 iOS 退款问询：如实告诉 Apple 这笔虚拟商品到底发没发、消耗了多少。
+   *
+   * 3 秒内不应答，平台会向 Apple 回「不确定」，退款决定权就完全不在我们手上了。
+   */
+  answerIosRefundQuery(input: IosRefundQueryNotification): Promise<IosRefundQueryAnswer>;
   /** 旧通道回调兜底：仅用于收尾存量订单，确认无存量后可整体下线。 */
   handleNotification(input: PaymentNotificationInput): Promise<{ readonly duplicate: boolean }>;
 }
@@ -306,6 +342,21 @@ function emptyReconcileCounter(): ReconcileCounter {
 /** 兼容 pg 把 timestamptz 反序列化成 Date、也可能原样返回字符串的两种情况。 */
 function orderCreatedAtMs(value: Date | string): number {
   return value instanceof Date ? value.getTime() : new Date(value).getTime();
+}
+
+/**
+ * 解密付款人 openid，失败返回空串而不是抛错。
+ *
+ * 退款这类场景下「解不出身份」是**信息**而不是异常：调用方据此走「无法核验」分支并留痕，
+ * 让整条链路继续跑完。抛错反而会让一次可诊断的事件退化成一次 500。
+ */
+function decryptOpenidOrEmpty(ciphertext: string | null | undefined, secret: string): string {
+  if (!ciphertext) return "";
+  try {
+    return decryptOpenid(ciphertext, secret);
+  } catch {
+    return "";
+  }
 }
 
 function freezeReconcileCounter(counter: ReconcileCounter): PendingOrderReconcileSummary {
@@ -704,6 +755,221 @@ export class PostgresPaymentService implements PaymentService {
         code: error instanceof AppError ? error.code : null,
         message: error instanceof Error ? error.message : String(error),
       }));
+    }
+  }
+
+  /**
+   * 处理退款推送：置订单为 refunded，并扣回**尚未消耗**的购买额度。
+   *
+   * 三道闸，任一不满足都不动额度：
+   * ① 退款本身必须成功（retCode=0）—— 退款失败还扣额度，等于用户既没拿回钱也没了商品；
+   * ② 订单必须存在且属于推送里的付款人；
+   * ③ 订单必须处于 paid —— 未发货的订单本来就没东西可扣。
+   *
+   * 扣回量取 `min(当前剩余购买额度, 本单发放额度)` 而不是整笔发放量：
+   * 已消耗的部分收不回来，硬扣会把 purchased 打成负数，而额度读取把负数钳成 0，
+   * 表面看余额归零没问题，用户下次再买时新额度会被这个负余额悄悄吃掉
+   * （买 30 用 10 退 30 → 余额 -10；再买 30 只到手 20）。
+   */
+  public async handleRefund(input: RefundNotification): Promise<RefundOutcome> {
+    if (input.retCode !== null && input.retCode !== 0) {
+      console.warn(JSON.stringify({
+        event: "virtual_payment_refund_rejected",
+        reason: "refund_failed",
+        retCode: input.retCode,
+        retMsg: input.retMsg,
+      }));
+      return { applied: false, clawedBack: 0 };
+    }
+
+    const orderId = (input.mchOrderId ?? input.attach ?? "").trim();
+    if (!orderId) {
+      // 最糟的一种：钱已经退出去了，而我们连扣谁的都不知道，必须留痕让人介入
+      console.error(JSON.stringify({
+        event: "virtual_payment_refund_alert",
+        reason: "order_unlocatable",
+        mchOrderId: input.mchOrderId,
+        attach: input.attach,
+        wxRefundId: input.wxRefundId,
+      }));
+      return { applied: false, clawedBack: 0 };
+    }
+
+    const currentTime = this.now();
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const orderResult = await client.query<OrderRow>(
+        `SELECT orders.id, orders.user_id, orders.package_label_snapshot,
+                orders.quota_amount_snapshot, orders.quota_kind_snapshot,
+                orders.status, orders.paid_at, users.openid_ciphertext
+           FROM pindou_orders orders
+           JOIN pindou_users users ON users.id = orders.user_id
+          WHERE orders.id = $1
+          LIMIT 1
+          FOR UPDATE OF orders`,
+        [orderId],
+      );
+      const order = orderResult.rows[0];
+      if (!order) {
+        await client.query("ROLLBACK");
+        console.error(JSON.stringify({
+          event: "virtual_payment_refund_alert",
+          reason: "order_not_found",
+          orderId,
+        }));
+        return { applied: false, clawedBack: 0 };
+      }
+      const payerOpenid = decryptOpenidOrEmpty(order.openid_ciphertext, this.openidEncryptionSecret);
+      if (payerOpenid && input.openId && payerOpenid !== input.openId) {
+        await client.query("ROLLBACK");
+        console.error(JSON.stringify({
+          event: "virtual_payment_refund_alert",
+          reason: "payer_mismatch",
+          orderId,
+        }));
+        return { applied: false, clawedBack: 0 };
+      }
+      if (order.status === "refunded") {
+        await client.query("COMMIT");
+        return { applied: false, clawedBack: 0 };
+      }
+      if (order.status !== "paid") {
+        await client.query("ROLLBACK");
+        console.warn(JSON.stringify({
+          event: "virtual_payment_refund_rejected",
+          reason: "order_not_paid",
+          orderId,
+          status: order.status,
+        }));
+        return { applied: false, clawedBack: 0 };
+      }
+      if (order.quota_kind_snapshot !== "ai_generation" || order.quota_amount_snapshot <= 0) {
+        await client.query("ROLLBACK");
+        console.error(JSON.stringify({
+          event: "virtual_payment_refund_alert",
+          reason: "order_snapshot_invalid",
+          orderId,
+        }));
+        return { applied: false, clawedBack: 0 };
+      }
+
+      await lockQuotaUser(client, order.user_id);
+      const quota = await readQuota(client, order.user_id, "ai_generation", shanghaiDate(currentTime));
+      const clawBack = Math.max(0, Math.min(quota.purchased, order.quota_amount_snapshot));
+
+      await client.query(
+        `UPDATE pindou_orders
+            SET status = 'refunded', updated_at = $2
+          WHERE id = $1 AND status = 'paid'`,
+        [order.id, currentTime],
+      );
+      if (clawBack > 0) {
+        await client.query(
+          `INSERT INTO pindou_quota_transactions (
+             id, user_id, quota_kind, type, amount, source, bucket, quota_date, order_id,
+             download_record_id, idempotency_key, note, created_at
+           ) VALUES ($1, $2, $3, 'refund', $4, 'payment', 'purchased', NULL,
+                     $5, NULL, $6, $7, $8)
+           ON CONFLICT DO NOTHING`,
+          [
+            createEntityId("qt"),
+            order.user_id,
+            order.quota_kind_snapshot,
+            -clawBack,
+            order.id,
+            `refund:${order.id}`,
+            `退款扣回：${order.package_label_snapshot}`.slice(0, 255),
+            currentTime,
+          ],
+        );
+      }
+      await client.query("COMMIT");
+      console.warn(JSON.stringify({
+        event: "virtual_payment_refund_applied",
+        orderId: order.id,
+        grantedAmount: order.quota_amount_snapshot,
+        clawedBack: clawBack,
+        // 已消耗的部分是本单的真实成本，记下来便于核算退款损失
+        consumed: order.quota_amount_snapshot - clawBack,
+        refundFeeFen: input.refundFeeFen,
+      }));
+      return { applied: true, clawedBack: clawBack };
+    } catch (error: unknown) {
+      await rollbackTransaction(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * 应答 iOS 退款问询：如实告诉 Apple 这笔虚拟商品发没发、还剩多少。
+   *
+   * 判定**以我方订单记录为准**，不采信推送里的 provide_status —— 那是平台侧状态，
+   * 而且问询推送同样没有签名。答错只影响 Apple 的判断，不涉及放款，但答得越实越有利。
+   *
+   * 3 秒的应答窗口意味着这里只能做索引查询，不能有复杂计算或远程调用。
+   */
+  public async answerIosRefundQuery(input: IosRefundQueryNotification): Promise<IosRefundQueryAnswer> {
+    const orderId = (input.payOrderId ?? "").trim();
+    if (!orderId) {
+      return {
+        resultCode: 0,
+        resultInfo: "无法定位订单，不主张拒绝退款",
+        evidence: `问询未携带支付订单号（票据号 ${input.channelBill ?? "未知"}），无法确认发货情况`,
+      };
+    }
+    const result = await this.pool.query<OrderRow>(
+      `SELECT id, user_id, quota_amount_snapshot, quota_kind_snapshot, status, paid_at
+         FROM pindou_orders
+        WHERE id = $1
+        LIMIT 1`,
+      [orderId],
+    );
+    const order = result.rows[0];
+    if (!order) {
+      return {
+        resultCode: 0,
+        resultInfo: "未查询到对应订单，不主张拒绝退款",
+        evidence: `订单 ${orderId} 不存在`,
+      };
+    }
+    if (order.status !== "paid") {
+      return {
+        resultCode: 0,
+        resultInfo: "订单尚未完成发货，同意退款",
+        evidence: `订单 ${orderId} 状态为 ${order.status}，虚拟商品尚未交付`,
+      };
+    }
+
+    const evidence = await this.describeDeliveredOrder(order);
+    return {
+      resultCode: 1,
+      resultInfo: "虚拟商品已交付，建议拒绝退款",
+      evidence,
+    };
+  }
+
+  /**
+   * 生成 iOS 退款问询的举证文案：已发多少、还剩多少。
+   *
+   * 读额度失败不能拖累应答 —— 那会让我们错过 3 秒窗口。
+   * 少了「剩余」这一句，举证仍然成立（已交付是事实），只是说服力弱一点。
+   */
+  private async describeDeliveredOrder(order: OrderRow): Promise<string> {
+    const paidAt = order.paid_at ? String(order.paid_at) : "未知时间";
+    const base = `订单 ${order.id} 已于 ${paidAt} 发放 AI 生成次数 ${order.quota_amount_snapshot} 次，属已交付的虚拟商品`;
+    try {
+      const quota = await readQuota(
+        this.pool,
+        order.user_id,
+        "ai_generation",
+        shanghaiDate(this.now()),
+      );
+      return `${base}；该用户当前购买额度剩余 ${quota.purchased} 次`;
+    } catch {
+      return base;
     }
   }
 

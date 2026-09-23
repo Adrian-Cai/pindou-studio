@@ -12,7 +12,11 @@ import type { ContentSecurityService } from "../modules/content-security/content
 import type { PostgresAiGenerationService } from "../modules/ai/ai-generation-service";
 import type { DownloadListOptions, PostgresQuotaDownloadService } from "../modules/downloads/quota-download-service";
 import type { OrderListOptions, PaymentService } from "../modules/payments/payment-service";
-import type { DeliveryNotification } from "../modules/payments/virtual-pay-client";
+import type {
+  DeliveryNotification,
+  IosRefundQueryNotification,
+  RefundNotification,
+} from "../modules/payments/virtual-pay-client";
 import { getLegalDocument } from "../modules/legal/legal-document-service";
 import type { FavoriteListOptions, PostgresWorkService } from "../modules/works/work-service";
 import type { WorkStatus } from "../modules/works/work-service";
@@ -49,8 +53,20 @@ interface ErrorResponse {
   };
 }
 
-/** 虚拟支付发货推送事件名：只处理这一种，其余 xpay_* 事件直接回成功以免平台重试。 */
+/** 虚拟支付发货推送事件名。 */
 const DELIVERY_EVENT = "xpay_goods_deliver_notify";
+/**
+ * 退款推送事件名。
+ *
+ * 必须接：退款是否发生不由我们决定（iOS 上用户在 App Store 自助申请、Apple 自行审批），
+ * 不接就等于「钱退给用户了，虚拟商品还留在他手里」。
+ */
+const REFUND_EVENT = "xpay_refund_notify";
+/**
+ * iOS 退款问询事件名。Apple 会重复三次发起，3 秒内不应答平台就回「不确定」，
+ * 退款决定权完全交给 Apple —— 所以我们必须答，而且要快。
+ */
+const IOS_REFUND_QUERY_EVENT = "xpay_subscribe_ios_refund_query_notify";
 
 function requestId(): string {
   return `req_${randomUUID().replace(/-/g, "")}`;
@@ -124,6 +140,99 @@ function parseDeliveryNotification(rawBody: string): DeliveryNotification | null
     actualPriceFen: readNumber(xmlValue(rawBody, "ActualPrice")),
     attach: xmlValue(rawBody, "Attach"),
   };
+}
+
+/**
+ * 取出推送的事件名（XML 与 JSON 两种投递都要支持）。
+ *
+ * 抽出来是因为路由必须先知道「这是哪一类事件」才能决定怎么应答：
+ * 退款问询要回 JSON 业务结果，其余事件回 ErrCode。
+ */
+function parseEventName(rawBody: string): string | null {
+  const trimmed = rawBody.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("{")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return stringField(parsed as Record<string, unknown>, "Event");
+  }
+  return xmlValue(trimmed, "Event");
+}
+
+/**
+ * 解析退款推送（xpay_refund_notify）。
+ *
+ * 同样没有签名，字段只用于定位订单；是否真的扣回由 payment-service 侧按订单状态决定。
+ */
+function parseRefundNotification(rawBody: string): RefundNotification {
+  const trimmed = rawBody.trim();
+  if (trimmed.startsWith("{")) {
+    const record = parseJsonRecord(trimmed);
+    return {
+      openId: stringField(record, "OpenId") ?? "",
+      mchOrderId: stringField(record, "MchOrderId"),
+      attach: stringField(record, "Attach"),
+      wxRefundId: stringField(record, "WxRefundId"),
+      refundFeeFen: numberField(record, "RefundFee"),
+      retCode: numberField(record, "RetCode"),
+      retMsg: stringField(record, "RetMsg"),
+      refundSuccTimestamp: numberField(record, "RefundSuccTimestamp"),
+    };
+  }
+  return {
+    openId: xmlValue(trimmed, "OpenId") ?? "",
+    mchOrderId: xmlValue(trimmed, "MchOrderId"),
+    attach: xmlValue(trimmed, "Attach"),
+    wxRefundId: xmlValue(trimmed, "WxRefundId"),
+    refundFeeFen: readNumber(xmlValue(trimmed, "RefundFee")),
+    retCode: readNumber(xmlValue(trimmed, "RetCode")),
+    retMsg: xmlValue(trimmed, "RetMsg"),
+    refundSuccTimestamp: readNumber(xmlValue(trimmed, "RefundSuccTimestamp")),
+  };
+}
+
+/** 解析 iOS 退款问询（xpay_subscribe_ios_refund_query_notify）。 */
+function parseIosRefundQuery(rawBody: string): IosRefundQueryNotification {
+  const trimmed = rawBody.trim();
+  if (trimmed.startsWith("{")) {
+    const record = parseJsonRecord(trimmed);
+    return {
+      refundTimeSeconds: numberField(record, "refund_time"),
+      channelBill: stringField(record, "channel_bill"),
+      productId: stringField(record, "product_id"),
+      count: numberField(record, "p_count"),
+      refundRequestReason: stringField(record, "refund_request_reason"),
+      provideStatus: numberField(record, "provide_status"),
+      payOrderId: stringField(record, "pay_order_id"),
+    };
+  }
+  return {
+    refundTimeSeconds: readNumber(xmlValue(trimmed, "refund_time")),
+    channelBill: xmlValue(trimmed, "channel_bill"),
+    productId: xmlValue(trimmed, "product_id"),
+    count: readNumber(xmlValue(trimmed, "p_count")),
+    refundRequestReason: xmlValue(trimmed, "refund_request_reason"),
+    provideStatus: readNumber(xmlValue(trimmed, "provide_status")),
+    payOrderId: xmlValue(trimmed, "pay_order_id"),
+  };
+}
+
+function parseJsonRecord(rawBody: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    throw invalidArgument("虚拟支付推送 JSON 格式不正确");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw invalidArgument("虚拟支付推送格式不正确");
+  }
+  return parsed as Record<string, unknown>;
 }
 
 function stringField(source: Record<string, unknown>, key: string): string | null {
@@ -640,9 +749,71 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       // 只能靠猜 Content-Type 分支，出错时还难以定位是哪条链路。
       if (request.method === "POST" && url.pathname === "/api/payments/virtual-notify") {
         if (url.searchParams.size > 0) throw invalidArgument("虚拟支付回调接口不接受查询参数");
+        const rawBody = await readRawBody(request);
+        const eventName = parseEventName(rawBody);
+
+        /**
+         * iOS 退款问询走**完全独立的应答协议**：回的是 result_code / result_info / evidence，
+         * 不是 ErrCode。而且它有时限 —— 3 秒内不答，平台就向 Apple 回「不确定」。
+         * 所以异常分支也必须答，宁可放过（result_code=0）也不能不答：
+         * 不答等于放弃举证、把退款决定权整个交给 Apple。
+         */
+        if (eventName === IOS_REFUND_QUERY_EVENT) {
+          try {
+            const answer = await dependencies.payments.answerIosRefundQuery(parseIosRefundQuery(rawBody));
+            sendJson(response, 200, {
+              result_code: answer.resultCode,
+              result_info: answer.resultInfo,
+              evidence: answer.evidence,
+            });
+          } catch {
+            console.error(JSON.stringify({
+              event: "virtual_payment_ios_refund_query_failed",
+              requestId: id,
+            }));
+            sendJson(response, 200, {
+              result_code: 0,
+              result_info: "处理异常，不主张拒绝退款",
+              evidence: "服务端未能完成举证",
+            });
+          }
+          return;
+        }
+
+        const handler = eventName === REFUND_EVENT
+          ? async () => {
+            await dependencies.payments.handleRefund(parseRefundNotification(rawBody));
+          }
+          : eventName === DELIVERY_EVENT
+            ? async () => {
+              // 已按事件名确认过是发货推送，这里的 null 分支只可能是解析层的防御性返回
+              const delivery = parseDeliveryNotification(rawBody);
+              if (delivery) await dependencies.payments.handleDelivery(delivery);
+            }
+            : null;
+
+        /**
+         * 其余 xpay_* 事件（退款/投诉/风控/代币支付）一律回成功让平台停止重试，
+         * 但**必须留下事件名**。此前这里是静默吞掉的：商户被管控、用户发起投诉
+         * 这种事发生时我们连一行日志都没有。
+         */
+        if (handler === null) {
+          console.warn(JSON.stringify({
+            event: "virtual_payment_event_ignored",
+            requestId: id,
+            eventName,
+          }));
+          sendRaw(
+            response,
+            200,
+            "application/xml",
+            "<xml><ErrCode>0</ErrCode><ErrMsg><![CDATA[success]]></ErrMsg></xml>",
+          );
+          return;
+        }
+
         try {
-          const delivery = parseDeliveryNotification(await readRawBody(request));
-          if (delivery) await dependencies.payments.handleDelivery(delivery);
+          await handler();
           sendRaw(
             response,
             200,
@@ -652,12 +823,17 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         } catch (error: unknown) {
           if (error instanceof AppError) {
             console.warn(JSON.stringify({
-              event: "virtual_payment_delivery_rejected",
+              event: "virtual_payment_callback_rejected",
               requestId: id,
+              eventName,
               errorCode: error.code,
             }));
           } else {
-            console.error(JSON.stringify({ event: "virtual_payment_delivery_failed", requestId: id }));
+            console.error(JSON.stringify({
+              event: "virtual_payment_callback_failed",
+              requestId: id,
+              eventName,
+            }));
           }
           // 必须返回 200 + ErrCode≠0：平台只在 HTTP 层成功时才读 ErrCode 决定是否重试，
           // 直接回 4xx/5xx 会被当作网络失败，导致同样的错误被重试 15 次。
@@ -665,7 +841,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
             response,
             200,
             "application/xml",
-            "<xml><ErrCode>1</ErrCode><ErrMsg><![CDATA[发货处理失败]]></ErrMsg></xml>",
+            "<xml><ErrCode>1</ErrCode><ErrMsg><![CDATA[处理失败]]></ErrMsg></xml>",
           );
         }
         return;
