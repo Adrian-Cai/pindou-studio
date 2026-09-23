@@ -105,7 +105,9 @@ jobs:
       - name: Resolve PR refs
         id: pr-context
         if: github.event_name == 'issue_comment'
-        uses: actions/github-script@v7
+        # v7 是 node20 运行时，随 CI 一起升到 v9；本脚本只用 github.rest / core.setOutput，
+        # 不涉及 v9 的两处破坏性变更（require('@actions/github')、注入的 getOctokit）。
+        uses: actions/github-script@v9
         with:
           script: |
             const prNumber = context.issue.number;

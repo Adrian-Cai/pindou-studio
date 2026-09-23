@@ -1,5 +1,9 @@
 name: CI
 
+# 官方 action 的主版本下限：checkout / setup-node 必须 >= v5。v4 的 action.yml 声明
+# using: node20，而 Runner 已默认 Node 24，会在 job 摘要里报「Node.js 20 is deprecated
+# ... forced to run on Node.js 24」；Node 20 二进制已从 Runner 镜像移除，继续留在 v4
+# 会由告警升级为失败。此处固定当前最新的 v7（v5 起即为 node24 运行时）。
 on:
   push:
     branches:
@@ -23,10 +27,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -55,10 +59,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
