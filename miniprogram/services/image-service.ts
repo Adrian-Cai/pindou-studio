@@ -5,7 +5,8 @@
  *       1024 用于内容安全与上传、并调用标准生成流程产出 PatternDraft；不负责云端读写与下载。
  * 调用方：生成页（standard / AI）在拿到用户图片后调用。
  * 关键点：部分真机/开发者工具禁止直接读选择器临时路径文件头，此时跳过校验交由 <image> 解码；
- *       persistImage 负责把临时路径落到 USER_DATA_PATH，AI 任务的封面与重试都依赖它。
+ *       persistImage 负责把临时路径落到 USER_DATA_PATH，AI 任务的封面与重试都依赖它；
+ *       stripAiWatermarkBand 用在 AI 链路，产物落盘前先裁掉平台烙的「AI生成」标识带。
  */
 import { DEFAULT_PATTERN_SETTINGS } from '../config/product'
 import type { GenerationMode, PatternDraft, PatternSettings } from '../models/pattern'
@@ -167,6 +168,72 @@ function isImagePickerCancel(error: unknown): boolean {
   if (typeof error !== 'object' || error === null || !('errMsg' in error)) return false
   const errMsg = (error as { errMsg?: unknown }).errMsg
   return typeof errMsg === 'string' && errMsg.toLowerCase().includes('cancel')
+}
+
+/**
+ * AI 产物底部水印带的裁切比例。
+ * 混元生图（AR 链路）会在成果图最底部烙上「AI生成」显式标识，实测文字上沿在
+ * 距底边约 9.5% 图高处，这里取 12% 留出余量；上游若更换标识规格，只改这一个常量。
+ */
+export const AI_WATERMARK_BAND_RATIO = 0.12
+
+/**
+ * 裁掉 AI 产物底部的水印带，返回裁切后的临时图片路径。
+ *
+ * 背景：平台把显式标识同步烙在产物底部，而拼豆图纸是按像素降采样生成格子的，
+ *       不裁掉的话这几个字会被采样成一格格珠子，混进成品图、施工图与材料清单。
+ * 边界：只做「丢掉底部一条带」，不识别水印文字；解码或导出失败时回退原图，
+ *       绝不因为裁图失败而阻断生成链路。
+ * 调用方：services/ai-generation-flow.ts（下载产物后、进图案引擎前）。
+ * @param sourceImagePath 已落盘的 AI 产物路径
+ * @returns 裁切后的临时图片路径；失败时为原路径
+ */
+export async function stripAiWatermarkBand(sourceImagePath: string): Promise<string> {
+  try {
+    const { width, height } = await getImageInfo(sourceImagePath)
+    const keepHeight = Math.max(1, Math.round(height * (1 - AI_WATERMARK_BAND_RATIO)))
+    if (keepHeight >= height) return sourceImagePath
+
+    const canvas = wx.createOffscreenCanvas({ type: '2d', width, height: keepHeight })
+    const context = canvas.getContext('2d') as {
+      drawImage(
+        image: WechatMiniprogram.Image,
+        sx: number,
+        sy: number,
+        sourceWidth: number,
+        sourceHeight: number,
+        dx: number,
+        dy: number,
+        destinationWidth: number,
+        destinationHeight: number,
+      ): void
+    }
+    const image = canvas.createImage()
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve()
+      image.onerror = () => reject(new ImageDecodeError())
+      image.src = sourceImagePath
+    })
+    // 九参 drawImage：只取左上角 width×keepHeight 区域，丢掉的正是底部水印带
+    context.drawImage(image, 0, 0, width, keepHeight, 0, 0, width, keepHeight)
+
+    return await new Promise<string>((resolve, reject) => {
+      wx.canvasToTempFilePath({
+        canvas: canvas as unknown as WechatMiniprogram.IAnyObject,
+        fileType: 'png',
+        quality: 1,
+        width,
+        height: keepHeight,
+        destWidth: width,
+        destHeight: keepHeight,
+        success: ({ tempFilePath }) => resolve(tempFilePath),
+        fail: reject,
+      })
+    })
+  } catch (error) {
+    console.warn('AI 产物水印带裁切失败，回退使用原图', error)
+    return sourceImagePath
+  }
 }
 
 /**
