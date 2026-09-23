@@ -326,6 +326,20 @@ function parseVirtualPayConfig(
   };
 }
 
+function parseVirtualPayReconcileConfig(
+  env: NodeJS.ProcessEnv,
+  issues: string[],
+): VirtualPayReconcileConfig {
+  const graceMs = integer(env, "VIRTUAL_PAY_RECONCILE_GRACE_MS", 3 * 60_000, 30_000, 30 * 60_000, issues);
+  return {
+    intervalMs: integer(env, "VIRTUAL_PAY_RECONCILE_INTERVAL_MS", 5 * 60_000, 60_000, 60 * 60_000, issues),
+    graceMs,
+    // 兜底窗口必须不小于静默期，否则订单刚过静默期就被判 stalled，等于把每个正常下单的用户都告警一遍
+    staleAfterMs: integer(env, "VIRTUAL_PAY_RECONCILE_STALE_AFTER_MS", 30 * 60_000, graceMs, 7 * 24 * 60 * 60_000, issues),
+    batchSize: integer(env, "VIRTUAL_PAY_RECONCILE_BATCH_SIZE", 100, 1, 1_000, issues),
+  };
+}
+
 function parseHunyuanImageConfig(env: NodeJS.ProcessEnv, issues: string[]): HunyuanImageConfig {
   const apiKey = env.HUNYUAN_IMAGE_API_KEY?.trim();
   const baseUrl = env.HUNYUAN_IMAGE_BASE_URL?.trim();
@@ -401,6 +415,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     },
     wechatPay: parseWeChatPayConfig(env, wechatAppId, issues),
     virtualPay: parseVirtualPayConfig(env, wechatAppId, issues),
+    virtualPayReconcile: parseVirtualPayReconcileConfig(env, issues),
     hunyuanImage: parseHunyuanImageConfig(env, issues),
     auth: {
       openidHashSecret: requiredSecret(env, "OPENID_HASH_SECRET", 32, issues),
