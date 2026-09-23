@@ -12,6 +12,12 @@ const TEXT_IMAGE_MODEL = 'HY-Image-3.0-Plus-4090-Tob-v1.0'
 const ALLOWED_SIZES = ['1024x1024', '1280x720', '720x1280', '1280x1280']
 const MAX_PROMPT_LENGTH = 500
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+/**
+ * 产物右下角的显式标识文案（SDK 的 footnote 参数），上限 16 个字符。
+ * 平台默认烙「AI生成」且不支持关闭（见 CloudBase 社区 issue #1317），只能换文案，
+ * 这里换成自家小程序名。要改回含“AI 生成”字样只需改这一个常量。
+ */
+const IMAGE_FOOTNOTE = '小露拼豆'
 
 /**
  * 云函数入口：解析入参并触发一次混元生图，产物上传云存储后回包。
@@ -44,6 +50,8 @@ exports.main = async (event) => {
       prompt,
       ...(image ? { images: [image.base64] } : {}),
       size,
+      // 覆盖平台默认角标文案；服务端在生图时同步写入，不增加额外耗时
+      footnote: IMAGE_FOOTNOTE,
       revise: { value: image ? false : true },
     })
     const generatedImage = response?.data?.[0]
