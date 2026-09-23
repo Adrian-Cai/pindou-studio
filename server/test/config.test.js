@@ -134,6 +134,44 @@ test("production configuration refuses incomplete payment, AI, HTTPS, storage an
   );
 });
 
+test("虚拟支付推送凭据：全空合法，配了一半或长度不对则拒绝启动", () => {
+  const encodingAesKey = "a".repeat(43);
+  assert.deepEqual(readConfig(validEnvironment).virtualPayPush, {
+    token: "",
+    encodingAesKey: "",
+    appId: "test_app_id",
+  });
+  assert.deepEqual(
+    readConfig({ ...validEnvironment, VIRTUAL_PAY_PUSH_TOKEN: "push-token" }).virtualPayPush,
+    { token: "push-token", encodingAesKey: "", appId: "test_app_id" },
+  );
+  assert.throws(
+    () => readConfig({
+      ...validEnvironment,
+      VIRTUAL_PAY_PUSH_TOKEN: "push-token",
+      VIRTUAL_PAY_ENCODING_AES_KEY: "too-short",
+    }),
+    (error) => error instanceof ConfigError
+      && error.issues.includes("VIRTUAL_PAY_ENCODING_AES_KEY 必须是 43 个字符"),
+  );
+  // 只配密钥不配 Token：能解出明文却不知道是谁发的，属于半吊子配置
+  assert.throws(
+    () => readConfig({ ...validEnvironment, VIRTUAL_PAY_ENCODING_AES_KEY: encodingAesKey }),
+    (error) => error instanceof ConfigError
+      && error.issues.includes("配置了 VIRTUAL_PAY_ENCODING_AES_KEY 时必须同时配置 VIRTUAL_PAY_PUSH_TOKEN"),
+  );
+  assert.throws(
+    () => readConfig({
+      ...validEnvironment,
+      APP_ENV: "production",
+      VIRTUAL_PAY_OFFER_ID: "offer-1",
+      VIRTUAL_PAY_APP_KEY: "app-key-1",
+    }),
+    (error) => error instanceof ConfigError
+      && error.issues.includes("生产环境启用虚拟支付时必须配置 VIRTUAL_PAY_PUSH_TOKEN"),
+  );
+});
+
 test("content security async media checking is enabled for production and cannot be disabled", () => {
   const production = {
     ...validEnvironment,

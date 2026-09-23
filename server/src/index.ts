@@ -141,6 +141,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         aiRateLimiter,
         contentSecurity,
         contentSecurityMediaMaximumBytes: config.contentSecurity.mediaMaximumBytes,
+        virtualPayPush: config.virtualPayPush,
         aiGenerations,
         capabilities: {
           wechatPay: paymentGateway.configured,

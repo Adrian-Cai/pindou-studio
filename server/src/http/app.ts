@@ -17,6 +17,13 @@ import type {
   IosRefundQueryNotification,
   RefundNotification,
 } from "../modules/payments/virtual-pay-client";
+import type { VirtualPayPushCredentials } from "../modules/payments/virtual-pay-push";
+import {
+  decryptPushBody,
+  extractPushCiphertext,
+  verifyPushRequest,
+  verifyPushSignature,
+} from "../modules/payments/virtual-pay-push";
 import { getLegalDocument } from "../modules/legal/legal-document-service";
 import type { FavoriteListOptions, PostgresWorkService } from "../modules/works/work-service";
 import type { WorkStatus } from "../modules/works/work-service";
@@ -317,6 +324,11 @@ export interface HttpApplicationDependencies {
   /** 作品标题保存前必须经过内容安全校验；缺失时应 fail closed */
   readonly contentSecurity: ContentSecurityService;
   readonly contentSecurityMediaMaximumBytes?: number;
+  /**
+   * 虚拟支付消息推送的凭据（MP 后台「消息推送配置」里填的 Token / EncodingAESKey）。
+   * 缺失时握手会直接 503 —— 宁可让后台配置明着失败，也不要假装配好了却一条推送都收不到。
+   */
+  readonly virtualPayPush?: VirtualPayPushCredentials;
   readonly capabilities?: {
     readonly wechatPay: boolean;
     readonly aiGeneration: boolean;
@@ -747,9 +759,70 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       // 虚拟支付发货推送（xpay_goods_deliver_notify）：MP 后台需配置为回调 URL + 订阅该事件。
       // 与旧 notify 分开是两个独立端点：两套协议的报文格式与响应要求都不同，混在一个路由里
       // 只能靠猜 Content-Type 分支，出错时还难以定位是哪条链路。
+      /**
+       * GET 不是业务请求，而是 MP 后台的 URL 握手：点「保存」或「模拟推送」时微信会带
+       * signature / timestamp / nonce / echostr 打过来，校验通过后必须**原样回显 echostr**，
+       * 否则后台直接判定 URL 不可用 —— 连配置都存不进去，后面一条推送都收不到。
+       */
+      if (request.method === "GET" && url.pathname === "/api/payments/virtual-notify") {
+        const push = dependencies.virtualPayPush;
+        if (!push?.token) {
+          throw new AppError(503, "VIRTUAL_PAY_PUSH_NOT_CONFIGURED", "虚拟支付推送尚未配置 Token");
+        }
+        if (!verifyPushSignature(push.token, {
+          signature: url.searchParams.get("signature") ?? undefined,
+          timestamp: url.searchParams.get("timestamp") ?? undefined,
+          nonce: url.searchParams.get("nonce") ?? undefined,
+        })) {
+          throw new AppError(403, "INVALID_CALLBACK_SIGNATURE", "微信回调校验失败");
+        }
+        sendText(response, url.searchParams.get("echostr") ?? "success");
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/payments/virtual-notify") {
-        if (url.searchParams.size > 0) throw invalidArgument("虚拟支付回调接口不接受查询参数");
-        const rawBody = await readRawBody(request);
+        const push = dependencies.virtualPayPush;
+        /**
+         * 这里曾经拒绝一切带查询参数的请求，等于把全部推送都 400 掉 —— 微信 POST 时
+         * 一定带 signature / timestamp / nonce（安全模式还带 msg_signature、encrypt_type）。
+         * 现在改成「校验而不是拒绝」。
+         */
+        const query = {
+          signature: url.searchParams.get("signature") ?? undefined,
+          msgSignature: url.searchParams.get("msg_signature") ?? undefined,
+          timestamp: url.searchParams.get("timestamp") ?? undefined,
+          nonce: url.searchParams.get("nonce") ?? undefined,
+        };
+        const received = await readRawBody(request);
+        let rawBody = received;
+        try {
+          // 没配 EncodingAESKey 就说明后台选的是明文模式，硬解只会把明文当密文炸掉
+          const ciphertext = push?.encodingAesKey ? extractPushCiphertext(received) : null;
+          if (push && !verifyPushRequest(push, query, ciphertext)) {
+            throw new AppError(403, "INVALID_CALLBACK_SIGNATURE", "虚拟支付推送签名校验失败");
+          }
+          if (ciphertext && push?.encodingAesKey) {
+            rawBody = decryptPushBody(ciphertext, push.encodingAesKey, push.appId);
+          }
+        } catch (error: unknown) {
+          /**
+           * 验签 / 解密失败一律回 ErrCode=1 而不是 4xx：这类故障的根因在配置，
+           * 重试多少次结果都一样，回 4xx 会被平台当成网络失败重试 15 次，
+           * 把真正需要人看的告警淹没在噪音里。
+           */
+          console.error(JSON.stringify({
+            event: "virtual_payment_push_rejected",
+            requestId: id,
+            errorCode: error instanceof AppError ? error.code : "UNKNOWN",
+          }));
+          sendRaw(
+            response,
+            200,
+            "application/xml",
+            "<xml><ErrCode>1</ErrCode><ErrMsg><![CDATA[处理失败]]></ErrMsg></xml>",
+          );
+          return;
+        }
         const eventName = parseEventName(rawBody);
 
         /**

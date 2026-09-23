@@ -72,6 +72,23 @@ export interface VirtualPayReconcileConfig {
   readonly batchSize: number;
 }
 
+/**
+ * 虚拟支付消息推送（MP 后台「消息推送配置」）的凭据。
+ *
+ * 与虚拟支付本身的 OfferID/AppKey 是两回事：那两个用来**调微信接口**，这两个用来
+ * **收微信推送**——握手校验 Token、安全模式下解密消息体。两者都从 MP 后台同一片
+ * 配置区生成，但作用面不同，密钥也应当分开，避免一处泄露连带另一处。
+ *
+ * 全空是合法的：表示后台走明文模式且服务端不校验来源（推送本身不被信任，
+ * 放款依然靠 query_order 验真）。一旦配了 encodingAesKey 就必须同时配 token，
+ * 否则解开了密文却不知道是谁发的。
+ */
+export interface VirtualPayPushConfig {
+  readonly token: string;
+  readonly encodingAesKey: string;
+  readonly appId: string;
+}
+
 export type HunyuanImageConfig =
   | { readonly enabled: false }
   | {
@@ -97,6 +114,7 @@ export interface ServerConfig {
   readonly wechatPay: WeChatPayConfig;
   readonly virtualPay: VirtualPayConfig;
   readonly virtualPayReconcile: VirtualPayReconcileConfig;
+  readonly virtualPayPush: VirtualPayPushConfig;
   readonly hunyuanImage: HunyuanImageConfig;
   readonly auth: {
     readonly openidHashSecret: string;
@@ -340,6 +358,32 @@ function parseVirtualPayReconcileConfig(
   };
 }
 
+/**
+ * 解析虚拟支付推送凭据。
+ *
+ * EncodingAESKey 的长度必须严格校验：它不是自由文本，微信生成时固定 43 个字符，
+ * 长度不对会在解密那一刻才炸（而且表现为「所有推送都解密失败」这种很难归因的故障），
+ * 不如在启动阶段就挡住。
+ */
+function parseVirtualPayPushConfig(
+  env: NodeJS.ProcessEnv,
+  appId: string,
+  issues: string[],
+): VirtualPayPushConfig {
+  const token = env.VIRTUAL_PAY_PUSH_TOKEN?.trim() ?? "";
+  const encodingAesKey = env.VIRTUAL_PAY_ENCODING_AES_KEY?.trim() ?? "";
+  if (encodingAesKey && encodingAesKey.length !== 43) {
+    issues.push("VIRTUAL_PAY_ENCODING_AES_KEY 必须是 43 个字符");
+  }
+  if (encodingAesKey && !token) {
+    issues.push("配置了 VIRTUAL_PAY_ENCODING_AES_KEY 时必须同时配置 VIRTUAL_PAY_PUSH_TOKEN");
+  }
+  if (token && /\s/.test(token)) {
+    issues.push("VIRTUAL_PAY_PUSH_TOKEN 不能包含空白字符");
+  }
+  return { token, encodingAesKey, appId };
+}
+
 function parseHunyuanImageConfig(env: NodeJS.ProcessEnv, issues: string[]): HunyuanImageConfig {
   const apiKey = env.HUNYUAN_IMAGE_API_KEY?.trim();
   const baseUrl = env.HUNYUAN_IMAGE_BASE_URL?.trim();
@@ -416,6 +460,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     wechatPay: parseWeChatPayConfig(env, wechatAppId, issues),
     virtualPay: parseVirtualPayConfig(env, wechatAppId, issues),
     virtualPayReconcile: parseVirtualPayReconcileConfig(env, issues),
+    virtualPayPush: parseVirtualPayPushConfig(env, wechatAppId, issues),
     hunyuanImage: parseHunyuanImageConfig(env, issues),
     auth: {
       openidHashSecret: requiredSecret(env, "OPENID_HASH_SECRET", 32, issues),
@@ -514,6 +559,16 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     }
     if (!config.contentSecurity.mediaPublicBaseUrl.startsWith("https://")) {
       issues.push("生产环境 CONTENT_SECURITY_MEDIA_PUBLIC_BASE_URL 必须使用 HTTPS");
+    }
+    /**
+     * 启用虚拟支付就必须配推送 Token：MP 后台保存推送配置时会对 URL 做一次 GET 握手，
+     * 服务端没有同一个 Token 就永远验不过，配置存不下来，发货 / 退款 / iOS 问询
+     * 三条推送全断。这项这里直接判死，是因为它失败得极其安静 —— 服务照常起来、
+     * 下单照常走通，只有「付了钱收不到次数」和「退款了额度没扣回」会在很久之后
+     * 才以客诉的形式冒出来。
+     */
+    if (config.virtualPay.enabled && !config.virtualPayPush.token) {
+      issues.push("生产环境启用虚拟支付时必须配置 VIRTUAL_PAY_PUSH_TOKEN");
     }
   }
 
