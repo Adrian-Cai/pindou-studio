@@ -7,7 +7,7 @@
 - 原始结果：一次性本地产物（`.tmp-ocr-scan-miniprogram.txt` 269 条、medium+high 摘录 `.tmp-ocr-significant.txt`）。
   这两个文件属于临时文件、按 `.gitignore` 的 `.tmp*` 规则**未纳入版本库**，已于整理工作区时清理；扫描结论以本文档为准，不必再找原始文件。
 
-处置结论：`已修` 32 / `驳回` 114 / `降级` 118 —— **269 条全部给出结论，无悬空项**。
+处置结论：`已修` 57 / `驳回` 120 / `降级` 92 —— **269 条全部给出结论，无悬空项**。
 `驳回` = 误报或有意设计（说明列已注明理由）；`降级` = 问题成立但严重度被高估（多为触发条件苛刻或属加固建议），本轮不改代码。
 
 ## 处置总览
@@ -15,9 +15,9 @@
 | 严重度 | 已修 | 驳回 | 降级 | 小计 |
 |---|---|---|---|---|
 | high | 32 | 7 | 0 | 39 |
-| medium | 5 | 45 | 81 | 131 |
-| low | 0 | 62 | 37 | 99 |
-| **合计** | **37** | **114** | **118** | **269** |
+| medium | 18 | 51 | 62 | 131 |
+| low | 7 | 62 | 30 | 99 |
+| **合计** | **57** | **120** | **92** | **269** |
 
 ## 本轮实际改动（对应提交）
 
@@ -30,6 +30,57 @@
 | `fbb1427` | 收敛异步异常兜底与页面健壮性 | app.ts 未捕获 Promise、navigation 字段兜底、api 配置 |
 | `abc2668` | 修正云端作品读取的调用顺序 | 云详情读取的 saveWork/setCurrentDraft 顺序 |
 | 本次续改 | 收藏分页本地页码、dataset 缺值守卫 | `favorites/index.ts`、`help/index.ts` 两处 NaN / 空串隐患 |
+| `455a006` | 图纸渲染、列表交互与作品同步的边界守卫 | 渲染网格/画布高度、材料统计口径、重命名陈旧快照、auth 时间字段、median-cut 入参污染、rgbToHex、getTextColor、空 modal、tab-bar 首帧高亮、新建幂等键 |
+| `e8cb3fa` | 补回候选色数量的非法值守卫 | `median-cut` 的 `candidateLimit`（`455a006` 误把判断提交成 `if (false)` 的修正） |
+
+## 第二轮：复核未修复项并续改（2026-09-23 晚）
+
+首轮把 118 条判成「降级」，但**说明列里约 80 条共用同一句模板**
+（「缺陷成立但触发条件苛刻……本轮不改动」），读起来分不出哪些是真看过代码、哪些是批量填的。
+所以第二轮只做两件事：**逐条回代码核对**，以及**把确实没修的补上**。
+
+### 一、清单有滞后：6 条其实早就修好了
+
+回代码核对时发现下列 6 条在现有代码里已有守卫，清单仍记着「降级」——首轮判定时依据的是旧行号/旧版本。
+本轮只把结论改成 `已修`，**没有动代码**：#61、#85、#102、#127、#139、#203。
+
+### 二、6 条改判驳回（原为降级）
+
+- #51 / #87 / #88 / #90：都是误报，代码里已有对应兜底，依据写在说明列
+- #140 边缘检测允许 0 宽高：**0×0 返回空数组是数学上正确的结果**，且被
+  `phase-6-edge-protection` 用例显式锁定（`0,0` 必须返回 `[]` 且不抛错）；调用方网格尺寸恒 ≥1。
+  本轮一度加严成「必须 >0」，直接把那条用例跑红了 —— 已回退，并把回退理由写进代码注释
+- #156 `app-store.saveWork` 直写同步字段：非云端分支本就已走 `resolveSyncFields`，
+  AI 占位作品进不了同步队列
+
+### 三、本轮实际修掉的 14 条
+
+| # | 位置 | 修的是什么 |
+|---|---|---|
+| 98 / 217 | `pattern-render-service.ts` | 网格尺寸、下载图画布高度加 `requireGridSize` / `requireCanvasHeight`：非正有限数直接抛错，不再算出 `Infinity` 坐标导出一张空白图 |
+| 103 | `packages/result/utils.ts` | 材料统计去重键按小写归一，与 `encodePatternCells` 同口径，消除「同一颜色拆成两行」 |
+| 111 | `pages/projects/index.ts` | 重命名在 `await` 之后**重新取一次快照**再写回：期间若完成云同步（作品 id 已变），旧快照会把被替换掉的旧记录塞回列表 |
+| 122 | `services/auth-service.ts` | `createdAt` / `quota.resetsAt` 补 `Date.parse` 校验，与 `aiGeneration.resetsAt` 用同一把尺子 |
+| 129 | `services/download-service.ts` | `fileType` 一并 `encodeURIComponent`，与 `query` 的编码口径一致 |
+| 138 | `color-utils.ts` | `rgbToHex` 先把分量收敛到 0~255，越界不再拼出 `-1` / `NaN` 这类非法颜色串（canvas 不报错，只是不画） |
+| 141 | `median-cut.ts` | 入桶前复制像素数组：`sort` 是原地排序，原实现会**重排调用方传入的数据** |
+| 152 | `services/work-service.ts` | 新建作品强制作品 id 非空，避免幂等键退化成 `create-` 后被服务端折叠成一笔 |
+| 174 | `components/main-tab-bar/index.ts` | 初始 `currentSelected` 改 `-1`（先不高亮），避免首帧错亮在首页 |
+| 184 | `packages/account/about/index.ts` | 未知 id 直接 return，不再弹一个只有标题的空 modal |
+| 221 | `packages/result/utils.ts` | `getTextColor` 改用十六进制正则：脏色值不再一律落白字（白底白字等于看不见） |
+| 247 / 248 | `median-cut.ts` | 空桶取均值抛错（不再返回 NaN 三元组）；候选数非正整数抛错（不再静默塌成单色） |
+
+### 四、测试与踩坑
+
+- 新增 `test/pattern-generation/phase-7-ocr-hardening.test.js`（已注册进 `run-tests.js`）锁住其中 5 处行为。
+  全量：`tsc --noEmit` 通过；`node test/pattern-generation/run-tests.js` **62/62 通过**。
+- 变异验证：5 处守卫逐个撤掉，对应的 5 条用例**一一对位转红**，无连带失败。
+- **踩坑（值得记）：本仓库有并行会话在自动提交。** 第一版变异脚本在主工作树里「改坏 → 跑 → 还原」，
+  中间态被自动提交机制当成真实改动提交了，`455a006` 里就混进一处 `if (false)` 的死守卫，
+  靠 `e8cb3fa` 才补回来。**这类仓库里做变异验证必须放到独立 worktree**（本轮后半程即改用
+  `git worktree add --detach <dir> HEAD` 在隔离目录里跑，跑完 `git worktree remove`）。
+- 变异本身也要避开「改完留下未使用变量」的写法：本仓开了 `noUnusedLocals`，
+  那样只会让 tsc 编译失败，看起来是红了，其实并没验证到被测行为。
 
 ## 复核方法说明
 
@@ -90,7 +141,7 @@
 | 48 | medium | maintainability | `miniprogram/config/api.ts:3-7` | All three environments (develop/trial/release) hardcode the exact same | 降级 | 环境判定与 URL 收敛属配置策略，非缺陷；保留现状避免改动影响多端构建 |
 | 49 | medium | bug | `miniprogram/config/api.ts:41-46` | buildAiFileUrl rejects valid media URLs that carry query strings or fragments because | 降级 | 环境判定与 URL 收敛属配置策略，非缺陷；保留现状避免改动影响多端构建 |
 | 50 | medium | bug | `miniprogram/config/api.ts:70-78` | getMiniProgramEnvironment silently returns 'develop' for ANY non-'trial'/'release' | 降级 | 环境判定与 URL 收敛属配置策略，非缺陷；保留现状避免改动影响多端构建 |
-| 51 | medium | bug | `miniprogram/config/cloud.ts:9-10` | wx.cloud.init() is called fire-and-forget and `initialized = true` is set | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 51 | medium | bug | `miniprogram/config/cloud.ts:9-10` | wx.cloud.init() is called fire-and-forget and `initialized = true` is set | 驳回 | wx.cloud.init 为同步调用，init 之后立刻置位不存在竞态；抛错时也不会误标 initialized |
 | 52 | medium | maintainability | `miniprogram/custom-tab-bar/index.ts:11-11` | The business route paths are hardcoded in the component. This violates | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 53 | medium | bug | `miniprogram/custom-tab-bar/index.ts:12-12` | If the current page route is not in the `routes` list, `indexOf` returns -1 and | 驳回 | 同 #41，route 未命中时退化为第 1 项而非异常索引 |
 | 54 | medium | maintainability | `miniprogram/models/pattern.ts:199-203` | resolveSyncFields documents itself as the ONLY place enforcing 'AI | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
@@ -100,7 +151,7 @@
 | 58 | medium | bug | `miniprogram/packages/account/help/index.ts:20-21` | Dataset values can be missing or malformed. `event.currentTarget.dataset.index` may | 已修 | dataset.index 缺值时 Number(undefined)=NaN，加 Number.isInteger 守卫 |
 | 59 | medium | bug | `miniprogram/packages/account/help/index.ts:25-30` | If `event.currentTarget.dataset.id` is missing/undefined, `String(undefined)` becomes | 已修 | dataset.id 缺值时 String(undefined) 会掉进空文案分支，改为缺值直接 return |
 | 60 | medium | maintainability | `miniprogram/packages/account/help/index.ts:27-27` | The navigateTo URL '/packages/account/feedback/index' is a business route | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
-| 61 | medium | bug | `miniprogram/packages/account/index.ts:100-102` | The catch block shows a hardcoded '退出前保存本地数据失败' message for ANY logout error. | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 61 | medium | bug | `miniprogram/packages/account/index.ts:100-102` | The catch block shows a hardcoded '退出前保存本地数据失败' message for ANY logout error. | 已修 | 代码已用 error.message 兜底（account/index.ts:103），清单滞后，本轮仅更正结论 |
 | 62 | medium | bug | `miniprogram/packages/account/index.ts:47-54` | In packages/account/index.ts, applyAuthState triggers wx.navigateBack on | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 63 | medium | bug | `miniprogram/packages/account/index.ts:68-71` | Concurrency hazard: refreshAccountData guards re-entry with `if | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 64 | medium | bug | `miniprogram/packages/account/privacy-document/index.ts:51-58` | When a fetch fails but cached content already exists, the error is silently swallowed | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
@@ -124,12 +175,12 @@
 | 82 | medium | maintainability | `miniprogram/packages/payment/orders/index.ts:50-50` | fetchOrders is called with a hardcoded page:1, pageSize:20 and there is | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 83 | medium | bug | `miniprogram/packages/payment/orders/index.ts:85-85` | order.id.slice(-8) assumes `id` is a string of sufficient length. If `id` is not a | 已修 | 70d3865 起 order.id 已用 String(order.id ?? '').slice(-8) 兜底 |
 | 84 | medium | bug | `miniprogram/packages/payment/orders/index.ts:89-91` | formatFen has no null/undefined guard. If `priceFen` is undefined/null (e.g. missing | 已修 | formatFen 已加 !Number.isFinite 守卫，非法金额回落 0.00 |
-| 85 | medium | bug | `miniprogram/packages/payment/orders/index.ts:93-98` | formatDateTime does not validate the parsed date. If `value` is an invalid/empty | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 85 | medium | bug | `miniprogram/packages/payment/orders/index.ts:93-98` | formatDateTime does not validate the parsed date. If `value` is an invalid/empty | 已修 | orders/index.ts 的 formatDateTime 已有 Number.isNaN(getTime()) 兜底返回空串，清单滞后 |
 | 86 | medium | performance | `miniprogram/packages/payment/payment-success/index.ts:43-48` | Parallel fetch of orders on every poll is wasteful when the order is already | 降级 | 性能建议，当前数据量下无可观测影响；列入后续优化 |
-| 87 | medium | bug | `miniprogram/packages/payment/payment-success/index.ts:47-49` | Quota fallback can yield undefined and break setData. `quotaResponse?.aiGeneration ?? | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 88 | medium | bug | `miniprogram/packages/payment/payment-success/index.ts:48-48` | Missing null check on `ordersResponse.items`. If `fetchOrders` resolves with `items` | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 87 | medium | bug | `miniprogram/packages/payment/payment-success/index.ts:47-49` | Quota fallback can yield undefined and break setData. `quotaResponse?.aiGeneration ?? | 驳回 | quota 已用 ?? 回落本地快照且判空后才 setData，不存在 undefined.remaining |
+| 88 | medium | bug | `miniprogram/packages/payment/payment-success/index.ts:48-48` | Missing null check on `ordersResponse.items`. If `fetchOrders` resolves with `items` | 驳回 | items 由 parseOrderList 校验为数组后才 map，ordersResponse.items 不可能为 null |
 | 89 | medium | security | `miniprogram/packages/payment/recharge/index.ts:83-85` | purchase() does not verify the current auth/session state before calling | 降级 | 偏加固建议（日志脱敏/输入渲染转义等），非可利用漏洞；列入安全加固待办，不在本轮改动 |
-| 90 | medium | bug | `miniprogram/packages/payment/recharge/index.ts:90-94` | paymentLoading is reset to false twice (inside try before navigation, and again in | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 90 | medium | bug | `miniprogram/packages/payment/recharge/index.ts:90-94` | paymentLoading is reset to false twice (inside try before navigation, and again in | 驳回 | finally 里有 if (this.data.paymentLoading) 守卫，成功分支已复位时不会重复 setData |
 | 91 | medium | maintainability | `miniprogram/packages/payment/services/order-service.ts:28-28` | The API path `/api/orders` and the query-string pagination params | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 92 | medium | bug | `miniprogram/packages/payment/services/order-service.ts:69-71` | The server-returned `quotaKind` and `currency` values are validated against the | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 93 | medium | maintainability | `miniprogram/packages/result/components/download-bottom-sheet/index.ts:49-51` | This `preventTouchMove` method is an empty no-op. In WeChat Mini | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
@@ -137,12 +188,12 @@
 | 95 | medium | maintainability | `miniprogram/packages/result/config/download.ts:26-29` | In packages/result/config/download.ts, | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 96 | medium | maintainability | `miniprogram/packages/result/index.json:6-8` | Component path correctness cannot be fully verified within this JSON file | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 97 | medium | bug | `miniprogram/packages/result/index.ts:466-480` | Inconsistent chart preview fallback. `createDownloadImage` returns `chartHdSrc // | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 98 | medium | bug | `miniprogram/packages/result/services/pattern-render-service.ts:124-125` | No guard against `draft.settings.width`/`height` being 0 or falsy. | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 98 | medium | bug | `miniprogram/packages/result/services/pattern-render-service.ts:124-125` | No guard against `draft.settings.width`/`height` being 0 or falsy. | 已修 | 455a006 新增 requireGridSize：网格尺寸非正整数直接抛错，避免 cellWidth 算成 Infinity 后导出空白图 |
 | 99 | medium | maintainability | `miniprogram/packages/result/services/pattern-render-service.ts:128-155` | Duplicate cell-drawing loop: `drawThumbnail` and `drawPreviewImage` | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 100 | medium | bug | `miniprogram/packages/result/services/pattern-render-service.ts:300-303` | The HD chart canvas does NOT apply `devicePixelRatio` scaling (unlike | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 101 | medium | maintainability | `miniprogram/packages/result/services/result-download-service.ts:123-127` | Error classification is done by regex over the localized wx errMsg | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
-| 102 | medium | bug | `miniprogram/packages/result/services/result-download-service.ts:157-158` | The download-record id is built with Date.now() only. Rapid successive calls (e.g. | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 103 | medium | bug | `miniprogram/packages/result/utils.ts:25-25` | summarizeMaterials keys materials by `${cell.colorCode}-${cell.color}`, but it skips | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 102 | medium | bug | `miniprogram/packages/result/services/result-download-service.ts:157-158` | The download-record id is built with Date.now() only. Rapid successive calls (e.g. | 已修 | 记录 id 已带 Math.random 随机后缀（result-download-service.ts:160），同毫秒不再互相覆盖 |
+| 103 | medium | bug | `miniprogram/packages/result/utils.ts:25-25` | summarizeMaterials keys materials by `${cell.colorCode}-${cell.color}`, but it skips | 已修 | 455a006 材料统计的去重键按小写归一，与 encodePatternCells 同口径，消除「同一颜色拆成两行」 |
 | 104 | medium | bug | `miniprogram/packages/result/utils.ts:59-65` | createDraftRenderKey computes an FNV-1a hash over a concatenation of each cell's | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 105 | medium | maintainability | `miniprogram/pages/home/index.ts:152-156` | When the page unloads while a feedback/queue tip is still visible, the | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 106 | medium | maintainability | `miniprogram/pages/home/index.ts:282-294` | The source-path and upload-status validation block here is duplicated | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
@@ -150,7 +201,7 @@
 | 108 | medium | bug | `miniprogram/pages/profile/index.ts:264-278` | Focus Area 3: `onHide` clears the `loginCloseTimer` and immediately resets the sheet | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 109 | medium | bug | `miniprogram/pages/profile/index.ts:295-307` | Focus Area 2: In `purchase()`, `paymentLoading` is set true, then set false in the | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 110 | medium | performance | `miniprogram/pages/profile/index.ts:58-61` | Focus Area 1: `appStore.subscribe` re-applies the auth snapshot on EVERY app | 降级 | 性能建议，当前数据量下无可观测影响；列入后续优化 |
-| 111 | medium | bug | `miniprogram/pages/projects/index.ts:319-328` | persistRename captures `work` from the snapshot BEFORE awaiting checkTextContent and | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 111 | medium | bug | `miniprogram/pages/projects/index.ts:319-328` | persistRename captures `work` from the snapshot BEFORE awaiting checkTextContent and | 已修 | 455a006 await 之后重新取一次作品快照再写回，避免同步替换过 id 后把旧记录塞回列表 |
 | 112 | medium | maintainability | `miniprogram/pages/projects/index.ts:355-362` | downloadWork does not actually download anything — it just resets nav | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 113 | medium | bug | `miniprogram/services/ai-generation-manager.ts:179-181` | The queue-full guard uses `listActiveAiTasks().length >= QUEUE_MAX`. | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 114 | medium | bug | `miniprogram/services/ai-generation-manager.ts:448-461` | The succeeded branch of `applyTaskToWorkItem` only patches the work when `existing` | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
@@ -161,14 +212,14 @@
 | 119 | medium | bug | `miniprogram/services/ai-task-store.ts:198-207` | When the number of NON-terminal tasks exceeds MAX_TASKS, the overflow eviction only | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 120 | medium | bug | `miniprogram/services/ai-task-store.ts:239-240` | Orphan image cleanup derives file age purely from the filename prefix | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 121 | medium | maintainability | `miniprogram/services/ai-task-store.ts:306-312` | All mutations (createAiTask, patchAiTask, removeAiTask, prune*) route | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
-| 122 | medium | bug | `miniprogram/services/auth-service.ts:110-118` | createdAt and quota.resetsAt are only checked as typeof string, but never validated | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 122 | medium | bug | `miniprogram/services/auth-service.ts:110-118` | createdAt and quota.resetsAt are only checked as typeof string, but never validated | 已修 | 455a006 createdAt / quota.resetsAt 补 Date.parse 校验，与 aiGeneration.resetsAt 用同一把尺子 |
 | 123 | medium | maintainability | `miniprogram/services/auth-service.ts:16-20` | Business API URL paths ('/api/auth/login', '/api/users/me') are hardcoded | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 124 | medium | bug | `miniprogram/services/content-security-service.ts:19-31` | The file-level doc comment states '检测成功返回 safe=true 与 checkId，供后续 AI 任务关联', but | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 125 | medium | maintainability | `miniprogram/services/content-security-service.ts:61-80` | The apiUploadFile call with identical parameters is duplicated (lines | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 126 | medium | bug | `miniprogram/services/content-security-service.ts:91-94` | parseImageContentCheck only models the success case (ImageContentCheck has safe: | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 127 | medium | bug | `miniprogram/services/download-service.ts:123-123` | `Date.parse(record.downloadedAt)` is called without guarding against an invalid | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 127 | medium | bug | `miniprogram/services/download-service.ts:123-123` | `Date.parse(record.downloadedAt)` is called without guarding against an invalid | 已修 | parseDownloadRecord 已校验 Date.parse 有限，进到 cloudDownloadToLocalRecord 的时间串必然可解析 |
 | 128 | medium | maintainability | `miniprogram/services/download-service.ts:59-59` | API endpoint paths are hardcoded inline in multiple functions | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
-| 129 | medium | bug | `miniprogram/services/download-service.ts:78-78` | Inconsistent query-string encoding: `query` is encoded with `encodeURIComponent` but | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 129 | medium | bug | `miniprogram/services/download-service.ts:78-78` | Inconsistent query-string encoding: `query` is encoded with `encodeURIComponent` but | 已修 | 455a006 fileType 一并 encodeURIComponent，与 query 的编码口径一致 |
 | 130 | medium | performance | `miniprogram/services/http-client.ts:73-78` | Duplicate request-setup logic between apiRequest and apiUploadFile: both | 降级 | 性能建议，当前数据量下无可观测影响；列入后续优化 |
 | 131 | medium | bug | `miniprogram/services/http-client.ts:95-98` | Success path casts `response.data` directly to `T` without verifying its shape. If | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 132 | medium | maintainability | `miniprogram/services/image-service.ts:101-111` | The offscreen-canvas creation, image-load Promise, `drawImage`, and | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
@@ -177,10 +228,10 @@
 | 135 | medium | maintainability | `miniprogram/services/pattern-generation/cell-sampler.ts:18-20` | Focus area #3: The error message '采样图片数据尺寸不匹配' provides no diagnostic | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 136 | medium | maintainability | `miniprogram/services/pattern-generation/cleanup.ts:79-80` | Redundant/dead guard on small neighborhoods. With at most 8 neighbors, | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 137 | medium | bug | `miniprogram/services/pattern-generation/color-space.ts:15-16` | This function assumes `channel` is a valid sRGB byte in [0, 255] but performs no | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 138 | medium | bug | `miniprogram/services/pattern-generation/color-utils.ts:24-26` | rgbToHex does not validate that r/g/b are integers within 0-255. Negative values | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 139 | medium | bug | `miniprogram/services/pattern-generation/crop.ts:29-34` | When sourceWidth or sourceHeight equals 0/negative, or when targetRatio is | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 140 | medium | bug | `miniprogram/services/pattern-generation/edge-detector.ts:93-99` | Validation permits width === 0 or height === 0 (only `width < 0` / `height < 0` are | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 141 | medium | bug | `miniprogram/services/pattern-generation/median-cut.ts:51-54` | The selected `bucket` is a reference to the caller's `pixels` array (the first | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 138 | medium | bug | `miniprogram/services/pattern-generation/color-utils.ts:24-26` | rgbToHex does not validate that r/g/b are integers within 0-255. Negative values | 已修 | 455a006 rgbToHex 先把分量收敛到 0~255，越界不再拼出非法颜色串 |
+| 139 | medium | bug | `miniprogram/services/pattern-generation/crop.ts:29-34` | When sourceWidth or sourceHeight equals 0/negative, or when targetRatio is | 已修 | crop.ts 开头已校验四个尺寸均为正有限数，零尺寸走不到比值计算 |
+| 140 | medium | bug | `miniprogram/services/pattern-generation/edge-detector.ts:93-99` | Validation permits width === 0 or height === 0 (only `width < 0` / `height < 0` are | 驳回 | 0×0 返回空数组是数学上正确的结果，且被 phase-6 用例锁定；调用方网格恒 ≥1。本轮一度加严会破坏既有用例，已回退 |
+| 141 | medium | bug | `miniprogram/services/pattern-generation/median-cut.ts:51-54` | The selected `bucket` is a reference to the caller's `pixels` array (the first | 已修 | 455a006 入桶前复制像素数组：sort 是原地排序，原实现会重排调用方传入的数据 |
 | 142 | medium | bug | `miniprogram/services/pattern-generation/palette-selector.ts:153-159` | hexToRgb assumes a strict '#RRGGBB' format with no validation. If any entry in | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 143 | medium | maintainability | `miniprogram/services/pattern-generation/standard-generator.ts:51-54` | generateStandardPatternCells is an async entry function but has no | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 144 | medium | bug | `miniprogram/services/payment-service.ts:133-146` | parsePackage validates several server fields (quotaAmount, quotaKind, membershipType, | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
@@ -191,11 +242,11 @@
 | 149 | medium | maintainability | `miniprogram/services/token-storage.ts:15-17` | saveAuthSession calls `wx.setStorageSync` without any error handling. On | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 150 | medium | maintainability | `miniprogram/services/token-storage.ts:62-62` | Redundant/confused control flow: after `parseUser(value.user)` already | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 151 | medium | bug | `miniprogram/services/work-service.ts:217-218` | Date fields are parsed with Date.parse and assigned directly into numeric fields | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 152 | medium | bug | `miniprogram/services/work-service.ts:307-307` | The idempotency key is derived from draft.id. If draft.id is empty/undefined/reused | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 152 | medium | bug | `miniprogram/services/work-service.ts:307-307` | The idempotency key is derived from draft.id. If draft.id is empty/undefined/reused | 已修 | 455a006 新建作品强制作品 id 非空，避免幂等键退化成 create- 后被服务端折叠成一笔 |
 | 153 | medium | bug | `miniprogram/services/work-sync-service.ts:23-23` | When the local draft is missing, the work is marked with syncStatus 'failed' but | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 154 | medium | bug | `miniprogram/services/work-sync-service.ts:36-37` | On a network error the work status is set to 'pending' (so it will be retried on the | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 155 | medium | bug | `miniprogram/store/app-store.ts:111-111` | The guard for adopting the guest's in-progress draft uses `ids` (the set of guest | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 156 | medium | bug | `miniprogram/store/app-store.ts:144-145` | This non-AI branch writes syncStatus/ownerId/isCloud directly instead of going | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 156 | medium | bug | `miniprogram/store/app-store.ts:144-145` | This non-AI branch writes syncStatus/ownerId/isCloud directly instead of going | 驳回 | saveWork 非云端分支已走 resolveSyncFields（app-store.ts:143），AI 占位作品不会被写进同步队列 |
 | 157 | medium | performance | `miniprogram/store/auth-store.ts:178-193` | Both `refreshQuota` and `refreshAiQuota` read `this.state.profile` and then | 降级 | 性能建议，当前数据量下无可观测影响；列入后续优化 |
 | 158 | medium | bug | `miniprogram/store/auth-store.ts:340-342` | The optimistic remaining calc `Math.max(0, nextFreeQuota + profile.quota.purchased)` | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 159 | medium | maintainability | `miniprogram/tests/pattern-generation/standard-generator-phase-3.ts:48-48` | The local `Canvas2DContext` interface redeclares | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
@@ -213,7 +264,7 @@
 | 171 | low | maintainability | `miniprogram/app.ts:17-23` | `runStartupSafely` only catches SYNCHRONOUS throws (it calls `run()` without | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 172 | low | other | `miniprogram/components/main-tab-bar/index.json:2-2` | The JSON key 'component' is correctly spelled per WeChat miniprogram custom component | 驳回 | json/配置类文件被误纳入扫描，无实质问题 |
 | 173 | low | maintainability | `miniprogram/components/main-tab-bar/index.ts:28-31` | The `items` array is duplicated: it is declared at module scope AND assigned | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
-| 174 | low | bug | `miniprogram/components/main-tab-bar/index.ts:28-31` | `data.currentSelected` defaults to 0 while `properties.selected` defaults to -1. On | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 174 | low | bug | `miniprogram/components/main-tab-bar/index.ts:28-31` | `data.currentSelected` defaults to 0 while `properties.selected` defaults to -1. On | 已修 | 455a006 初始 currentSelected 改 -1（先不高亮），避免首帧错亮在首页 |
 | 175 | low | maintainability | `miniprogram/components/page-layout/index.ts:12-12` | `selectedTab` property is declared but never read or used anywhere in the | 驳回 | 所涉 API 已在下游兜底，组件侧无需重复防御 |
 | 176 | low | maintainability | `miniprogram/components/top-bar/index.ts:20-24` | Hardcoded fallback magic numbers (`statusBarHeight: 20`, `menuButtonReserve: | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 177 | low | maintainability | `miniprogram/components/upload-status-card/index.ts:12-13` | The `uploadProgress` property documents that `-1` means the SDK provided no | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
@@ -223,7 +274,7 @@
 | 181 | low | maintainability | `miniprogram/models/pattern.ts:123-123` | `index` is already typed as `number` because `payload.cells` is `number[]` | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 182 | low | bug | `miniprogram/models/pattern.ts:176-178` | `status` is optional on WorkItem. `isWorkDraft` returns `work.status !== 'completed'`, | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 183 | low | bug | `miniprogram/models/pattern.ts:99-99` | The dedup key uses `cell.color.toLowerCase()`, so two cells whose only difference is | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 184 | low | bug | `miniprogram/packages/account/about/index.ts:24-24` | If the tapped item's dataset.id is not one of the handled keys, messages[id] is | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 184 | low | bug | `miniprogram/packages/account/about/index.ts:24-24` | If the tapped item's dataset.id is not one of the handled keys, messages[id] is | 已修 | 455a006 未知 id 直接 return，不再弹一个只有标题的空 modal |
 | 185 | low | maintainability | `miniprogram/packages/account/config/help.ts:4-4` | Several help answer strings in packages/account/config/help.ts are missing | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 186 | low | bug | `miniprogram/packages/account/favorites/index.json:2-4` | JSON keys 'usingComponents' and the custom component tag name 'page-layout' are | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 187 | low | maintainability | `miniprogram/packages/account/favorites/index.ts:93-97` | The `.map((work) => ...)` callback parameter is named `work`, which SHADOWS | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
@@ -242,10 +293,10 @@
 | 200 | low | maintainability | `miniprogram/packages/editor/index.ts:685-686` | Hardcoded title fallback string '未命名作品' appears in multiple places | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 201 | low | performance | `miniprogram/packages/editor/services/pattern-editor-service.ts:128-130` | This function uses raw Promise + nested wx callback style, which the project's | 降级 | 性能建议，当前数据量下无可观测影响；列入后续优化 |
 | 202 | low | maintainability | `miniprogram/packages/payment/orders/index.ts:0-0` | Orders with status 'pending' are shown but the page provides no 'pay' action | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
-| 203 | low | bug | `miniprogram/packages/payment/orders/index.ts:80-80` | statusLabels lookup has no fallback. If `order.status` is a valid OrderStatus value not | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 203 | low | bug | `miniprogram/packages/payment/orders/index.ts:80-80` | statusLabels lookup has no fallback. If `order.status` is a valid OrderStatus value not | 已修 | statusLabels 已有 ?? String(order.status ?? 空串) 兜底，未知状态不再渲染 undefined |
 | 204 | low | maintainability | `miniprogram/packages/payment/payment-success/index.ts:50-54` | No logging/observability when the order is missing from the list during | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 205 | low | maintainability | `miniprogram/packages/payment/recharge/index.ts:33-38` | The quota-deriving setData block is duplicated between onShow and | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
-| 206 | low | security | `miniprogram/packages/payment/services/order-service.ts:87-89` | `isIsoDate` uses `Date.parse(value)`, which accepts many non-ISO strings such as | 降级 | 偏加固建议（日志脱敏/输入渲染转义等），非可利用漏洞；列入安全加固待办，不在本轮改动 |
+| 206 | low | security | `miniprogram/packages/payment/services/order-service.ts:87-89` | `isIsoDate` uses `Date.parse(value)`, which accepts many non-ISO strings such as | 降级 | isIsoDate 用 Date.parse 属有意宽松：收紧成正则会误杀空格分隔等合法服务端格式，收益不抵风险 |
 | 207 | low | maintainability | `miniprogram/packages/result/components/download-bottom-sheet/index.ts:26-39` | The guard `if (this.data.state === 'processing') return` is duplicated | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 208 | low | maintainability | `miniprogram/packages/result/components/download-bottom-sheet/index.ts:7-10` | The `state` property accepts any string with default 'closed', and the | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 209 | low | maintainability | `miniprogram/packages/result/components/download-quota-bar/index.ts:18-20` | Event names emitted via `triggerEvent` are all lowercase ('toggletips', | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
@@ -256,11 +307,11 @@
 | 214 | low | other | `miniprogram/packages/result/index.json:2-3` | JSON keys 'disableScroll' and 'usingComponents' are spelled correctly. No json-key | 驳回 | json/配置类文件被误纳入扫描，无实质问题 |
 | 215 | low | maintainability | `miniprogram/packages/result/index.ts:366-376` | Duplicate code: `handleCancelDownload` and `handleCloseDownloadSheet` are | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 216 | low | maintainability | `miniprogram/packages/result/services/pattern-render-service.ts:101-114` | Inconsistent canvas querying: `drawThumbnail` and `drawChartHdCanvas` inline | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
-| 217 | low | bug | `miniprogram/packages/result/services/pattern-render-service.ts:342-343` | `height` is taken from the caller with no validation. If `height` is 0, NaN, or | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 217 | low | bug | `miniprogram/packages/result/services/pattern-render-service.ts:342-343` | `height` is taken from the caller with no validation. If `height` is 0, NaN, or | 已修 | 455a006 下载图画布高度补 requireCanvasHeight，非正有限数直接抛错 |
 | 218 | low | maintainability | `miniprogram/packages/result/services/pattern-render-service.ts:54-55` | TypeScript `any` is used for `ComponentContext` but there is only an | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 219 | low | performance | `miniprogram/packages/result/services/pattern-render-service.ts:98-99` | `wx.getWindowInfo()` is invoked twice here (windowWidth then pixelRatio). | 降级 | 性能建议，当前数据量下无可观测影响；列入后续优化 |
 | 220 | low | maintainability | `miniprogram/packages/result/services/result-download-service.ts:53-55` | Layout coordinates/sizes are hardcoded across both drawing functions (row | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
-| 221 | low | bug | `miniprogram/packages/result/utils.ts:80-82` | getTextColor validates only that the (stripped) hex string length === 6, but does not | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 221 | low | bug | `miniprogram/packages/result/utils.ts:80-82` | getTextColor validates only that the (stripped) hex string length === 6, but does not | 已修 | 455a006 getTextColor 改用十六进制正则校验，脏色值不再一律落白字 |
 | 222 | low | other | `miniprogram/pages/home/index.ts:0-0` | `currentUploadRequestId` is a module-level mutable shared by all Page instances and is | 驳回 | json/配置类文件被误纳入扫描，无实质问题 |
 | 223 | low | maintainability | `miniprogram/pages/home/index.ts:140-143` | `AI_MODE_ENABLED` is hardcoded to `true`, so the `!AI_MODE_ENABLED` branch | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 224 | low | maintainability | `miniprogram/pages/profile/index.ts:128-128` | `loginMessageTone` is hardcoded to 'error' in `applyAuthState` regardless of | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
@@ -286,13 +337,13 @@
 | 244 | low | performance | `miniprogram/services/pattern-generation/cell-sampler.ts:44-46` | srgbByteToLinear is called for every channel of every sample (including when | 降级 | 性能建议，当前数据量下无可观测影响；列入后续优化 |
 | 245 | low | bug | `miniprogram/services/pattern-generation/cell-sampler.ts:51-55` | When alphaSum > 0 but every sampled pixel has alpha exactly 0, the code cannot reach | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 246 | low | maintainability | `miniprogram/services/pattern-generation/color-space.ts:58-58` | This module exposes `linearToSrgbByte` (linear → sRGB byte) but provides no | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
-| 247 | low | bug | `miniprogram/services/pattern-generation/median-cut.ts:102-103` | Empty-bucket NaN risk: `averageColor` divides each channel sum by `bucket.length`. | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
-| 248 | low | bug | `miniprogram/services/pattern-generation/median-cut.ts:38-41` | There is no validation of `candidateLimit`. If `candidateLimit <= 0` (or a non-positive | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 247 | low | bug | `miniprogram/services/pattern-generation/median-cut.ts:102-103` | Empty-bucket NaN risk: `averageColor` divides each channel sum by `bucket.length`. | 已修 | 455a006 averageColor 遇空桶抛错，不再返回 NaN 三元组静默污染颜色 |
+| 248 | low | bug | `miniprogram/services/pattern-generation/median-cut.ts:38-41` | There is no validation of `candidateLimit`. If `candidateLimit <= 0` (or a non-positive | 已修 | e8cb3fa 候选数非正整数抛错；455a006 首轮误把判断提交成 if(false)，已补回 |
 | 249 | low | performance | `miniprogram/services/pattern-generation/oklab-matcher.ts:27-27` | Repeated pixel conversion: `rgbToOklab(pixel)` is recomputed on every call to | 降级 | 性能建议，当前数据量下无可观测影响；列入后续优化 |
 | 250 | low | bug | `miniprogram/services/pattern-generation/palette-selector.ts:115-115` | The early-stop check compares an absolute loss delta against Number.EPSILON (~2.22e-16), | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
 | 251 | low | maintainability | `miniprogram/services/pattern-generation/palette-selector.ts:64-68` | When all candidate weights are 0 (all-zero-weight input), seedCandidateIndex | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 252 | low | maintainability | `miniprogram/services/pattern-generation/standard-generator.ts:64-64` | The custom Canvas2DContext interface is cast from the real wx 2d context | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
-| 253 | low | bug | `miniprogram/services/payment-service.ts:156-158` | formatPrice uses regex /\.?0+$/ to strip trailing zeros. For priceFen values like 100 | 降级 | 缺陷成立但触发条件苛刻（依赖异常 dataset / 极端并发时序），本轮不改动；建议随真机回归验证 |
+| 253 | low | bug | `miniprogram/services/payment-service.ts:156-158` | formatPrice uses regex /\.?0+$/ to strip trailing zeros. For priceFen values like 100 | 降级 | 尾零剥离（1.00→1、10.50→10.5）是既有展示口径，是否保留两位小数属产品决策，不改代码 |
 | 254 | low | security | `miniprogram/services/token-storage.ts:34-34` | Token validation only checks that it is a string with length >= 16. There is no | 降级 | 偏加固建议（日志脱敏/输入渲染转义等），非可利用漏洞；列入安全加固待办，不在本轮改动 |
 | 255 | low | maintainability | `miniprogram/services/work-service.ts:329-330` | Consider extracting the duplicated list-shape validation | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
 | 256 | low | maintainability | `miniprogram/services/work-service.ts:347-349` | Redundant/unreachable guard: parseWorkSummary(item) already throws when item | 驳回 | 可维护性建议，非缺陷；改动面大于收益，本轮不动 |
