@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.30.10
+
+- AI 生成任务化改造（P0/P1/P2）：把 AI 生成从「全局单任务 + 阻塞式等待页」改为「多任务队列 + 作品占位卡片」。新增 `services/ai-task-store.ts` 以数组持久化任务（替代原单例会话 `ai-generation-session.ts`，已删除），`services/ai-generation-manager.ts` 由单例执行器改为 `AiTaskManager`（`Map<taskId, AiGenerationFlow>` + 单 tick 调度 + `MAX_CONCURRENT = 2` 并发槽位），`ai-generation-flow.ts` 不再自带定时器、只暴露 `needsPoll()` / `pollOnce()`。
+- 首页零阻塞：发起 AI 生成后立即返回可交互状态并即时在作品列表写入带封面的占位记录，可连续发起多个任务，不再强制跳转等待页。
+- 作品页展示任务真实状态：`ai_pending` / `ai_failed` 卡片支持查看进度、重试、取消；AI 生成页改为按 `?taskId=` 绑定的任务详情页。
+- 生命周期自愈：补齐冷启动自愈、`app.onShow` 追赶（`onAppShow` catch-up）、超时判失败与旧会话到任务队列的数据迁移。
+- 任务与作品单向对齐：状态先落 `AiTask`，再由 `applyTaskToWorkItem()` 对齐到 `WorkItem`；`AppStore.saveWork` 对 AI 占位作品豁免云同步（强制 `syncStatus: 'guest'`），避免占位记录因缺 draft 被标为同步失败。
+- 新增提交信息规范：`<type>(<scope>): <中文简述>`，白名单见 `docs/development/COMMIT_CONVENTION.md`，`AGENTS.md` 第 12 节列为强制要求。
+
 ## 0.30.9
 
 - 抽出编辑器底部控制面板为公共组件 `components/editor-control-panel`（缩放、图案信息、工具栏、调色板、重新生成/保存作品），编辑器页与 AI 生成页共用同一套分组与样式，不再各写一份。
