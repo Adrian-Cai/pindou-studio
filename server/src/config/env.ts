@@ -115,6 +115,14 @@ export interface ServerConfig {
   readonly virtualPay: VirtualPayConfig;
   readonly virtualPayReconcile: VirtualPayReconcileConfig;
   readonly virtualPayPush: VirtualPayPushConfig;
+  /**
+   * 新人测试套餐（0.1 元 / 5 次）的「每人限购一次」开关。
+   *
+   * 默认 true（限购生效）。联调时设 `PAYMENT_NEW_USER_GATE_ENABLED=false` 可让同一账号反复购买，
+   * 否则走完一次真实支付后就会一直被 409 NEW_USER_PACKAGE_NOT_ELIGIBLE 挡住，没法二测。
+   * 默认保持开启是因为这个套餐只有 0.1 元——关掉又忘了开回来，等于对外无限量卖 5 次生成。
+   */
+  readonly newUserPackageGateEnabled: boolean;
   readonly hunyuanImage: HunyuanImageConfig;
   readonly auth: {
     readonly openidHashSecret: string;
@@ -460,6 +468,12 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     wechatPay: parseWeChatPayConfig(env, wechatAppId, issues),
     virtualPay: parseVirtualPayConfig(env, wechatAppId, issues),
     virtualPayReconcile: parseVirtualPayReconcileConfig(env, issues),
+    newUserPackageGateEnabled: booleanValue(
+      env,
+      "PAYMENT_NEW_USER_GATE_ENABLED",
+      true,
+      issues,
+    ),
     virtualPayPush: parseVirtualPayPushConfig(env, wechatAppId, issues),
     hunyuanImage: parseHunyuanImageConfig(env, issues),
     auth: {

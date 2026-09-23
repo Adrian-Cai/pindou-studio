@@ -380,6 +380,11 @@ export class PostgresPaymentService implements PaymentService {
     private readonly openidEncryptionSecret: string,
     private readonly now: () => Date = () => new Date(),
     private readonly reconcileOptions: PendingOrderReconcileOptions = DEFAULT_RECONCILE_OPTIONS,
+    /**
+     * 新人测试套餐的「每人限购一次」是否生效，默认生效。
+     * 联调时置 false 可让同一账号反复购买（详见 env.ts 的 PAYMENT_NEW_USER_GATE_ENABLED）。
+     */
+    private readonly newUserPackageGateEnabled: boolean = true,
   ) {}
 
   public async listPackages(): Promise<{ readonly items: readonly PaymentPackage[] }> {
@@ -433,6 +438,7 @@ export class PostgresPaymentService implements PaymentService {
    * @throws VIRTUAL_PAYMENT_SESSION_EXPIRED session_key 缺失或过期，需用户重新登录
    * @throws ORDER_NOT_PAYABLE 订单已不是 pending（已支付或已关闭）
    * @throws NEW_USER_PACKAGE_NOT_ELIGIBLE 新人套餐且用户已有成功购买记录
+   *         （联调时可用 PAYMENT_NEW_USER_GATE_ENABLED=false 关掉这道限制）
    * @throws PAYMENT_IDENTITY_UNAVAILABLE 用户 openid 缺失或解密失败，需重新登录
    */
   public async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse> {
@@ -489,7 +495,7 @@ export class PostgresPaymentService implements PaymentService {
         [packageId],
       );
       const selectedPackage = ensurePayablePackage(packageResult.rows[0]);
-      if (selectedPackage.id === NEW_USER_TEST_PACKAGE_ID) {
+      if (selectedPackage.id === NEW_USER_TEST_PACKAGE_ID && this.newUserPackageGateEnabled) {
         const previousPurchase = await client.query(
           `SELECT 1
              FROM pindou_orders

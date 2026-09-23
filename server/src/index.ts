@@ -112,6 +112,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.auth.openidHashSecret,
       () => new Date(),
       config.virtualPayReconcile,
+      config.newUserPackageGateEnabled,
     );
     void payments.reconcilePendingOrders().catch(() => undefined);
     const paymentReconcileTimer = setInterval(() => {
