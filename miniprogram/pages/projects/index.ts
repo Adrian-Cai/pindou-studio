@@ -322,12 +322,25 @@ Page({
     this.setData({ renameSaving: true })
     try {
       await checkTextContent(title)
+      // await 期间可能已完成一次云同步：本地作品被换成云端记录（id 都变了），
+      // 这时再把 await 之前那份快照写回去，等于把已经被替换掉的旧记录重新塞回列表，
+      // 用户看到的是「重命名成功，但列表里多了一份同名旧作品」。
+      // 因此写之前必须重新取一次，取不到就说明它已被同步/删除，这次改名直接放弃。
+      const current = appStore.getSnapshot().works.find((item) => item.id === id)
+      if (!current) {
+        this.refreshVisibleWorks()
+        this.setData({
+          renameError: '作品状态已变化，请刷新后重试',
+          renameSaving: false,
+        })
+        return
+      }
       // 云端作品走 renameCloudWork，其余直接改本地 store
-      if (work.isCloud) {
+      if (current.isCloud) {
         const summary = await renameCloudWork(id, title)
         await appStore.saveWork(cloudSummaryToWorkItem(summary))
       } else {
-        await appStore.saveWork({ ...work, title, updatedAt: Date.now() })
+        await appStore.saveWork({ ...current, title, updatedAt: Date.now() })
       }
       this.refreshVisibleWorks()
       this.resetRenameDialog()

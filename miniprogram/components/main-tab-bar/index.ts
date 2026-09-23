@@ -27,7 +27,10 @@ Component({
 
   data: {
     items,
-    currentSelected: 0,
+    // -1 = 还没算出该高亮哪一项。默认成 0 会让「作品」「我的」页在 attached 之前
+    // 先闪一帧高亮在首页上；先不高亮，等 syncSelected 定下来再亮，观感更稳。
+    // 下面的 syncSelected 用 Math.max(0, ...) 兜底，渲染侧不会拿到 -1 去取数组。
+    currentSelected: -1,
   },
 
   observers: {

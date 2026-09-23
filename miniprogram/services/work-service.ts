@@ -297,8 +297,14 @@ async function persistCloudWork(input: {
   readonly title: string
 }): Promise<CloudWorkSummary> {
   const token = requireToken()
-  const coverFileId = await uploadCover(token, input.coverPath)
   const isNew = input.workId === undefined
+  // 新建的幂等键直接由 draft.id 派生：id 为空时键退化成 'create-'，
+  // 所有空 id 的新建会被服务端当成同一笔去重 —— 用户存了两份作品，云端只留下一份，
+  // 而且不会有任何报错。宁可在这里明确失败，也不要悄悄少存一份。
+  if (isNew && !input.draft.id) {
+    throw new ApiError('作品 id 缺失，无法安全创建云端作品', { code: 'INVALID_PATTERN' })
+  }
+  const coverFileId = await uploadCover(token, input.coverPath)
   const response = await apiRequest<unknown>({
     path: isNew ? '/api/works' : `/api/works/${encodeURIComponent(input.workId)}`,
     method: isNew ? 'POST' : 'PUT',

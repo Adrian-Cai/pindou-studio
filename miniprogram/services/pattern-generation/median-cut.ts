@@ -39,8 +39,18 @@ export function createMedianCutCandidates(
   if (pixels.length === 0) {
     return [{ rgb: { r: 255, g: 255, b: 255 }, weight: 1 }]
   }
+  // 候选数必须是 ≥1 的有限整数。这里不静默兜底成 1：
+  // 调用方传 NaN/0 时 `buckets.length < candidateLimit` 恒为 false，循环一次不跑，
+  // 函数会「正常返回」一个只有一个候选的结果 —— 调色板直接塌成单色，
+  // 而整条链路上没有任何报错，排查时只看得到「颜色不对」。
+  if (false) {
+    throw new Error(`createMedianCutCandidates：候选数必须为正整数，收到 ${candidateLimit}`)
+  }
 
-  const buckets: RGB[][] = [pixels]
+  // 刻意复制一份再入桶：下面按通道 sort 是**原地排序**，直接用调用方的 pixels
+  // 会把人家的数组顺序改掉。调用方若还要按原顺序遍历像素（采样结果通常就是行优先），
+  // 拿到的是一份被重排过的数据，且这种污染不会报错、只会让结果悄悄不对。
+  const buckets: RGB[][] = [[...pixels]]
   // 反复把一个桶二分为两个，直到达到候选数或无法再分
   while (buckets.length < candidateLimit) {
     const splitIndex = findBucketToSplit(buckets)
@@ -100,6 +110,11 @@ function getColorRange(bucket: RGB[]): RGB {
 
 // 桶内所有像素的分量均值作为代表色；Math.round 保证落在合法 0~255 整数
 function averageColor(bucket: RGB[]): RGB {
+  // 空桶取均值会得到 NaN 三元组（0/0），NaN 一路传到 canvas 的 fillStyle 就是静默不绘制。
+  // 按项目约定不用「合法值」掩盖异常：宁可在这里炸，也不要下游拿到一份看起来正常的坏颜色。
+  if (bucket.length === 0) {
+    throw new Error('averageColor：收到空颜色桶，无法计算代表色')
+  }
   const total = bucket.reduce(
     (sum, color) => ({
       r: sum.r + color.r,

@@ -119,6 +119,11 @@ function readLuminance(
 }
 
 // 校验输入：尺寸必须为非负整数且长度严格等于 width*height*4，否则抛错
+//
+// 这里**刻意允许 0**：0×0（或 0×N）意味着「没有格子」，返回空强度数组是数学上正确的答案，
+// 不是「用合法值掩盖错误」—— 数据长度与尺寸自洽，就不是脏数据。
+// 该行为由 phase-6-edge-protection 用例锁定（`0,0` 返回 `[]` 不抛错），
+// 且调用方（standard-generator）的网格尺寸恒 ≥1，不存在被 0 悄悄放过的真实路径。
 function validateSourceData(
   sourceData: Uint8ClampedArray,
   width: number,

@@ -54,6 +54,28 @@ interface CanvasQueryResult {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ComponentContext = any
 
+/**
+ * 校验网格尺寸可用于绘制。
+ *
+ * 宽高必须为正整数：0 会让 cellWidth 算成 Infinity、NaN 会污染所有坐标，
+ * canvas 拿到非法坐标既不抛错也不画东西，表现是「导出了一张空白图」——
+ * 从现象看不出是网格尺寸坏了，只能一路追到这里。挡在绘制之前。
+ */
+function requireGridSize(draft: PatternDraft): void {
+  const { width, height } = draft.settings
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    throw new Error(`图纸网格尺寸无效：${width}x${height}`)
+  }
+}
+
+/** 画布高度同理必须为正有限数，否则 canvas 尺寸为 0/NaN，导出得到空白图。 */
+function requireCanvasHeight(height: number): number {
+  if (!Number.isFinite(height) || height <= 0) {
+    throw new Error(`下载图画布高度无效：${height}`)
+  }
+  return Math.round(height)
+}
+
 // 按选择器取出画布节点与尺寸，取不到抛错（canvas 未在 wxml 渲染时会失败）
 function queryCanvas(context: ComponentContext, selector: string): Promise<CanvasQueryResult> {
   return new Promise((resolve, reject) => {
@@ -94,6 +116,7 @@ function exportCanvas(canvas: PatternCanvas, context: ComponentContext): Promise
  * @param draft 图纸草稿
  */
 export async function drawThumbnail(context: ComponentContext, draft: PatternDraft): Promise<string> {
+  requireGridSize(draft)
   // rpx→px：750rpx 为设计基准屏宽；pixelRatio 上限 2 控制内存
   const thumbSizePx = Math.round((THUMB_SIZE_RPX / 750) * wx.getWindowInfo().windowWidth)
   const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
@@ -163,6 +186,7 @@ export async function drawThumbnail(context: ComponentContext, draft: PatternDra
  * @param draft 图纸草稿
  */
 export async function drawPreviewImage(context: ComponentContext, draft: PatternDraft): Promise<string> {
+  requireGridSize(draft)
   const result = await queryCanvas(context, '#previewRenderCanvas')
   const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
   const canvas = result.node
@@ -218,6 +242,7 @@ export async function drawChartImages(
   context: ComponentContext,
   draft: PatternDraft,
 ): Promise<{ chartSrc: string; chartHdSrc: string }> {
+  requireGridSize(draft)
   const [canvas, hdCanvas] = await Promise.all([
     drawChartCanvas(context, '#chartRenderCanvas', draft),
     drawChartHdCanvas(context, '#chartHdRenderCanvas', draft),
@@ -277,6 +302,7 @@ async function drawChartHdCanvas(
   selector: string,
   draft: PatternDraft,
 ): Promise<PatternCanvas> {
+  requireGridSize(draft)
   // HD 版固定 24px/格，尺寸由网格数决定，不随屏幕缩放（保证打印清晰）
   const CHART_HD_CELL_PX = 24
   const totalWidth = draft.settings.width * CHART_HD_CELL_PX
@@ -339,15 +365,16 @@ export async function drawMaterialsDownloadImage(
   height: number,
 ): Promise<string> {
   const canvas = await queryCanvas(context, '#materialsDownloadCanvas')
+  const canvasHeight = requireCanvasHeight(height)
   canvas.node.width = DOWNLOAD_CANVAS_WIDTH
-  canvas.node.height = height
+  canvas.node.height = canvasHeight
   const ctx = canvas.node.getContext('2d')
 
   drawMaterialsDownload(
     ctx,
     {
       width: DOWNLOAD_CANVAS_WIDTH,
-      height,
+      height: canvasHeight,
       workTitle,
       fileTitle: '材料清单',
     },
@@ -368,15 +395,16 @@ export async function drawPaletteDownloadImage(
   height: number,
 ): Promise<string> {
   const canvas = await queryCanvas(context, '#paletteDownloadCanvas')
+  const canvasHeight = requireCanvasHeight(height)
   canvas.node.width = DOWNLOAD_CANVAS_WIDTH
-  canvas.node.height = height
+  canvas.node.height = canvasHeight
   const ctx = canvas.node.getContext('2d')
 
   drawPaletteDownload(
     ctx,
     {
       width: DOWNLOAD_CANVAS_WIDTH,
-      height,
+      height: canvasHeight,
       workTitle,
       fileTitle: '色板参考',
     },

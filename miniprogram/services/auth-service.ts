@@ -105,9 +105,13 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
   const stats = value.stats
   const quota = value.quota
   const aiGeneration = quota.aiGeneration
+  // createdAt / quota.resetsAt 与 aiGeneration.resetsAt 一视同仁：只判 typeof string 会放过
+  // 「看起来像时间、Date.parse 却是 NaN」的脏串，下游拿去做倒计时就渲染出 NaN。
+  // 三个时间字段必须用同一把尺子量，否则哪天服务端改了格式，只有一半字段能挡住。
   if (
     !user
     || typeof createdAt !== 'string'
+    || !Number.isFinite(Date.parse(createdAt))
     || !isFiniteNumber(stats.workCount)
     || !isFiniteNumber(stats.favoriteCount)
     || !isFiniteNumber(stats.downloadCount)
@@ -116,6 +120,7 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
     || !isFiniteNumber(quota.purchased)
     || !isFiniteNumber(quota.remaining)
     || typeof quota.resetsAt !== 'string'
+    || !Number.isFinite(Date.parse(quota.resetsAt))
     || !isRecord(aiGeneration)
     || !isFiniteNumber(aiGeneration.dailyFree)
     || !isFiniteNumber(aiGeneration.usedToday)

@@ -75,7 +75,9 @@ export async function fetchDownloads(options: {
   const params = [
     `page=${options.page ?? 1}`,
     `pageSize=${options.pageSize ?? 50}`,
-    ...(options.fileType ? [`fileType=${options.fileType}`] : []),
+    // 与 query 保持一致也做转义：fileType 目前是枚举值，但两处口径不一致的话，
+    // 哪天往这里传了外部输入（比如用户自定义筛选值）就会漏编码。
+    ...(options.fileType ? [`fileType=${encodeURIComponent(options.fileType)}`] : []),
     ...(options.query?.trim() ? [`query=${encodeURIComponent(options.query.trim())}`] : []),
   ].join('&')
   const response = await apiRequest<unknown>({

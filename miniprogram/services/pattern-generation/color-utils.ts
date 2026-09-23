@@ -35,8 +35,22 @@ export function pickNearest<T>(
   return best
 }
 
+/**
+ * RGB 转 `#rrggbb`。
+ *
+ * 分量先收敛到 0~255 整数再转：越界分量（负数、>255、NaN）会拼出 `-1`、`100`、`NaN`
+ * 这种不是两位十六进制的串，得到的 `#xxxxxx` 不是合法颜色 —— canvas 和 WXML 都不会报错，
+ * 表现只是「这一格/这一块不显示」，从现象完全看不出是颜色格式坏了。
+ */
 export function rgbToHex(color: RGB): string {
   return `#${[color.r, color.g, color.b]
-    .map((channel) => channel.toString(16).padStart(2, '0'))
+    .map((channel) => toHexByte(channel))
     .join('')}`
+}
+
+/** 把单个通道收敛成 0~255 的十六进制字节串。 */
+function toHexByte(channel: number): string {
+  // 非有限数没有「接近的颜色」可言，落到 0（黑）至少保证产出的仍是合法颜色
+  const safe = Number.isFinite(channel) ? Math.min(255, Math.max(0, Math.round(channel))) : 0
+  return safe.toString(16).padStart(2, '0')
 }
