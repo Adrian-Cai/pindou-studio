@@ -23,7 +23,10 @@ concurrency:
 jobs:
   miniprogram-static-check:
     name: Miniprogram Static Check
-    runs-on: ubuntu-latest
+    # runs-on 钉死 ubuntu-24.04 而非 ubuntu-latest：GitHub 从 2026-10-19 起把 ubuntu-latest
+    # 分批切到 Ubuntu 26.04（11-19 完成），内核 6.17→7.0、systemd 255→259、glibc 一并升级。
+    # 跟随浮动标签会让 CI 在某天无声换掉整个系统镜像；钉版本后可在自己选的时机验证再切 26.04。
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -51,7 +54,7 @@ jobs:
 
   server-static-check:
     name: Server Static Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     defaults:
       run:
