@@ -29,6 +29,10 @@ docs/ui/*
 *codebuddy-plugin/
 *.workbuddy/
 *.roo/
+*.payment-test-build/
+*mp-test-output.txt
+*.tmp-fill-*
+*.work-sync-test-build/
 
 # 编辑器与 AI 工具生成的本地配置 / 规则投射产物
 .mcp.json
