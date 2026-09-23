@@ -238,8 +238,11 @@ Page({
       wx.showLoading({ title: '正在读取', mask: true })
       try {
         const detail = await fetchCloudWork(id)
-        await appStore.setCurrentDraft(cloudDetailToDraft(detail))
+        // 顺序要紧：先落 WorkItem，再设当前草稿。
+        // setCurrentDraft 靠 id 能否在云端列表里找到来判定归属，反过来的话这份
+        // 草稿会被当成游客草稿落进 guest 区，本站看不到、下次同步也带上不去。
         await appStore.saveWork(cloudSummaryToWorkItem(detail))
+        await appStore.setCurrentDraft(cloudDetailToDraft(detail))
         wx.navigateTo({ url: edit ? '/packages/editor/index' : '/packages/result/index' })
       } catch (error) {
         console.error('读取作品详情失败', error)

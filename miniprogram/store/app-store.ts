@@ -113,6 +113,17 @@ export class AppStore {
     this.rebuildState(); await this.persist(); return works.length
   }
 
+  /**
+   * 设置当前正在编辑的草稿。
+   *
+   * @param currentDraft 目标草稿；传 null 清空当前草稿
+   *
+   * 前置条件：调用方必须**先**用 `saveWork` 把这份草稿对应的 WorkItem 写进本站
+   *   （云端作品即 syncStatus: 'synced' 的形态）。理由是下面这行归属判定依赖
+   *   `this.cloudWorks`：若找不到同 id 的云端记录，这份草稿会被当作游客草稿落到
+   *   `persisted.guest` 里 —— 用户账号下的作品凭空少一份，游客区多一份脏数据，
+   *   而整条链路上没有任何报错。
+   */
   setCurrentDraft(currentDraft: PatternDraft | null): Promise<void> {
     const isCloudDraft = Boolean(currentDraft && this.activeUserId && this.cloudWorks.some((work) => work.id === currentDraft.id))
     if (isCloudDraft) this.cloudDraft = currentDraft

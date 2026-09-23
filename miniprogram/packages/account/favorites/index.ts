@@ -155,8 +155,9 @@ Page({
     wx.showLoading({ title: '正在读取', mask: true })
     try {
       const detail = await fetchCloudWork(id)
-      await appStore.setCurrentDraft(cloudDetailToDraft(detail))
+      // 顺序要紧：先落 WorkItem 再设当前草稿（理由见 AppStore.setCurrentDraft 的注释）
       await appStore.saveWork(cloudSummaryToWorkItem(detail))
+      await appStore.setCurrentDraft(cloudDetailToDraft(detail))
       wx.navigateTo({ url: '/packages/result/index' })
     } catch (error) {
       wx.showToast({ title: error instanceof Error ? error.message : '作品读取失败，请重试', icon: 'none' })

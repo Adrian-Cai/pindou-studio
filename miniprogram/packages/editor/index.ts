@@ -478,10 +478,26 @@ Page({
     )
   },
 
+  /**
+   * 单指落点成笔：把手势坐标换算成格子后执行当前工具。
+   *
+   * 这里必须做 await 后的复检 —— `touchToGridCell` 内部要先 await 一次异步测量，
+   * 期间一旦换了纸（比如重进页面换成另一份草稿），落点换算是按旧图纸尺寸算的，
+   * `cell.index` 会对着一格子完全不相干的位置，笔就画错了地方且无从察觉。
+   */
   async finishSingleTouch(clientX: number, clientY: number) {
     if (!this.data.canvasReady) return
+    const draft = this.data.draft
+    if (!draft) return
+    // 只锁参与坐标换算的量：版本号（viewport 几何）+ 网格尺寸。
+    // 不比 draft 引用 —— 每次落笔都会换新对象，比引用会把正常笔画一并拦掉。
+    const renderVersion = this._canvasRenderVersion
+    const gridKey = `${draft.id}:${draft.settings.width}x${draft.settings.height}`
     const cell = await this.touchToGridCell(clientX, clientY).catch(() => null)
     if (!this.data.canvasReady || this._isPinching || this._blockSingleTouchUntilRelease) return
+    if (this._canvasRenderVersion !== renderVersion) return
+    const current = this.data.draft
+    if (!current || `${current.id}:${current.settings.width}x${current.settings.height}` !== gridKey) return
     if (cell) this.executeToolAt(cell)
   },
 
