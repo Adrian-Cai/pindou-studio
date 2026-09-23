@@ -20,9 +20,11 @@ import { isAuthSessionExpired, loadAuthSession } from './token-storage'
  * wx.requestVirtualPayment 的 signData。
  *
  * 注意运行时与类型定义的差异：官方**运行时**要求 signData 以 string 传入，
- * 但 miniprogram-api-typings 把它声明成对象。服务端按官方签名规则产出字符串，
- * 这里 JSON.parse 还原后再传给 API，既满足类型约束又不破坏签名——
- * 签名的输入是那份字符串本身，还原成对象不改变任何字段顺序与取值。
+ * 但 miniprogram-api-typings 把它声明成对象，两者不一致，调用处需要断言。
+ *
+ * 这里的类型只用于**校验**解析结果的字段（见 parseSignData），不用于传参：
+ * 曾经把解析出的对象传给 API，结果微信直接报
+ * `parameter.signData should be String instead of Object`，支付一步都走不出去。
  */
 export interface VirtualSignData {
   offerId: string
@@ -202,9 +204,21 @@ function requestVirtualPayment(payload: VirtualPaymentPayload): Promise<void> {
       }),
     )
   }
+  // signData 先解析一次只为校验：它是合法 JSON 才继续。带着坏数据去拉起支付，
+  // 微信只会回一句笼统的 -15001「参数错误」，排查时分不清是服务端下发还是客户端解析的问题。
+  // 注意**校验完就把解析结果丢掉**——真正传给 API 的必须是原字符串，见下方说明。
+  parseSignData(payload.signData)
   return new Promise((resolve, reject) => {
     wx.requestVirtualPayment({
-      signData: parseSignData(payload.signData),
+      /**
+       * 官方**运行时**只接受 string，传对象会直接报
+       * `parameter.signData should be String instead of Object`。
+       * 而 miniprogram-api-typings 把它声明成对象，两者不一致，只能在这里断言。
+       *
+       * 必须原样透传服务端那份字符串：本地哪怕按同样字段重新 stringify，
+       * 序列化结果的一个空格差异都会让 paySig 校验失败——签名输入是那份字符串本身。
+       */
+      signData: payload.signData as unknown as VirtualSignData,
       paySig: payload.paySig,
       signature: payload.signature,
       mode: payload.mode as 'short_series_goods',

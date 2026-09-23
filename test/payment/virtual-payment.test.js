@@ -2,7 +2,8 @@
  * 虚拟支付（小程序端）单元测试。
  *
  * 锁的是三条容易在重构中悄悄丢失的约束：
- * ① signData 必须还原成对象再传给 wx.requestVirtualPayment，且不能直接透传字符串；
+ * ① signData 必须原样透传服务端下发的字符串，不能 JSON.parse 成对象再传
+ *    （传对象会让微信直接报 parameter.signData should be String instead of Object）；
  * ② 基础库不支持时必须给出可行动提示，而不是让 API 抛出难以理解的运行时错误；
  * ③ 支付成功/取消/错误码三类结果要被正确归一化，用户看到的是人话而不是 -15007。
  */
@@ -86,7 +87,7 @@ function loadModule() {
   return require(modulePath)
 }
 
-test('拉起支付时把 signData 还原为对象而非字符串', async () => {
+test('拉起支付时原样透传 signData 字符串，不解析成对象', async () => {
   const apiCalls = []
   installHarness({ apiCalls })
   const { payForAiGenerationPackage } = loadModule()
@@ -94,25 +95,32 @@ test('拉起支付时把 signData 还原为对象而非字符串', async () => {
   await payForAiGenerationPackage('ai_generation_30', 'idempotent-key-1')
 
   assert.equal(apiCalls.length, 1)
-  // 运行时收到的是对象，且字段被完整还原
-  assert.equal(typeof apiCalls[0].signData, 'object')
-  assert.equal(apiCalls[0].signData.productId, 'product_30')
-  assert.equal(apiCalls[0].signData.goodsPrice, 990)
+  /**
+   * 官方运行时只接受 string。传对象时微信直接报
+   * `parameter.signData should be String instead of Object`，支付一步都走不出去。
+   * 断言「严格等于服务端那份字符串」而不只是 typeof：重新 stringify 出来的
+   * 字符串同样是 string，但一个空格差异就会让 paySig 校验失败。
+   */
+  assert.equal(typeof apiCalls[0].signData, 'string')
+  assert.equal(apiCalls[0].signData, validCreateResponse().virtual.signData)
   assert.equal(apiCalls[0].paySig, 'pay-sig-value')
   assert.equal(apiCalls[0].signature, 'user-sig-value')
   assert.equal(apiCalls[0].mode, 'short_series_goods')
 })
 
-test('signData 字段顺序与服务端一致，不因本地重新序列化而改变', async () => {
+test('signData 未被本地重新序列化，字段顺序与服务端一致', async () => {
   const apiCalls = []
   installHarness({ apiCalls })
   const { payForAiGenerationPackage } = loadModule()
   await payForAiGenerationPackage('ai_generation_30', 'key-serialization')
 
-  // 键顺序即签名输入的一部分：这里确保还原过程没有重排或丢字段
-  assert.deepEqual(Object.keys(apiCalls[0].signData), [
+  // 键顺序是签名输入的一部分：这里确保透传过程没有重排或丢字段
+  assert.deepEqual(Object.keys(JSON.parse(apiCalls[0].signData)), [
     'offerId', 'buyQuantity', 'env', 'currencyType', 'productId', 'goodsPrice', 'outTradeNo', 'attach',
   ])
+  const parsed = JSON.parse(apiCalls[0].signData)
+  assert.equal(parsed.productId, 'product_30')
+  assert.equal(parsed.goodsPrice, 990)
 })
 
 test('基础库缺少虚拟支付接口时给出可行动提示而不是直接崩溃', async () => {
