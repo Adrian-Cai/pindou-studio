@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.30.11
+
+- 生图角标文案改为「小露拼豆」：`generateImage` 云函数在 `generateImage()` 里传 `footnote`，覆盖平台默认烙的「AI生成」。平台标识**不支持关闭**（CloudBase 社区 issue #1317 中官方明确显式 + 隐式两个标识都必须加），SDK 只开放 `footnote` 自定义文案（上限 16 字符），因此只能换文案。**本次含云函数改动，需在微信云开发重新部署 `generateImage` 才生效。**
+- 首页入队提示改为顶部横条通知：入队成功后从导航栏下方滑入（`top` 取实测导航栏高度，不硬编码），4 秒后自动收起，并给出「去作品页查看进度」的入口；与主按钮就地成功态互补（按钮给指尖即时确认，横条告诉用户去哪看）。替换掉原先常驻的「生成中 N 个」胶囊，随之移除 `aiTaskManager` 的 `subscribeAll` / `getActiveCount` 与首页的订阅刷新逻辑。
+- 修复启动项单点异常会中断后续初始化：`onLaunch` 里原先只有 `initCloud()` 包了 `try/catch`，`appStore.hydrate()` 与 `aiTaskManager.init()` 任一抛错都会中断后续步骤（连 `wx.onNetworkStatusChange` 都注册不上）；而启动期同步抛错在真机上的表现与网络故障完全一致、极难定位。现改为 `runStartupSafely()` 逐项包裹，单项失败只降级该能力、不再牵连其他项。
+- 归档历史提审说明：`docs/releases` 只保留 0.29 及以后的提审说明与 CHANGELOG，移出 0.25 / 0.28 共 19 个历史文件（仍在 git 历史里，需要时 `git show <sha>:docs/releases/<文件名>` 取回）。
+
 ## 0.30.10
 
 - AI 生成任务化改造（P0/P1/P2）：把 AI 生成从「全局单任务 + 阻塞式等待页」改为「多任务队列 + 作品占位卡片」。新增 `services/ai-task-store.ts` 以数组持久化任务（替代原单例会话 `ai-generation-session.ts`，已删除），`services/ai-generation-manager.ts` 由单例执行器改为 `AiTaskManager`（`Map<taskId, AiGenerationFlow>` + 单 tick 调度 + `MAX_CONCURRENT = 2` 并发槽位），`ai-generation-flow.ts` 不再自带定时器、只暴露 `needsPoll()` / `pollOnce()`。
