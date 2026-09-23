@@ -41,6 +41,12 @@ import { hasCloudSession } from './work-service'
 const MAX_CONCURRENT = 2
 const TICK_INTERVAL_MS = 4_000
 const TASK_TIMEOUT_MS = 15 * 60_000
+/**
+ * 「还没轮到跑」的天花板：任务可能因为并发槽位占满或长时间不在前台而在队列里等，
+ * 这段时间不该算进 15 分钟的生成超时，但也不能无限等下去——
+ * 隔了这么久还没跑上，多半是卡死了，占着槽位反而挡住后面的任务。
+ */
+const QUEUE_WAIT_TIMEOUT_MS = 60 * 60_000
 const QUEUE_MAX = 10
 const MAX_RETRY_COUNT = 3
 const DEFAULT_AI_WORK_TITLE = 'AI 拼豆图'
@@ -567,10 +573,20 @@ export class AiTaskManager {
   }
 }
 
-/** 单任务超过 15 分钟未出结果即判超时（后端输入输出 24h 过期，这是体感上限）。 */
+/**
+ * 单任务超过 15 分钟未出结果即判超时（后端输入输出 24h 过期，这是体感上限）。
+ *
+ * **计时必须从「真正开始生成」起算，不能含排队时间**：任务可能因为并发槽位占满、
+ * 或 App 被切后台而在 created/queued 里等很久，`startedAt` 在首个流转令到达前一直是 null。
+ * 若拿 `createdAt` 兜底，冷启动时一个"关了半小时的 App 里刚排上队"的任务会被直接判超时，
+ * 用户明明什么都没做错。
+ */
 function hasTimedOut(task: AiTask): boolean {
-  const since = task.startedAt ?? task.createdAt
-  return since > 0 && Date.now() - since > TASK_TIMEOUT_MS
+  // 还没真正跑起来：按「排队上限」而不是「生成上限」判，避免把正常排队算成超时
+  if (!task.startedAt || task.startedAt <= 0) {
+    return task.createdAt > 0 && Date.now() - task.createdAt > QUEUE_WAIT_TIMEOUT_MS
+  }
+  return Date.now() - task.startedAt > TASK_TIMEOUT_MS
 }
 
 function timeoutFailure(): AiGenerationFailure {

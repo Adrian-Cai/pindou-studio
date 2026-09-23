@@ -190,7 +190,10 @@ export function pruneAiTasks(): void {
   let tasks = readTasks()
   const expiredIds = new Set(
     tasks
-      .filter((task) => isAiTaskTerminal(task.status) && now - task.createdAt > TERMINAL_TTL_MS)
+      // 终态任务的保留期从「完成时刻」起算，不是创建时刻：
+      // 用 createdAt 的话，一个很早提交、刚刚才跑完的任务会因为创建时间超期被立刻清掉，
+      // 用户还没来得及看结果卡片就没了。finishedAt 在终态下必定有值，createdAt 只是兜底。
+      .filter((task) => isAiTaskTerminal(task.status) && now - (task.finishedAt ?? task.createdAt) > TERMINAL_TTL_MS)
       .map((task) => task.taskId),
   )
   tasks = tasks.filter((task) => !expiredIds.has(task.taskId))
@@ -264,31 +267,45 @@ export function isFilePathAlive(filePath: string): boolean {
  */
 export function migrateLegacyAiSession(): string | null {
   if (readMigrationFlag()) return null
-  markMigrated()
   const legacy = loadLegacySession()
-  removeLegacySession()
-  if (!legacy) return null
-  if (legacy.status === 'succeeded' || legacy.status === 'failed') return null
+  // 没有旧会话、或旧会话已终态：都算「没什么要迁的」，标记后收工
+  if (!legacy || legacy.status === 'succeeded' || legacy.status === 'failed') {
+    markMigrated()
+    if (legacy) removeLegacySession()
+    return null
+  }
 
-  const migrated = createAiTask({
-    sourceImagePath: legacy.sourceImagePath,
-    inputImagePath: legacy.inputImagePath,
-    securityCheckId: legacy.securityCheckId,
-    settings: legacy.settings,
-    style: legacy.style,
-    detailLevel: legacy.detailLevel,
-    backgroundMode: legacy.backgroundMode,
-  })
-  const status: AiTaskStatus = legacy.jobId ? 'processing' : 'created'
-  patchAiTask(migrated.taskId, {
-    status,
-    jobId: legacy.jobId,
-    inputFileId: legacy.inputFileId,
-    idempotencyKey: legacy.idempotencyKey,
-    outputImagePath: legacy.outputImagePath,
-    startedAt: legacy.jobId ? Date.now() : null,
-    createdAt: legacy.createdAt,
-  })
+  // 顺序很关键：**先建新任务，再删旧会话，最后才打迁移标记**。
+  // 反过来（先标记 + 先删旧会话）的话，建任务途中崩溃就是
+  // 「旧数据没了、新任务没建成、标记还挡着下次重试」—— 用户的在跑任务静默丢失。
+  let migrated: ReturnType<typeof createAiTask>
+  try {
+    migrated = createAiTask({
+      sourceImagePath: legacy.sourceImagePath,
+      inputImagePath: legacy.inputImagePath,
+      securityCheckId: legacy.securityCheckId,
+      settings: legacy.settings,
+      style: legacy.style,
+      detailLevel: legacy.detailLevel,
+      backgroundMode: legacy.backgroundMode,
+    })
+    const status: AiTaskStatus = legacy.jobId ? 'processing' : 'created'
+    patchAiTask(migrated.taskId, {
+      status,
+      jobId: legacy.jobId,
+      inputFileId: legacy.inputFileId,
+      idempotencyKey: legacy.idempotencyKey,
+      outputImagePath: legacy.outputImagePath,
+      startedAt: legacy.jobId ? Date.now() : null,
+      createdAt: legacy.createdAt,
+    })
+  } catch (error) {
+    // 建任务失败：旧会话和未标记状态都留着，下次冷启动还能再迁一次
+    console.warn('迁移旧版 AI 会话失败，保留原会话等待下次重试', error)
+    return null
+  }
+  removeLegacySession()
+  markMigrated()
   return migrated.taskId
 }
 

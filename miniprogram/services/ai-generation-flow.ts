@@ -223,6 +223,9 @@ export class AiGenerationFlow {
         ? task.inputImagePath
         : await prepareImageForContentSecurity(task.sourceImagePath)
       const uploaded = await uploadAiInput(inputImagePath, task.securityCheckId)
+      // await 期间任务可能已被取消：这里不 return 的话，后面的 patchAiTask 会把
+      // 已取消的任务重新写成 submitting/queued，卡片「复活」且再也收不到终态。
+      if (this.destroyed) return
       inputFileId = uploaded.id
       patchAiTask(this.taskId, { inputFileId, inputImagePath })
     }
@@ -246,6 +249,8 @@ export class AiGenerationFlow {
       }
       throw error
     }
+    // 同上：createAiGeneration 耗时可能跨过取消动作，拿到结果也得先确认任务还活着
+    if (this.destroyed) return
     patchAiTask(this.taskId, {
       jobId: generation.id,
       status: generation.status === 'succeeded' ? 'succeeded' : 'queued',

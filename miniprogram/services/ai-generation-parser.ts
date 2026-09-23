@@ -28,8 +28,15 @@ export function parseAiGeneration(value: unknown): AiGeneration {
   const backgroundMode = parseBackgroundMode(value.backgroundMode)
   let failure: AiGenerationFailure | null | undefined
   if (value.failure === undefined) {
-    // 未显式给 failure：尝试从 errorCode 反查（兼容旧接口）
-    failure = typeof value.errorCode === 'string' ? aiGenerationFailure(value) : null
+    // 未显式给 failure：尝试从 errorCode 反查（兼容旧接口）。
+    // 但只对**终态**做这个推断 —— 排队中/生成中的记录即便带了 errorCode 也常只是
+    // 「期间出过一次可重试的告警」，而 aiGenerationFailure 会把任意 errorCode 推成非空 failure，
+    // 再被下面的非终态校验判为 INVALID_RESPONSE：一条完全正常的进行中任务就凭空解析失败，
+    // 表现为任务卡住且提示「服务返回数据异常」，非常难查。
+    const isTerminal = value.status === 'failed' || value.status === 'canceled'
+    failure = isTerminal && typeof value.errorCode === 'string'
+      ? aiGenerationFailure(value)
+      : null
   } else if (value.failure === null) {
     failure = null
   } else if (isRecord(value.failure)) {
