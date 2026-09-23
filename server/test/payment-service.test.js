@@ -255,8 +255,12 @@ test("new user test package is rejected after any paid AI purchase", async () =>
   );
 });
 
-/** 构造发货所需的假 Pool：返回一笔 pending 订单。 */
-function deliveryPool(orderOverrides = {}) {
+/** 构造发货所需的假 Pool：返回一笔 pending 订单。
+ *
+ * 第二参数 `candidates` 用于补单轮询：给定时，「扫描待发货订单」那条查询会返回它们，
+ * 之后的发放链路与发货推送完全共用同一份假实现 —— 两条支路本来就该走同一套幂等逻辑。
+ */
+function deliveryPool(orderOverrides = {}, candidates = null) {
   const updates = [];
   const inserts = [];
   const orderRow = {
@@ -276,6 +280,7 @@ function deliveryPool(orderOverrides = {}) {
   };
   const pool = clientPool((sql, parameters) => {
     if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+    if (candidates !== null && sql.includes("ORDER BY orders.created_at ASC")) return { rows: candidates };
     if (sql.includes("FOR UPDATE OF orders")) return { rows: [orderRow] };
     if (sql.includes("UPDATE pindou_orders")) {
       pool.updates.push(parameters);
@@ -408,4 +413,207 @@ test("legacy notification still settles in-flight orders from the previous chann
   const result = await service.handleNotification({ rawBody: "{}", headers: {} });
   assert.equal(result.duplicate, false);
   assert.equal(pool.inserts.length, 1);
+});
+
+/** 补单轮询的调度参数：静默期 3 分钟、兜底窗口 30 分钟。 */
+const RECONCILE_OPTIONS = { graceMs: 3 * 60_000, staleAfterMs: 30 * 60_000, batchSize: 10 };
+
+/** 构造一个比 NOW 早 ageMs 的待补单候选行。 */
+function candidateRow(id, ageMs, overrides = {}) {
+  return {
+    id,
+    created_at: new Date(NOW.getTime() - ageMs),
+    openid_ciphertext: ENCRYPTED_OPENID,
+    ...overrides,
+  };
+}
+
+/** 未付款的查单结果。 */
+const UNPAID_QUERY = {
+  paid: false,
+  mchOrderNo: null,
+  transactionId: null,
+  paidTimeSeconds: null,
+  actualPriceFen: null,
+};
+
+/**
+ * 捕获结构化日志。
+ *
+ * 补单的价值一半在本体一半在告警：发了多少钱重要，**让人知道扣了款没到账**同样重要。
+ * 因此下面多个用例直接断言 console.error / console.warn 的事件，而不只看返回值。
+ */
+function captureConsole() {
+  const errors = [];
+  const warnings = [];
+  const original = { error: console.error, warn: console.warn, log: console.log };
+  const record = (bucket) => (line) => {
+    bucket.push(typeof line === "string" ? JSON.parse(line) : line);
+  };
+  console.error = record(errors);
+  console.warn = record(warnings);
+  console.log = () => undefined;
+  return {
+    errors,
+    warnings,
+    restore() {
+      console.error = original.error;
+      console.warn = original.warn;
+      console.log = original.log;
+    },
+  };
+}
+
+function reconcileService(pool, gateway) {
+  return new PostgresPaymentService(
+    pool,
+    gateway ?? fakeVirtualGateway(),
+    fakeLegacyGateway(),
+    SECRET,
+    () => NOW,
+    RECONCILE_OPTIONS,
+  );
+}
+
+test("reconcile grants quota when the delivery push never arrived", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 10 * 60_000)]);
+  const capture = captureConsole();
+  try {
+    const summary = await reconcileService(pool).reconcilePendingOrders();
+    assert.equal(summary.scanned, 1);
+    assert.equal(summary.granted, 1);
+    assert.deepEqual(summary.attention, []);
+    // 发放结果必须与发货推送路径一致：一条 purchase_grant 流水，金额取自订单快照
+    assert.equal(pool.inserts.length, 1);
+    assert.equal(pool.inserts[0][3], 30);
+    // 走到这里说明推送确实丢过一次，必须留下可追踪的 warn 痕迹
+    const recovered = capture.warnings.filter((entry) => entry.event === "virtual_payment_delivery_recovered");
+    assert.equal(recovered.length, 1);
+    assert.equal(recovered[0].orderId, "order_test");
+  } finally {
+    capture.restore();
+  }
+});
+
+test("reconcile window is enforced server-side by the grace period", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 60_000)]);
+  const capture = captureConsole();
+  try {
+    await reconcileService(pool).reconcilePendingOrders();
+    const scan = pool.calls.find((call) => call.sql.includes("ORDER BY orders.created_at ASC"));
+    assert.match(scan.sql, /created_at <= \$1/);
+    assert.deepEqual(scan.parameters[0], new Date(NOW.getTime() - RECONCILE_OPTIONS.graceMs));
+    assert.equal(scan.parameters[1], RECONCILE_OPTIONS.batchSize);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("reconcile only scans orders wired to a virtual payment product", async () => {
+  // 旧通道（商户号 + APIv3）的在途订单拿去 query_order 只会得到「单号不存在」，必须排除
+  const pool = deliveryPool({}, [candidateRow("order_test", 10 * 60_000)]);
+  const capture = captureConsole();
+  try {
+    await reconcileService(pool).reconcilePendingOrders();
+    const scan = pool.calls.find((call) => call.sql.includes("ORDER BY orders.created_at ASC"));
+    assert.match(scan.sql, /JOIN pindou_packages/);
+    assert.match(scan.sql, /packages\.virtual_product_id IS NOT NULL/);
+    assert.match(scan.sql, /status = 'pending'/);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("an unpaid order inside the stale window stays pending without alerting", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 10 * 60_000)]);
+  const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
+  const capture = captureConsole();
+  try {
+    const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
+    assert.equal(summary.unpaid, 1);
+    assert.deepEqual(summary.attention, []);
+    assert.equal(pool.inserts.length, 0);
+    assert.equal(capture.errors.length, 0);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("an order pending past the stale window raises a reconcile alert", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 45 * 60_000)]);
+  const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
+  const capture = captureConsole();
+  try {
+    const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
+    assert.equal(summary.stalled, 1);
+    assert.deepEqual(summary.attention, ["order_test"]);
+    const alerts = capture.errors.filter((entry) => entry.event === "virtual_payment_reconcile_alert");
+    assert.equal(alerts.length, 1);
+    assert.equal(alerts[0].reason, "pending_too_long");
+    assert.equal(alerts[0].orderId, "order_test");
+  } finally {
+    capture.restore();
+  }
+});
+
+test("a failing query is counted unresolved and does not abort the batch", async () => {
+  const pool = deliveryPool({}, [
+    candidateRow("order_first", 10 * 60_000),
+    candidateRow("order_test", 10 * 60_000),
+  ]);
+  const gateway = fakeVirtualGateway({
+    async queryOrder(input) {
+      if (input.orderId === "order_first") throw new Error("虚拟支付服务暂时不可用");
+      return {
+        paid: true,
+        mchOrderNo: "mch_order_1",
+        transactionId: "transaction_1",
+        paidTimeSeconds: Math.floor(NOW.getTime() / 1000),
+        actualPriceFen: 990,
+      };
+    },
+  });
+  const capture = captureConsole();
+  try {
+    const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
+    assert.equal(summary.scanned, 2);
+    assert.equal(summary.unresolved, 1);
+    // 前一笔挂掉绝不能连累后一笔：那才是真正被欠着商品的用户
+    assert.equal(summary.granted, 1);
+    assert.deepEqual(summary.attention, ["order_first"]);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("a candidate without a usable payer identity is reported instead of dropped", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 10 * 60_000, { openid_ciphertext: null })]);
+  const capture = captureConsole();
+  try {
+    const summary = await reconcileService(pool).reconcilePendingOrders();
+    assert.equal(summary.skipped, 1);
+    assert.deepEqual(summary.attention, ["order_test"]);
+    const alerts = capture.errors.filter((entry) => entry.event === "virtual_payment_reconcile_alert");
+    assert.equal(alerts[0].reason, "payer_identity_unavailable");
+  } finally {
+    capture.restore();
+  }
+});
+
+test("reconcile is a no-op when the virtual gateway is not configured", async () => {
+  let queryCount = 0;
+  const pool = clientPool(() => {
+    queryCount += 1;
+    return { rows: [] };
+  });
+  const gateway = fakeVirtualGateway({ configured: false });
+  const capture = captureConsole();
+  try {
+    const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
+    assert.equal(summary.scanned, 0);
+    // 未配置时扫一遍只会空转并打出误导性的日志
+    assert.equal(queryCount, 0);
+  } finally {
+    capture.restore();
+  }
 });

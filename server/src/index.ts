@@ -95,6 +95,29 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       void aiGenerations.cleanupExpired().catch(() => undefined);
     }, Math.min(config.aiFiles.retentionMs, 60 * 60 * 1_000));
     aiCleanupTimer.unref();
+    /**
+     * 虚拟支付发货补单轮询。
+     *
+     * 官方把「发货推送」与「发货轮询」并列为两条必选支路：推送会丢、success 回调会丢，
+     * 少了轮询就等于默许「用户扣了款、次数没到账」且系统毫无告警。
+     * 启动先跑一次是为了重启期间丢掉的推送能被立刻捞回来，而不是白等一个间隔。
+     *
+     * reconcilePendingOrders 内部已吞掉所有异常（单笔失败记告警后继续），
+     * 这里的 catch 只是防止将来漏网的错误打穿进程。
+     */
+    const payments = new PostgresPaymentService(
+      pool,
+      virtualPayGateway,
+      paymentGateway,
+      config.auth.openidHashSecret,
+      () => new Date(),
+      config.virtualPayReconcile,
+    );
+    void payments.reconcilePendingOrders().catch(() => undefined);
+    const paymentReconcileTimer = setInterval(() => {
+      void payments.reconcilePendingOrders().catch(() => undefined);
+    }, config.virtualPayReconcile.intervalMs);
+    paymentReconcileTimer.unref();
     const http = await startHttpServer(
       createHttpApplication({
         database,
@@ -112,12 +135,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         aiFiles,
         works: new PostgresWorkService(pool),
         quotaDownloads: new PostgresQuotaDownloadService(pool, config.quota),
-        payments: new PostgresPaymentService(
-          pool,
-          virtualPayGateway,
-          paymentGateway,
-          config.auth.openidHashSecret,
-        ),
+        payments,
         coverMaximumBytes: config.covers.maximumBytes,
         aiFileMaximumBytes: config.aiFiles.maximumBytes,
         aiRateLimiter,
@@ -142,6 +160,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       http,
       close: async () => {
         clearInterval(aiCleanupTimer);
+        clearInterval(paymentReconcileTimer);
         await http.close();
         await database.close();
       },
