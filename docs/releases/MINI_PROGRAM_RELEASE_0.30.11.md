@@ -30,7 +30,7 @@
 ## 本次修改说明
 
 1. **生图角标文案改为「小露拼豆」**：`cloudfunctions/generateImage/index.js` 新增常量 `IMAGE_FOOTNOTE`，在 `generateImage()` 里传 `footnote`。平台默认在产物右下角烙「AI生成」且**不支持关闭**——CloudBase 社区 issue #1317 中官方明确：按法规要求显式 + 隐式两个标识都必须加，SDK 只开放 `footnote`（自定义水印文案，上限 16 字符）。所以只能换文案，不能去掉。`footnote` 由服务端在生图时同步写入，不增加额外耗时。要改回含「AI 生成」字样（合规上更稳妥）只需改 `IMAGE_FOOTNOTE` 一个常量。
-2. **首页入队提示改为顶部横条通知**：原胶囊是常驻计数，需要 `aiTaskManager.subscribeAll()` 订阅全量任务并在每次任务变化时刷新，入队后长期挂在页面上占位置。改为入队成功后从导航栏下方滑入的横条（`top` 由 ts 注入实测的导航栏高度，不硬编码顶部高度；`fixed` 定位，页面滚到哪都停在视口顶部），`QUEUE_TIP_DURATION = 4000` 后自动收起，点击跳「作品」页看进度。与主按钮就地成功态互补：按钮给指尖即时确认，横条告诉用户去哪看。随之移除 `aiTaskManager` 的 `subscribeAll()` / `getActiveCount()` 与首页的订阅刷新逻辑（已确认全仓无残留引用）。
+2. **首页入队提示改为顶部横条通知**：原胶囊是常驻计数，需要 `aiTaskManager.subscribeAll()` 订阅全量任务并在每次任务变化时刷新，入队后长期挂在页面上占位置。改为入队成功后从导航栏下方滑入的横条（`top` 由 ts 注入实测的导航栏高度，不硬编码顶部高度；`fixed` 定位，页面滚到哪都停在视口顶部），`QUEUE_TIP_DURATION = 4000` 后自动收起，点击跳「作品」页看进度。与主按钮就地成功态互补：按钮给指尖即时确认，横条告诉用户去哪看。首页不再订阅全量任务刷新计数；随之移除已无调用者的 `aiTaskManager.getActiveCount()`。`subscribeAll()` 保留——作品页仍用它刷新任务卡片。
 3. **启动项逐项容错**：`onLaunch` 里原先只有 `initCloud()` 包了 `try/catch`，`appStore.hydrate()` 与 `aiTaskManager.init()` 任一抛错都会中断后续步骤——连 `wx.onNetworkStatusChange` 都注册不上，网络恢复后不再补同步。而 `onLaunch` 里同步抛错在真机上的表现跟网络故障完全一致、极难定位。现抽出 `runStartupSafely()` 逐项包裹，单项失败只降级该能力、不再牵连其他项。
 4. **归档历史提审说明**：移出 `docs/releases` 下 0.25.7–0.25.21、0.28.0–0.28.2 共 19 个历史文件，只保留 0.29 及以后的提审说明与 CHANGELOG，避免历史版本说明与现行版本混列。
 
@@ -64,7 +64,7 @@
 3. 作品同步不变式测试通过：`node test/work-sync/run-tests.js` ✅（已通过，12/12）
 4. 版本号一致：`package.json`、`package-lock.json` 均为 `0.30.11` ✅
 5. ⚠️ **在微信云开发重新部署 `cloudfunctions/generateImage` 云函数**（含依赖），否则角标仍是「AI生成」
-6. 变更同步推送 `cnb/master`、`origin/master`、`wechat/master` ✅
+6. 变更同步推送：`cnb/master`、`wechat/master` ✅（均为 `d685802`）；`origin/master` ⚠️ 待补推（GitHub 需本地代理，代理未开时直连被重置）
 7. 清除微信开发者工具缓存后重新编译，确认小程序版本显示为 `0.30.11`。
 
 ## 提审验收重点
@@ -84,7 +84,8 @@
 - [x] 服务端类型检查（本次不改服务端，无回归）
 - [x] 版本号一致：`package.json` / `package-lock.json` 均为 `0.30.11`
 - [x] 待提交 diff 审查：无遗留调试代码、无新增 TODO/FIXME
-- [x] 变更已同步推送 `cnb/master`、`origin/master`、`wechat/master`
+- [x] 变更已同步推送 `cnb/master`、`wechat/master`（均为 `d685802`）
+- [ ] 变更已同步推送 `origin/master`（GitHub 直连被重置，需本地代理 `127.0.0.1:7897` 开启后补推）
 - [ ] **在微信云开发重新部署 `generateImage` 云函数**
 - [ ] 真机验收 T1–T20（0.30.10 遗留，重点 T3 杀 App 恢复、T4 切后台 5 分钟、T9 旧版本升级迁移）
 - [ ] iPhone、Android 真机验证（首页入队横条、角标文案、启动容错）
