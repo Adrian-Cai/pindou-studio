@@ -121,6 +121,32 @@ export function isWorkDraft(work: Pick<WorkItem, 'status'>): boolean {
   return work.status !== 'completed'
 }
 
+/**
+ * 归一化作品的云同步归属：判定这条作品该进「待上云队列」还是「只存本机」。
+ *
+ * 这是「AI 占位作品不上云」这条不变式的**唯一实现处**。占位作品还没有图纸，
+ * 一旦进队列就会被 work-sync-service 以「图案数据不完整」判失败，并把自己写回 failed
+ * 从而每次同步反复重试。任何会写 syncStatus / ownerId / isCloud 的入口都必须经过本函数，
+ * 不要在调用点各自判断 isAiTaskWork —— 散落判断必然会有入口漏掉。
+ *
+ * @param work 待归位的作品
+ * @param activeUserId 当前登录账号；为 null 表示游客态，此时任何作品都只存本机
+ */
+export function resolveSyncFields(
+  work: Pick<WorkItem, 'status' | 'syncStatus'>,
+  activeUserId: string | null,
+): Pick<WorkItem, 'syncStatus' | 'ownerId' | 'isCloud'> {
+  if (isAiTaskWork(work) || !activeUserId) {
+    return { syncStatus: 'guest', ownerId: undefined, isCloud: false }
+  }
+  // 已同步失败的作品保留 failed，避免重试前被误重置成 pending 而丢失失败态
+  return {
+    syncStatus: work.syncStatus === 'failed' ? 'failed' : 'pending',
+    ownerId: activeUserId,
+    isCloud: false,
+  }
+}
+
 /** 下载文件类型：成品图/施工图/材料清单/色板。 */
 export type DownloadFileType = 'preview' | 'chart' | 'materials' | 'palette'
 

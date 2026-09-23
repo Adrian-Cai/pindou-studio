@@ -1,4 +1,4 @@
-import { isAiTaskWork, isGenerationMode, type DownloadRecord, type PatternDraft, type WorkItem } from '../models/pattern'
+import { isAiTaskWork, isGenerationMode, resolveSyncFields, type DownloadRecord, type PatternDraft, type WorkItem } from '../models/pattern'
 
 interface Workspace { currentDraft: PatternDraft | null; localDrafts: Record<string, PatternDraft>; works: WorkItem[]; favoriteIds: string[]; downloadQuota: number; downloadQuotaDate: string; downloadRecords: DownloadRecord[] }
 interface PersistedState { version: 2; guest: Workspace; accounts: Record<string, Workspace> }
@@ -60,9 +60,11 @@ export class AppStore {
     const account = this.getActiveWorkspace()
     const ids = new Set(guest.works.map((work) => work.id))
     // AI 占位作品没有图纸，进不了云同步队列；否则登录后会被 sync 判「图案数据不完整」
-    const works = guest.works.map((work) => isAiTaskWork(work)
-      ? { ...work, syncStatus: 'guest' as const, ownerId: undefined, isCloud: false, syncError: undefined }
-      : { ...work, syncStatus: 'pending' as const, ownerId: userId, isCloud: false, syncError: undefined })
+    const works = guest.works.map((work) => ({
+      ...work,
+      ...resolveSyncFields(work, userId),
+      syncError: undefined,
+    }))
     account.works = mergeWorks(works, account.works)
     account.favoriteIds = unique([...account.favoriteIds, ...guest.favoriteIds.filter((id) => ids.has(id))])
     account.localDrafts = { ...guest.localDrafts, ...account.localDrafts }
@@ -86,11 +88,8 @@ export class AppStore {
       this.cloudWorks = mergeWorks([{ ...work, syncStatus: 'synced', isCloud: true }], this.cloudWorks)
       this.updateFavoriteId(work.id, work.isFavorite)
     } else {
-      // AI 任务占位作品还没有图纸，强行进待同步队列只会让 sync 因缺 draft 而失败，一律只存本机
-      const localOnly = isAiTaskWork(work)
-      const normalized: WorkItem = !localOnly && this.activeUserId
-        ? { ...work, syncStatus: work.syncStatus === 'failed' ? 'failed' : 'pending' as const, ownerId: this.activeUserId, isCloud: false }
-        : { ...work, syncStatus: 'guest' as const, ownerId: undefined, isCloud: false }
+      // 归属一律交由 resolveSyncFields 判定：AI 占位作品只存本机，其余进待同步队列
+      const normalized: WorkItem = { ...work, ...resolveSyncFields(work, this.activeUserId) }
       const w = this.getActiveWorkspace(); w.works = mergeWorks([normalized], w.works)
     }
     this.rebuildState(); return this.persist()
@@ -98,10 +97,26 @@ export class AppStore {
 
   markSyncStatus(workId: string, status: 'pending' | 'failed', syncError?: string): Promise<void> {
     const w = this.getActiveWorkspace()
-    w.works = w.works.map((work) => work.id === workId ? { ...work, syncStatus: status, syncError, ownerId: this.activeUserId ?? undefined, isCloud: false } : work)
+    w.works = w.works.map((work) => {
+      if (work.id !== workId) return work
+      // AI 占位作品不入云同步：同步结果的回写不得改变它的归属。
+      // 否则缺 draft 的那次失败会把它钉成 failed + ownerId，之后每次同步都重试、每次再写回 failed。
+      if (isAiTaskWork(work)) return { ...work, ...resolveSyncFields(work, null), syncError: undefined }
+      return { ...work, syncStatus: status, syncError, ownerId: this.activeUserId ?? undefined, isCloud: false }
+    })
     this.rebuildState(); return this.persist()
   }
-  getSyncCandidates(userId: string): WorkItem[] { return (this.persisted.accounts[userId]?.works ?? []).filter((work) => work.syncStatus === 'pending' || work.syncStatus === 'failed') }
+
+  /**
+   * 待同步队列：这里是不变式的最后一道防线。
+   * 上游写入侧已由 resolveSyncFields 收口，但新增入口或旧版本遗留的数据仍可能带脏 syncStatus，
+   * 因此在**离危险最近的位置**再挡一次——只要这里是干净的，占位作品就永远上不了云。
+   */
+  getSyncCandidates(userId: string): WorkItem[] {
+    return (this.persisted.accounts[userId]?.works ?? [])
+      .filter((work) => !isAiTaskWork(work))
+      .filter((work) => work.syncStatus === 'pending' || work.syncStatus === 'failed')
+  }
 
   async replaceLocalWorkWithCloud(localId: string, cloudWork: WorkItem): Promise<void> {
     const w = this.getActiveWorkspace()
