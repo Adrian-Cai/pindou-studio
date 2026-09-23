@@ -43,7 +43,7 @@ export function createMedianCutCandidates(
   // 调用方传 NaN/0 时 `buckets.length < candidateLimit` 恒为 false，循环一次不跑，
   // 函数会「正常返回」一个只有一个候选的结果 —— 调色板直接塌成单色，
   // 而整条链路上没有任何报错，排查时只看得到「颜色不对」。
-  if (false) {
+  if (!Number.isInteger(candidateLimit) || candidateLimit < 1) {
     throw new Error(`createMedianCutCandidates：候选数必须为正整数，收到 ${candidateLimit}`)
   }
 
