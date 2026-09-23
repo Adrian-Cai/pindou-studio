@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.30.13
+
+首轮全量 AI 代码扫描（`open-code-review`）的修复批次，共 269 条发现、118 个文件送审。
+合并以下 6 类真实缺陷，其余判定为误报或有意设计，记录在 `docs/development/OCR_SCAN_FIX_LOG_2026-09-23.md`。
+
+- **图纸生成 · 空候选静默返回 undefined**：`findNearestColor` 在调色板为空时 `best` 停在初始值、循环体一次都不执行，返回 `undefined` 而类型上却写着具名返回值——下游拿到直接在很远处崩溃。抽出 `pickNearest(items, distance)` 统一规定**候选为空即抛错**，让失败停在离根因最近的地方；`findNearestColorOklab` / `findNearestColorIndexOklab` 同样补上前置校验（返回下标 0 是「合法但错误」的值）。
+- **Sobel 归一化系数错误**：原来除以 4，而双方向合成的幅值上限是 √32≈5.66，比真实上限小三成多，稍强的边缘统统饱和到 1，输出退化成近乎二值的 0/1，丢掉了「保护轮廓」所需的强度层次。改为 `/√32`；同步补上 alpha 处理（透明格乘 alpha 并标记 `opaque`，不再把「画面↔无画面」的落差当成真实轮廓）与邻域覆盖率折算。
+- **AI 任务迁移顺序错误（会丢任务）**：`migrateLegacyAiSession` 原本先打迁移标记、再删旧会话，最后才建新任务——中间崩一步就是「旧数据没了、新任务没建成、标记还挡着下次重试」，用户的在跑任务静默丢失。改为**先建新任务 → 再删旧会话 → 最后打标记**，且建任务失败时保留原会话等待重试。
+- **终态任务 TTL 起算点错误**：过期清理按 `createdAt` 算，一个很早提交、刚刚才跑完的任务会因创建时间超期被立刻清掉，用户还没看到结果卡片就没了。改为按 `finishedAt` 起算（`createdAt` 兜底）。
+- **持久化头像永远被清成 null**：`token-storage` 的 `parseUser` 写死 `avatarUrl: null`，冷启动恢复的会话会丢掉已保存的头像。修复并与 `auth-service` 的解析口径对齐；`CurrentUserProfile` 补文档明确 `quota` 字段由解析器保证齐全。
+- **支付幂等键每次调用都重生成（去重失效）**：`payForAiGenerationPackage` 原来在函数内部用默认参数现造 idempotency key，同一次点击走到两次就被服务端当成两笔订单。改为必须由调用方按「一次购买意图」生成并持有——`recharge` 页把它存进页面状态，失败重试复用同一个键，支付成功或用户主动取消才清空。
+- 其余健壮性收敛：`app.ts` 补 `runStartupSafelyAsync` 接住 fire-and-forget 启动项的 Promise 拒绝（否则控制台只有无堆栈的 Unhandled rejection）；`navigation` / `page-layout` 对 `getWindowInfo`、`getMenuButtonBoundingClientRect` 返回值做兜底；`download-service`、`image-service`、`payment-service` 等补齐空值与日期校验。
+- 测试跟进 `pickNearest` 重构：三个用例改用新函数并保留 V1 行为基线，**57/57 通过**。
+- ci：新增 OpenCodeReview GitHub Actions 工作流与项目专属评审规则（19 条），详见 `docs/development/OCR_CODE_REVIEW.md`。
+
 ## 0.30.12
 
 - 修复本机存储空间写满后全面报错：`AppStore` 把游客与所有账号的工作区存在单个 storage key 里，配额仅 10MB，而草稿的逐格对象是绝对大头且从不回收，攒二三十份就写满，之后每次 `setStorage` 都失败——作品页会把「本机写不进」谎报成「读取云端作品失败」，AI 已经生成好的图纸也因为落不了库被判失败。落盘改为「调色板 + 下标」压缩（40×40 图纸 160KB → 约 15KB），读取时按 `cells` 首元素类型自动兼容新旧格式、旧数据免迁移，格式损坏则整份丢弃（不降级成空网格——空画布是合法值，编辑器会照常打开并让用户保存回去覆盖现场）。
