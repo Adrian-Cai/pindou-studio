@@ -1,13 +1,53 @@
-import { isAiTaskWork, isGenerationMode, resolveSyncFields, type DownloadRecord, type PatternDraft, type WorkItem } from '../models/pattern'
+/**
+ * 本机状态仓库：作品/草稿/收藏/下载记录的唯一内存态与落盘出口。
+ *
+ * 职责：维护游客与各账号隔离的工作区，所有写操作都在这里串行落盘（persist）；
+ *       提供订阅（subscribe）给页面渲染快照；云端数据只留在运行期，不持久化。
+ * 调用方：作品列表、编辑器、AI 生成、下载、同步等几乎所有页面与 service。
+ * 关键点：整个仓库塞在单个 storage key 里，而微信给单个小程序的 storage 配额只有 10MB，
+ *       其中占大头的是草稿网格。因此落盘一律走「调色板 + 下标」压缩（encodeDraft），
+ *       并对草稿条数设上限；真写满时先自救裁剪再重试，绝不静默吞掉失败。
+ */
+import {
+  decodePatternCells,
+  encodePatternCells,
+  isAiTaskWork,
+  isGenerationMode,
+  resolveSyncFields,
+  type CompactDraft,
+  type DownloadRecord,
+  type PatternDraft,
+  type WorkItem,
+} from '../models/pattern'
 
 interface Workspace { currentDraft: PatternDraft | null; localDrafts: Record<string, PatternDraft>; works: WorkItem[]; favoriteIds: string[]; downloadQuota: number; downloadQuotaDate: string; downloadRecords: DownloadRecord[] }
 interface PersistedState { version: 2; guest: Workspace; accounts: Record<string, Workspace> }
 interface AppState extends Workspace {}
 interface LegacyState extends Partial<Workspace> {}
+/** 落盘态：草稿已压成 CompactDraft，其余与运行态一致。 */
+interface StoredWorkspace extends Omit<Workspace, 'currentDraft' | 'localDrafts'> { currentDraft: CompactDraft | null; localDrafts: Record<string, CompactDraft> }
+interface StoredPersistedState { version: 2; guest: StoredWorkspace; accounts: Record<string, StoredWorkspace> }
 
 const STORAGE_KEY = 'pindou-app-state-v2'
 const LEGACY_STORAGE_KEY = 'pindou-app-state-v1'
 export const DAILY_FREE_DOWNLOAD_QUOTA = 9
+/**
+ * 落盘保留量的两档上限：常态用 MAX，存储写满自救时用 MIN。
+ *
+ * 两档不是「随便取的两个数」：MAX 是正常使用能攒到的量（下载记录还会展示在下载页，
+ * 砍太狠等于删用户历史），MIN 是写满时「至少能腾出空间」的兜底量。
+ * 自救裁剪的是**运行态**而非只裁落盘快照，所以自救后运行态就只剩 MIN 条，
+ * 后续落盘跟着运行态走，只会随着用户新增下载慢慢涨回 MAX —— 不存在同一份数据在
+ * 10↔60 之间反复跳变的情况。
+ */
+/** 单个工作区落盘保留的草稿上限（当前草稿必留），超出的按创建时间丢最旧的。 */
+const MAX_PERSISTED_DRAFTS = 50
+/** 存储写满自救时保留的草稿条数。 */
+const MIN_PERSISTED_DRAFTS = 8
+/** 落盘保留的下载记录条数；记录会随每次下载累加，不设限同样会挤占配额。 */
+const MAX_PERSISTED_DOWNLOAD_RECORDS = 60
+/** 自救时下载记录保留条数。 */
+const MIN_PERSISTED_DOWNLOAD_RECORDS = 10
 type Listener = (state: Readonly<AppState>) => void
 
 export class LocalStorageError extends Error {
@@ -206,10 +246,55 @@ export class AppStore {
     this.state = { ...cloneWorkspace(w), currentDraft: this.cloudDraft ?? w.currentDraft, works, favoriteIds }
     this.listeners.forEach((listener) => listener(this.state))
   }
+  /**
+   * 落盘：压缩 + 裁剪后写入；写满配额时先裁掉最旧的草稿和下载记录再重试一次。
+   *
+   * 失败仍会向上抛 LocalStorageError —— 静默吞掉会让调用方以为数据已存住，
+   * 而实际上冷启动后全部丢失；但自救能覆盖绝大多数「只是攒太多」的场景。
+   */
   private persist(): Promise<void> {
-    const payload = this.persisted
-    this.writeTask = this.writeTask.catch(() => undefined).then(() => new Promise<void>((resolve, reject) => wx.setStorage({ key: STORAGE_KEY, data: payload, success: () => resolve(), fail: (error) => reject(new LocalStorageError(storageMessage(error))) })))
+    this.writeTask = this.writeTask.catch(() => undefined).then(() => this.persistWithRecovery())
     return this.writeTask
+  }
+
+  private async persistWithRecovery(): Promise<void> {
+    try {
+      await writeStorage(encodePersistedState(this.persisted))
+    } catch (error) {
+      // 只有「配额写满」值得自救；其余（序列化失败等）重试也无意义
+      if (!isStorageQuotaError(error) || !this.shrink()) throw new LocalStorageError(storageMessage(error))
+      try {
+        await writeStorage(encodePersistedState(this.persisted))
+      } catch (retryError) {
+        throw new LocalStorageError(storageMessage(retryError))
+      }
+    }
+  }
+
+  /**
+   * 空间不足自救：按创建时间丢掉多余的草稿与下载记录，给本次写入腾出空间。
+   * 裁剪的是**运行态**（而不只是落盘快照），保证内存与磁盘一致 —— 否则页面还能打开
+   * 一份重启后就消失的草稿，反而更误导。当前草稿始终保留。
+   * @returns 是否真的腾出了空间
+   */
+  private shrink(): boolean {
+    let removed = false
+    const trim = (workspace: Workspace): void => {
+      const keepCurrent = workspace.currentDraft?.id
+      const drafts = limitDrafts(workspace.localDrafts, keepCurrent, MIN_PERSISTED_DRAFTS)
+      if (Object.keys(drafts).length !== Object.keys(workspace.localDrafts).length) {
+        workspace.localDrafts = drafts
+        removed = true
+      }
+      if (workspace.downloadRecords.length > MIN_PERSISTED_DOWNLOAD_RECORDS) {
+        workspace.downloadRecords = workspace.downloadRecords.slice(0, MIN_PERSISTED_DOWNLOAD_RECORDS)
+        removed = true
+      }
+    }
+    trim(this.persisted.guest)
+    Object.values(this.persisted.accounts).forEach(trim)
+    if (removed) this.rebuildState()
+    return removed
   }
   private migrateLegacy(): PersistedState {
     const legacy = wx.getStorageSync<LegacyState>(LEGACY_STORAGE_KEY)
@@ -225,8 +310,14 @@ function normalizeWorkspace(w: Partial<Workspace>): Workspace {
   return {
     ...createWorkspace(),
     ...w,
+    // 损坏的草稿整份丢弃：作品记录还在，打开时走「缺少可恢复的网格数据」提示，
+    // 比留一份空白画布让用户以为自己画的东西没了要好
     currentDraft: w.currentDraft ? normalizeDraft(w.currentDraft) : null,
-    localDrafts: Object.fromEntries(Object.entries(w.localDrafts ?? {}).map(([id, draft]) => [id, normalizeDraft(draft)])),
+    localDrafts: Object.fromEntries(
+      Object.entries(w.localDrafts ?? {})
+        .map(([id, draft]) => [id, normalizeDraft(draft)] as const)
+        .filter((entry): entry is [string, PatternDraft] => entry[1] !== null),
+    ),
     works: (w.works ?? []).map(normalizeWork),
     favoriteIds: w.favoriteIds ?? [],
     downloadRecords: w.downloadRecords ?? [],
@@ -235,8 +326,44 @@ function normalizeWorkspace(w: Partial<Workspace>): Workspace {
 function normalizePersistedState(state: PersistedState): PersistedState { return { version: 2, guest: normalizeWorkspace(state.guest), accounts: Object.fromEntries(Object.entries(state.accounts ?? {}).map(([id, w]) => [id, normalizeWorkspace(w)])) } }
 function isPersistedState(value: unknown): value is PersistedState { return typeof value === 'object' && value !== null && (value as { version?: unknown }).version === 2 && typeof (value as { guest?: unknown }).guest === 'object' }
 function isSynced(work: WorkItem): boolean { return work.syncStatus === 'synced' || work.isCloud === true }
-function normalizeDraft(draft: PatternDraft): PatternDraft {
-  return { ...draft, generationMode: isGenerationMode(draft.generationMode) ? draft.generationMode : (draft.id.startsWith('ai-pending-') ? 'ai' : 'standard') }
+
+/**
+ * 兼容两种落盘形态：新版是「调色板 + 下标」（cells 首元素为 number），旧版是逐格对象。
+ * 旧数据无需迁移 —— 读回来展开即可，下一次写入自然变成压缩格式。
+ * @returns 编辑态草稿；压缩态但调色板/下标对不上（数据已损坏）时返回 null，由调用方丢弃
+ */
+function restoreDraftCells(draft: PatternDraft): PatternDraft | null {
+  const packed = draft as unknown as CompactDraft
+  if (!Array.isArray(packed.cells) || typeof packed.cells[0] !== 'number') return draft
+  const cells = decodePatternCells(packed)
+  if (!cells) {
+    // 压缩态但调色板/下标对不上：数据已损坏，返回 null 让调用方整份丢弃。
+    // 这里不能降级成 cells: [] —— 空数组是一份「合法的空白画布」，编辑器会照常打开，
+    // 用户既看不到任何异常提示，又会在保存后把空白网格写回去覆盖掉原本可诊断的现场。
+    console.warn('本机草稿网格数据已损坏，已丢弃', draft.id)
+    return null
+  }
+  // 可选字段未经内容安全检查时不存在，这里保持「要么有值要么不出现」，避免写出一堆 undefined
+  return {
+    id: packed.id,
+    sourceImagePath: packed.sourceImagePath,
+    ...(packed.contentSecurityCheckId === undefined ? {} : { contentSecurityCheckId: packed.contentSecurityCheckId }),
+    ...(packed.contentSecurityImagePath === undefined ? {} : { contentSecurityImagePath: packed.contentSecurityImagePath }),
+    createdAt: packed.createdAt,
+    generationMode: packed.generationMode,
+    settings: packed.settings,
+    cells,
+  }
+}
+
+/**
+ * 归一化单份草稿：还原网格 + 补齐生成模式。
+ * @returns 归一化后的草稿；网格数据损坏无法还原时返回 null，由调用方整份丢弃
+ */
+function normalizeDraft(draft: PatternDraft): PatternDraft | null {
+  const restored = restoreDraftCells(draft)
+  if (!restored) return null
+  return { ...restored, generationMode: isGenerationMode(restored.generationMode) ? restored.generationMode : (restored.id.startsWith('ai-pending-') ? 'ai' : 'standard') }
 }
 function normalizeWork(work: WorkItem): WorkItem { return { ...work, generationMode: isGenerationMode(work.generationMode) ? work.generationMode : 'standard' } }
 function mergeWorks(first: WorkItem[], second: WorkItem[]): WorkItem[] { const seen = new Set<string>(); return [...first, ...second].filter((work) => !seen.has(work.id) && (seen.add(work.id), true)) }
@@ -244,4 +371,71 @@ function applyFavorite(works: WorkItem[], id: string, favorite: boolean, at: num
 function unique(values: string[]): string[] { return [...new Set(values)] }
 function dateKey(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function normalizeQuota(value: number): number { return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : DAILY_FREE_DOWNLOAD_QUOTA }
-function storageMessage(error: unknown): string { const raw = typeof (error as { errMsg?: unknown })?.errMsg === 'string' ? (error as { errMsg: string }).errMsg : ''; return /exceed|limit/i.test(raw) ? '本机存储空间不足，请清理空间后重试' : '本机保存失败，请稍后重试' }
+
+function writeStorage(payload: StoredPersistedState): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    wx.setStorage({ key: STORAGE_KEY, data: payload, success: () => resolve(), fail: (error) => reject(error) })
+  })
+}
+
+/** 把运行态压成落盘态：草稿网格压缩，并按上限裁掉最旧的草稿与下载记录。 */
+function encodePersistedState(state: PersistedState): StoredPersistedState {
+  return {
+    version: state.version,
+    guest: encodeWorkspace(state.guest),
+    accounts: Object.fromEntries(Object.entries(state.accounts).map(([id, workspace]) => [id, encodeWorkspace(workspace)])),
+  }
+}
+
+function encodeWorkspace(workspace: Workspace): StoredWorkspace {
+  return {
+    ...workspace,
+    currentDraft: workspace.currentDraft ? encodeDraft(workspace.currentDraft) : null,
+    localDrafts: Object.fromEntries(
+      Object.entries(limitDrafts(workspace.localDrafts, workspace.currentDraft?.id, MAX_PERSISTED_DRAFTS))
+        .map(([id, draft]) => [id, encodeDraft(draft)]),
+    ),
+    // 常态按 MAX 裁；自救（shrink）已经把运行态裁到 MIN，这里再裁一次也不会复活被丢掉的条目
+    downloadRecords: workspace.downloadRecords.slice(0, MAX_PERSISTED_DOWNLOAD_RECORDS),
+  }
+}
+
+function encodeDraft(draft: PatternDraft): CompactDraft {
+  const packed = encodePatternCells(draft.cells)
+  return {
+    id: draft.id,
+    sourceImagePath: draft.sourceImagePath,
+    // 与 restoreDraftCells 对称：可选字段要么有值要么不出现，不写 undefined 占位键
+    ...(draft.contentSecurityCheckId === undefined ? {} : { contentSecurityCheckId: draft.contentSecurityCheckId }),
+    ...(draft.contentSecurityImagePath === undefined ? {} : { contentSecurityImagePath: draft.contentSecurityImagePath }),
+    createdAt: draft.createdAt,
+    generationMode: draft.generationMode,
+    settings: draft.settings,
+    palette: packed.palette,
+    cells: packed.cells,
+  }
+}
+
+/**
+ * 草稿条数裁剪：按 createdAt **降序**（最新的在前）保留 limit 份，其余（更旧的）丢弃。
+ * 当前草稿（keepId）不计入 limit，始终保留 —— 它正被编辑，丢掉等于丢用户手上的活。
+ */
+function limitDrafts(drafts: Record<string, PatternDraft>, keepId: string | undefined, limit: number): Record<string, PatternDraft> {
+  const entries = Object.entries(drafts)
+  if (entries.length <= limit) return drafts
+  const kept: Record<string, PatternDraft> = {}
+  let count = 0
+  for (const [id, draft] of [...entries].sort((a, b) => b[1].createdAt - a[1].createdAt)) {
+    if (id !== keepId && count >= limit) continue
+    kept[id] = draft
+    count += 1
+  }
+  return kept
+}
+
+function errMsgOf(error: unknown): string {
+  return typeof (error as { errMsg?: unknown })?.errMsg === 'string' ? (error as { errMsg: string }).errMsg : ''
+}
+/** 微信 storage 写失败只区分「配额写满」与「其它」；前者值得自救，后者重试无意义。 */
+function isStorageQuotaError(error: unknown): boolean { return /exceed|limit|quota|max size/i.test(errMsgOf(error)) }
+function storageMessage(error: unknown): string { return isStorageQuotaError(error) ? '本机存储空间不足，请清理空间后重试' : '本机保存失败，请稍后重试' }

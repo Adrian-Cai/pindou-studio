@@ -18,7 +18,7 @@ import {
   hasCloudSession,
   renameCloudWork,
 } from '../../services/work-service'
-import { appStore } from '../../store/app-store'
+import { appStore, LocalStorageError } from '../../store/app-store'
 import { checkTextContent } from '../../services/content-security-service'
 import {
   aiTaskManager,
@@ -93,20 +93,39 @@ Page({
   },
 
   async refreshWorks() {
-    // 登录时拉取云端作品覆盖本地云端列表；失败则保留本地缓存继续展示
-    if (hasCloudSession()) {
-      this.setData({ loading: true })
+    // 未登录时没有云端列表可拉，直接渲染本地缓存
+    if (!hasCloudSession()) {
+      this.refreshVisibleWorks()
+      return
+    }
+    this.setData({ loading: true })
+    try {
+      let summaries
       try {
-        const response = await fetchCloudWorks()
-        await appStore.replaceCloudWorks(response.items.map(cloudSummaryToWorkItem))
+        summaries = (await fetchCloudWorks()).items
       } catch (error) {
+        // 这里是**网络/接口**失败，本地缓存还在，按「加载失败」提示
         console.error('读取云端作品失败', error)
         wx.showToast({ title: '云端作品加载失败，已显示本地缓存', icon: 'none' })
-      } finally {
-        this.setData({ loading: false })
+        return
       }
+      try {
+        await appStore.replaceCloudWorks(summaries.map(cloudSummaryToWorkItem))
+      } catch (error) {
+        // 云端已经读回来了，写不进去只可能是本机落盘（典型是 storage 写满）。
+        // 列表内存态已经更新，这里如实告诉用户「没存住」，而不是谎报云端加载失败。
+        console.error('云端作品写入本机失败', error)
+        wx.showToast({
+          title: error instanceof LocalStorageError ? error.message : '本机保存失败，请清理空间后重试',
+          icon: 'none',
+        })
+      }
+    } finally {
+      // 「复位 loading + 重渲染」是这段刷新的唯一出口：提前 return / 网络失败 / 落盘失败
+      // 都从这里走。写成单点出口后，将来再加分支也不可能漏掉 loading 导致页面一直转圈。
+      this.setData({ loading: false })
+      this.refreshVisibleWorks()
     }
-    this.refreshVisibleWorks()
   },
 
   refreshVisibleWorks() {
