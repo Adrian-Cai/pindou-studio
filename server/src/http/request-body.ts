@@ -3,6 +3,7 @@ import busboy from "busboy";
 import { AppError, invalidArgument } from "../shared/app-error";
 
 const MAX_JSON_BYTES = 64 * 1_024;
+const MAX_XML_BYTES = 64 * 1_024;
 
 export async function readJsonObject(
   request: IncomingMessage,
@@ -47,6 +48,56 @@ export async function readRawJsonObject(
     throw invalidArgument("请求体必须是 JSON 对象");
   }
   return { rawBody, value: value as Record<string, unknown> };
+}
+
+/**
+ * 读取原始请求体（不限 Content-Type）。
+ *
+ * 虚拟支付发货推送可能以 XML 或 JSON 送达，无法像普通接口那样先校验 media type，
+ * 因此这里只做读取与大小限制，格式判定交给 parseDeliveryNotification。
+ */
+export async function readRawBody(
+  request: IncomingMessage,
+  maximumBytes = MAX_XML_BYTES,
+): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > maximumBytes) {
+      throw new AppError(413, "PAYLOAD_TOO_LARGE", "请求体过大");
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code: string) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&amp;/g, "&");
+}
+
+function stripCdata(value: string): string {
+  const matched = /^<!\[CDATA\[([\s\S]*)\]\]>$/.exec(value.trim());
+  return matched?.[1] ?? value;
+}
+
+/**
+ * 极简 XML 单值提取：按标签名取首个节点的文本内容。
+ *
+ * 只覆盖发货推送这种扁平结构，**不是通用 XML 解析器**。不引第三方依赖是因为
+ * 这里需要的只是十来个已知字段的取值，引入完整 XML 栈会显著放大攻击面而收益为零。
+ */
+export function xmlValue(rawBody: string, tag: string): string | null {
+  const matched = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`).exec(rawBody);
+  return matched ? stripCdata(decodeXmlEntities(matched[1] ?? "")).trim() : null;
 }
 
 export interface UploadedFile {

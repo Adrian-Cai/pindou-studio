@@ -34,6 +34,26 @@ export type WeChatPayConfig =
       readonly callbackToleranceSeconds: number;
     };
 
+/**
+ * 小程序虚拟支付配置。
+ *
+ * 与 WeChatPayConfig 是两套独立凭据：**虚拟商品必须走虚拟支付**（OfferID + AppKey），
+ * 普通商户号 APIv3 链路在 iOS 端不可用，官方也不允许用于虚拟商品。
+ * AppKey 属于支付密钥，只允许经环境变量注入，禁止写入源码或日志。
+ */
+export type VirtualPayConfig =
+  | { readonly enabled: false }
+  | {
+      readonly enabled: true;
+      readonly appId: string;
+      /** MP 后台「虚拟支付 → 基本配置」中的 offerid。 */
+      readonly offerId: string;
+      /** 现网 AppKey；沙箱 AppKey 不得用于生产。 */
+      readonly appKey: string;
+      readonly timeoutMs: number;
+      readonly apiBaseUrl: string;
+    };
+
 export type HunyuanImageConfig =
   | { readonly enabled: false }
   | {
@@ -57,6 +77,7 @@ export interface ServerConfig {
     readonly timeoutMs: number;
   };
   readonly wechatPay: WeChatPayConfig;
+  readonly virtualPay: VirtualPayConfig;
   readonly hunyuanImage: HunyuanImageConfig;
   readonly auth: {
     readonly openidHashSecret: string;
@@ -248,6 +269,44 @@ function parseWeChatPayConfig(
   };
 }
 
+/**
+ * 解析虚拟支付配置。
+ *
+ * 沿用 WeChatPayConfig 的降级约定：三项必备参数一个都没配时返回 enabled:false，
+ * 让 UnavailableVirtualPayGateway 顶上 —— 服务照常启动，只有真正调用支付时才报 503。
+ * 配了但不全则是配置错误，必须显式报错而不是静默降级，否则上线后才发现支付吊不通。
+ */
+function parseVirtualPayConfig(
+  env: NodeJS.ProcessEnv,
+  appId: string,
+  issues: string[],
+): VirtualPayConfig {
+  const offerId = env.VIRTUAL_PAY_OFFER_ID?.trim() ?? "";
+  const appKey = env.VIRTUAL_PAY_APP_KEY?.trim() ?? "";
+  const hasAny = Boolean(offerId || appKey);
+  if (!hasAny) return { enabled: false };
+  if (!offerId) issues.push("VIRTUAL_PAY_OFFER_ID 未配置");
+  if (!appKey) issues.push("VIRTUAL_PAY_APP_KEY 未配置");
+  if (!offerId || !appKey) return { enabled: false };
+
+  const baseUrl = env.VIRTUAL_PAY_API_BASE_URL?.trim() || "https://api.weixin.qq.com";
+  try {
+    const parsed = new URL(baseUrl);
+    if (parsed.protocol !== "https:") issues.push("VIRTUAL_PAY_API_BASE_URL 必须使用 HTTPS");
+  } catch {
+    issues.push("VIRTUAL_PAY_API_BASE_URL 必须是合法 URL");
+  }
+
+  return {
+    enabled: true,
+    appId,
+    offerId,
+    appKey,
+    timeoutMs: integer(env, "VIRTUAL_PAY_TIMEOUT_MS", 8_000, 1_000, 30_000, issues),
+    apiBaseUrl: baseUrl,
+  };
+}
+
 function parseHunyuanImageConfig(env: NodeJS.ProcessEnv, issues: string[]): HunyuanImageConfig {
   const apiKey = env.HUNYUAN_IMAGE_API_KEY?.trim();
   const baseUrl = env.HUNYUAN_IMAGE_BASE_URL?.trim();
@@ -322,6 +381,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       timeoutMs: integer(env, "WECHAT_API_TIMEOUT_MS", 8_000, 1_000, 30_000, issues),
     },
     wechatPay: parseWeChatPayConfig(env, wechatAppId, issues),
+    virtualPay: parseVirtualPayConfig(env, wechatAppId, issues),
     hunyuanImage: parseHunyuanImageConfig(env, issues),
     auth: {
       openidHashSecret: requiredSecret(env, "OPENID_HASH_SECRET", 32, issues),

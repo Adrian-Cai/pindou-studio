@@ -12,6 +12,7 @@ import type { ContentSecurityService } from "../modules/content-security/content
 import type { PostgresAiGenerationService } from "../modules/ai/ai-generation-service";
 import type { DownloadListOptions, PostgresQuotaDownloadService } from "../modules/downloads/quota-download-service";
 import type { OrderListOptions, PaymentService } from "../modules/payments/payment-service";
+import type { DeliveryNotification } from "../modules/payments/virtual-pay-client";
 import { getLegalDocument } from "../modules/legal/legal-document-service";
 import type { FavoriteListOptions, PostgresWorkService } from "../modules/works/work-service";
 import type { WorkStatus } from "../modules/works/work-service";
@@ -19,7 +20,7 @@ import { validatePersistedPattern } from "../modules/works/pattern";
 import { aiPublicFailure, aiPublicHttpStatus, type AiPublicFailure } from "../modules/ai/error-contract";
 import { AppError, invalidArgument } from "../shared/app-error";
 import type { InMemoryRateLimiter } from "./rate-limit";
-import { readJsonObject, readRawJsonObject, readSingleUploadedFile } from "./request-body";
+import { readJsonObject, readRawBody, readRawJsonObject, readSingleUploadedFile, xmlValue } from "./request-body";
 import {
   idempotencyKey,
   validateContentSecurityTextBody,
@@ -48,6 +49,9 @@ interface ErrorResponse {
   };
 }
 
+/** 虚拟支付发货推送事件名：只处理这一种，其余 xpay_* 事件直接回成功以免平台重试。 */
+const DELIVERY_EVENT = "xpay_goods_deliver_notify";
+
 function requestId(): string {
   return `req_${randomUUID().replace(/-/g, "")}`;
 }
@@ -57,6 +61,94 @@ function sendJson(response: ServerResponse, statusCode: number, payload: unknown
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("cache-control", "no-store");
   response.end(JSON.stringify(payload));
+}
+
+function sendRaw(response: ServerResponse, statusCode: number, contentType: string, body: string): void {
+  response.statusCode = statusCode;
+  response.setHeader("content-type", `${contentType}; charset=utf-8`);
+  response.setHeader("cache-control", "no-store");
+  response.end(body);
+}
+
+/**
+ * 解析虚拟支付发货推送（xpay_goods_deliver_notify）。平台可能以 XML 或 JSON 投递，两种都要接。
+ *
+ * @returns null 表示这不是发货推送（例如别的 xpay_* 事件），调用方应直接回成功避免平台重试
+ * @throws invalidArgument 报文无法解析
+ *
+ * 注意：推送本身**未经签名**，任何人都能伪造，因此这里解析出的字段只用于定位订单，
+ * 是否放款由 payment-service 侧调用 query_order 验真决定。
+ */
+function parseDeliveryNotification(rawBody: string): DeliveryNotification | null {
+  const trimmed = rawBody.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith("{")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      throw invalidArgument("虚拟支付推送 JSON 格式不正确");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw invalidArgument("虚拟支付推送格式不正确");
+    }
+    const record = parsed as Record<string, unknown>;
+    if (stringField(record, "Event") !== DELIVERY_EVENT) return null;
+    const wechatPay = objectField(record, "WeChatPayInfo");
+    const goods = objectField(record, "GoodsInfo");
+    return {
+      openId: stringField(record, "OpenId") ?? "",
+      outTradeNo: stringField(record, "OutTradeNo") ?? "",
+      env: numberField(record, "Env") ?? 0,
+      mchOrderNo: stringField(wechatPay, "MchOrderNo"),
+      transactionId: stringField(wechatPay, "TransactionId"),
+      paidTimeSeconds: numberField(wechatPay, "PaidTime"),
+      productId: stringField(goods, "ProductId"),
+      quantity: numberField(goods, "Quantity"),
+      actualPriceFen: numberField(goods, "ActualPrice"),
+      attach: stringField(goods, "Attach"),
+    };
+  }
+
+  if (xmlValue(rawBody, "Event") !== DELIVERY_EVENT) return null;
+  return {
+    openId: xmlValue(rawBody, "OpenId") ?? "",
+    outTradeNo: xmlValue(rawBody, "OutTradeNo") ?? "",
+    env: readNumber(xmlValue(rawBody, "Env")) ?? 0,
+    mchOrderNo: xmlValue(rawBody, "MchOrderNo"),
+    transactionId: xmlValue(rawBody, "TransactionId"),
+    paidTimeSeconds: readNumber(xmlValue(rawBody, "PaidTime")),
+    productId: xmlValue(rawBody, "ProductId"),
+    quantity: readNumber(xmlValue(rawBody, "Quantity")),
+    actualPriceFen: readNumber(xmlValue(rawBody, "ActualPrice")),
+    attach: xmlValue(rawBody, "Attach"),
+  };
+}
+
+function stringField(source: Record<string, unknown>, key: string): string | null {
+  const value = source[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numberField(source: Record<string, unknown>, key: string): number | null {
+  return readNumber(source[key]);
+}
+
+function readNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function objectField(source: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = source[key];
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 function sendImage(
@@ -540,6 +632,42 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           packageId,
           idempotencyKey: idempotencyKey(request),
         }));
+        return;
+      }
+
+      // 虚拟支付发货推送（xpay_goods_deliver_notify）：MP 后台需配置为回调 URL + 订阅该事件。
+      // 与旧 notify 分开是两个独立端点：两套协议的报文格式与响应要求都不同，混在一个路由里
+      // 只能靠猜 Content-Type 分支，出错时还难以定位是哪条链路。
+      if (request.method === "POST" && url.pathname === "/api/payments/virtual-notify") {
+        if (url.searchParams.size > 0) throw invalidArgument("虚拟支付回调接口不接受查询参数");
+        try {
+          const delivery = parseDeliveryNotification(await readRawBody(request));
+          if (delivery) await dependencies.payments.handleDelivery(delivery);
+          sendRaw(
+            response,
+            200,
+            "application/xml",
+            "<xml><ErrCode>0</ErrCode><ErrMsg><![CDATA[success]]></ErrMsg></xml>",
+          );
+        } catch (error: unknown) {
+          if (error instanceof AppError) {
+            console.warn(JSON.stringify({
+              event: "virtual_payment_delivery_rejected",
+              requestId: id,
+              errorCode: error.code,
+            }));
+          } else {
+            console.error(JSON.stringify({ event: "virtual_payment_delivery_failed", requestId: id }));
+          }
+          // 必须返回 200 + ErrCode≠0：平台只在 HTTP 层成功时才读 ErrCode 决定是否重试，
+          // 直接回 4xx/5xx 会被当作网络失败，导致同样的错误被重试 15 次。
+          sendRaw(
+            response,
+            200,
+            "application/xml",
+            "<xml><ErrCode>1</ErrCode><ErrMsg><![CDATA[发货处理失败]]></ErrMsg></xml>",
+          );
+        }
         return;
       }
 

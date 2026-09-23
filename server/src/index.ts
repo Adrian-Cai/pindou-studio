@@ -24,6 +24,7 @@ import { PostgresAiGenerationService } from "./modules/ai/ai-generation-service"
 import { PostgresQuotaDownloadService } from "./modules/downloads/quota-download-service";
 import { PostgresPaymentService } from "./modules/payments/payment-service";
 import { createWeChatPaymentGateway } from "./modules/payments/wechat-pay-client";
+import { createVirtualPayGateway } from "./modules/payments/virtual-pay-client";
 import { PostgresWorkService } from "./modules/works/work-service";
 import { FileSystemContentSecurityMediaStorage } from "./modules/content-security/media-storage";
 import { OfficialWeChatContentSecurityClient } from "./modules/content-security/wechat-client";
@@ -48,6 +49,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.covers.publicBaseUrl,
     );
     const paymentGateway = await createWeChatPaymentGateway(config.wechatPay);
+    const virtualPayGateway = createVirtualPayGateway(config.virtualPay);
     const aiFiles = new FileSystemAiFileStorage(
       config.aiFiles.storageDirectory,
       config.aiFiles.publicBaseUrl,
@@ -112,6 +114,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         quotaDownloads: new PostgresQuotaDownloadService(pool, config.quota),
         payments: new PostgresPaymentService(
           pool,
+          virtualPayGateway,
           paymentGateway,
           config.auth.openidHashSecret,
         ),

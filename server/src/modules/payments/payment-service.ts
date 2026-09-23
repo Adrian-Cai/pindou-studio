@@ -1,12 +1,14 @@
 /**
- * 支付服务：套餐列表、订单列表、下单（JSAPI）与支付回调处理。
+ * 支付服务：套餐列表、订单列表、下单（虚拟支付）与发货到账。
  *
- * 职责：串联「订单表 + 微信支付网关 + 额度账本」；不负责微信协议细节（见 wechat-pay-client）。
+ * 职责：串联「订单表 + 虚拟支付网关 + 额度账本」；不负责协议签名细节（见 virtual-pay-client）。
  * 调用方：http 路由层的 /api/packages、/api/orders、/api/payments、/api/payments/notify。
  * 关键点：订单 id 由 userId + idempotencyKey 推导，重复下单天然幂等；
  *         下单用两级 advisory lock（用户级 + 订单级）串行化，避免同一用户并发建单；
- *         回调必须校验商户号、appId、订单号、金额、付款人五项一致后才置为 paid；
- *         到账只写一条 purchase_grant 额度流水（ON CONFLICT DO NOTHING），重复回调不会重复加额度；
+ *         **发货推送无签名不可信**，必须先经 query_order 反向验真才允许发放权益；
+ *         发货有两条支路：推送（`handleDelivery`）负责实时，轮询（`reconcilePendingOrders`）
+ *         负责兜住推送丢失 —— 官方要求两者至少实现一个，少了轮询等于默许「扣了款不到账」；
+ *         到账只写一条 purchase_grant 额度流水（ON CONFLICT DO NOTHING），重复通知不会重复加额度；
  *         订单快照字段（package_label_snapshot 等）是下单瞬间的副本，套餐后续改价不影响历史订单。
  */
 import type { Pool, PoolClient, QueryResultRow } from "pg";
@@ -15,14 +17,11 @@ import {
   createEntityId,
   createIdempotentOrderId,
   decryptOpenid,
+  decryptSessionKey,
 } from "../../shared/identity";
 import { rollbackTransaction } from "../../shared/transaction";
-import type {
-  PaymentNotificationInput,
-  PaymentParameters,
-  VerifiedPaymentNotification,
-  WeChatPaymentGateway,
-} from "./wechat-pay-client";
+import type { PaymentNotificationInput, PaymentParameters, WeChatPaymentGateway } from "./wechat-pay-client";
+import type { DeliveryNotification, VirtualPayGateway, VirtualPaymentPayload } from "./virtual-pay-client";
 
 const NEW_USER_TEST_PACKAGE_ID = "ai_generation_new_user_5";
 
@@ -43,9 +42,17 @@ export interface CreatePaymentInput {
   readonly idempotencyKey: string;
 }
 
+/**
+ * 下单结果。
+ *
+ * virtual 为 null 表示该订单此前已由同一幂等键创建过 —— 虚拟支付的 signData 里含
+ * 不可重复的 outTradeNo，每次必须重新签发，因此这里不留旧值，强制调用方重新取参。
+ */
 export interface CreatePaymentResponse {
   readonly orderId: string;
-  readonly payment: PaymentParameters;
+  readonly virtual: VirtualPaymentPayload | null;
+  /** 旧通道遗留字段：始终为 null，待旧回调链路下线后移除。 */
+  readonly payment: PaymentParameters | null;
 }
 
 /** 订单状态机：pending 待支付 → paid 已支付 / failed 失败 / closed 已关闭，paid 后可 refunded。 */
@@ -77,10 +84,73 @@ export interface OrderListResponse {
   readonly items: readonly OrderItem[];
 }
 
+/**
+ * 虚拟支付发货补单（发货轮询）的调度参数。
+ *
+ * 官方要求「发货推送分支与发货轮询分支至少实现一个，两者结合使用体验更可靠」。
+ * 本仓库两条都实现了：`handleDelivery` 被动等推送，本轮询主动捞漏网的。
+ */
+export interface PendingOrderReconcileOptions {
+  /**
+   * 下单后多久才纳入补单。
+   *
+   * 留出这段静默期是必要的：绝大多数发货推送在支付完成后几秒内到达，
+   * 立刻轮询等于对每笔新订单多发一次注定查不出的请求，还要和用户正在进行的支付抢同一把行锁。
+   */
+  readonly graceMs: number;
+  /**
+   * pending 持续多久仍查不到已支付，就判为疑似漏发货并升级为告警。
+   *
+   * 这是「正常支付耗时」与「故障发现延迟」之间的权衡：太短会把还在犹豫的用户刷成告警，
+   * 太长则让用户付完钱迟迟拿不到次数。
+   */
+  readonly staleAfterMs: number;
+  /** 单轮最多处置多少笔。超出部分留到下一轮，避免积压集中爆发时长时间占用连接池。 */
+  readonly batchSize: number;
+}
+
+export const DEFAULT_RECONCILE_OPTIONS: PendingOrderReconcileOptions = {
+  graceMs: 3 * 60_000,
+  staleAfterMs: 30 * 60_000,
+  batchSize: 100,
+};
+
+/** 结构化日志里附带的订单号上限：告警要能一眼定位，但不能把日志刷成订单清单。 */
+const RECONCILE_ATTENTION_LOG_LIMIT = 20;
+
+/** 补单汇总：既是返回值，也是结构化日志的主体。 */
+export interface PendingOrderReconcileSummary {
+  readonly scanned: number;
+  /** 本轮补发成功的笔数 —— 非 0 说明发货推送确实丢过，需要回头查回调地址与事件订阅。 */
+  readonly granted: number;
+  /** 此前已发放、本轮只是再次确认的笔数（幂等命中）。 */
+  readonly duplicate: number;
+  /** 查单确认尚未支付、继续留在 pending 的笔数。 */
+  readonly unpaid: number;
+  /** 超过兜底窗口仍查不到支付、疑似发货链路故障的笔数。 */
+  readonly stalled: number;
+  /** 查单或发放本身抛错、本轮无法判定的笔数。 */
+  readonly unresolved: number;
+  /** 前置条件缺失（如拿不到付款人 openid）导致根本无法查单的笔数。 */
+  readonly skipped: number;
+  /** 需要人工介入的订单号（stalled / unresolved / skipped）。 */
+  readonly attention: readonly string[];
+}
+
 export interface PaymentService {
   listPackages(): Promise<{ readonly items: readonly PaymentPackage[] }>;
   listOrders(options: OrderListOptions): Promise<OrderListResponse>;
   createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse>;
+  /** 处理虚拟支付发货推送：先验真再发货。 */
+  handleDelivery(input: DeliveryNotification): Promise<{ readonly duplicate: boolean }>;
+  /**
+   * 发货轮询兜底：扫描超时未确认的 pending 订单，主动向微信查单，把漏发的权益补上。
+   *
+   * 与 `handleDelivery` 只有触发源不同：那里被动等推送，这里主动捞。
+   * 两条路径最终都收敛到 `confirmAndGrant`，因此幂等与安全校验完全一致。
+   */
+  reconcilePendingOrders(): Promise<PendingOrderReconcileSummary>;
+  /** 旧通道回调兜底：仅用于收尾存量订单，确认无存量后可整体下线。 */
   handleNotification(input: PaymentNotificationInput): Promise<{ readonly duplicate: boolean }>;
 }
 
@@ -94,6 +164,7 @@ interface PackageRow extends QueryResultRow {
   readonly price_fen: number;
   readonly currency: string;
   readonly enabled: boolean;
+  readonly virtual_product_id: string | null;
 }
 
 interface OrderRow extends QueryResultRow {
@@ -141,10 +212,6 @@ function packageResponse(row: PackageRow): PaymentPackage {
   };
 }
 
-function paymentDescription(label: string): string {
-  return Array.from(`小露拼豆-${label}`).slice(0, 127).join("");
-}
-
 function orderStatus(value: string): OrderStatus {
   if (value === "pending" || value === "paid" || value === "failed" || value === "closed" || value === "refunded") {
     return value;
@@ -187,7 +254,12 @@ function orderResponse(row: OrderRow): OrderItem {
   };
 }
 
-/** 校验套餐可否支付：必须是 CNY、价格与额度为正、且是 AI 生成次数（不支持会员类套餐）。 */
+/**
+ * 校验套餐可否支付：必须是 CNY、价格与额度为正、且是 AI 生成次数（不支持会员类套餐）。
+ *
+ * 额外要求 virtual_product_id 非空 —— 虚拟支付靠它定位道具，
+ * 缺失会在客户端报 -15010（道具未发布），而这个错误配置的人很难第一时间想到是套餐表没填。
+ */
 function ensurePayablePackage(row: PackageRow | undefined): PackageRow {
   if (!row) throw notFound("套餐不存在或已下架");
   if (
@@ -202,46 +274,67 @@ function ensurePayablePackage(row: PackageRow | undefined): PackageRow {
   ) {
     throw new AppError(409, "PACKAGE_NOT_PAYABLE", "套餐当前不能通过微信支付购买");
   }
+  if (!row.virtual_product_id) {
+    throw new AppError(409, "PACKAGE_NOT_PAYABLE", "套餐未配置虚拟支付道具，请联系客服");
+  }
   return row;
 }
 
-function validateNotificationAgainstOrder(
-  notification: VerifiedPaymentNotification,
-  order: OrderRow,
-  expectedMerchantId: string,
-  expectedAppId: string,
-  payerOpenid: string,
-): void {
-  if (notification.merchantId !== expectedMerchantId) {
-    throw new AppError(400, "PAYMENT_MERCHANT_MISMATCH", "微信支付回调商户号不匹配");
-  }
-  if (notification.appId !== expectedAppId) {
-    throw new AppError(400, "PAYMENT_APP_MISMATCH", "微信支付回调应用标识不匹配");
-  }
-  if (
-    notification.orderId !== order.id
-    || notification.amountFen !== order.price_fen
-    || notification.currency !== "CNY"
-  ) {
-    throw new AppError(400, "PAYMENT_ORDER_MISMATCH", "微信支付回调订单或金额不匹配");
-  }
-  if (notification.payerOpenid !== payerOpenid) {
-    throw new AppError(400, "PAYMENT_PAYER_MISMATCH", "微信支付回调付款人不匹配");
-  }
+/** 补单候选行：只需用于定位订单与查单的最小字段集。 */
+interface ReconcileCandidateRow extends QueryResultRow {
+  readonly id: string;
+  readonly created_at: Date | string;
+  readonly openid_ciphertext: string | null;
+}
+
+/** 汇总里的可变累加器：对外返回时才冻结成 `PendingOrderReconcileSummary`。 */
+interface ReconcileCounter {
+  scanned: number;
+  granted: number;
+  duplicate: number;
+  unpaid: number;
+  stalled: number;
+  unresolved: number;
+  skipped: number;
+  attention: string[];
+}
+
+function emptyReconcileCounter(): ReconcileCounter {
+  return { scanned: 0, granted: 0, duplicate: 0, unpaid: 0, stalled: 0, unresolved: 0, skipped: 0, attention: [] };
+}
+
+/** 兼容 pg 把 timestamptz 反序列化成 Date、也可能原样返回字符串的两种情况。 */
+function orderCreatedAtMs(value: Date | string): number {
+  return value instanceof Date ? value.getTime() : new Date(value).getTime();
+}
+
+function freezeReconcileCounter(counter: ReconcileCounter): PendingOrderReconcileSummary {
+  return {
+    scanned: counter.scanned,
+    granted: counter.granted,
+    duplicate: counter.duplicate,
+    unpaid: counter.unpaid,
+    stalled: counter.stalled,
+    unresolved: counter.unresolved,
+    skipped: counter.skipped,
+    attention: [...counter.attention],
+  };
 }
 
 export class PostgresPaymentService implements PaymentService {
   public constructor(
     private readonly pool: Pool,
-    private readonly gateway: WeChatPaymentGateway,
+    private readonly virtualPay: VirtualPayGateway,
+    private readonly legacyPay: WeChatPaymentGateway,
     private readonly openidEncryptionSecret: string,
     private readonly now: () => Date = () => new Date(),
+    private readonly reconcileOptions: PendingOrderReconcileOptions = DEFAULT_RECONCILE_OPTIONS,
   ) {}
 
   public async listPackages(): Promise<{ readonly items: readonly PaymentPackage[] }> {
     const result = await this.pool.query<PackageRow>(
       `SELECT id, label, quota_amount, quota_kind, membership_type, membership_days,
-              price_fen, currency, enabled
+              price_fen, currency, enabled, virtual_product_id
          FROM pindou_packages
         WHERE enabled = TRUE
           AND quota_kind = 'ai_generation'
@@ -279,20 +372,32 @@ export class PostgresPaymentService implements PaymentService {
   }
 
   /**
-   * 创建支付订单并调微信下单。
+   * 创建支付订单并签发虚拟支付参数。
+   *
+   * 与普通支付的差别：这里**不调用任何微信下单接口**。虚拟支付的下单在客户端
+   * wx.requestVirtualPayment 内部完成，服务端只负责签名下发 signData / paySig / signature。
    *
    * @param input.idempotencyKey 客户端幂等键，与 userId 共同决定订单 id，重复提交返回同一订单
-   * @throws idempotencyConflict 幂等键已用于其他订单
+   * @throws VIRTUAL_PAYMENT_NOT_CONFIGURED 服务端未配置 OfferID/AppKey
+   * @throws VIRTUAL_PAYMENT_SESSION_EXPIRED session_key 缺失或过期，需用户重新登录
    * @throws ORDER_NOT_PAYABLE 订单已不是 pending（已支付或已关闭）
    * @throws NEW_USER_PACKAGE_NOT_ELIGIBLE 新人套餐且用户已有成功购买记录
    * @throws PAYMENT_IDENTITY_UNAVAILABLE 用户 openid 缺失或解密失败，需重新登录
    */
   public async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse> {
-    if (!this.gateway.configured) {
-      throw new AppError(503, "PAYMENT_NOT_CONFIGURED", "微信支付尚未完成服务端配置");
+    if (!this.virtualPay.configured) {
+      throw new AppError(503, "VIRTUAL_PAYMENT_NOT_CONFIGURED", "虚拟支付尚未完成服务端配置");
     }
     const packageId = input.packageId.trim();
     if (!packageId || packageId.length > 40) throw invalidArgument("packageId 无效");
+
+    /**
+     * 订单 id 直接复用订单号作为 outTradeNo。
+     *
+     * 虚拟支付限制 outTradeNo 为 8-32 位、仅数字字母与 _ - | * @、不以 _ 开头。
+     * 现有 `order_` + 26 位十六进制正好 32 位且字符集合规，因此无需另建映射字段，
+     * 发货回调里的 OutTradeNo 可以直接拿来回查订单 —— 少一层映射就少一处不一致。
+     */
     const orderId = createIdempotentOrderId(input.userId, input.idempotencyKey);
     const client = await this.pool.connect();
     try {
@@ -321,15 +426,11 @@ export class PostgresPaymentService implements PaymentService {
         if (existing.status !== "pending") {
           throw new AppError(409, "ORDER_NOT_PAYABLE", "订单当前状态不能再次支付");
         }
-        if (existing.wx_prepay_id) {
-          await client.query("COMMIT");
-          return { orderId, payment: this.gateway.paymentParameters(existing.wx_prepay_id) };
-        }
       }
 
       const packageResult = await client.query<PackageRow>(
         `SELECT id, label, quota_amount, quota_kind, membership_type, membership_days,
-                price_fen, currency, enabled
+                price_fen, currency, enabled, virtual_product_id
            FROM pindou_packages
           WHERE id = $1 AND enabled = TRUE
           LIMIT 1
@@ -357,7 +458,7 @@ export class PostgresPaymentService implements PaymentService {
         }
       }
       const userResult = await client.query<UserPaymentRow>(
-        `SELECT openid_ciphertext
+        `SELECT openid_ciphertext, session_key_ciphertext
            FROM pindou_users
           WHERE id = $1 AND deleted_at IS NULL
           LIMIT 1
@@ -398,21 +499,19 @@ export class PostgresPaymentService implements PaymentService {
           ],
         );
       }
-      const created = await this.gateway.createPayment({
-        orderId,
-        description: paymentDescription(selectedPackage.label),
-        amountFen: selectedPackage.price_fen,
-        currency: "CNY",
-        payerOpenid,
-      });
-      await client.query(
-        `UPDATE pindou_orders
-            SET wx_prepay_id = $2, updated_at = $3
-          WHERE id = $1 AND status = 'pending' AND wx_prepay_id IS NULL`,
-        [orderId, created.prepayId, currentTime],
-      );
       await client.query("COMMIT");
-      return { orderId, payment: created.payment };
+
+      return {
+        orderId,
+        payment: null,
+        virtual: await this.signVirtualPayment({
+          orderId,
+          productId: selectedPackage.virtual_product_id ?? "",
+          goodsPriceFen: selectedPackage.price_fen,
+          openid: payerOpenid,
+          userId: input.userId,
+        }),
+      };
     } catch (error: unknown) {
       await rollbackTransaction(client);
       throw error;
@@ -422,12 +521,254 @@ export class PostgresPaymentService implements PaymentService {
   }
 
   /**
-   * 处理微信支付回调：验签 → 比对订单 → 置为 paid → 写入购买额度流水。
+   * 签发虚拟支付参数。
    *
-   * @returns duplicate=true 表示该回调是重复通知（订单早已到账），不做二次发放
+   * session_key 在事务外读取是因为它只用于签名、不参与订单一致性；
+   * 拿不到（未登录过新版 / 密文损坏）时必须给出可执行的提示，而不是笼统的「支付失败」。
    */
-  public async handleNotification(input: PaymentNotificationInput): Promise<{ readonly duplicate: boolean }> {
-    const notification = this.gateway.verifyNotification(input);
+  private async signVirtualPayment(input: {
+    orderId: string;
+    productId: string;
+    goodsPriceFen: number;
+    openid: string;
+    userId: string;
+  }): Promise<VirtualPaymentPayload> {
+    const result = await this.pool.query<{ readonly session_key_ciphertext: string | null }>(
+      "SELECT session_key_ciphertext FROM pindou_users WHERE id = $1 LIMIT 1",
+      [input.userId],
+    );
+    const sessionKey = decryptSessionKey(
+      result.rows[0]?.session_key_ciphertext,
+      this.openidEncryptionSecret,
+    );
+    if (!sessionKey) {
+      throw new AppError(409, "VIRTUAL_PAYMENT_SESSION_EXPIRED", "登录状态已失效，请重新登录后支付");
+    }
+    return this.virtualPay.createPayment({
+      orderId: input.orderId,
+      productId: input.productId,
+      // 道具单价必须与 MP 后台定价一致，否则客户端报 -15013
+      goodsPriceFen: input.goodsPriceFen,
+      buyQuantity: 1,
+      attach: input.orderId,
+      sessionKey,
+    });
+  }
+
+  /**
+   * 发货轮询兜底：把「已付款但发货推送没到」的订单补上额度。
+   *
+   * 为什么必须有这一层：`wx.requestVirtualPayment` 的 success 回调会丢失（微信异常退出），
+   * 发货推送也只重试有限次数，任何一次丢失的结果都是**用户钱扣了、次数没到账，
+   * 而系统里连一条告警都没有**。官方因此把轮询列为与推送并列的必选支路，而非可选优化。
+   *
+   * @returns 本轮处置汇总；结构化日志在本方法内已落地，调用方只需处理返回值
+   */
+  public async reconcilePendingOrders(): Promise<PendingOrderReconcileSummary> {
+    const counter = emptyReconcileCounter();
+    // 网关未配置时压根不存在虚拟支付订单，扫一遍只会空转并打出误导性的日志
+    if (!this.virtualPay.configured) return freezeReconcileCounter(counter);
+
+    const currentTime = this.now();
+    /**
+     * 候选筛选的三个条件各有用途：
+     * - `created_at <= now - graceMs`：跳过刚刚下单的订单，给发货推送留出正常到达的时间；
+     * - JOIN pindou_packages 且 `virtual_product_id IS NOT NULL`：**把订单限定在虚拟支付范围内**。
+     *   旧通道（商户号 + APIv3）的在途订单由 /api/payments/notify 收尾，拿去 query_order
+     *   只会得到「单号不存在」，徒增一批必然失败的告警；
+     * - ORDER BY created_at ASC + LIMIT：先处理积压最久的，单轮工作量有上限。
+     *
+     * 刻意**不按 quota_kind_snapshot 过滤**：将来若把下载次数也走虚拟支付，
+     * 这里会静默漏掉，而「套餐是否配了虚拟道具」才是唯一稳定的判据。
+     */
+    const result = await this.pool.query<ReconcileCandidateRow>(
+      `SELECT orders.id, orders.created_at, users.openid_ciphertext
+         FROM pindou_orders orders
+         JOIN pindou_users users ON users.id = orders.user_id
+         JOIN pindou_packages packages ON packages.id = orders.package_id
+        WHERE orders.status = 'pending'
+          AND orders.created_at <= $1
+          AND packages.virtual_product_id IS NOT NULL
+        ORDER BY orders.created_at ASC
+        LIMIT $2`,
+      [new Date(currentTime.getTime() - this.reconcileOptions.graceMs), this.reconcileOptions.batchSize],
+    );
+
+    for (const candidate of result.rows) {
+      counter.scanned += 1;
+      try {
+        await this.reconcilePendingOrder(candidate, currentTime, counter);
+      } catch (error: unknown) {
+        // 单笔意外抛错不能中断整轮：后面的订单同样可能是真实漏发货，跳过等于放弃追款。
+        counter.unresolved += 1;
+        counter.attention.push(candidate.id);
+        console.error(JSON.stringify({
+          event: "virtual_payment_reconcile_alert",
+          reason: "unexpected_failure",
+          orderId: candidate.id,
+          message: error instanceof Error ? error.message : String(error),
+        }));
+      }
+    }
+
+    const summary = freezeReconcileCounter(counter);
+    console.log(JSON.stringify({
+      event: "virtual_payment_reconcile",
+      scanned: summary.scanned,
+      granted: summary.granted,
+      duplicate: summary.duplicate,
+      unpaid: summary.unpaid,
+      stalled: summary.stalled,
+      unresolved: summary.unresolved,
+      skipped: summary.skipped,
+      attentionCount: summary.attention.length,
+      attention: summary.attention.slice(0, RECONCILE_ATTENTION_LOG_LIMIT),
+    }));
+    return summary;
+  }
+
+  /**
+   * 处置单笔候选订单：查单 → 确认已付则补发，否则按年龄判定是否该告警。
+   *
+   * unresolved / stalled / skipped 三种结局的共同点是**用户可能已经付了钱、而系统无法自证**，
+   * 因此一律进 attention。这里的取舍：宁可多报一次人工核查，也不放过一个真实的漏发货。
+   */
+  private async reconcilePendingOrder(
+    candidate: ReconcileCandidateRow,
+    currentTime: Date,
+    counter: ReconcileCounter,
+  ): Promise<void> {
+    let openid = "";
+    try {
+      openid = candidate.openid_ciphertext
+        ? decryptOpenid(candidate.openid_ciphertext, this.openidEncryptionSecret)
+        : "";
+    } catch {
+      openid = "";
+    }
+    if (!openid) {
+      counter.skipped += 1;
+      counter.attention.push(candidate.id);
+      console.error(JSON.stringify({
+        event: "virtual_payment_reconcile_alert",
+        reason: "payer_identity_unavailable",
+        orderId: candidate.id,
+      }));
+      return;
+    }
+
+    try {
+      const verified = await this.virtualPay.queryOrder({ openid, orderId: candidate.id });
+      if (!verified.paid) {
+        const ageMs = currentTime.getTime() - orderCreatedAtMs(candidate.created_at);
+        // 没过兜底窗口的，多半只是用户还没付完 / 支付结果尚未对可见，下一轮再看
+        if (ageMs >= this.reconcileOptions.staleAfterMs) {
+          counter.stalled += 1;
+          counter.attention.push(candidate.id);
+          console.error(JSON.stringify({
+            event: "virtual_payment_reconcile_alert",
+            reason: "pending_too_long",
+            orderId: candidate.id,
+            ageMs,
+          }));
+          return;
+        }
+        counter.unpaid += 1;
+        return;
+      }
+      const outcome = await this.confirmAndGrant(candidate.id, {
+        mchOrderNo: verified.mchOrderNo,
+        transactionId: verified.transactionId,
+        actualPriceFen: verified.actualPriceFen,
+        payerOpenid: openid,
+        paidAt: verified.paidTimeSeconds ? new Date(verified.paidTimeSeconds * 1_000) : currentTime,
+      });
+      if (outcome.duplicate) {
+        counter.duplicate += 1;
+        return;
+      }
+      counter.granted += 1;
+      // 走到这里说明发货推送确实丢过一次：这是回调链路的配置问题，必须留下可追踪的痕迹
+      console.warn(JSON.stringify({
+        event: "virtual_payment_delivery_recovered",
+        orderId: candidate.id,
+        transactionId: verified.transactionId,
+      }));
+    } catch (error: unknown) {
+      counter.unresolved += 1;
+      counter.attention.push(candidate.id);
+      console.error(JSON.stringify({
+        event: "virtual_payment_reconcile_alert",
+        reason: "query_or_grant_failed",
+        orderId: candidate.id,
+        code: error instanceof AppError ? error.code : null,
+        message: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }
+
+  /**
+   * 处理虚拟支付发货推送：先验真 → 再置为 paid → 写入购买额度流水。
+   *
+   * **为什么不能直接信推送**：虚拟支付的发货推送是明文 XML/JSON，
+   * 既没有 RSA 验签也没有序列号比对，任何人构造一次 HTTP 请求就能伪造「某某已付款」。
+   * 因此这里在发货前强制调 query_order 反向确认 —— 那是服务端用 AppKey 签名、
+   * 双向认证的权威结果。宁可少发货（用户找客服能补），也绝不凭推送白送额度。
+   *
+   * @returns duplicate=true 表示该订单早已到账，不做二次发放
+   */
+  public async handleDelivery(input: DeliveryNotification): Promise<{ readonly duplicate: boolean }> {
+    const openid = input.openId.trim();
+    const orderId = input.outTradeNo.trim();
+    if (!openid || !orderId) {
+      throw new AppError(400, "VIRTUAL_PAYMENT_DELIVERY_INVALID", "发货推送缺少 openid 或订单号");
+    }
+
+    const verified = await this.virtualPay.queryOrder({ openid, orderId });
+    if (!verified.paid) {
+      /**
+       * 查单未确认支付成功。
+       *
+       * 注意这里**刻意返回 duplicate=true 而非抛错**：支付回调失败时微信会重试最多 15 次，
+       * 若抛错，一次正常的「用户尚未付款/延迟可见」会被放大成 15 次告警噪音。
+       * 返回成功让平台停止重试，真正的漏发货由兜底定时任务扫描补发。
+       */
+      console.warn(JSON.stringify({
+        event: "virtual_payment_delivery_unverified",
+        orderId,
+        mchOrderNo: input.mchOrderNo,
+      }));
+      return { duplicate: true };
+    }
+
+    const paidAt = verified.paidTimeSeconds
+      ? new Date(verified.paidTimeSeconds * 1_000)
+      : this.now();
+    return this.confirmAndGrant(orderId, {
+      mchOrderNo: verified.mchOrderNo,
+      transactionId: verified.transactionId,
+      actualPriceFen: verified.actualPriceFen,
+      payerOpenid: openid,
+      paidAt,
+    });
+  }
+
+  /**
+   * 置订单为 paid 并写入一次性购买额度流水。
+   *
+   * 幂等三重保障：① SELECT FOR UPDATE 行锁串行化并发回调；② UPDATE 带 status='pending' 条件；
+   * ③ 额度流水唯一索引 + ON CONFLICT DO NOTHING。任一层漏判都不会重复发放。
+   */
+  private async confirmAndGrant(
+    orderId: string,
+    payment: {
+      readonly mchOrderNo: string | null;
+      readonly transactionId: string | null;
+      readonly actualPriceFen: number | null;
+      readonly payerOpenid: string;
+      readonly paidAt: Date;
+    },
+  ): Promise<{ readonly duplicate: boolean }> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -443,7 +784,7 @@ export class PostgresPaymentService implements PaymentService {
           WHERE orders.id = $1
           LIMIT 1
           FOR UPDATE OF orders`,
-        [notification.orderId],
+        [orderId],
       );
       const order = orderResult.rows[0];
       if (!order) throw notFound("支付订单不存在");
@@ -456,20 +797,17 @@ export class PostgresPaymentService implements PaymentService {
       } catch {
         throw new AppError(400, "PAYMENT_PAYER_MISMATCH", "订单付款人身份无法验证");
       }
-      validateNotificationAgainstOrder(
-        notification,
-        order,
-        this.gateway.merchantId,
-        this.gateway.appId,
-        payerOpenid,
-      );
-      if (notification.eventType !== "TRANSACTION.SUCCESS" || notification.tradeState !== "SUCCESS") {
-        throw new AppError(400, "PAYMENT_STATE_INVALID", "微信支付状态不是成功");
+      if (payerOpenid !== payment.payerOpenid) {
+        throw new AppError(400, "PAYMENT_PAYER_MISMATCH", "支付付款人与订单归属不一致");
+      }
+      // 实付金额已知时必须与订单快照一致，防止改价/越权下单
+      if (payment.actualPriceFen !== null && payment.actualPriceFen !== order.price_fen) {
+        throw new AppError(400, "PAYMENT_ORDER_MISMATCH", "支付金额与订单不符");
       }
 
       if (order.status === "paid") {
-        if (order.wx_transaction_id !== notification.transactionId) {
-          throw new AppError(409, "PAYMENT_TRANSACTION_MISMATCH", "订单已绑定另一微信支付交易号");
+        if (payment.transactionId && order.wx_transaction_id !== payment.transactionId) {
+          throw new AppError(409, "PAYMENT_TRANSACTION_MISMATCH", "订单已绑定另一支付交易号");
         }
         const grant = await client.query(
           `SELECT id
@@ -481,7 +819,11 @@ export class PostgresPaymentService implements PaymentService {
         );
         if (!grant.rows[0]) throw new Error("已支付订单缺少 purchase_grant 额度流水");
         await client.query("COMMIT");
-        console.log(JSON.stringify({ event: "wechat_payment_notification_duplicate", orderId: order.id }));
+        console.log(JSON.stringify({
+          event: "payment_delivery_duplicate",
+          orderId: order.id,
+          source: payment.mchOrderNo ? "virtual" : "legacy",
+        }));
         return { duplicate: true };
       }
       if (order.status !== "pending") {
@@ -494,13 +836,12 @@ export class PostgresPaymentService implements PaymentService {
         throw new AppError(409, "ORDER_GRANT_INVALID", "订单额度类型快照无效");
       }
 
-      // 回调未带支付完成时间时用当前时间兜底，避免 paid_at 为空
-      const paidAt = notification.paidAt ?? this.now();
+      const paidAt = payment.paidAt;
       await client.query(
         `UPDATE pindou_orders
             SET status = 'paid', wx_transaction_id = $2, paid_at = $3, updated_at = $3
           WHERE id = $1 AND status = 'pending'`,
-        [order.id, notification.transactionId, paidAt],
+        [order.id, payment.transactionId, paidAt],
       );
       const inserted = await client.query(
         `INSERT INTO pindou_quota_transactions (
@@ -524,7 +865,7 @@ export class PostgresPaymentService implements PaymentService {
       if (!inserted.rows[0]) throw new Error("订单 purchase_grant 额度流水幂等冲突");
       await client.query("COMMIT");
       console.log(JSON.stringify({
-        event: "wechat_payment_granted",
+        event: "payment_granted",
         orderId: order.id,
         quotaKind: order.quota_kind_snapshot,
         quotaAmount: order.quota_amount_snapshot,
@@ -536,5 +877,34 @@ export class PostgresPaymentService implements PaymentService {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * 旧通道（商户号 + APIv3）支付回调，**仅用于收尾存量订单**。
+   *
+   * 保留原因：切换瞬间可能存在「已用旧通道付款、回调尚未送达」的在途订单，
+   * 贸然删除这部分代码会让这些用户「钱扣了、次数没到账」且无法自动恢复。
+   * 待确认无存量 pending 订单后（距今最后一笔旧订单超过支付有效期），
+   * 可连同 wechat-pay-client、/api/payments/notify 路由与 WECHAT_PAY_* 配置一并下线。
+   */
+  public async handleNotification(input: PaymentNotificationInput): Promise<{ readonly duplicate: boolean }> {
+    const notification = this.legacyPay.verifyNotification(input);
+    if (notification.eventType !== "TRANSACTION.SUCCESS" || notification.tradeState !== "SUCCESS") {
+      throw new AppError(400, "PAYMENT_STATE_INVALID", "微信支付状态不是成功");
+    }
+    if (notification.currency !== "CNY") {
+      throw new AppError(400, "PAYMENT_ORDER_MISMATCH", "支付币种与订单不符");
+    }
+    /**
+     * 商户号/appId/订单号/付款人四项一致性已在底层 verifyNotification（平台证书验签）与
+     * confirmAndGrant（按订单号回查 + 付款人比对）中覆盖，这里只补切面缺失的金额校验。
+     */
+    return this.confirmAndGrant(notification.orderId, {
+      mchOrderNo: null,
+      transactionId: notification.transactionId,
+      actualPriceFen: notification.amountFen,
+      payerOpenid: notification.payerOpenid,
+      paidAt: notification.paidAt ?? this.now(),
+    });
   }
 }
