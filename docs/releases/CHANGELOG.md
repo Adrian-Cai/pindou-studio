@@ -6,7 +6,8 @@
 - 首页零阻塞：发起 AI 生成后立即返回可交互状态并即时在作品列表写入带封面的占位记录，可连续发起多个任务，不再强制跳转等待页。
 - 作品页展示任务真实状态：`ai_pending` / `ai_failed` 卡片支持查看进度、重试、取消；AI 生成页改为按 `?taskId=` 绑定的任务详情页。
 - 生命周期自愈：补齐冷启动自愈、`app.onShow` 追赶（`onAppShow` catch-up）、超时判失败与旧会话到任务队列的数据迁移。
-- 任务与作品单向对齐：状态先落 `AiTask`，再由 `applyTaskToWorkItem()` 对齐到 `WorkItem`；`AppStore.saveWork` 对 AI 占位作品豁免云同步（强制 `syncStatus: 'guest'`），避免占位记录因缺 draft 被标为同步失败。
+- 任务与作品单向对齐：状态先落 `AiTask`，再由 `applyTaskToWorkItem()` 对齐到 `WorkItem`；AI 占位作品豁免云同步，只存本机。
+- 修复 AI 占位作品被永久钉成同步失败：「占位作品不上云」原本在 `saveWork` 与 `adoptGuestWorks` 各判一次，而 `markSyncStatus` 完全没判——同步服务对缺 draft 的作品回写 `failed` 时会给占位作品盖上 `ownerId`，导致它每次同步都被捞起重试、每次再写回 `failed`，错误文案常驻 UI。现收口为 `models/pattern.ts` 的 `resolveSyncFields()` 单一判定，并在读取侧 `getSyncCandidates()` 加占位过滤兜底（一并覆盖旧版本遗留的脏 `syncStatus`）。新增 `test/work-sync/` 不变式测试 12 例，已做变异验证。
 - 新增提交信息规范：`<type>(<scope>): <中文简述>`，白名单见 `docs/development/COMMIT_CONVENTION.md`，`AGENTS.md` 第 12 节列为强制要求。
 
 ## 0.30.9
