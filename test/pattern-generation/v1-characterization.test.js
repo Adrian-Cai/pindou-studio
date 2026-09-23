@@ -37,7 +37,7 @@ const compiledPatternGenerationDirectory = path.dirname(
     'standard-generator.js',
   )),
 )
-const { findNearestColor, rgbToHex } = require(
+const { pickNearest, rgbToHex } = require(
   path.join(compiledPatternGenerationDirectory, 'color-utils.js'),
 )
 const { calculateCenterCrop } = require(
@@ -116,7 +116,14 @@ test('extracted RGB and Median Cut modules preserve V1 pure behavior', () => {
 
   const first = { r: 0, g: 0, b: 0 }
   const second = { r: 2, g: 0, b: 0 }
-  assert.equal(findNearestColor({ r: 1, g: 0, b: 0 }, [first, second]), first)
+  // V1 的 findNearestColor 走的是 RGB 欧氏距离平方，pickNearest 复用同一度量
+  const rgbDistance = (color) => {
+    const red = 1 - color.r
+    const green = 0 - color.g
+    const blue = 0 - color.b
+    return red * red + green * green + blue * blue
+  }
+  assert.equal(pickNearest([first, second], rgbDistance), first)
   assert.equal(rgbToHex({ r: 0, g: 15, b: 16 }), '#000f10')
   assert.equal(rgbToHex({ r: 255, g: 255, b: 255 }), '#ffffff')
 
