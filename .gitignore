@@ -20,6 +20,7 @@ project.private.config.json
 .test-summary.txt
 .tsc-out.txt
 .work-sync-test-build/
+.ai-failure-test-build/
 
 docs/ui/*
 .agents/*
