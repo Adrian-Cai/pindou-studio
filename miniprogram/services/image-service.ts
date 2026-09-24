@@ -296,11 +296,22 @@ export async function persistImage(sourceImagePath: string): Promise<string> {
 }
 
 function ensureDirectory(directory: string): void {
+  const fs = wx.getFileSystemManager()
+  // 目录已存在时 mkdirSync 仍会抛 "file already exists"（微信已知行为，recursive:true 也拦不住），
+  // 先判存在可彻底消除这条噪音告警；真正的建目录失败（权限/磁盘）才需要告警
   try {
-    wx.getFileSystemManager().mkdirSync(directory, true)
+    fs.accessSync(directory)
+    return
+  } catch {
+    // 目录不存在，继续创建
+  }
+  try {
+    fs.mkdirSync(directory, true)
   } catch (error) {
-    // 目录已存在时 mkdir 会抛错，属于预期情况；真正建目录失败由后续 copyFile 兜报错
-    console.warn('创建图片目录失败', error)
+    const errMsg = error instanceof Error ? error.message : String(error)
+    if (!/already exists/i.test(errMsg)) {
+      console.warn('创建图片目录失败', error)
+    }
   }
 }
 
