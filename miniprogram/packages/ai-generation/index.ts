@@ -4,7 +4,7 @@
  * 职责：通过 `?taskId=` 绑定具体任务，把 AiTaskView 映射成页面 UI
  *       （排队中 / 生成中 / 已完成 / 失败），提供取消、重试、购买次数、切标准模式、查看作品等操作。
  * 调用方：作品页点 pending/failed 卡片（`?taskId=&from=projects`）、
- *        AI 生成完成后的一次性跳转（`?taskId=&from=home`）。
+ *        首页创建 AI 任务后进入（`?taskId=&from=home`）。
  * 关键点：页面只订阅不驱动——onHide/onUnload 仅退订，任务照常在后台跑；
  *        `from=home` 表示用户刚发起，成功后自动进编辑器；`from=projects` 表示回看，成功后不跳转。
  */
@@ -62,6 +62,7 @@ Page({
   _from: 'home' as TaskFrom,
   _unsubscribe: null as (() => void) | null,
   _navigated: false,
+  _visible: false,
 
   onLoad(query?: Record<string, string | undefined>) {
     const from: TaskFrom = query?.from === 'projects' ? 'projects' : 'home'
@@ -81,6 +82,7 @@ Page({
   },
 
   onShow() {
+    this._visible = true
     if (!this._taskId) return
     this._navigated = false
     if (!this._unsubscribe) this.subscribe()
@@ -89,10 +91,12 @@ Page({
   },
 
   onHide() {
+    this._visible = false
     this.unsubscribe()
   },
 
   onUnload() {
+    this._visible = false
     this.unsubscribe()
   },
 
@@ -160,7 +164,7 @@ Page({
 
   /** 成功后只在「刚发起」时自动进编辑器；回看时不抢走用户当前页面。 */
   async handleSucceeded() {
-    if (this._from !== 'home' || this._navigated) return
+    if (!this._visible || this._from !== 'home' || this._navigated) return
     const draft = appStore.getLocalDraft(this._taskId)
     if (!draft) return
     this._navigated = true
@@ -169,6 +173,8 @@ Page({
     } catch (error) {
       console.error('设置当前草稿失败', error)
     }
+    // 写入草稿期间用户可能已返回首页，不再把用户拉回编辑器。
+    if (!this._visible) return
     wx.redirectTo({ url: '/packages/editor/index' })
   },
 
