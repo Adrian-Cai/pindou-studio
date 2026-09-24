@@ -13,8 +13,8 @@
     <view class="generating-card__title">{{title}}</view>
     <view class="generating-card__subtitle">{{subtitle}}</view>
 
-    <!-- 进度条区域 -->
-    <view class="generating-card__progress-wrap">
+    <!-- 进度条区域：失败态原地切换时移除 -->
+    <view class="generating-card__progress-wrap" wx:if="{{!failed}}">
       <view class="generating-card__progress-track">
         <view
           class="generating-card__progress-bar"
@@ -25,9 +25,27 @@
     </view>
   </view>
 
-  <!-- 底部提示胶囊 -->
-  <view class="generating-card__tip-capsule" wx:if="{{showTip && tipText}}">
-    <view class="generating-card__tip-icon"></view>
-    <text class="generating-card__tip-text">{{tipText}}</text>
+  <!-- 底部：提示胶囊 + 卡片内操作 -->
+  <view class="generating-card__foot">
+    <view class="generating-card__tip-capsule" wx:if="{{!failed && showTip && tipText}}">
+      <view class="generating-card__tip-icon"></view>
+      <text class="generating-card__tip-text">{{tipText}}</text>
+    </view>
+
+    <!-- 轻量操作：与卡片内容同处一张卡片；生成中为「取消生成 / 返回首页」，
+         失败态原位切换为「重新生成（或对应恢复动作）/ 返回首页」 -->
+    <view class="generating-card__actions" wx:if="{{showActions || failed}}">
+      <button
+        wx:if="{{!failed || primaryText}}"
+        class="generating-card__action {{failed ? 'generating-card__action--soft' : 'generating-card__action--ghost'}}"
+        bindtap="handlePrimary"
+        aria-label="{{failed ? primaryText : cancelText}}"
+      >{{failed ? primaryText : cancelText}}</button>
+      <button
+        class="generating-card__action {{failed ? 'generating-card__action--ghost' : 'generating-card__action--soft'}}"
+        bindtap="handleHome"
+        aria-label="{{homeText}}"
+      >{{homeText}}</button>
+    </view>
   </view>
 </view>

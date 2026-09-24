@@ -6,41 +6,23 @@
       aria-label="当前生成结果由人工智能生成"
     >当前生成结果由人工智能生成</view>
 
-    <!-- 任务元信息：常驻展示，帮助用户确认这是哪一张图 -->
-    <view wx:if="{{hasTask}}">
-      <view wx:if="{{sourceImagePath}}" class="ai-generation-source">
-        <image
-          wx:if="{{!sourceImageError}}"
-          class="ai-generation-source__image"
-          src="{{sourceImagePath}}"
-          mode="aspectFill"
-          binderror="handleImageError"
-          aria-label="待生成图片"
-        />
-        <view wx:else class="ai-generation-source__fallback">原图暂时无法预览</view>
-      </view>
-      <view class="ai-generation-meta" role="note">
-        <text class="ai-generation-meta__item">{{dimensions}} · {{colorLimit}}色</text>
-        <text class="ai-generation-meta__item ai-generation-meta__item--muted">{{submittedAtText}}</text>
-      </view>
-    </view>
+    <!--
+      单页面状态流转：排队 / 生成中 / 失败 / 完成都长在这一个页面里，
+      页面框架（顶部提示 + 中间主内容区 + 底部禁用态编辑面板）不变，
+      只按任务状态原地替换中间主内容卡片，不跳转任何独立失败页/成功页。
+    -->
 
     <!-- ① 排队中：等待本地并发槽位 -->
-    <view wx:if="{{isQueued}}" class="ai-generation-card">
-      <view class="ai-generation-card__eyebrow">已加入生成队列</view>
-      <view class="ai-generation-card__title">排队中</view>
-      <view class="ai-generation-card__hint">{{queuePosition > 1 ? '前方还有 ' + (queuePosition - 1) + ' 个任务，轮到它会自动开始' : '马上开始生成，可以返回首页继续操作'}}</view>
-    </view>
-
-    <!-- ② 生成中 -->
-    <view wx:elif="{{isGenerating}}" class="ai-generation-generating">
-      <generating-preview-card
-        title="{{stateTitle}}"
-        subtitle="{{stateDescription}}"
-        progress="{{progress}}"
-        tip-text="{{tipText}}"
-      />
-      <!-- 生成中：提前展示编辑器底部面板的禁用态，图案就绪后跳转编辑器再启用 -->
+    <view wx:if="{{isQueued}}" class="ai-generation-state">
+      <view class="ai-generation-card">
+        <view class="ai-generation-card__eyebrow">已加入生成队列</view>
+        <view class="ai-generation-card__title">排队中</view>
+        <view class="ai-generation-card__hint">{{queuePosition > 1 ? '前方还有 ' + (queuePosition - 1) + ' 个任务，轮到它会自动开始' : '马上开始生成，可以返回首页继续操作'}}</view>
+        <view class="ai-generation-card__actions">
+          <button class="button-secondary ai-generation-card__action" bindtap="cancelTask">取消生成</button>
+          <button class="button-secondary ai-generation-card__action" bindtap="backHome">返回首页</button>
+        </view>
+      </view>
       <editor-control-panel
         ready="{{false}}"
         width="{{panelWidth}}"
@@ -50,82 +32,57 @@
       />
     </view>
 
-    <!-- ③ 已完成 -->
-    <view wx:elif="{{isSucceeded}}" class="ai-generation-card">
-      <view class="ai-generation-card__eyebrow">AI 精致生成</view>
-      <view class="ai-generation-card__title">生成完成</view>
-      <view class="ai-generation-card__hint">图纸已保存到作品，可以开始编辑</view>
+    <!-- ② 生成中：紫色加载卡片（进度 + 取消/返回），下方编辑面板全禁用 -->
+    <view wx:elif="{{isGenerating}}" class="ai-generation-state">
+      <generating-preview-card
+        title="{{stateTitle}}"
+        subtitle="{{stateDescription}}"
+        progress="{{progress}}"
+        tip-text="{{tipText}}"
+        show-actions="{{true}}"
+        bindcancel="cancelTask"
+        bindbackhome="backHome"
+      />
+      <editor-control-panel
+        ready="{{false}}"
+        width="{{panelWidth}}"
+        height="{{panelHeight}}"
+        color-limit="{{panelColorLimit}}"
+        bead-count="{{panelBeadCount}}"
+      />
     </view>
 
-    <!-- ④ 失败 -->
-    <view wx:elif="{{isFailed}}" class="ai-generation-card">
-      <view class="ai-generation-card__eyebrow">AI 精致生成</view>
-      <view class="ai-generation-card__title">{{stateTitle}}</view>
-      <view class="ai-generation-card__hint">{{failureMessage || stateDescription}}</view>
+    <!-- ③ 失败：同一张紫色卡片原地切换为失败态，无进度条/无提示胶囊；
+         缩放、尺寸颜色颗数、编辑工具、色板保持显示但全部禁用 -->
+    <view wx:elif="{{isFailed}}" class="ai-generation-state">
+      <generating-preview-card
+        failed="{{true}}"
+        title="{{stateTitle}}"
+        subtitle="{{failureMessage || stateDescription}}"
+        primary-text="{{failurePrimaryText}}"
+        bindretry="handleFailurePrimary"
+        bindbackhome="backHome"
+      />
+      <editor-control-panel
+        ready="{{false}}"
+        width="{{panelWidth}}"
+        height="{{panelHeight}}"
+        color-limit="{{panelColorLimit}}"
+        bead-count="{{panelBeadCount}}"
+      />
     </view>
 
-    <view wx:if="{{statusMessage && isGenerating}}" class="ai-generation-waiting" role="status">
-      {{statusMessage}}
-    </view>
-
-    <!-- ── 操作区 ── -->
-    <button
-      wx:if="{{isSucceeded}}"
-      class="button-primary ai-generation-retry"
-      bindtap="viewWork"
-    >查看作品</button>
-
-    <button
-      wx:if="{{isFailed && showPurchase}}"
-      class="button-primary ai-generation-retry"
-      bindtap="purchaseAiGeneration"
-    >购买 AI 生成次数</button>
-
-    <button
-      wx:if="{{isFailed && action === 'USE_STANDARD_MODE'}}"
-      class="button-primary ai-generation-retry"
-      bindtap="useStandardMode"
-    >使用标准模式</button>
-
-    <button
-      wx:if="{{isFailed && action === 'SELECT_IMAGE'}}"
-      class="button-primary ai-generation-retry"
-      bindtap="selectNewImage"
-    >重新选择图片</button>
-
-    <button
-      wx:if="{{isFailed && canRetry}}"
-      class="button-primary ai-generation-retry"
-      bindtap="retry"
-    >{{retryLabel}}</button>
-
-    <button
-      wx:if="{{isFailed && action !== 'USE_STANDARD_MODE' && action !== 'SELECT_IMAGE' && !showPurchase && !canRetry}}"
-      class="button-primary ai-generation-retry"
-      bindtap="backHome"
-    >返回首页</button>
-
-    <!-- 非终态都可以取消 -->
-    <button
-      wx:if="{{isQueued || isGenerating}}"
-      class="button-secondary ai-generation-back"
-      bindtap="cancelTask"
-    >取消生成</button>
-
-    <button
-      wx:if="{{isQueued || isGenerating || isSucceeded}}"
-      class="button-secondary ai-generation-back"
-      bindtap="backHome"
-    >返回首页</button>
-
-    <button
-      wx:if="{{isFailed && (showPurchase || canRetry || action === 'USE_STANDARD_MODE' || action === 'SELECT_IMAGE')}}"
-      class="button-secondary ai-generation-back"
-      bindtap="backHome"
-    >返回首页</button>
-
-    <view wx:if="{{!isGenerating}}" class="ai-generation-note">
-      AI 输入图片已在上传时完成内容安全审核；生成结果经服务端格式校验后交给标准模式转换为拼豆图。
+    <!-- ④ 已完成：仅「从作品页回看」会停在这里；从首页发起的任务成功后已自动进入编辑器 -->
+    <view wx:elif="{{isSucceeded}}" class="ai-generation-state">
+      <view class="ai-generation-card">
+        <view class="ai-generation-card__eyebrow">AI 精致生成</view>
+        <view class="ai-generation-card__title">生成完成</view>
+        <view class="ai-generation-card__hint">图纸已保存到作品，可以开始编辑</view>
+        <view class="ai-generation-card__actions">
+          <button class="button-primary ai-generation-card__action" bindtap="viewWork">查看作品</button>
+          <button class="button-secondary ai-generation-card__action" bindtap="backHome">返回首页</button>
+        </view>
+      </view>
     </view>
   </view>
 </page-layout>

@@ -1,8 +1,11 @@
 /**
  * AI 任务详情页（分包 packages/ai-generation）：展示某一条 AI 生成任务的状态并提供操作。
  *
- * 职责：通过 `?taskId=` 绑定具体任务，把 AiTaskView 映射成页面 UI
- *       （排队中 / 生成中 / 已完成 / 失败），提供取消、重试、购买次数、切标准模式、查看作品等操作。
+ * 职责：通过 `?taskId=` 绑定具体任务，把 AiTaskView 映射成页面 UI。
+ *       整个 AI 生成过程只使用这一个页面：排队 / 生成中 / 失败 / 完成
+ *       都在同一页面框架内原地切换中间主内容卡片，不设独立的失败页或成功页。
+ *       生成中与失败态下方常驻禁用态编辑面板（100% 缩放、尺寸/颜色/颗数、
+ *       工具栏、色板），成功（from=home）后自动进入编辑器启用同一面板。
  * 调用方：作品页点 pending/failed 卡片（`?taskId=&from=projects`）、
  *        首页创建 AI 任务后进入（`?taskId=&from=home`）。
  * 关键点：页面只订阅不驱动——onHide/onUnload 仅退订，任务照常在后台跑；
@@ -30,12 +33,6 @@ const LONG_WAIT_TIP = '处理时间比平时长一些，可以暂时离开，稍
 Page({
   data: {
     selectedTab: 0,
-    hasTask: false,
-    sourceImagePath: '',
-    sourceImageError: false,
-    dimensions: '',
-    colorLimit: 0,
-    submittedAtText: '',
     isQueued: false,
     isGenerating: false,
     isSucceeded: false,
@@ -44,14 +41,14 @@ Page({
     queuePosition: 0,
     stateTitle: '',
     stateDescription: '',
-    statusMessage: '',
     failureMessage: '',
     tipText: DEFAULT_TIP,
     showPurchase: false,
     canRetry: false,
-    retryLabel: '重试',
+    /** 失败卡片主按钮文案：重新生成 / 购买次数 / 重新选图生成 / 用标准模式生成 */
+    failurePrimaryText: '',
     action: 'RETRY',
-    /** 生成中底部面板预填的图案参数（取自任务设置） */
+    /** 生成中与失败态底部面板预填的图案参数（取自任务设置） */
     panelWidth: 0,
     panelHeight: 0,
     panelColorLimit: 0,
@@ -133,12 +130,6 @@ Page({
     const isSucceeded = view.isSucceeded
     const isQueued = !isGenerating && !isFailed && !isSucceeded
     this.setData({
-      hasTask: true,
-      sourceImagePath: view.sourceImagePath,
-      sourceImageError: false,
-      dimensions: `${view.width}×${view.height}`,
-      colorLimit: view.colorLimit,
-      submittedAtText: `${formatDateTime(view.createdAt)} 提交`,
       isQueued,
       isGenerating,
       isSucceeded,
@@ -147,12 +138,11 @@ Page({
       queuePosition: view.queuePosition,
       stateTitle: view.stateTitle,
       stateDescription: view.stateDescription,
-      statusMessage: view.statusMessage,
       failureMessage: view.failureMessage,
       tipText: view.statusMessage || (view.waitingLong ? LONG_WAIT_TIP : DEFAULT_TIP),
       showPurchase: view.showPurchase,
       canRetry: view.canRetry,
-      retryLabel: view.retryLabel,
+      failurePrimaryText: resolveFailurePrimaryText(view),
       action: view.action,
       panelWidth: view.width,
       panelHeight: view.height,
@@ -201,6 +191,25 @@ Page({
     const taskId = this._taskId
     if (!taskId) return
     void aiTaskManager.retryTask(taskId).then(() => this.syncTask())
+  },
+
+  /** 失败卡片主操作：按失败类型分发到重试 / 购买次数 / 切标准模式 / 重新选图 */
+  handleFailurePrimary() {
+    if (this.data.canRetry) {
+      this.retry()
+      return
+    }
+    if (this.data.showPurchase) {
+      this.purchaseAiGeneration()
+      return
+    }
+    if (this.data.action === 'USE_STANDARD_MODE') {
+      void this.useStandardMode()
+      return
+    }
+    if (this.data.action === 'SELECT_IMAGE') {
+      this.selectNewImage()
+    }
   },
 
   async viewWork() {
@@ -257,17 +266,17 @@ Page({
   backHome() {
     wx.switchTab({ url: '/pages/home/index' })
   },
-
-  handleImageError() {
-    this.setData({ sourceImageError: true })
-  },
 })
 
-function formatDateTime(timestamp: number) {
-  const date = new Date(timestamp)
-  const datePart = [date.getFullYear(), date.getMonth() + 1, date.getDate()]
-    .map((value, index) => index === 0 ? String(value) : String(value).padStart(2, '0'))
-    .join('-')
-  const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-  return `${datePart} ${timePart}`
+/**
+ * 失败卡片主按钮文案：可重试的失败统一叫「重新生成」；
+ * 次数不足、图片问题、建议切标准模式等不可直接重试的失败沿用动作表文案，
+ * 都没有时不显示主按钮，只留「返回首页」。
+ */
+function resolveFailurePrimaryText(view: AiTaskView): string {
+  if (view.canRetry) return '重新生成'
+  if (view.showPurchase || view.action === 'USE_STANDARD_MODE' || view.action === 'SELECT_IMAGE') {
+    return view.retryLabel
+  }
+  return ''
 }

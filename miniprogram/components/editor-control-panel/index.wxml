@@ -66,7 +66,9 @@
     </block>
   </view>
 
-  <!-- ── 底部操作 ── -->
+  <!-- ── 底部操作 ──
+       生成中要保留占位但必须不可选：按钮位置不动，靠 disabled 呈现灰置态，
+       等图案就绪后由编辑器页传 ready=true 自动恢复可点。 -->
   <view class="editor-panel__actions">
     <button
       class="button-secondary editor-panel__action"

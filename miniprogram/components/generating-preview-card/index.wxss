@@ -13,7 +13,7 @@
 .generating-card {
   position: relative;
   width: 100%;
-  height: 290px;
+  min-height: 290px;
   box-sizing: border-box;
   border-radius: 16px;
   overflow: hidden;
@@ -131,6 +131,16 @@
   white-space: nowrap;
 }
 
+/* 底部内容区：提示胶囊 + 卡片内操作按钮 */
+.generating-card__foot {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+}
+
 /* 底部提示胶囊 */
 .generating-card__tip-capsule {
   position: relative;
@@ -171,6 +181,56 @@
   line-height: 1.2;
 }
 
+/* 卡片内操作行：取消生成 / 返回首页，横向排列，轻量低干扰 */
+.generating-card__actions {
+  display: flex;
+  flex-shrink: 0;
+  width: 100%;
+  margin-top: 12px;
+  gap: 12px;
+}
+
+.generating-card__action {
+  box-sizing: border-box;
+  height: 36px;
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 36px;
+  text-align: center;
+  transition: background 0.15s ease;
+}
+
+.generating-card__action::after {
+  border: none;
+}
+
+/* 取消生成：浅色描边按钮 */
+.generating-card__action--ghost {
+  background: rgba(255, 255, 255, 0.72);
+  color: #6F6A94;
+  box-shadow: inset 0 0 0 1px rgba(124, 92, 255, 0.24);
+}
+
+.generating-card__action--ghost:active {
+  background: rgba(255, 255, 255, 0.94);
+}
+
+/* 返回首页：同风格浅色实底次按钮 */
+.generating-card__action--soft {
+  background: rgba(124, 92, 255, 0.12);
+  color: #6F5BFF;
+}
+
+.generating-card__action--soft:active {
+  background: rgba(124, 92, 255, 0.2);
+}
+
 /* 图标呼吸浮动动画 */
 @keyframes float-breathing {
   0%, 100% {
@@ -184,5 +244,9 @@
 @media (prefers-reduced-motion: reduce) {
   .generating-card__icon-wrap {
     animation: none;
+  }
+
+  .generating-card__action {
+    transition: none;
   }
 }
