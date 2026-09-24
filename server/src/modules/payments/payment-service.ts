@@ -16,6 +16,7 @@ import { AppError, idempotencyConflict, invalidArgument, notFound, unauthorized 
 import {
   createEntityId,
   createIdempotentOrderId,
+  createVirtualOutTradeNo,
   decryptOpenid,
   decryptSessionKey,
 } from "../../shared/identity";
@@ -54,8 +55,9 @@ export interface CreatePaymentInput {
 /**
  * 下单结果。
  *
- * virtual 为 null 表示该订单此前已由同一幂等键创建过 —— 虚拟支付的 signData 里含
- * 不可重复的 outTradeNo，每次必须重新签发，因此这里不留旧值，强制调用方重新取参。
+ * virtual 里的 signData 含**每次都不同**的 outTradeNo：微信规定一个商户单号只能用一次，
+ * 同一笔订单被反复拉起支付时必须换新号（见 createPayment 的注释）。因此即使命中
+ * 幂等键返回同一笔订单，拿到的也是一份全新的支付参数，绝不能缓存复用。
  */
 export interface CreatePaymentResponse {
   readonly orderId: string;
@@ -332,6 +334,8 @@ interface ReconcileCandidateRow extends QueryResultRow {
   readonly id: string;
   readonly created_at: Date | string;
   readonly openid_ciphertext: string | null;
+  /** 查单用的商户单号；COALESCE 兜住「列还没回填」的迁移窗口。 */
+  readonly out_trade_no: string;
 }
 
 /** 汇总里的可变累加器：对外返回时才冻结成 `PendingOrderReconcileSummary`。 */
@@ -472,13 +476,16 @@ export class PostgresPaymentService implements PaymentService {
     if (!packageId || packageId.length > 40) throw invalidArgument("packageId 无效");
 
     /**
-     * 订单 id 直接复用订单号作为 outTradeNo。
+     * 订单 id 由 userId + 幂等键推导，重复下单天然幂等。
      *
-     * 虚拟支付限制 outTradeNo 为 8-32 位、仅数字字母与 _ - | * @、不以 _ 开头。
-     * 现有 `order_` + 26 位十六进制正好 32 位且字符集合规，因此无需另建映射字段，
-     * 发货回调里的 OutTradeNo 可以直接拿来回查订单 —— 少一层映射就少一处不一致。
+     * **订单号不能再当 outTradeNo 用了**：微信规定一个商户单号只能用于一次支付尝试，
+     * 第二个拿同一单号拉起支付会直接报 -15012（ORDER_CLOSED）。而一笔订单在用户
+     * 取消、支付失败、网络超时重发后必然被反复拉起，两者天然冲突。
+     * 因此订单号只作为我方主键，另发一个每次都新的商户单号存进
+     * `virtual_out_trade_no`，发货/退款/查单一律以它为准。
      */
     const orderId = createIdempotentOrderId(input.userId, input.idempotencyKey);
+    const outTradeNo = createVirtualOutTradeNo();
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -564,8 +571,8 @@ export class PostgresPaymentService implements PaymentService {
              id, user_id, package_id, package_label_snapshot, quota_amount_snapshot,
              quota_kind_snapshot,
              membership_type_snapshot, price_fen, status, wx_prepay_id,
-             wx_transaction_id, paid_at, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NULL, NULL, NULL, $9, $9)`,
+             wx_transaction_id, virtual_out_trade_no, paid_at, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NULL, NULL, $9, NULL, $10, $10)`,
           [
             orderId,
             input.userId,
@@ -575,8 +582,23 @@ export class PostgresPaymentService implements PaymentService {
             selectedPackage.quota_kind,
             selectedPackage.membership_type,
             selectedPackage.price_fen,
+            outTradeNo,
             currentTime,
           ],
+        );
+      } else {
+        /**
+         * 命中已有 pending 订单：必须**换掉商户单号**再签发。
+         *
+         * 沿用旧单号的后果是客户端一定拿 -15012 —— 微信侧那个单号在上次拉起时就
+         * 已经建过单并随之关闭了。带 `status = 'pending'` 是为了并发安全：
+         * 期间订单若已被发货推送置为 paid，就不该再改它的单号。
+         */
+        await client.query(
+          `UPDATE pindou_orders
+              SET virtual_out_trade_no = $2, updated_at = $3
+            WHERE id = $1 AND status = 'pending'`,
+          [orderId, outTradeNo, currentTime],
         );
       }
       await client.query("COMMIT");
@@ -586,6 +608,7 @@ export class PostgresPaymentService implements PaymentService {
         payment: null,
         virtual: await this.signVirtualPayment({
           orderId,
+          outTradeNo,
           productId: selectedPackage.virtual_product_id ?? "",
           goodsPriceFen: selectedPackage.price_fen,
           openid: payerOpenid,
@@ -608,6 +631,8 @@ export class PostgresPaymentService implements PaymentService {
    */
   private async signVirtualPayment(input: {
     orderId: string;
+    /** 本次支付尝试专属的商户单号，每次调用都不同，见 createPayment 的说明。 */
+    outTradeNo: string;
     productId: string;
     goodsPriceFen: number;
     openid: string;
@@ -625,14 +650,39 @@ export class PostgresPaymentService implements PaymentService {
       throw new AppError(409, "VIRTUAL_PAYMENT_SESSION_EXPIRED", "登录状态已失效，请重新登录后支付");
     }
     return this.virtualPay.createPayment({
-      orderId: input.orderId,
+      outTradeNo: input.outTradeNo,
       productId: input.productId,
       // 道具单价必须与 MP 后台定价一致，否则客户端报 -15013
       goodsPriceFen: input.goodsPriceFen,
       buyQuantity: 1,
+      // attach 仍填订单号：退款推送在个别渠道不回传商户单号时，还能靠它定位订单
       attach: input.orderId,
       sessionKey,
     });
+  }
+
+  /**
+   * 由微信侧的商户单号（outTradeNo）回查我方订单号。
+   *
+   * 商户单号与订单号**不是同一个值**：微信规定 outTradeNo 只能用一次，一笔订单
+   * 被反复拉起支付时每次都会换新号（见 createPayment）。因此发货推送、退款推送、
+   * iOS 退款问询带回来的都是商户单号，必须先经这一步才能定位订单。
+   *
+   * 保留 `OR id = $1` 这一路兜底，是为了**迁移尚未执行时**存量在途订单仍能收尾：
+   * 迁移前下发的 signData 用的就是订单号本身，而迁移是人工执行的，
+   * 部署顺序上必然存在「代码已上新、列还没加」的窗口。
+   *
+   * @returns 订单号；null 表示既不是已知商户单号也不是订单号
+   */
+  private async resolveOrderId(outTradeNo: string): Promise<string | null> {
+    const result = await this.pool.query<{ readonly id: string }>(
+      `SELECT id
+         FROM pindou_orders
+        WHERE virtual_out_trade_no = $1 OR id = $1
+        LIMIT 1`,
+      [outTradeNo],
+    );
+    return result.rows[0]?.id ?? null;
   }
 
   /**
@@ -662,7 +712,8 @@ export class PostgresPaymentService implements PaymentService {
      * 这里会静默漏掉，而「套餐是否配了虚拟道具」才是唯一稳定的判据。
      */
     const result = await this.pool.query<ReconcileCandidateRow>(
-      `SELECT orders.id, orders.created_at, users.openid_ciphertext
+      `SELECT orders.id, orders.created_at, users.openid_ciphertext,
+              COALESCE(orders.virtual_out_trade_no, orders.id) AS out_trade_no
          FROM pindou_orders orders
          JOIN pindou_users users ON users.id = orders.user_id
          JOIN pindou_packages packages ON packages.id = orders.package_id
@@ -739,7 +790,8 @@ export class PostgresPaymentService implements PaymentService {
     }
 
     try {
-      const verified = await this.virtualPay.queryOrder({ openid, orderId: candidate.id });
+      // 查单必须带上本次支付尝试的商户单号：订单号在微信侧根本不存在
+      const verified = await this.virtualPay.queryOrder({ openid, outTradeNo: candidate.out_trade_no });
       if (!verified.paid) {
         const ageMs = currentTime.getTime() - orderCreatedAtMs(candidate.created_at);
         /**
@@ -879,12 +931,25 @@ export class PostgresPaymentService implements PaymentService {
       return { applied: false, clawedBack: 0 };
     }
 
-    const orderId = (input.mchOrderId ?? input.attach ?? "").trim();
-    if (!orderId) {
+    const identifier = (input.mchOrderId ?? input.attach ?? "").trim();
+    if (!identifier) {
       // 最糟的一种：钱已经退出去了，而我们连扣谁的都不知道，必须留痕让人介入
       console.error(JSON.stringify({
         event: "virtual_payment_refund_alert",
         reason: "order_unlocatable",
+        mchOrderId: input.mchOrderId,
+        attach: input.attach,
+        wxRefundId: input.wxRefundId,
+      }));
+      return { applied: false, clawedBack: 0 };
+    }
+
+    // 推送里的商户单号不是订单号，先回查定位
+    const orderId = await this.resolveOrderId(identifier);
+    if (!orderId) {
+      console.error(JSON.stringify({
+        event: "virtual_payment_refund_alert",
+        reason: "order_not_found",
         mchOrderId: input.mchOrderId,
         attach: input.attach,
         wxRefundId: input.wxRefundId,
@@ -1017,10 +1082,11 @@ export class PostgresPaymentService implements PaymentService {
         evidence: `问询未携带支付订单号（票据号 ${input.channelBill ?? "未知"}），无法确认发货情况`,
       };
     }
+    // 问询带来的可能是商户单号也可能是订单号（渠道不统一），两种都要能命中
     const result = await this.pool.query<OrderRow>(
       `SELECT id, user_id, quota_amount_snapshot, quota_kind_snapshot, status, paid_at
          FROM pindou_orders
-        WHERE id = $1
+        WHERE virtual_out_trade_no = $1 OR id = $1
         LIMIT 1`,
       [orderId],
     );
@@ -1082,12 +1148,15 @@ export class PostgresPaymentService implements PaymentService {
    */
   public async handleDelivery(input: DeliveryNotification): Promise<{ readonly duplicate: boolean }> {
     const openid = input.openId.trim();
-    const orderId = input.outTradeNo.trim();
-    if (!openid || !orderId) {
+    const outTradeNo = input.outTradeNo.trim();
+    if (!openid || !outTradeNo) {
       throw new AppError(400, "VIRTUAL_PAYMENT_DELIVERY_INVALID", "发货推送缺少 openid 或订单号");
     }
+    // 推送里的 OutTradeNo 是商户单号，不是订单号：必须先回查才能定位订单
+    const orderId = await this.resolveOrderId(outTradeNo);
+    if (!orderId) throw notFound("支付订单不存在");
 
-    const verified = await this.virtualPay.queryOrder({ openid, orderId });
+    const verified = await this.virtualPay.queryOrder({ openid, outTradeNo });
     if (!verified.paid) {
       /**
        * 查单未确认支付成功。

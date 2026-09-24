@@ -7,7 +7,7 @@ INSERT INTO pindou_packages (
   price_fen, currency, enabled, sort_order, created_at, updated_at
 ) VALUES (
   'ai_generation_new_user_5',
-  '新人测试福利 · AI 生成 5 次',
+  'AI 精致生成 5 次·新人福利',
   5,
   'ai_generation',
   NULL,

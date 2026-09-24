@@ -48,8 +48,14 @@ export interface VirtualPaymentPayload {
 }
 
 export interface CreateVirtualPaymentInput {
-  /** 业务订单号（8-32 位，数字/字母/_ - | * @，不以 _ 开头），取值 pindou_orders.id。 */
-  readonly orderId: string;
+  /**
+   * 业务订单号（8-32 位，数字/字母/_ - | * @，不以 _ 开头）。
+   *
+   * **不是订单号，也不得由订单号推导**：微信规定每个 outTradeNo 只能用于一次支付
+   * 尝试，重复即 -15012（ORDER_CLOSED）；而同一笔订单会被反复拉起支付。
+   * 取值 `pindou_orders.virtual_out_trade_no`，每次签发都换新。
+   */
+  readonly outTradeNo: string;
   /** MP 后台道具管理里已发布的道具 ID。 */
   readonly productId: string;
   /** 单价（分），必须与 MP 后台道具定价一致，否则报 -15013。 */
@@ -143,7 +149,8 @@ export interface VirtualPayGateway {
   readonly configured: boolean;
   readonly offerId: string;
   createPayment(input: CreateVirtualPaymentInput): VirtualPaymentPayload;
-  queryOrder(input: { openid: string; orderId: string }): Promise<QueriedVirtualOrder>;
+  /** @param outTradeNo 下单时签发的商户单号，**不是**订单号。 */
+  queryOrder(input: { openid: string; outTradeNo: string }): Promise<QueriedVirtualOrder>;
 }
 
 interface ClientConfig {
@@ -189,7 +196,7 @@ function buildSignData(input: CreateVirtualPaymentInput, offerId: string): strin
     currencyType: "CNY",
     productId: input.productId,
     goodsPrice: input.goodsPriceFen,
-    outTradeNo: input.orderId,
+    outTradeNo: input.outTradeNo,
     attach: input.attach,
   });
 }
@@ -277,12 +284,12 @@ export class OfficialVirtualPayGateway implements VirtualPayGateway {
    */
   public async queryOrder(input: {
     openid: string;
-    orderId: string;
+    outTradeNo: string;
   }): Promise<QueriedVirtualOrder> {
     const body = JSON.stringify({
       openid: input.openid,
       env: 0,
-      order_id: input.orderId,
+      order_id: input.outTradeNo,
     });
     const paySig = signPay(QUERY_ORDER_URI, body, this.config.appKey);
 

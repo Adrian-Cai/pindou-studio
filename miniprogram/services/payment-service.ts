@@ -258,6 +258,18 @@ function toPaymentApiError(error: unknown): ApiError {
   if (isWechatPaymentCancelled(error)) {
     return new ApiError('已取消支付', { code: WECHAT_PAYMENT_CANCELLED, details: { errMsg, errCode } })
   }
+  /**
+   * 商户单号作废：微信侧这张单已经关了（-15012）或单号撞了（-15002）。
+   *
+   * 单独成一个 code 而不是只给一句文案，是因为调用方必须**换一笔新单**才能继续 ——
+   * 保留原幂等键重试只会反复撞同一个已关闭的单号。
+   */
+  if (errCode === VIRTUAL_ORDER_CLOSED_ERR_CODE || errCode === VIRTUAL_OUT_TRADE_NO_REUSED_ERR_CODE) {
+    return new ApiError('订单已失效，请重新发起支付', {
+      code: WECHAT_PAYMENT_ORDER_CLOSED,
+      details: { errMsg, errCode },
+    })
+  }
   const friendly = errCode === null ? null : VIRTUAL_PAYMENT_ERROR_TEXT[errCode]
   return new ApiError(
     friendly ?? errMsg ?? '支付未完成，请稍后重试',
@@ -268,7 +280,9 @@ function toPaymentApiError(error: unknown): ApiError {
 /** 虚拟支付常见错误码 → 用户可理解且可行动的文案。 */
 const VIRTUAL_PAYMENT_ERROR_TEXT: Readonly<Record<number, string>> = {
   // 业务单号重复：客户端应换幂等键重下，而不是让用户对着 raw code 发呆
-  [-15002]: '订单已存在，请重新发起支付',
+  [-15002]: '订单已失效，请重新发起支付',
+  // 调用米大师失败导致关单：官方口径「请换新单号重试」
+  [-15012]: '订单已失效，请重新发起支付',
   [-15004]: '支付币种异常，请联系客服',
   [-15007]: '登录状态已失效，请重新登录后支付',
   [-15010]: '商品暂不可购买，请稍后再试',
@@ -281,12 +295,18 @@ const VIRTUAL_PAYMENT_ERROR_TEXT: Readonly<Record<number, string>> = {
 
 /** 用户主动取消支付：errCode -2 是微信文档的取值，errMsg 文案跨版本/语言会变。 */
 const WECHAT_PAYMENT_CANCELLED = 'WECHAT_PAYMENT_CANCELLED'
+/** 商户单号已作废，必须换一笔新单才能继续支付（详见 toPaymentApiError）。 */
+const WECHAT_PAYMENT_ORDER_CLOSED = 'WECHAT_PAYMENT_ORDER_CLOSED'
 /** 支付拉起失败的其它原因（余额不足、参数错误等）。 */
 const WECHAT_PAYMENT_FAILED = 'WECHAT_PAYMENT_FAILED'
 /** 当前微信客户端不支持虚拟支付，需用户升级。 */
 const VIRTUAL_PAYMENT_UNSUPPORTED = 'VIRTUAL_PAYMENT_UNSUPPORTED'
 /** 微信文档的用户取消码；老版本基础库不给 errCode，只能退而match errMsg。 */
 const WECHAT_CANCEL_ERR_CODE = -2
+/** -15012：微信侧这张单已经关了（ORDER_CLOSED），沿用旧单号必然再失败。 */
+const VIRTUAL_ORDER_CLOSED_ERR_CODE = -15012
+/** -15002：outTradeNo 重复使用。 */
+const VIRTUAL_OUT_TRADE_NO_REUSED_ERR_CODE = -15002
 
 /**
  * 判断支付失败是否为“用户主动取消”。
@@ -304,6 +324,19 @@ export function isWechatPaymentCancelled(error: unknown): boolean {
   if (details?.errCode === WECHAT_CANCEL_ERR_CODE) return true
   const message = typeof error.errMsg === 'string' ? error.errMsg : ''
   return message.includes(':fail cancel')
+}
+
+/**
+ * 判断支付失败是否因为「商户单号已作废」。
+ *
+ * 与「用户取消」分开判定：取消可以原样再来一次，单号作废则必须开一笔新单，
+ * 否则服务端即便换了单号，用户手里的旧意图也已经没有意义。
+ */
+export function isWechatPaymentOrderClosed(error: unknown): boolean {
+  if (error instanceof ApiError) return error.code === WECHAT_PAYMENT_ORDER_CLOSED
+  if (!isRecord(error)) return false
+  const code = error.errCode ?? (isRecord(error.details) ? error.details.errCode : null)
+  return code === VIRTUAL_ORDER_CLOSED_ERR_CODE || code === VIRTUAL_OUT_TRADE_NO_REUSED_ERR_CODE
 }
 
 /** 把支付失败错误归一化为用户可读文案，无 message 时回退默认提示。 */

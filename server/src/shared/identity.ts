@@ -6,8 +6,26 @@ import {
   randomBytes,
 } from "node:crypto";
 
-export function createEntityId(prefix: "usr" | "ses" | "file" | "work" | "dl" | "qt" | "order" | "aijob" | "sec"): string {
+export function createEntityId(
+  prefix: "usr" | "ses" | "file" | "work" | "dl" | "qt" | "order" | "vpay" | "aijob" | "sec",
+): string {
   return `${prefix}_${randomBytes(15).toString("base64url")}`;
+}
+
+/**
+ * 微信虚拟支付的商户单号（outTradeNo）。
+ *
+ * 与订单号**刻意解耦**：微信规定一个 outTradeNo 只能用于一次支付尝试，第二次拿它
+ * 拉起支付直接报 -15012（ORDER_CLOSED）。而同一笔订单在用户取消/失败后必然会被
+ * 反复拉起，所以每次签发支付参数都要换成全新单号，订单号保持不变。
+ *
+ * 前缀用 `vpay` 而不是 `order`：两者混用正是此前 -15012 的成因，
+ * 单号长得像订单号会让人误以为可以按订单号推导。
+ * 位数 = 5 + 20 = 25，落在官方要求的 8-32 位内；base64url 字符集合规（数字、字母、- _），
+ * 且不以 `_` 开头。
+ */
+export function createVirtualOutTradeNo(): string {
+  return createEntityId("vpay");
 }
 
 export function createIdempotentWorkId(userId: string, idempotencyKey: string): string {

@@ -58,7 +58,7 @@ function fakeVirtualGateway(overrides = {}) {
     offerId: "offer-test",
     createPayment(input) {
       return {
-        signData: JSON.stringify({ outTradeNo: input.orderId, productId: input.productId }),
+        signData: JSON.stringify({ outTradeNo: input.outTradeNo, productId: input.productId }),
         paySig: "pay-sig",
         signature: "user-sig",
         mode: "short_series_goods",
@@ -156,7 +156,7 @@ test("payment creation snapshots server package values and never accepts a clien
     createPayment(input) {
       virtualInput = input;
       return {
-        signData: JSON.stringify({ outTradeNo: input.orderId, productId: input.productId }),
+        signData: JSON.stringify({ outTradeNo: input.outTradeNo, productId: input.productId }),
         paySig: "pay-sig",
         signature: "user-sig",
         mode: "short_series_goods",
@@ -174,7 +174,6 @@ test("payment creation snapshots server package values and never accepts a clien
   assert.match(result.orderId, /^order_[a-f0-9]{26}$/);
   // 旧通道参数必须不再下发，避免客户端误用 wx.requestPayment
   assert.equal(result.payment, null);
-  assert.equal(virtualInput.orderId, result.orderId);
   assert.equal(virtualInput.productId, "product_30");
   assert.equal(virtualInput.goodsPriceFen, 990);
   assert.equal(virtualInput.sessionKey, SESSION_KEY);
@@ -183,9 +182,18 @@ test("payment creation snapshots server package values and never accepts a clien
   assert.equal(pool.orderInsert[0][4], 30);
   assert.equal(pool.orderInsert[0][5], "ai_generation");
   assert.equal(pool.orderInsert[0][7], 990);
+  // 商户单号与订单号必须分开存：它才是微信侧认识的那个号
+  assert.equal(pool.orderInsert[0][8], virtualInput.outTradeNo);
+  assert.notEqual(virtualInput.outTradeNo, result.orderId);
 });
 
-test("order id satisfies the virtual payment outTradeNo contract", async () => {
+/**
+ * 核心不变式：商户单号（outTradeNo）每次签发都必须是新的。
+ *
+ * 微信规定一个 outTradeNo 只能用于一次支付尝试，第二次拿它拉起支付直接
+ * -15012（ORDER_CLOSED）。因此即便命中幂等键返回同一笔订单，也必须换号。
+ */
+test("the out trade no satisfies the virtual payment contract and never equals the order id", async () => {
   const pool = createPaymentPool();
   const service = new PostgresPaymentService(pool, fakeVirtualGateway(), fakeLegacyGateway(), SECRET, () => NOW);
   const result = await service.createPayment({
@@ -193,9 +201,86 @@ test("order id satisfies the virtual payment outTradeNo contract", async () => {
     packageId: "ai_generation_30",
     idempotencyKey: "length-boundary-check",
   });
+  const outTradeNo = JSON.parse(result.virtual.signData).outTradeNo;
   // 虚拟支付限制：8-32 位、仅数字字母与 _ - | * @、不以 _ 开头
-  assert.match(result.orderId, /^[A-Za-z0-9][A-Za-z0-9_\-|*@]{7,31}$/);
-  assert.ok(result.orderId.length <= 32);
+  assert.match(outTradeNo, /^[A-Za-z0-9][A-Za-z0-9_\-|*@]{7,31}$/);
+  assert.ok(outTradeNo.length <= 32);
+  assert.notEqual(outTradeNo, result.orderId, "商户单号不得再取订单号，否则重复拉起即 -15012");
+});
+
+/** 构造「订单已存在且仍是 pending」的假 Pool，用于验证重复下单的单号轮换。 */
+function existingOrderPool(orderOverrides = {}) {
+  const updates = [];
+  const updateSql = [];
+  const orderRow = {
+    id: "order_existing",
+    user_id: "usr_a",
+    package_id: "ai_generation_30",
+    package_label_snapshot: "AI 精致生成 30 次",
+    quota_amount_snapshot: 30,
+    quota_kind_snapshot: "ai_generation",
+    membership_type_snapshot: null,
+    price_fen: 990,
+    status: "pending",
+    wx_prepay_id: null,
+    wx_transaction_id: null,
+    ...orderOverrides,
+  };
+  const pool = clientPool((sql, parameters) => {
+    if (sql === "BEGIN" || sql === "COMMIT" || sql.includes("pg_advisory_xact_lock")) return { rows: [] };
+    if (sql.includes("FROM pindou_orders") && sql.includes("FOR UPDATE")) return { rows: [orderRow] };
+    if (sql.includes("FROM pindou_packages")) return { rows: [packageRow()] };
+    if (sql.includes("FROM pindou_users") && sql.includes("SELECT openid_ciphertext, session")) {
+      return { rows: [{ openid_ciphertext: ENCRYPTED_OPENID, session_key_ciphertext: ENCRYPTED_SESSION_KEY }] };
+    }
+    if (sql.includes("UPDATE pindou_orders")) {
+      pool.updates.push(parameters);
+      pool.updateSql.push(sql);
+      return { rows: [], rowCount: 1 };
+    }
+    // 命中既有订单就意味着重复建单：此时再 INSERT 会撞主键，属于实现错误
+    if (sql.includes("INSERT INTO pindou_orders")) throw new Error("命中既有订单时不应再 INSERT");
+    if (sql.includes("SELECT session_key_ciphertext")) {
+      return { rows: [{ session_key_ciphertext: ENCRYPTED_SESSION_KEY }] };
+    }
+    throw new Error(`unexpected SQL: ${sql}`);
+  });
+  pool.updates = updates;
+  pool.updateSql = updateSql;
+  return pool;
+}
+
+test("retrying the same purchase intent re-signs with a brand new out trade no", async () => {
+  const signed = [];
+  const gateway = fakeVirtualGateway({
+    createPayment(input) {
+      signed.push(input.outTradeNo);
+      return {
+        signData: JSON.stringify({ outTradeNo: input.outTradeNo, productId: input.productId }),
+        paySig: "pay-sig",
+        signature: "user-sig",
+        mode: "short_series_goods",
+      };
+    },
+  });
+  const pool = existingOrderPool();
+  const service = new PostgresPaymentService(pool, gateway, fakeLegacyGateway(), SECRET, () => NOW);
+  const input = { userId: "usr_a", packageId: "ai_generation_30", idempotencyKey: "retry-same-intent" };
+  const first = await service.createPayment(input);
+  const second = await service.createPayment(input);
+
+  // 订单号不变：幂等键仍然保证同一笔购买意图只有一张订单
+  assert.equal(first.orderId, second.orderId);
+  assert.equal(signed.length, 2);
+  // 单号必须换：沿用第一个会让微信直接回 -15012，用户永远付不出去
+  assert.notEqual(signed[0], signed[1]);
+  // 新单号必须写回订单行，否则发货推送带着这个号回来时定位不到订单
+  assert.equal(pool.updates.length, 2);
+  assert.equal(pool.updates[0][0], first.orderId);
+  assert.equal(pool.updates[0][1], signed[0]);
+  assert.equal(pool.updates[1][1], signed[1]);
+  // 并发保护：期间订单若已被发货推送置为 paid，就不该再改它的单号
+  assert.match(pool.updateSql[0], /AND status = 'pending'/);
 });
 
 test("package without a virtual product id is rejected before any payment parameters are signed", async () => {
@@ -317,12 +402,19 @@ function deliveryPool(orderOverrides = {}, candidates = null) {
     status: "pending",
     wx_prepay_id: null,
     wx_transaction_id: null,
+    virtual_out_trade_no: "vpay_existingtradeno00001",
     openid_ciphertext: ENCRYPTED_OPENID,
     ...orderOverrides,
   };
   const pool = clientPool((sql, parameters) => {
     if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
     if (candidates !== null && sql.includes("ORDER BY orders.created_at ASC")) return { rows: candidates };
+    // 商户单号 → 订单号的回查：要么命中 virtual_out_trade_no，要么本身就是订单号，
+    // 两者都对不上才算查不到 —— 与真实 SQL 的语义保持一致
+    if (sql.includes("virtual_out_trade_no = $1 OR id = $1")) {
+      const hit = orderRow.virtual_out_trade_no === parameters[0] || orderRow.id === parameters[0];
+      return { rows: hit ? [{ id: orderRow.id }] : [] };
+    }
     if (sql.includes("FOR UPDATE OF orders")) return { rows: [orderRow] };
     if (sql.includes("UPDATE pindou_orders")) {
       pool.updates.push(parameters);
@@ -434,6 +526,7 @@ test("delivery rejects a mismatch between paid amount and order snapshot", async
 test("delivery for a missing order is rejected without a grant", async () => {
   const { calls, ...pool } = clientPool((sql) => {
     if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+    if (sql.includes("virtual_out_trade_no = $1 OR id = $1")) return { rows: [] };
     if (sql.includes("FOR UPDATE OF orders")) return { rows: [] };
     throw new Error(`unexpected SQL: ${sql}`);
   });
@@ -455,6 +548,42 @@ test("delivery without order identifier is rejected before any query", async () 
     /缺少 openid 或订单号/,
   );
   assert.equal(queried, false);
+});
+
+test("delivery locates the order by the merchant trade number, which is no longer the order id", async () => {
+  const pool = deliveryPool();
+  let queried = null;
+  const gateway = fakeVirtualGateway({
+    async queryOrder(input) {
+      queried = input.outTradeNo;
+      return {
+        paid: true,
+        mchOrderNo: "mch_order_1",
+        transactionId: "transaction_1",
+        paidTimeSeconds: Math.floor(NOW.getTime() / 1000),
+        actualPriceFen: 990,
+      };
+    },
+  });
+  const service = new PostgresPaymentService(pool, gateway, fakeLegacyGateway(), SECRET, () => NOW);
+  const result = await service.handleDelivery(deliveryInput({ outTradeNo: "vpay_existingtradeno00001" }));
+
+  assert.equal(result.duplicate, false);
+  // 查单必须带上商户单号：订单号在微信侧压根不存在
+  assert.equal(queried, "vpay_existingtradeno00001");
+  // 但发放必须落在订单号上
+  assert.equal(pool.updates[0][0], "order_test");
+  assert.equal(pool.inserts.length, 1);
+});
+
+test("delivery for an unknown merchant trade number is rejected without a grant", async () => {
+  const pool = deliveryPool();
+  const service = new PostgresPaymentService(pool, fakeVirtualGateway(), fakeLegacyGateway(), SECRET, () => NOW);
+  await assert.rejects(
+    () => service.handleDelivery(deliveryInput({ outTradeNo: "vpay_notissuedatall0001" })),
+    /支付订单不存在/,
+  );
+  assert.equal(pool.inserts.length, 0);
 });
 
 test("legacy notification still settles in-flight orders from the previous channel", async () => {
@@ -479,6 +608,7 @@ function candidateRow(id, ageMs, overrides = {}) {
     id,
     created_at: new Date(NOW.getTime() - ageMs),
     openid_ciphertext: ENCRYPTED_OPENID,
+    out_trade_no: `vpay_${id}`,
     ...overrides,
   };
 }
@@ -545,6 +675,32 @@ test("reconcile grants quota when the delivery push never arrived", async () => 
     const recovered = capture.warnings.filter((entry) => entry.event === "virtual_payment_delivery_recovered");
     assert.equal(recovered.length, 1);
     assert.equal(recovered[0].orderId, "order_test");
+  } finally {
+    capture.restore();
+  }
+});
+
+test("reconcile queries wechat with the merchant trade number instead of the order id", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 10 * 60_000)]);
+  let queried = null;
+  const gateway = fakeVirtualGateway({
+    async queryOrder(input) {
+      queried = input.outTradeNo;
+      return {
+        paid: true,
+        mchOrderNo: "mch_order_1",
+        transactionId: "transaction_1",
+        paidTimeSeconds: Math.floor(NOW.getTime() / 1000),
+        actualPriceFen: 990,
+      };
+    },
+  });
+  const capture = captureConsole();
+  try {
+    const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
+    assert.equal(summary.granted, 1);
+    // 拿订单号去查单只会得到「单号不存在」，于是每一笔在途订单都被误判成没付款
+    assert.equal(queried, "vpay_order_test");
   } finally {
     capture.restore();
   }
@@ -670,7 +826,7 @@ test("a failing query is counted unresolved and does not abort the batch", async
   ]);
   const gateway = fakeVirtualGateway({
     async queryOrder(input) {
-      if (input.orderId === "order_first") throw new Error("虚拟支付服务暂时不可用");
+      if (input.outTradeNo === "vpay_order_first") throw new Error("虚拟支付服务暂时不可用");
       return {
         paid: true,
         mchOrderNo: "mch_order_1",
@@ -737,12 +893,18 @@ function refundPool(options = {}) {
     quota_kind_snapshot: "ai_generation",
     status: "paid",
     paid_at: NOW,
+    virtual_out_trade_no: "vpay_refundtradeno0001",
     openid_ciphertext: ENCRYPTED_OPENID,
     ...options.order,
   };
   const purchasedRemaining = options.purchasedRemaining ?? 30;
   const pool = clientPool((sql, parameters) => {
     if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+    if (sql.includes("virtual_out_trade_no = $1 OR id = $1")) {
+      const hit = orderRow.virtual_out_trade_no === parameters[0] || orderRow.id === parameters[0];
+      // iOS 退款问询只查这一句且要的是完整订单行，其余是「商户单号 → 订单号」的回查
+      return { rows: hit ? (sql.includes("user_id") ? [orderRow] : [{ id: orderRow.id }]) : [] };
+    }
     // lockQuotaUser：SELECT id FROM pindou_users ... FOR UPDATE
     if (sql.includes("FOR UPDATE") && sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
     // readQuota 的聚合查询
@@ -867,6 +1029,24 @@ test("a repeated refund push is idempotent", async () => {
     const second = await service.handleRefund(refundInput());
     assert.equal(second.applied, false);
     assert.equal(pool.inserts.length, 1);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("refund locates the order by the merchant trade number, which is no longer the order id", async () => {
+  const pool = refundPool({ purchasedRemaining: 8 });
+  const capture = captureConsole();
+  try {
+    const outcome = await reconcileService(pool)
+      .handleRefund(refundInput({ mchOrderId: "vpay_refundtradeno0001", attach: null }));
+    assert.equal(outcome.applied, true);
+    assert.equal(outcome.clawedBack, 8);
+    assert.equal(pool.updates.length, 1);
+    assert.equal(
+      capture.errors.filter((entry) => entry.event === "virtual_payment_refund_alert").length,
+      0,
+    );
   } finally {
     capture.restore();
   }

@@ -184,6 +184,34 @@ test('session_key 过期被翻译成可行动文案而不是原始错误码', as
   assert.equal(isWechatPaymentCancelled(error), false)
 })
 
+test('商户单号被微信关单（-15012）时提示重新发起，而不是让用户对着原始错误码发呆', async () => {
+  installHarness({
+    virtualFail: (payload) =>
+      payload.fail({ errMsg: 'requestVirtualPayment:fail ORDER_CLOSED', errCode: -15012 }),
+  })
+  const { payForAiGenerationPackage, isWechatPaymentOrderClosed, isWechatPaymentCancelled } =
+    loadModule()
+
+  const error = await payForAiGenerationPackage('ai_generation_30', 'key-order-closed')
+    .then(() => null, (caught) => caught)
+  assert.ok(error)
+  assert.equal(error.message, '订单已失效，请重新发起支付')
+  // 必须能被识别成「换新单」：调用方据此丢弃当前幂等键，否则重试仍撞同一个已关闭的单号
+  assert.equal(isWechatPaymentOrderClosed(error), true)
+  assert.equal(isWechatPaymentCancelled(error), false)
+})
+
+test('outTradeNo 重复（-15002）同样判定为需要换单', async () => {
+  installHarness({
+    virtualFail: (payload) => payload.fail({ errMsg: 'requestVirtualPayment:fail', errCode: -15002 }),
+  })
+  const { payForAiGenerationPackage, isWechatPaymentOrderClosed } = loadModule()
+
+  const error = await payForAiGenerationPackage('ai_generation_30', 'key-duplicate')
+    .then(() => null, (caught) => caught)
+  assert.equal(isWechatPaymentOrderClosed(error), true)
+})
+
 test('未知错误码保留原始信息以便排查', async () => {
   installHarness({
     virtualFail: (payload) => payload.fail({ errMsg: 'requestVirtualPayment:fail boom', errCode: -19999 }),

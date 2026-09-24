@@ -11,6 +11,7 @@ import {
   createPaymentIdempotencyKey,
   fetchAiGenerationPackages,
   isWechatPaymentCancelled,
+  isWechatPaymentOrderClosed,
   payForAiGenerationPackage,
   paymentErrorMessage,
   type AiGenerationPackage,
@@ -101,6 +102,15 @@ Page({
       if (isWechatPaymentCancelled(error)) {
         this.setData({ paymentIdempotencyKey: '' })
         wx.showToast({ title: '已取消支付', icon: 'none' })
+      } else if (isWechatPaymentOrderClosed(error)) {
+        // 微信侧这张单已经关了（-15012）或单号撞了（-15002）：原样重试仍会撞同一个
+        // 单号，必须换一个幂等键开新单。
+        this.setData({ paymentIdempotencyKey: '' })
+        wx.showModal({
+          title: '支付未完成',
+          content: paymentErrorMessage(error),
+          showCancel: false,
+        })
       } else {
         // 其余失败保留同一个键，让用户「再试一次」仍归属同一笔
         wx.showModal({
