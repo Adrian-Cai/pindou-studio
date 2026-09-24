@@ -83,9 +83,10 @@
 
 1. **两端都要更新**：小程序不重新上传 = 用户仍走旧的失败页跳转；服务端不重新部署 =
    查单继续返回 41001，付了钱还是不到账。
-2. **历史积压订单靠补单自动恢复**：部署后那 9 笔 pending 订单会在下一个补单周期（5 分钟内、
-   每轮最多 100 笔）自动补发，日志出现 `virtual_payment_delivery_recovered` + `payment_granted`；
-   超过 30 分钟仍查不到支付的会进 `stalled` 告警，需要人工介入。
+2. **未付款订单 1 小时后自动关单**：查单确认未支付且创建超过 `VIRTUAL_PAY_RECONCILE_CLOSE_AFTER_MS`
+   （默认 1 小时）的 pending 订单会被置为 `closed` 并停止扫描，日志为 `virtual_payment_order_closed`。
+   这是为了止住「未付款订单每 5 分钟刷一条 stalled 告警」的噪音；关单后即便迟到的发货推送
+   也只会得到 `ORDER_NOT_PAYABLE`，如需人工发货得先改回 `pending`。
 3. 0.30.10 的真机验收 T1–T20 仍待补跑。
 
 ## 发布前置条件

@@ -114,6 +114,14 @@ export interface PendingOrderReconcileOptions {
    * 太长则让用户付完钱迟迟拿不到次数。
    */
   readonly staleAfterMs: number;
+  /**
+   * pending 持续多久且**查单明确未支付**，就把订单置为 closed 并停止扫描。
+   *
+   * 与 staleAfterMs 的分工：那一个只告警、不动数据；这一个真的关单。
+   * 关单不可逆（closed 之后迟到的发货推送只会拿到 ORDER_NOT_PAYABLE），
+   * 因此这个窗口必须明显大于告警窗口，默认 1 小时。
+   */
+  readonly closeAfterMs: number;
   /** 单轮最多处置多少笔。超出部分留到下一轮，避免积压集中爆发时长时间占用连接池。 */
   readonly batchSize: number;
 }
@@ -121,6 +129,7 @@ export interface PendingOrderReconcileOptions {
 export const DEFAULT_RECONCILE_OPTIONS: PendingOrderReconcileOptions = {
   graceMs: 3 * 60_000,
   staleAfterMs: 30 * 60_000,
+  closeAfterMs: 60 * 60_000,
   batchSize: 100,
 };
 
@@ -152,6 +161,8 @@ export interface PendingOrderReconcileSummary {
   readonly unpaid: number;
   /** 超过兜底窗口仍查不到支付、疑似发货链路故障的笔数。 */
   readonly stalled: number;
+  /** 超过关单窗口且查单确认未支付、本轮被置为 closed 的笔数。 */
+  readonly closed: number;
   /** 查单或发放本身抛错、本轮无法判定的笔数。 */
   readonly unresolved: number;
   /** 前置条件缺失（如拿不到付款人 openid）导致根本无法查单的笔数。 */
@@ -330,13 +341,24 @@ interface ReconcileCounter {
   duplicate: number;
   unpaid: number;
   stalled: number;
+  closed: number;
   unresolved: number;
   skipped: number;
   attention: string[];
 }
 
 function emptyReconcileCounter(): ReconcileCounter {
-  return { scanned: 0, granted: 0, duplicate: 0, unpaid: 0, stalled: 0, unresolved: 0, skipped: 0, attention: [] };
+  return {
+    scanned: 0,
+    granted: 0,
+    duplicate: 0,
+    unpaid: 0,
+    stalled: 0,
+    closed: 0,
+    unresolved: 0,
+    skipped: 0,
+    attention: [],
+  };
 }
 
 /** 兼容 pg 把 timestamptz 反序列化成 Date、也可能原样返回字符串的两种情况。 */
@@ -366,6 +388,7 @@ function freezeReconcileCounter(counter: ReconcileCounter): PendingOrderReconcil
     duplicate: counter.duplicate,
     unpaid: counter.unpaid,
     stalled: counter.stalled,
+    closed: counter.closed,
     unresolved: counter.unresolved,
     skipped: counter.skipped,
     attention: [...counter.attention],
@@ -676,6 +699,7 @@ export class PostgresPaymentService implements PaymentService {
       duplicate: summary.duplicate,
       unpaid: summary.unpaid,
       stalled: summary.stalled,
+      closed: summary.closed,
       unresolved: summary.unresolved,
       skipped: summary.skipped,
       attentionCount: summary.attention.length,
@@ -718,6 +742,21 @@ export class PostgresPaymentService implements PaymentService {
       const verified = await this.virtualPay.queryOrder({ openid, orderId: candidate.id });
       if (!verified.paid) {
         const ageMs = currentTime.getTime() - orderCreatedAtMs(candidate.created_at);
+        /**
+         * 过了关单窗口 + 查单明确未支付 = 用户下单后放弃了付款。
+         *
+         * 这类订单必须有个终点：pending 是补单轮询的扫描条件，放着不管它会被
+         * **每一轮**判成 stalled 并记一条「需要人工介入」的告警，
+         * 几十笔未付款的单就能把真正的漏发货告警彻底淹没。
+         *
+         * 之所以要等满 closeAfterMs（默认 1 小时，远大于 30 分钟的告警窗口）才关，
+         * 是因为关单不可逆：closed 之后迟到的发货推送只会拿到 ORDER_NOT_PAYABLE。
+         * 先告警一阵、再关单，中间留给人发现「其实付了钱但查单异常」的余地。
+         */
+        if (ageMs >= this.reconcileOptions.closeAfterMs) {
+          await this.closeStaleOrder(candidate.id, ageMs, currentTime, counter);
+          return;
+        }
         // 没过兜底窗口的，多半只是用户还没付完 / 支付结果尚未对可见，下一轮再看
         if (ageMs >= this.reconcileOptions.staleAfterMs) {
           counter.stalled += 1;
@@ -759,6 +798,58 @@ export class PostgresPaymentService implements PaymentService {
         reason: "query_or_grant_failed",
         orderId: candidate.id,
         code: error instanceof AppError ? error.code : null,
+        message: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }
+
+  /**
+   * 关掉一笔确认未支付且早已超时的 pending 订单。
+   *
+   * 更新带 `status = 'pending'` 条件：轮询与发货推送可能在并发处置同一笔订单，
+   * 无条件 UPDATE 会把刚刚置为 paid 的单又改回 closed —— 权益发了、订单却关了，
+   * 后续退款扣回也会因为「订单不是 paid」而失效。
+   *
+   * @returns 是否真的关掉了；false 表示这一轮它已被别处改状态，交由下一轮/人工处理
+   */
+  private async closeStaleOrder(
+    orderId: string,
+    ageMs: number,
+    currentTime: Date,
+    counter: ReconcileCounter,
+  ): Promise<void> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE pindou_orders
+            SET status = 'closed', updated_at = $2
+          WHERE id = $1 AND status = 'pending'`,
+        [orderId, currentTime],
+      );
+      if (!result.rowCount) {
+        counter.unresolved += 1;
+        counter.attention.push(orderId);
+        console.error(JSON.stringify({
+          event: "virtual_payment_reconcile_alert",
+          reason: "close_conflict",
+          orderId,
+          ageMs,
+        }));
+        return;
+      }
+      counter.closed += 1;
+      console.warn(JSON.stringify({
+        event: "virtual_payment_order_closed",
+        orderId,
+        ageMs,
+      }));
+    } catch (error: unknown) {
+      counter.unresolved += 1;
+      counter.attention.push(orderId);
+      console.error(JSON.stringify({
+        event: "virtual_payment_reconcile_alert",
+        reason: "close_failed",
+        orderId,
+        ageMs,
         message: error instanceof Error ? error.message : String(error),
       }));
     }

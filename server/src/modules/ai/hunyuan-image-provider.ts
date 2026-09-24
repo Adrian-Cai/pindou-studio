@@ -394,7 +394,9 @@ function providerFailureFromSdk(error: unknown): ProviderError {
   if (providerCode?.includes("QUOTA") || providerCode?.includes("TOKEN_QUOTA") || /quota|额度/u.test(message)) {
     return providerFailure("QUOTA_EXHAUSTED", providerCode, status, "AI_PROVIDER_QUOTA_EXHAUSTED", "AI 图像服务额度不足");
   }
-  if (providerCode === "RATE_LIMITED") {
+  // EXCEED_REQUEST_LIMIT 是混元真实的限流码（2026-09-24 线上实测，无 httpStatus）：
+  // 未登记时落 UNKNOWN 兜底，日志路径显示 AI_GENERATION_FAILED，真实原因（请求频率超限）消失。
+  if (providerCode === "RATE_LIMITED" || providerCode?.includes("REQUEST_LIMIT")) {
     return providerFailure("RATE_LIMITED", providerCode, status, "AI_PROVIDER_RATE_LIMITED", "AI 图像服务请求繁忙");
   }
   if (status === 429 || providerCode === "429") {

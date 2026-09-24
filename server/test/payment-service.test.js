@@ -303,6 +303,7 @@ test("new user gate can be switched off for payment integration testing", async 
  */
 function deliveryPool(orderOverrides = {}, candidates = null) {
   const updates = [];
+  const updateSql = [];
   const inserts = [];
   const orderRow = {
     id: "order_test",
@@ -325,11 +326,18 @@ function deliveryPool(orderOverrides = {}, candidates = null) {
     if (sql.includes("FOR UPDATE OF orders")) return { rows: [orderRow] };
     if (sql.includes("UPDATE pindou_orders")) {
       pool.updates.push(parameters);
+      pool.updateSql.push(sql);
+      // 关单与置为 paid 是两种结局，假 Pool 必须分别反映，否则「关单后不再发放」
+      // 这类断言测不到真实的状态流转。rowCount 也要给：关单靠它判断有没有真的改到行。
+      if (sql.includes("status = 'closed'")) {
+        orderRow.status = "closed";
+        return { rows: [], rowCount: 1 };
+      }
       // 让假 Pool 具备真实语义：订单一旦置为 paid，后续读取必须看到 paid，
       // 否则「重复发货应被识别为 duplicate」这条断言永远测不到真实行为。
       orderRow.status = "paid";
       orderRow.wx_transaction_id = parameters[1];
-      return { rows: [] };
+      return { rows: [], rowCount: 1 };
     }
     if (sql.includes("INSERT INTO pindou_quota_transactions")) {
       pool.inserts.push(parameters);
@@ -342,6 +350,7 @@ function deliveryPool(orderOverrides = {}, candidates = null) {
     throw new Error(`unexpected SQL: ${sql}`);
   });
   pool.updates = updates;
+  pool.updateSql = updateSql;
   pool.inserts = inserts;
   return pool;
 }
@@ -456,8 +465,13 @@ test("legacy notification still settles in-flight orders from the previous chann
   assert.equal(pool.inserts.length, 1);
 });
 
-/** 补单轮询的调度参数：静默期 3 分钟、兜底窗口 30 分钟。 */
-const RECONCILE_OPTIONS = { graceMs: 3 * 60_000, staleAfterMs: 30 * 60_000, batchSize: 10 };
+/** 补单轮询的调度参数：静默期 3 分钟、兜底窗口 30 分钟、关单窗口 1 小时。 */
+const RECONCILE_OPTIONS = {
+  graceMs: 3 * 60_000,
+  staleAfterMs: 30 * 60_000,
+  closeAfterMs: 60 * 60_000,
+  batchSize: 10,
+};
 
 /** 构造一个比 NOW 早 ageMs 的待补单候选行。 */
 function candidateRow(id, ageMs, overrides = {}) {
@@ -592,6 +606,58 @@ test("an order pending past the stale window raises a reconcile alert", async ()
     assert.equal(alerts.length, 1);
     assert.equal(alerts[0].reason, "pending_too_long");
     assert.equal(alerts[0].orderId, "order_test");
+  } finally {
+    capture.restore();
+  }
+});
+
+test("an unpaid order past the close window is closed instead of alerting forever", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 90 * 60_000)]);
+  const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
+  const capture = captureConsole();
+  try {
+    const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
+    assert.equal(summary.closed, 1);
+    assert.equal(summary.stalled, 0, "已过关单窗口的不应再计入 stalled");
+    // 关单是终点，不该再进「需要人工介入」清单
+    assert.deepEqual(summary.attention, []);
+    const closed = capture.warnings.filter((entry) => entry.event === "virtual_payment_order_closed");
+    assert.equal(closed.length, 1);
+    assert.equal(closed[0].orderId, "order_test");
+    assert.equal(
+      capture.errors.filter((entry) => entry.event === "virtual_payment_reconcile_alert").length,
+      0,
+    );
+  } finally {
+    capture.restore();
+  }
+});
+
+test("closing an order only touches rows still pending", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 90 * 60_000)]);
+  const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
+  const capture = captureConsole();
+  try {
+    await reconcileService(pool, gateway).reconcilePendingOrders();
+    assert.equal(pool.updates.length, 1);
+    assert.equal(pool.updates[0][0], "order_test");
+    // 唯一能守住「不覆盖已支付订单」的是这条 WHERE：并发下订单可能刚被置为 paid
+    assert.match(pool.updateSql[0], /status = 'closed'/);
+    assert.match(pool.updateSql[0], /AND status = 'pending'/);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("an unpaid order inside the stale window stays pending without closing", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 10 * 60_000)]);
+  const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
+  const capture = captureConsole();
+  try {
+    const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
+    assert.equal(summary.unpaid, 1);
+    assert.equal(summary.closed, 0);
+    assert.deepEqual(pool.updates, [], "未过窗口的订单绝不能被动状态");
   } finally {
     capture.restore();
   }

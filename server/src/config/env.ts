@@ -68,6 +68,13 @@ export interface VirtualPayReconcileConfig {
   readonly graceMs: number;
   /** pending 持续多久仍查不到已支付就升级为告警。 */
   readonly staleAfterMs: number;
+  /**
+   * pending 持续多久且查单确认未支付就自动关单（置 closed，此后不再扫描）。
+   *
+   * 为什么必须有：用户下单后没付钱的订单会永远停在 pending，而补单轮询每扫到一笔
+   * 就记一条「需要人工介入」的告警 —— 一天下来真实漏发货会被这些噪音彻底淹没。
+   */
+  readonly closeAfterMs: number;
   /** 单轮最多处置多少笔。 */
   readonly batchSize: number;
 }
@@ -357,11 +364,18 @@ function parseVirtualPayReconcileConfig(
   issues: string[],
 ): VirtualPayReconcileConfig {
   const graceMs = integer(env, "VIRTUAL_PAY_RECONCILE_GRACE_MS", 3 * 60_000, 30_000, 30 * 60_000, issues);
+  // 兜底窗口必须不小于静默期，否则订单刚过静默期就被判 stalled，等于把每个正常下单的用户都告警一遍
+  const staleAfterMs = integer(env, "VIRTUAL_PAY_RECONCILE_STALE_AFTER_MS", 30 * 60_000, graceMs, 7 * 24 * 60 * 60_000, issues);
   return {
     intervalMs: integer(env, "VIRTUAL_PAY_RECONCILE_INTERVAL_MS", 5 * 60_000, 60_000, 60 * 60_000, issues),
     graceMs,
-    // 兜底窗口必须不小于静默期，否则订单刚过静默期就被判 stalled，等于把每个正常下单的用户都告警一遍
-    staleAfterMs: integer(env, "VIRTUAL_PAY_RECONCILE_STALE_AFTER_MS", 30 * 60_000, graceMs, 7 * 24 * 60 * 60_000, issues),
+    staleAfterMs,
+    /**
+     * 关单窗口必须不小于告警窗口：先告警一阵子再关，才留出人工发现「其实付了钱但查单异常」的余地。
+     * 关单是不可逆的（closed 之后即便迟到的发货推送也只会得到 ORDER_NOT_PAYABLE），
+     * 因此默认给 1 小时，远大于 30 分钟的告警窗口。
+     */
+    closeAfterMs: integer(env, "VIRTUAL_PAY_RECONCILE_CLOSE_AFTER_MS", 60 * 60_000, staleAfterMs, 7 * 24 * 60 * 60_000, issues),
     batchSize: integer(env, "VIRTUAL_PAY_RECONCILE_BATCH_SIZE", 100, 1, 1_000, issues),
   };
 }
