@@ -5,6 +5,9 @@
  *       安全错误（code/message/category/retryable/action），并附带 HTTP 状态码；
  *       不暴露内部 provider 细节，不抛错误，不做任何业务逻辑。
  * 调用方：ai-generation-service.ts（mapJob 输出 failure、按 http 状态回包）。
+ * 关键点：内部码漏登记会静默兜底成 AI_GENERATION_FAILED，用户侧只剩一句笼统文案，
+ *       所以未命中映射表时补一条 ai_failure_code_unmapped 日志，并导出
+ *       AI_INTERNAL_FAILURE_CODES 供测试守卫「新码必须登记」这条不变式。
  */
 
 /** 错误归属分类：决定前端如何提示（用户额度 / 输入 / 内容审核 / provider / 内部）。 */
@@ -104,6 +107,13 @@ const INTERNAL_TO_PUBLIC_CODE: Record<string, string> = {
   AI_PROVIDER_UNAVAILABLE: "AI_SERVICE_BUSY",
   AI_PROVIDER_ERROR: "AI_SERVICE_BUSY",
   AI_PROVIDER_RATE_LIMITED: "AI_SERVICE_BUSY",
+  // provider 侧额度（含 429）耗尽：重试必然再失败，属于「换条路走」而不是「稍后再试」，
+  // 与 AI_SERVICE_UNAVAILABLE 的语义一致（503 + 用标准模式）。
+  // 缺这一条时 mapJob 会兜底成 AI_GENERATION_FAILED，用户看到「AI 生成失败，请稍后重试」
+  // 并被引导着重试——真实原因（额度耗尽）在界面上完全消失。
+  AI_PROVIDER_QUOTA_EXHAUSTED: "AI_SERVICE_UNAVAILABLE",
+  // AI 文件存储未配置（AI_FILE_STORAGE_DIR / 持久卷未就绪）：同样是运维侧不可用，不是用户重试能解的。
+  AI_STORAGE_NOT_CONFIGURED: "AI_SERVICE_UNAVAILABLE",
   AI_PROVIDER_TIMEOUT: "AI_TIMEOUT",
   AI_SUBMISSION_TIMEOUT: "AI_SERVICE_UNAVAILABLE",
   AI_TASK_EXPIRED: "AI_TIMEOUT",
@@ -120,11 +130,29 @@ const INTERNAL_TO_PUBLIC_CODE: Record<string, string> = {
   PAYLOAD_TOO_LARGE: "INVALID_IMAGE",
 };
 
+/**
+ * 已登记的内部错误码清单。
+ *
+ * 存在的意义是给测试一条可断言的不变式：**provider / 存储 / 状态机新产生的内部码
+ * 必须同时在 INTERNAL_TO_PUBLIC_CODE 登记**。漏登记不会抛错，只会在 mapJob 里静默兜底成
+ * AI_GENERATION_FAILED —— 用户看到「AI 生成失败，请稍后重试」，真实原因整条丢掉，
+ * 这正是 AI_PROVIDER_QUOTA_EXHAUSTED 曾经踩过的坑。
+ */
+export const AI_INTERNAL_FAILURE_CODES: readonly string[] = Object.freeze(
+  Object.keys(INTERNAL_TO_PUBLIC_CODE),
+);
+
 export function aiPublicFailure(code: string | null): AiPublicFailure | null {
   if (!code) return null;
   const publicCode = INTERNAL_TO_PUBLIC_CODE[code] ?? code;
   const definition = FAILURE_DEFINITIONS[publicCode];
-  if (!definition) return null;
+  if (!definition) {
+    // 兜底成 AI_GENERATION_FAILED 之前先留痕：没有这条日志时，线上只能看到
+    // `ai_generation_failed errorCode=AI_GENERATION_FAILED`，无法区分「真·内部错误」
+    // 与「新码漏登记」。日志只带码，不带 provider 细节。
+    console.error(JSON.stringify({ event: "ai_failure_code_unmapped", code, publicCode }));
+    return null;
+  }
   return {
     code: definition.code,
     message: definition.message,
