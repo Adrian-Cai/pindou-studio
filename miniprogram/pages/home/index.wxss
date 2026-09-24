@@ -143,63 +143,6 @@ page {
 }
 
 /* ════════════════════════════════
-   入队成功后的顶部横条通知
-   独立于页面滚动：fixed 定位在导航栏下方，top 由 ts 注入实测高度
-════════════════════════════════ */
-.queue-tip {
-  position: fixed;
-  right: 32rpx;
-  left: 32rpx;
-  z-index: 100;
-  display: flex;
-  box-sizing: border-box;
-  height: 88rpx;
-  align-items: center;
-  gap: 14rpx;
-  margin-top: 12rpx;
-  padding: 0 24rpx;
-  border-radius: var(--radius-card-small);
-  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-gradient-end));
-  box-shadow: var(--shadow-primary);
-  animation: queue-tip-in 260ms ease-out;
-}
-
-.queue-tip:active {
-  transform: scale(0.98);
-}
-
-.queue-tip__icon {
-  flex: 0 0 30rpx;
-  width: 30rpx;
-  height: 30rpx;
-}
-
-.queue-tip__text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: #fff;
-  font-size: 26rpx;
-  font-weight: 500;
-  line-height: 40rpx;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 纯箭头：文案已说明去哪看，这里只保留「整条可点进去」的视觉暗示 */
-.queue-tip__arrow {
-  flex-shrink: 0;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 30rpx;
-  line-height: 40rpx;
-}
-
-@keyframes queue-tip-in {
-  from { opacity: 0; transform: translateY(-24rpx); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ════════════════════════════════
    公共 Section 块
 ════════════════════════════════ */
 .section-block {
@@ -620,19 +563,6 @@ page {
   box-shadow: none;
   color: #ffffff;
   opacity: 0.72;
-}
-
-/* 提交成功态：按钮原地变成「已加入生成队列」，在指尖位置就近确认，替代原先的居中 toast */
-.home__submit--success {
-  background: var(--color-primary-pressed);
-  box-shadow: var(--shadow-success);
-  animation: home-submit-success-pop 320ms ease-out;
-}
-
-@keyframes home-submit-success-pop {
-  0% { transform: scale(0.94); }
-  55% { transform: scale(1.02); }
-  100% { transform: scale(1); }
 }
 
 /* ════════════════════════════════

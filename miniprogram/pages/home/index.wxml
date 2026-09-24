@@ -1,17 +1,3 @@
-<!-- 入队成功后的顶部横条通知：fixed 定位，top 由实测导航栏高度注入，不硬编码 -->
-<view
-  wx:if="{{tipVisible}}"
-  class="queue-tip"
-  style="top: {{tipTop}}px;"
-  bindtap="openAiTasks"
-  role="button"
-  aria-label="已加入生成队列，点击去作品页查看进度"
->
-  <image class="queue-tip__icon" src="/assets/icons/iconsax/check.svg" mode="aspectFit" />
-  <text class="queue-tip__text">已加入生成队列，可去作品页查看</text>
-  <text class="queue-tip__arrow" aria-hidden="true">›</text>
-</view>
-
 <page-layout title="小露拼豆" home show-main-nav selected-tab="{{0}}">
 <view class="home-page">
 
@@ -166,16 +152,16 @@
     </view>
   </view>
 
-  <!-- ⑥ 开始生成：入队成功后按钮原地切到成功态，作为比 toast 更就近的反馈 -->
+  <!-- ⑥ 开始生成 -->
   <button
-    class="button-primary home__submit {{submitSuccess ? 'home__submit--success' : ''}}"
+    class="button-primary home__submit"
     style="width: 100%;"
     bindtap="startCreating"
     disabled="{{generating || submitting || uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'rejected' || uploadStatus === 'error'}}"
     loading="{{generating || submitting}}"
-    aria-label="{{submitSuccess ? '已加入生成队列' : (generating ? '正在生成' : (submitting ? '正在加入队列' : '开始生成'))}}"
+    aria-label="{{generating ? '正在生成' : (submitting ? '正在准备生成' : '开始生成')}}"
   >
-    {{submitSuccess ? '已加入生成队列' : (generating ? '正在生成' : (submitting ? '正在加入队列' : '开始生成'))}}
+    {{generating ? '正在生成' : (submitting ? '正在准备生成' : '开始生成')}}
   </button>
 
 </view>

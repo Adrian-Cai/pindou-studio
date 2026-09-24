@@ -5,7 +5,6 @@ import { ApiError } from '../../services/http-client'
 import type { GenerationMode } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
 import { aiTaskManager } from '../../services/ai-generation-manager'
-import { getCustomNavigationMetrics } from '../../utils/navigation'
 
 type UploadStatus = 'empty' | 'uploading' | 'checking' | 'success' | 'rejected' | 'error'
 
@@ -33,12 +32,6 @@ interface SampleImage {
 
 // AI 模式正式开放时改为 true，即可恢复首页选择和启动链路。
 const AI_MODE_ENABLED = true
-
-/** 主按钮成功态停留时长（ms）：够读完「已加入生成队列」，又不长时间挡住下一次操作 */
-const SUBMIT_FEEDBACK_DURATION = 1800
-
-/** 顶部队列提示条的停留时长（ms）：比按钮成功态长，因为它是带「查看」入口的通知 */
-const QUEUE_TIP_DURATION = 4000
 
 const GENERATION_MODES: GenerationModeOption[] = [
   {
@@ -108,12 +101,6 @@ Page({
     generating: false,
     /** AI 任务入队中的防抖标记：不阻塞页面，只挡住重复点击 */
     submitting: false,
-    /** 主按钮就地成功态：入队成功后短暂置为 true，由定时器复位 */
-    submitSuccess: false,
-    /** 顶部队列提示条：入队成功后从导航栏下方滑入，数秒后自动收起 */
-    tipVisible: false,
-    /** 提示条的 top（px）：取实测导航栏底边，不硬编码顶部高度 */
-    tipTop: 0,
     uploadStatus: 'empty' as UploadStatus,
     /** -1 表示上传 SDK 尚未提供真实进度 */
     uploadProgress: -1,
@@ -129,50 +116,25 @@ Page({
     sampleImages: SAMPLE_IMAGES,
   },
 
-  // 用 0 作为「无定时器」哨兵：clearTimeout(0) 是合法的空操作，
-  // 且 clearTimeout 的类型不接受 undefined。
-  _submitFeedbackTimer: 0 as ReturnType<typeof setTimeout>,
-
-  _queueTipTimer: 0 as ReturnType<typeof setTimeout>,
+  _visible: false,
 
   onShow() {
-    // tab 高亮由 page-layout selected-tab 属性管理；从编辑器返回时恢复当前草稿模式，重置按钮状态确保不阻塞后续操作。
-    const draftMode = appStore.getSnapshot().currentDraft?.generationMode
-    const generationMode = draftMode === 'ai' && !AI_MODE_ENABLED
-      ? 'standard'
-      : draftMode ?? this.data.generationMode
+    this._visible = true
+    // 保留首页选图、参数和模式；旧草稿或后台 AI 完成不能改变下一次生成的选择。
     this.setData({
       generating: false,
       submitting: false,
       currentStep: this.data.uploadStatus === 'success' ? 2 : 1,
-      generationMode,
     })
   },
 
+  onHide() {
+    this._visible = false
+  },
+
   onUnload() {
+    this._visible = false
     currentUploadRequestId += 1
-    clearTimeout(this._submitFeedbackTimer)
-    clearTimeout(this._queueTipTimer)
-  },
-
-  /** 顶部队列提示条与「作品」页的入口：先收起提示再跳转 */
-  openAiTasks() {
-    clearTimeout(this._queueTipTimer)
-    if (this.data.tipVisible) this.setData({ tipVisible: false })
-    wx.switchTab({ url: '/pages/projects/index' })
-  },
-
-  /**
-   * 入队成功的顶部横条通知：从导航栏下方滑入，QUEUE_TIP_DURATION 后自动收起。
-   * 与主按钮成功态互补——按钮给指尖即时确认，横条给出「去哪看进度」的入口。
-   * 用 fixed 定位，所以无论页面滚到哪里，横条始终停在视口顶部。
-   */
-  showQueueTip(): void {
-    clearTimeout(this._queueTipTimer)
-    this.setData({ tipVisible: true, tipTop: getCustomNavigationMetrics().topBarHeight })
-    this._queueTipTimer = setTimeout(() => {
-      this.setData({ tipVisible: false })
-    }, QUEUE_TIP_DURATION)
   },
 
   selectMode(event: WechatMiniprogram.TouchEvent) {
@@ -278,7 +240,7 @@ Page({
   },
 
   async startCreating() {
-    if (this.data.generating) return
+    if (this.data.generating || this.data.submitting) return
     if (!this.data.sourceImagePath) {
       wx.showToast({ title: '请先上传图片', icon: 'none' })
       return
@@ -322,8 +284,8 @@ Page({
   },
 
   /**
-   * AI 模式：只负责把任务丢进队列——立刻返回、不跳转、不阻塞下一张图。
-   * 任务进度沉淀到作品页的占位卡片，由 aiTaskManager 在后台驱动。
+   * AI 模式：任务入队后进入生成页，复用进度动效与失败操作。
+   * 任务仍由 aiTaskManager 驱动，离开生成页后不阻塞首页的新建流程。
    */
   async startAiCreating(): Promise<void> {
     if (this.data.submitting) return
@@ -342,59 +304,36 @@ Page({
     }
 
     this.setData({ submitting: true })
-    // 用标记区分成功/失败：成功反馈必须等 submitting 复位后再给，
-    // 否则按钮仍处于 disabled，成功态样式会被 .home__submit[disabled] 压掉。
-    let queued = false
+    // 固定本次提交的输入，避免异步保存期间用户换图或调参串到同一任务。
+    const { sourceImagePath: selectedImagePath, contentSecurityImagePath, securityCheckId } = this.data
+    const settings = { ...this.data.settings }
     try {
       // 选图临时路径在 App 重启后会失效，永久化后才能保证封面不白图、重试可用
-      const sourceImagePath = await persistImage(this.data.sourceImagePath)
-      const inputImagePath = this.data.contentSecurityImagePath
-        ? await persistImage(this.data.contentSecurityImagePath)
+      const sourceImagePath = await persistImage(selectedImagePath)
+      const inputImagePath = contentSecurityImagePath
+        ? await persistImage(contentSecurityImagePath)
         : undefined
 
-      await aiTaskManager.createTask({
+      const taskId = await aiTaskManager.createTask({
         sourceImagePath,
         inputImagePath,
-        securityCheckId: this.data.securityCheckId,
-        settings: { ...this.data.settings },
+        securityCheckId,
+        settings,
       })
-      queued = true
+      if (!this._visible) return
+      await new Promise<void>((resolve) => {
+        wx.navigateTo({
+          url: `/packages/ai-generation/index?taskId=${encodeURIComponent(taskId)}&from=home`,
+          fail: () => wx.showToast({ title: '生成页打开失败，可到作品页查看任务', icon: 'none' }),
+          complete: () => resolve(),
+        })
+      })
     } catch (error) {
       wx.showToast({ title: error instanceof Error ? error.message : 'AI 任务创建失败，请重试', icon: 'none' })
     } finally {
       this.setData({ submitting: false })
     }
 
-    if (!queued) return
-    this.showSubmitFeedback()
-    this.showQueueTip()
-    this.resetUploadState()
-  },
-
-  /**
-   * 入队成功的就地反馈：轻震动 + 主按钮原地变成功态，短暂停留后自动复位。
-   * 原先只弹一个居中 toast，而用户此刻的视线与手指都在底部按钮上，感知很弱。
-   */
-  showSubmitFeedback(): void {
-    wx.vibrateShort({ type: 'light', fail: () => undefined })
-    clearTimeout(this._submitFeedbackTimer)
-    this.setData({ submitSuccess: true })
-    this._submitFeedbackTimer = setTimeout(() => {
-      this.setData({ submitSuccess: false })
-    }, SUBMIT_FEEDBACK_DURATION)
-  },
-
-  /** 清空选图状态，让用户可以立刻选下一张图继续生成。 */
-  resetUploadState() {
-    currentUploadRequestId += 1
-    this.setData({
-      sourceImagePath: '',
-      contentSecurityImagePath: '',
-      securityCheckId: '',
-      uploadStatus: 'empty',
-      uploadProgress: -1,
-      currentStep: 1,
-    })
   },
 })
 
