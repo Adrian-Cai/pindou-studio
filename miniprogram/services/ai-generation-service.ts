@@ -251,7 +251,9 @@ export function aiGenerationErrorMessage(error: unknown): string {
     case 'AI_GENERATION_FAILED':
       return 'AI 生成失败，请稍后重试'
     case 'AI_INPUT_FILE_UNAVAILABLE':
-      return '输入图片已失效，请重新上传'
+      // 与 failureDefinition 同码的 message 保持一致（那里写「重新选择图片」）：
+      // 用户侧的下一步动作是换图，不是抽象的「重新上传」。
+      return '输入图片已失效，请重新选择图片'
     case 'CONTENT_SECURITY_CHECK_INVALID':
       return '图片检测结果已失效，请重新选择图片'
     case 'IMAGE_TOO_LARGE':
@@ -432,6 +434,14 @@ function normalizeFailureCode(code: string): string {
     AI_PROVIDER_ERROR: 'AI_GENERATION_FAILED',
     AI_PROVIDER_TASK_FAILED: 'AI_GENERATION_FAILED',
     AI_GENERATION_INTERNAL_ERROR: 'AI_GENERATION_FAILED',
+    AI_PROVIDER_RATE_LIMITED: 'AI_SERVICE_BUSY',
+    // provider 额度（含 429）耗尽与 AI 文件存储未配置：都属于「服务端这条路走不通」，
+    // 重试无用。服务端 error-contract 已登记同义映射，这里是客户端侧的第二道防线 ——
+    // 服务端版本落后时内部码会原样透出，缺了这两行就会兜底成「AI 生成失败，请稍后重试」。
+    AI_PROVIDER_QUOTA_EXHAUSTED: 'AI_SERVICE_UNAVAILABLE',
+    AI_STORAGE_NOT_CONFIGURED: 'AI_SERVICE_UNAVAILABLE',
+    CONTENT_SECURITY_NOT_CONFIGURED: 'AI_SERVICE_UNAVAILABLE',
+    CONTENT_SECURITY_IDENTITY_UNAVAILABLE: 'AI_SERVICE_UNAVAILABLE',
     CONTENT_RISKY: 'CONTENT_REJECTED',
     AI_IMAGE_DIMENSIONS_TOO_LARGE: 'IMAGE_TOO_LARGE',
     PAYLOAD_TOO_LARGE: 'IMAGE_TOO_LARGE',
@@ -453,14 +463,40 @@ function failureDefinition(code: string): Omit<AiGenerationFailure, 'code'> | nu
     IMAGE_DECODE_ERROR: { message: '图片无法读取，请更换图片', category: 'INPUT', retryable: false, action: 'SELECT_IMAGE' },
     AI_INPUT_FILE_UNAVAILABLE: { message: '输入图片已失效，请重新选择图片', category: 'INPUT', retryable: false, action: 'SELECT_IMAGE' },
     CONTENT_REJECTED: { message: '当前图片内容不支持生成，请重新选择一张图片', category: 'CONTENT', retryable: false, action: 'SELECT_IMAGE' },
-    AI_SERVICE_UNAVAILABLE: { message: 'AI 生成暂时不可用', category: 'PROVIDER', retryable: false, action: 'USE_STANDARD_MODE' },
+    // 这一句必须与 aiGenerationErrorMessage 里同码的 case 逐字一致：任务卡片走 message、
+    // 列表页走 aiGenerationErrorMessage，两处不一致时用户会看到同一件事有两种说法
+    // （历史上这里写「AI 生成暂时不可用」，switch 里写下面这句更完整的安抚文案）。
+    AI_SERVICE_UNAVAILABLE: { message: '当前暂时无法完成 AI 生成\n请稍后再试，本次不会消耗生成次数', category: 'PROVIDER', retryable: false, action: 'USE_STANDARD_MODE' },
     AI_SERVICE_BUSY: { message: 'AI 生成服务繁忙，请稍后重试', category: 'PROVIDER', retryable: true, action: 'RETRY' },
     AI_TIMEOUT: { message: 'AI 生成超时，请稍后重试', category: 'PROVIDER', retryable: true, action: 'RETRY' },
     AI_TASK_EXPIRED: { message: '任务已过期，请重新生成', category: 'PROVIDER', retryable: true, action: 'RETRY' },
     AI_RESULT_INVALID: { message: 'AI 生成结果不可用，请重新生成', category: 'PROVIDER', retryable: true, action: 'RETRY' },
     AI_GENERATION_FAILED: { message: 'AI 生成失败，请稍后重试', category: 'INTERNAL', retryable: true, action: 'RETRY' },
+    // 以下码原本只有 aiGenerationErrorMessage 里的文案、没有 definition，于是
+    // aiGenerationFailure() 返回 null，setFailure 兜底成 AI_GENERATION_FAILED：
+    // 任务卡片（走 message）显示正确原因，列表页（走落库的 failure.message）却统一显示
+    // 「AI 生成失败，请稍后重试」。补登记后两条路径才对同一句话负责。
+    CONTENT_SECURITY_CHECK_INVALID: { message: '图片检测结果已失效，请重新选择图片', category: 'CONTENT', retryable: false, action: 'SELECT_IMAGE' },
+    IMAGE_TOO_LARGE: { message: '图片过大，请更换图片', category: 'INPUT', retryable: true, action: 'RETRY' },
+    RATE_LIMITED: { message: '请求过于频繁，请稍后重试', category: 'PROVIDER', retryable: true, action: 'RETRY' },
+    NETWORK_ERROR: { message: '网络连接失败，请检查网络', category: 'PROVIDER', retryable: true, action: 'RETRY' },
+    INVALID_RESPONSE: { message: '服务返回数据异常', category: 'INTERNAL', retryable: true, action: 'RETRY' },
+    INVALID_INPUT: { message: 'AI 任务参数无效', category: 'INPUT', retryable: false, action: 'SELECT_IMAGE' },
+    UNAUTHORIZED: { message: '登录状态已失效，请重新登录', category: 'USER', retryable: false, action: 'SELECT_IMAGE' },
+    TOKEN_EXPIRED: { message: '登录状态已失效，请重新登录', category: 'USER', retryable: false, action: 'SELECT_IMAGE' },
   }
   return definitions[code] ?? null
+}
+
+/**
+ * 按失败码取卡片上应给的操作，**唯一事实来源**：ai-generation-manager 的按钮动作与文案
+ * 都从这里取，避免「文案表 / 失败定义表 / 重试动作表」三张表各自演化。
+ * @param failureCode 已归一化的失败码（见 normalizeFailureCode）。
+ * @returns 未登记的码给 SELECT_IMAGE —— 未知失败不给重试，避免用户反复撞同一个不可恢复错误。
+ */
+export function aiFailureAction(failureCode?: string): PublicErrorAction {
+  if (!failureCode) return 'SELECT_IMAGE'
+  return failureDefinition(normalizeFailureCode(failureCode))?.action ?? 'SELECT_IMAGE'
 }
 
 function isCategory(value: unknown): value is PublicErrorCategory {
