@@ -109,8 +109,37 @@ interface FileRow extends QueryResultRow {
 const ACTIVE_STATUSES = ["queued", "processing"] as const;
 const PROVIDER_SUBMISSION_TIMEOUT_MS = 15 * 60 * 1_000;
 const DEFAULT_RETENTION_MS = 24 * 60 * 60 * 1_000;
+/**
+ * provider 提交的最大尝试次数（含首次）。
+ *
+ * 存在的理由：混元在账号维度限流时会直接回 EXCEED_REQUEST_LIMIT（线上实测 1 秒内返回，
+ * 无 httpStatus），旧实现遇到它立刻 markFailed —— 任务永久失败、用户只能自己点重试，
+ * 而重试又会撞上同一波限流。限流/瞬时不可用属于「等一会儿就好」的错误，
+ * 这里先退避重试，耗尽才判失败；此时任务仍停在 processing，前端轮询能自然等到结果。
+ */
+const PROVIDER_SUBMISSION_MAX_ATTEMPTS = 3;
+/** 重试退避基数：第 n 次重试前等 base * 2^(n-1)（1.5s / 3s），再叠加 ≤25% 抖动打散重试风暴。 */
+const PROVIDER_RETRY_BASE_DELAY_MS = 1_500;
+/** 两次 provider 提交之间的最小间隔：主动降速，从源头少撞 EXCEED_REQUEST_LIMIT。 */
+const PROVIDER_SUBMISSION_MIN_INTERVAL_MS = 800;
+/**
+ * 任务被领走（processing 且尚无 requestId）后的静置期。
+ * 期间其它推进者（并发轮询）不再重复提交；超过则由下一个推进者接手，兼顾进程崩溃后的恢复。
+ */
+const PROVIDER_SUBMISSION_RECLAIM_DELAY_MS = 30 * 1_000;
+/**
+ * 失败任务被同一幂等键重新排队前的冷却期。
+ * 没有它时，用户连点重试（或旧客户端沿用旧幂等键）会在限流窗口里不间断重投，把限流刷得更狠。
+ */
+const FAILED_JOB_REQUEUE_COOLDOWN_MS = 10 * 1_000;
 function nullableIso(value: Date | string | null): string | null {
   return value === null ? null : toIso(value);
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function mapJob(row: AiJobRow): AiGenerationResponse {
@@ -189,7 +218,13 @@ const JOB_SELECT = `SELECT jobs.id, jobs.user_id, jobs.input_file_id,
   LEFT JOIN pindou_file_assets output_file ON output_file.id = jobs.output_file_id`;
 
 export class PostgresAiGenerationService {
+  /** 同一 job 的收口去重：避免重复下载/落库产物。 */
   private readonly outputCompletions = new Map<string, Promise<AiGenerationResponse>>();
+  /** 同一 job 的提交去重：轮询与后台推进会并发进入 submit，有它才不会重复调 provider（等于自己造限流）。 */
+  private readonly submissions = new Map<string, Promise<AiJobRow>>();
+  /** 提交闸门：串行推进「发起时刻」，保证相邻两次提交间隔不小于 PROVIDER_SUBMISSION_MIN_INTERVAL_MS。 */
+  private submissionGate: Promise<unknown> = Promise.resolve();
+  private lastSubmissionAt = 0;
 
   public constructor(
     private readonly pool: Pool,
@@ -198,6 +233,7 @@ export class PostgresAiGenerationService {
     private readonly quotaConfig: ServerConfig["quota"],
     private readonly now: () => Date = () => new Date(),
     private readonly retentionMs = DEFAULT_RETENTION_MS,
+    private readonly sleep: (ms: number) => Promise<void> = defaultSleep,
   ) {}
 
   /**
@@ -239,7 +275,11 @@ export class PostgresAiGenerationService {
           || existing.detail_level !== input.detailLevel
           || existing.background_mode !== input.backgroundMode
         ) throw idempotencyConflict("AI 生成幂等键已用于另一份请求");
-        job = existing;
+        // 命中已失败的同幂等键任务时重新排队（过了冷却期才允许）：failed 是终态，
+        // 直接返回它意味着客户端用旧幂等键重试永远拿回同一个失败结果、重试按钮形同虚设。
+        job = this.canRequeueFailed(existing, currentTime)
+          ? await this.requeueFailedJob(client, existing, currentTime)
+          : existing;
       } else {
         const fileResult = await client.query<FileRow>(
           `SELECT user_id, file_type, object_key, content_type, deleted_at
@@ -253,26 +293,7 @@ export class PostgresAiGenerationService {
         if (!file || file.deleted_at || file.file_type !== "ai_input" || file.user_id !== input.userId) {
           throw notFound("AI 输入文件不存在");
         }
-        const quotaDate = shanghaiDate(currentTime);
-        await ensureDailyGrant(
-          client,
-          input.userId,
-          "ai_generation",
-          quotaDate,
-          this.quotaConfig.dailyAiGenerations,
-          currentTime,
-        );
-        const quota = await readQuota(client, input.userId, "ai_generation", quotaDate);
-        const activeResult = await client.query<{ readonly active_count: string }>(
-          `SELECT COUNT(*)::text AS active_count
-             FROM pindou_ai_generation_jobs
-            WHERE user_id = $1
-              AND status IN ('queued', 'processing')
-              AND expires_at > $2`,
-          [input.userId, currentTime],
-        );
-        const active = Number(activeResult.rows[0]?.active_count ?? "0");
-        if (availableQuota(quota) <= active) throw aiQuotaInsufficient();
+        await this.ensureSubmissionQuota(client, input.userId, currentTime);
 
         const id = createEntityId("aijob");
         // 任务保留期：过期后由 cleanupExpired 统一判失败并清理关联文件。
@@ -332,7 +353,7 @@ export class PostgresAiGenerationService {
    */
   private async advance(job: AiJobRow, requestId: string | undefined = undefined): Promise<AiGenerationResponse> {
     if (job.status === "queued") {
-      const submitted = await this.submit(job.user_id, job.id, requestId);
+      const submitted = await this.submitOnce(job.user_id, job.id, requestId);
       if (submitted.provider_output_url) {
         return this.completeOutput(submitted, submitted.provider_output_url, requestId);
       }
@@ -422,13 +443,135 @@ export class PostgresAiGenerationService {
   }
 
   /**
+   * 提交入口：同一 job 并发去重。
+   * 轮询（get）与 create 后的后台推进会同时进入 submit，不去重就等于同一个任务重复调 provider，
+   * 既浪费额度也自己制造限流。
+   */
+  private async submitOnce(userId: string, jobId: string, requestId?: string): Promise<AiJobRow> {
+    const existing = this.submissions.get(jobId);
+    if (existing) return existing;
+    const run = this.submitWithRetry(userId, jobId, requestId);
+    this.submissions.set(jobId, run);
+    try {
+      return await run;
+    } finally {
+      if (this.submissions.get(jobId) === run) this.submissions.delete(jobId);
+    }
+  }
+
+  /**
    * 把 queued 任务推进到 processing 并向 provider 提交生图；写入 requestId + 产出地址。
    * 并发安全：FOR UPDATE 锁 + 乐观条件（status='processing' AND provider_request_id IS NULL），
    * 重复提交只会用首次结果覆盖/复用。
+   * 关键点：provider 的限流/瞬时不可用**不立刻判失败**——按 PROVIDER_SUBMISSION_MAX_ATTEMPTS
+   * 退避重试，期间任务停在 processing，前端轮询自然等到结果；只有耗尽重试才 markFailed。
    */
-  private async submit(userId: string, jobId: string, requestId?: string): Promise<AiJobRow> {
+  private async submitWithRetry(userId: string, jobId: string, requestId?: string): Promise<AiJobRow> {
+    const claim = await this.claimQueuedJob(userId, jobId);
+    const claimed = claim.job;
+    if (claimed.status !== "processing" || claimed.provider_request_id) return claimed;
+    // 任务已被别的推进者领走且还在新鲜期内：交给对方，绝不重复调 provider
+    // ——重复提交既浪费付费额度，本身就是在制造限流（混元限流是账号维度的）。
+    if (!claim.claimed && this.submissionAgeMs(claimed) < PROVIDER_SUBMISSION_RECLAIM_DELAY_MS) {
+      return claimed;
+    }
+    let input: Awaited<ReturnType<AiFileStorage["readObject"]>>;
+    try {
+      input = claimed.input_object_key
+        ? await this.storage.readObject(claimed.input_object_key)
+        : null;
+    } catch (error: unknown) {
+      return this.markFailed(userId, jobId, failureCode(error));
+    }
+    if (!input || !claimed.input_content_type) {
+      return this.markFailed(userId, jobId, "AI_INPUT_FILE_UNAVAILABLE");
+    }
+    // 把输入图编码成 data URL 交给 provider（混元要求以 data URL 形式携带参考图）。
+    const imageDataUrl = `data:${claimed.input_content_type};base64,${input.buffer.toString("base64")}`;
+    const prompt = buildAiPrompt({
+      style: claimed.style as AiGenerationStyle,
+      detailLevel: claimed.detail_level as AiGenerationDetailLevel,
+      backgroundMode: claimed.background_mode as AiGenerationBackgroundMode,
+    }).text;
+
+    let providerSubmission: Awaited<ReturnType<AiGenerationProvider["createTask"]>> | null = null;
+    for (let attempt = 1; attempt <= PROVIDER_SUBMISSION_MAX_ATTEMPTS; attempt += 1) {
+      const submissionStartedAt = Date.now();
+      try {
+        await this.waitForSubmissionSlot();
+        providerSubmission = await this.provider.createTask(imageDataUrl, prompt);
+        break;
+      } catch (error: unknown) {
+        if (isProviderError(error)) {
+          logProviderFailure(claimed, error, requestId, providerPublicCode(error), Date.now() - submissionStartedAt);
+        }
+        if (isTransientProviderError(error) && attempt < PROVIDER_SUBMISSION_MAX_ATTEMPTS) {
+          const delayMs = this.retryDelayMs(attempt);
+          console.error(JSON.stringify({
+            event: "ai_provider_submit_retry_scheduled",
+            requestId: requestId ?? null,
+            jobId: claimed.id,
+            attempt,
+            nextAttempt: attempt + 1,
+            delayMs,
+            internalCode: failureCode(error),
+          }));
+          await this.sleep(delayMs);
+          continue;
+        }
+        if (error instanceof ProviderError && error.failure.kind === "TIMEOUT") {
+          return this.markFailed(userId, jobId, "AI_SUBMISSION_UNKNOWN");
+        }
+        return this.markFailed(userId, jobId, failureCode(error));
+      }
+    }
+    if (!providerSubmission) return this.readJob(this.pool, userId, jobId);
+    const submission = providerSubmission;
+
+    const updated = await this.pool.query<AiJobRow>(
+      `UPDATE pindou_ai_generation_jobs
+          SET provider_request_id = $2, provider_output_url = $3, updated_at = $4
+        WHERE id = $1 AND user_id = $5
+          AND status = 'processing' AND provider_request_id IS NULL
+        RETURNING *, $6::text AS input_object_key, $7::text AS input_content_type,
+                  NULL::text AS output_public_url, NULL::text AS output_content_type,
+                  NULL::bigint AS output_byte_size`,
+      [jobId, submission.requestId, submission.outputUrl, this.now(), userId, claimed.input_object_key, claimed.input_content_type],
+    );
+    return updated.rows[0] ?? this.readJob(this.pool, userId, jobId);
+  }
+
+  /**
+   * 提交闸门：把「发起提交的时刻」串成一条链，保证相邻两次提交间隔不小于
+   * PROVIDER_SUBMISSION_MIN_INTERVAL_MS。混元的 EXCEED_REQUEST_LIMIT 是账号维度限流，
+   * 主动降速比撞墙再退避更省事。注意只在单进程内生效，多副本部署时是「每副本各自降速」。
+   */
+  private async waitForSubmissionSlot(): Promise<void> {
+    const run = this.submissionGate.then(async () => {
+      const elapsed = Date.now() - this.lastSubmissionAt;
+      const waitMs = PROVIDER_SUBMISSION_MIN_INTERVAL_MS - elapsed;
+      if (waitMs > 0) await this.sleep(waitMs);
+      this.lastSubmissionAt = Date.now();
+    });
+    this.submissionGate = run.catch(() => undefined);
+    await run;
+  }
+
+  /** 第 attempt 次失败后的退避时长：base * 2^(attempt-1)，叠加 ≤25% 抖动打散同时重试的任务。 */
+  private retryDelayMs(attempt: number): number {
+    const base = PROVIDER_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+    return Math.round(base * (1 + Math.random() * 0.25));
+  }
+
+  /**
+   * 抢占 queued 任务：事务内置 processing。
+   * @returns job 当前行 + claimed（本次是否由自己从 queued 抢占成功）。
+   *          claimed=false 表示别人/上一轮已经领走过，用于避免重复调用 provider。
+   */
+  private async claimQueuedJob(userId: string, jobId: string): Promise<{ job: AiJobRow; claimed: boolean }> {
     const client = await this.pool.connect();
     let claimed: AiJobRow;
+    let claimedByMe = false;
     try {
       await client.query("BEGIN");
       const result = await client.query<AiJobRow>(
@@ -439,7 +582,7 @@ export class PostgresAiGenerationService {
       if (!current) throw notFound("AI 生成任务不存在");
       if (current.status !== "queued") {
         await client.query("COMMIT");
-        return current;
+        return { job: current, claimed: false };
       }
       const updated = await client.query<AiJobRow>(
         `UPDATE pindou_ai_generation_jobs
@@ -452,60 +595,82 @@ export class PostgresAiGenerationService {
       );
       await client.query("COMMIT");
       claimed = updated.rows[0] ?? current;
+      claimedByMe = updated.rows.length > 0;
     } catch (error: unknown) {
       await rollbackTransaction(client);
       throw error;
     } finally {
       client.release();
     }
+    return { job: claimed, claimed: claimedByMe };
+  }
 
-    if (claimed.status !== "processing" || claimed.provider_request_id) return claimed;
-    let input: Awaited<ReturnType<AiFileStorage["readObject"]>>;
-    try {
-      input = claimed.input_object_key
-        ? await this.storage.readObject(claimed.input_object_key)
-        : null;
-    } catch (error: unknown) {
-      return this.markFailed(userId, jobId, failureCode(error));
-    }
-    if (!input || !claimed.input_content_type) {
-      return this.markFailed(userId, jobId, "AI_INPUT_FILE_UNAVAILABLE");
-    }
+  /** 任务被领走至今的毫秒数；没有 started_at 视为无限久（允许接手）。 */
+  private submissionAgeMs(job: AiJobRow): number {
+    if (!job.started_at) return Number.POSITIVE_INFINITY;
+    return this.now().getTime() - new Date(job.started_at).getTime();
+  }
 
-    let providerSubmission: Awaited<ReturnType<AiGenerationProvider["createTask"]>>;
-    const submissionStartedAt = Date.now();
-    try {
-      // 把输入图编码成 data URL 交给 provider（混元要求以 data URL 形式携带参考图）。
-      const imageDataUrl = `data:${claimed.input_content_type};base64,${input.buffer.toString("base64")}`;
-      providerSubmission = await this.provider.createTask(
-        imageDataUrl,
-        buildAiPrompt({
-          style: claimed.style as AiGenerationStyle,
-          detailLevel: claimed.detail_level as AiGenerationDetailLevel,
-          backgroundMode: claimed.background_mode as AiGenerationBackgroundMode,
-        }).text,
-      );
-    } catch (error: unknown) {
-      if (isProviderError(error)) {
-        logProviderFailure(claimed, error, requestId, providerPublicCode(error), Date.now() - submissionStartedAt);
-      }
-      if (error instanceof ProviderError && error.failure.kind === "TIMEOUT") {
-        return this.markFailed(userId, jobId, "AI_SUBMISSION_UNKNOWN");
-      }
-      return this.markFailed(userId, jobId, failureCode(error));
-    }
+  /** 提交前校验额度：当日额度已用完（活跃任务数占满可用额度）则不允许再占一个坑。 */
+  private async ensureSubmissionQuota(
+    client: PoolClient,
+    userId: string,
+    currentTime: Date,
+  ): Promise<void> {
+    const quotaDate = shanghaiDate(currentTime);
+    await ensureDailyGrant(
+      client,
+      userId,
+      "ai_generation",
+      quotaDate,
+      this.quotaConfig.dailyAiGenerations,
+      currentTime,
+    );
+    const quota = await readQuota(client, userId, "ai_generation", quotaDate);
+    const activeResult = await client.query<{ readonly active_count: string }>(
+      `SELECT COUNT(*)::text AS active_count
+         FROM pindou_ai_generation_jobs
+        WHERE user_id = $1
+          AND status IN ('queued', 'processing')
+          AND expires_at > $2`,
+      [userId, currentTime],
+    );
+    const active = Number(activeResult.rows[0]?.active_count ?? "0");
+    if (availableQuota(quota) <= active) throw aiQuotaInsufficient();
+  }
 
-    const updated = await this.pool.query<AiJobRow>(
+  /** 冷却期内不重新排队：刚失败就重投大概率再撞同一波限流，反而把失败拖得更久。 */
+  private canRequeueFailed(job: AiJobRow, currentTime: Date): boolean {
+    if (job.status !== "failed") return false;
+    if (!job.completed_at) return true;
+    return currentTime.getTime() - new Date(job.completed_at).getTime() >= FAILED_JOB_REQUEUE_COOLDOWN_MS;
+  }
+
+  /**
+   * 把已失败的同一幂等键任务重新排队（清错误码/产出引用、延长保留期）。
+   * 客户端重试若沿用旧幂等键，靠它才能真的重跑（否则只会拿回旧失败结果）。
+   */
+  private async requeueFailedJob(client: PoolClient, job: AiJobRow, currentTime: Date): Promise<AiJobRow> {
+    await this.ensureSubmissionQuota(client, job.user_id, currentTime);
+    const expiresAt = new Date(currentTime.getTime() + this.retentionMs);
+    const result = await client.query<AiJobRow>(
       `UPDATE pindou_ai_generation_jobs
-          SET provider_request_id = $2, provider_output_url = $3, updated_at = $4
-        WHERE id = $1 AND user_id = $5
-          AND status = 'processing' AND provider_request_id IS NULL
-        RETURNING *, $6::text AS input_object_key, $7::text AS input_content_type,
+          SET status = 'queued', error_code = NULL, provider_request_id = NULL, provider_output_url = NULL,
+              started_at = NULL, completed_at = NULL, expires_at = $2, updated_at = $2
+        WHERE id = $1 AND status = 'failed'
+        RETURNING *,
+                  (SELECT object_key FROM pindou_file_assets WHERE id = input_file_id) AS input_object_key,
+                  (SELECT content_type FROM pindou_file_assets WHERE id = input_file_id) AS input_content_type,
                   NULL::text AS output_public_url, NULL::text AS output_content_type,
                   NULL::bigint AS output_byte_size`,
-      [jobId, providerSubmission.requestId, providerSubmission.outputUrl, this.now(), userId, claimed.input_object_key, claimed.input_content_type],
+      [job.id, expiresAt],
     );
-    return updated.rows[0] ?? this.readJob(this.pool, userId, jobId);
+    console.error(JSON.stringify({
+      event: "ai_generation_requeued",
+      jobId: job.id,
+      previousErrorCode: job.error_code,
+    }));
+    return result.rows[0] ?? job;
   }
 
   private async complete(userId: string, jobId: string, stored: StoredAiFile): Promise<AiJobRow> {

@@ -21,12 +21,14 @@ function harness({
   available = 3,
   providerOutputUrl = "https://aigc-image.cos.myqcloud.com/output.png",
   providerError = null,
+  providerErrors = null,
   inputAvailable = true,
   inputFileUserId = "usr_a",
   inputFileType = "ai_input",
   downloadError = null,
   saveError = null,
   providerOutput = PROVIDER_PNG,
+  now = () => NOW,
 } = {}) {
   let job = null;
   let outputFile = null;
@@ -40,6 +42,18 @@ function harness({
       if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql) || sql.includes("pg_advisory_xact_lock")) return { rows: [] };
       if (sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
       if (sql.includes("jobs.user_id = $1 AND jobs.idempotency_key = $2")) return { rows: job ? [{ ...job }] : [] };
+      // 失败任务被同一幂等键重新排队（清错误码、延长保留期）。
+      // 必须排在「FROM pindou_file_assets」分支之前：这条 UPDATE 的 RETURNING 带子查询，会误命中它。
+      if (sql.includes("SET status = 'queued'") && sql.includes("error_code = NULL")) {
+        job.status = "queued";
+        job.error_code = null;
+        job.provider_request_id = null;
+        job.provider_output_url = null;
+        job.started_at = null;
+        job.completed_at = null;
+        job.expires_at = parameters[1];
+        return { rows: [{ ...job, input_object_key: "ai/ai_input_test.png", input_content_type: "image/png" }] };
+      }
       if (sql.includes("FROM pindou_file_assets") && !sql.includes("JOIN pindou_file_assets")) {
         return { rows: [{ user_id: inputFileUserId, file_type: inputFileType, object_key: "ai/ai_input_test.png", content_type: "image/png", deleted_at: null }] };
       }
@@ -118,7 +132,10 @@ function harness({
       events.push({ type: "provider_create" });
       receivedPrompt = prompt;
       createCount += 1;
-      if (providerError) throw providerError;
+      // providerErrors 是「按调用次序消费一次」的错误队列，用来模拟前几次限流、之后成功。
+      const queued = Array.isArray(providerErrors) && providerErrors.length > 0 ? providerErrors.shift() : null;
+      const failure = queued ?? providerError;
+      if (failure) throw failure;
       return { requestId: "provider_request_1", outputUrl: providerOutputUrl };
     },
     async downloadOutput() {
@@ -142,12 +159,15 @@ function harness({
     },
     async remove() {},
   };
+  const sleeps = [];
   const service = new PostgresAiGenerationService(
     pool,
     provider,
     storage,
     { dailyStandardDownloads: 9, dailyAiGenerations: 3 },
-    () => NOW,
+    now,
+    undefined,
+    async (ms) => { sleeps.push(ms); },
   );
   return {
     service,
@@ -160,6 +180,7 @@ function harness({
     get createCount() { return createCount; },
     get saveCount() { return saveCount; },
     get savedOutput() { return savedOutput; },
+    get sleeps() { return sleeps; },
   };
 }
 
@@ -314,6 +335,78 @@ test("provider submission errors fail the task without output or quota debit", a
   assert.equal(result.failure.code, "AI_SERVICE_BUSY");
   assert.equal(state.saveCount, 0);
   assert.equal(state.debitCount, 0);
+});
+
+test("provider rate limit is retried with backoff instead of failing the task immediately", async () => {
+  const state = harness({
+    // 线上实测形状（2026-09-24）：混元限流码 EXCEED_REQUEST_LIMIT，无 httpStatus，1 秒内返回。
+    providerErrors: [
+      new ProviderError({
+        provider: "hunyuan",
+        providerCode: "EXCEED_REQUEST_LIMIT",
+        httpStatus: null,
+        kind: "RATE_LIMITED",
+      }),
+    ],
+  });
+  const created = await state.service.create(REQUEST);
+  const result = await advanceUntilTerminal(state, created.id);
+
+  // 限流属于「等一下就好」：不该把任务直接判死，退避重试后应正常出图。
+  assert.equal(result.status, "succeeded");
+  assert.equal(state.createCount, 2);
+  assert.ok(state.sleeps.some((ms) => ms >= 1500), `expected a backoff sleep, got ${state.sleeps.join(",")}`);
+  assert.equal(state.debitCount, 1);
+});
+
+test("provider rate limit still fails the task after the retries are exhausted", async () => {
+  const state = harness({
+    providerError: new ProviderError({
+      provider: "hunyuan",
+      providerCode: "EXCEED_REQUEST_LIMIT",
+      httpStatus: null,
+      kind: "RATE_LIMITED",
+    }),
+  });
+  const created = await state.service.create(REQUEST);
+  const result = await advanceUntilTerminal(state, created.id);
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.failure.code, "AI_SERVICE_BUSY");
+  assert.equal(state.createCount, 3);
+  assert.equal(state.debitCount, 0);
+});
+
+test("a failed job is requeued when the same idempotency key is reused after the cooldown", async () => {
+  let current = NOW;
+  const state = harness({
+    now: () => current,
+    providerErrors: [
+      new ProviderError({
+        provider: "hunyuan",
+        providerCode: "ContentReviewFailed",
+        httpStatus: 422,
+        kind: "UNKNOWN",
+      }),
+    ],
+  });
+  const created = await state.service.create(REQUEST);
+  const failed = await advanceUntilTerminal(state, created.id);
+  assert.equal(failed.status, "failed");
+
+  // 冷却期内复用幂等键：仍拿回失败任务，不重复提交给 provider。
+  const duringCooldown = await state.service.create(REQUEST);
+  assert.equal(duringCooldown.status, "failed");
+  assert.equal(state.createCount, 1);
+
+  // 冷却期后复用同一幂等键：任务重新排队并真的重跑（旧客户端沿用旧键重试才有救）。
+  current = new Date(NOW.getTime() + 60_000);
+  const retried = await state.service.create(REQUEST);
+  assert.equal(retried.status, "queued");
+  assert.equal(retried.failure, null);
+  const result = await advanceUntilTerminal(state, retried.id);
+  assert.equal(result.status, "succeeded");
+  assert.equal(state.createCount, 2);
 });
 
 test("provider timeout fails the task without charging the user", async () => {

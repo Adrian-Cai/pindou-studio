@@ -127,6 +127,20 @@ test("Hunyuan provider normalizes quota, auth and temporary upstream failures", 
       && error.failure.kind === "RATE_LIMITED",
   );
 
+  // 线上实测形状（2026-09-24）：混元限流码是 EXCEED_REQUEST_LIMIT 且无 statusCode，
+  // 漏登记时会落 UNKNOWN 兜底，日志显示 AI_GENERATION_FAILED，真实原因消失。
+  const exceedRequestLimitProvider = new HunyuanImageProvider(config, fetch, {
+    generateImage: async () => { throw Object.assign(new Error("EXCEED_REQUEST_LIMIT"), { code: "EXCEED_REQUEST_LIMIT" }); },
+  });
+  await assert.rejects(
+    () => exceedRequestLimitProvider.createTask("data:image/png;base64,AA==", "prompt"),
+    (error) => error instanceof ProviderError
+      && error.code === "AI_PROVIDER_RATE_LIMITED"
+      && error.failure.kind === "RATE_LIMITED"
+      && error.failure.providerCode === "EXCEED_REQUEST_LIMIT"
+      && error.failure.httpStatus === null,
+  );
+
   const tokenQuotaProvider = new HunyuanImageProvider(config, fetch, {
     generateImage: async () => { throw Object.assign(new Error("Request failed with status code 429"), { code: "429" }); },
   });

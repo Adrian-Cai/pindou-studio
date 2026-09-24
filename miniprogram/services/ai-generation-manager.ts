@@ -203,14 +203,18 @@ export class AiTaskManager {
       await this.markFailed(taskId, invalidImageFailure())
       return
     }
-    // 有 jobId 的服务端任务还在，直接续查；没有则连同上传一起重来
-    const restartFromUpload = !task.jobId
+    // 远端 job 一旦 failed 就是终态：沿用旧 jobId / 旧幂等键重试时，flow 只会走 query
+    // 取回同一个失败结果（服务端 create 命中旧幂等键返回 failed 任务），重试按钮形同虚设。
+    // 因此重试一律按「新建」处理：换幂等键 + 清 jobId，让它重新走 submit。
+    // 服务端对旧幂等键命中的 failed 任务也会重新排队，两处互为兜底。
+    const restartFromUpload = !task.inputFileId || !isFilePathAlive(task.inputImagePath ?? task.sourceImagePath)
     patchAiTask(taskId, {
       status: restartFromUpload ? 'created' : 'queued',
       failure: null,
       finishedAt: null,
       retryCount: task.retryCount + 1,
-      idempotencyKey: restartFromUpload ? createIdempotencyKey() : task.idempotencyKey,
+      jobId: null,
+      idempotencyKey: createIdempotencyKey(),
     })
     await this.applyTaskToWorkItem(taskId)
     if (!this.waiting.includes(taskId)) this.waiting.push(taskId)
