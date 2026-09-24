@@ -28,6 +28,19 @@ export interface PatternCell {
   colorCode: string
 }
 
+/** 统计图纸实际使用的颜色，供编辑器与 AI 生成页共用调色板排序。 */
+export function getPaletteColors(cells: readonly PatternCell[]): string[] {
+  const counts = new Map<string, number>()
+  cells.forEach((cell) => {
+    if (cell.color === 'transparent') return
+    counts.set(cell.color, (counts.get(cell.color) ?? 0) + 1)
+  })
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 16)
+    .map(([color]) => color)
+}
+
 /** 编辑态完整草稿（内存中用），cells 为每格的颜色信息。 */
 export interface PatternDraft {
   id: string

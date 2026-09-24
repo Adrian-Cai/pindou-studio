@@ -5,15 +5,15 @@
  *       整个 AI 生成过程只使用这一个页面：排队 / 生成中 / 失败 / 完成
  *       都在同一页面框架内原地切换中间主内容卡片，不设独立的失败页或成功页。
  *       生成中与失败态下方常驻禁用态编辑面板（100% 缩放、尺寸/颜色/颗数、
- *       工具栏、色板），成功（from=home）后自动进入编辑器启用同一面板。
+ *       工具栏、色板），成功后仍留在当前页，展示结果并启用同一面板。
  * 调用方：作品页点 pending/failed 卡片（`?taskId=&from=projects`）、
  *        首页创建 AI 任务后进入（`?taskId=&from=home`）。
  * 关键点：页面只订阅不驱动——onHide/onUnload 仅退订，任务照常在后台跑；
- *        `from=home` 表示用户刚发起，成功后自动进编辑器；`from=projects` 表示回看，成功后不跳转。
+ *        `from` 只影响底部 Tab 高亮与返回意图，三种任务状态都在本页原地切换。
  */
 import { aiTaskManager, type AiTaskView } from '../../services/ai-generation-manager'
 import type { AiTaskStatus } from '../../services/ai-task-store'
-import { createDraft } from '../../services/image-service'
+import { getPaletteColors, type PatternDraft, type WorkItem } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
 
 type TaskFrom = 'home' | 'projects'
@@ -28,7 +28,6 @@ const GENERATING_STATUSES: ReadonlySet<AiTaskStatus> = new Set<AiTaskStatus>([
 ])
 
 const DEFAULT_TIP = '正在为你优化图片细节，生成完成后即可开始编辑'
-const LONG_WAIT_TIP = '处理时间比平时长一些，可以暂时离开，稍后回来继续查看'
 
 Page({
   data: {
@@ -41,13 +40,18 @@ Page({
     queuePosition: 0,
     stateTitle: '',
     stateDescription: '',
-    failureMessage: '',
     tipText: DEFAULT_TIP,
-    showPurchase: false,
-    canRetry: false,
-    /** 失败卡片主按钮文案：重新生成 / 购买次数 / 重新选图生成 / 用标准模式生成 */
-    failurePrimaryText: '',
-    action: 'RETRY',
+    /** 成功态在当前页面直接展示结果，编辑面板随草稿就绪切换为可用。 */
+    draft: null as PatternDraft | null,
+    editorReady: false,
+    resultImageError: false,
+    activeTool: 'pencil',
+    scalePercent: 100,
+    canZoomOut: false,
+    canZoomIn: true,
+    paletteColors: [] as string[],
+    selectedColor: '',
+    saving: false,
     /** 生成中与失败态底部面板预填的图案参数（取自任务设置） */
     panelWidth: 0,
     panelHeight: 0,
@@ -58,7 +62,6 @@ Page({
   _taskId: '',
   _from: 'home' as TaskFrom,
   _unsubscribe: null as (() => void) | null,
-  _navigated: false,
   _visible: false,
 
   onLoad(query?: Record<string, string | undefined>) {
@@ -81,7 +84,6 @@ Page({
   onShow() {
     this._visible = true
     if (!this._taskId) return
-    this._navigated = false
     if (!this._unsubscribe) this.subscribe()
     // 后台回来状态可能已变，重新拉一次快照
     this.syncTask()
@@ -138,34 +140,46 @@ Page({
       queuePosition: view.queuePosition,
       stateTitle: view.stateTitle,
       stateDescription: view.stateDescription,
-      failureMessage: view.failureMessage,
-      tipText: view.statusMessage || (view.waitingLong ? LONG_WAIT_TIP : DEFAULT_TIP),
-      showPurchase: view.showPurchase,
-      canRetry: view.canRetry,
-      failurePrimaryText: resolveFailurePrimaryText(view),
-      action: view.action,
+      tipText: DEFAULT_TIP,
       panelWidth: view.width,
       panelHeight: view.height,
       panelColorLimit: view.colorLimit,
       // 图案尚未生成，颗粒数按满格（宽×高）预估展示
       panelBeadCount: view.width * view.height,
+      editorReady: false,
+      ...(isSucceeded ? {} : {
+        draft: null,
+        paletteColors: [],
+        selectedColor: '',
+        resultImageError: false,
+      }),
     })
   },
 
-  /** 成功后只在「刚发起」时自动进编辑器；回看时不抢走用户当前页面。 */
+  /** 成功后留在当前页面，把状态卡片切换成结果预览和可用编辑面板。 */
   async handleSucceeded() {
-    if (!this._visible || this._from !== 'home' || this._navigated) return
+    if (!this._visible) return
     const draft = appStore.getLocalDraft(this._taskId)
     if (!draft) return
-    this._navigated = true
-    try {
-      await appStore.setCurrentDraft(draft)
-    } catch (error) {
-      console.error('设置当前草稿失败', error)
+    const paletteColors = getPaletteColors(draft.cells)
+    const selectedColor = paletteColors.includes(this.data.selectedColor)
+      ? this.data.selectedColor
+      : (paletteColors[0] ?? '')
+    const draftChanged = this.data.draft?.id !== draft.id
+    this.setData({
+      draft,
+      editorReady: true,
+      resultImageError: false,
+      paletteColors,
+      selectedColor,
+    })
+    if (draftChanged && appStore.getSnapshot().currentDraft?.id !== draft.id) {
+      try {
+        await appStore.setCurrentDraft(draft)
+      } catch (error) {
+        console.error('设置当前草稿失败', error)
+      }
     }
-    // 写入草稿期间用户可能已返回首页，不再把用户拉回编辑器。
-    if (!this._visible) return
-    wx.redirectTo({ url: '/packages/editor/index' })
   },
 
   cancelTask() {
@@ -193,66 +207,69 @@ Page({
     void aiTaskManager.retryTask(taskId).then(() => this.syncTask())
   },
 
-  /** 失败卡片主操作：按失败类型分发到重试 / 购买次数 / 切标准模式 / 重新选图 */
-  handleFailurePrimary() {
-    if (this.data.canRetry) {
-      this.retry()
-      return
-    }
-    if (this.data.showPurchase) {
-      this.purchaseAiGeneration()
-      return
-    }
-    if (this.data.action === 'USE_STANDARD_MODE') {
-      void this.useStandardMode()
-      return
-    }
-    if (this.data.action === 'SELECT_IMAGE') {
-      this.selectNewImage()
-    }
+  selectTool(event: WechatMiniprogram.CustomEvent<{ tool: string }>) {
+    const tool = event.detail.tool
+    if (tool === 'undo' || tool === 'redo') return
+    this.setData({ activeTool: tool })
   },
 
-  async viewWork() {
-    const draft = appStore.getLocalDraft(this._taskId)
-    if (!draft) {
-      wx.showToast({ title: '作品数据尚未就绪，请稍后重试', icon: 'none' })
-      return
-    }
+  selectPaletteColor(event: WechatMiniprogram.CustomEvent<{ color: string }>) {
+    this.setData({ selectedColor: event.detail.color })
+  },
+
+  zoomIn() {
+    const next = Math.min(300, this.data.scalePercent + 20)
+    this.setData({
+      scalePercent: next,
+      canZoomIn: next < 300,
+      canZoomOut: next > 100,
+    })
+  },
+
+  zoomOut() {
+    const next = Math.max(100, this.data.scalePercent - 20)
+    this.setData({
+      scalePercent: next,
+      canZoomIn: next < 300,
+      canZoomOut: next > 100,
+    })
+  },
+
+  handleResultImageError() {
+    this.setData({ resultImageError: true })
+  },
+
+  async saveWork() {
+    const draft = this.data.draft
+    if (!draft || this.data.saving) return
+    this.setData({ saving: true })
     try {
+      const existing = appStore.getSnapshot().works.find((work) => work.id === draft.id)
+      const work: WorkItem = {
+        id: draft.id,
+        title: existing?.title ?? '未命名作品',
+        coverPath: draft.sourceImagePath,
+        generationMode: draft.generationMode,
+        updatedAt: Date.now(),
+        createdAt: existing?.createdAt ?? draft.createdAt,
+        beadCount: draft.cells.filter((cell) => cell.color !== 'transparent').length,
+        colorCount: getPaletteColors(draft.cells).length,
+        width: draft.settings.width,
+        height: draft.settings.height,
+        status: 'completed',
+        syncStatus: existing?.syncStatus ?? 'guest',
+        isCloud: existing?.isCloud,
+      }
+      await appStore.saveLocalDraft(draft)
+      await appStore.saveWork(work)
       await appStore.setCurrentDraft(draft)
+      wx.showToast({ title: '已保存作品', icon: 'success' })
+      wx.redirectTo({ url: '/packages/result/index' })
     } catch (error) {
-      console.error('设置当前草稿失败', error)
-    }
-    wx.redirectTo({ url: '/packages/result/index' })
-  },
-
-  purchaseAiGeneration() {
-    wx.navigateTo({ url: '/packages/payment/recharge/index' })
-  },
-
-  async useStandardMode() {
-    const view = aiTaskManager.getTaskView(this._taskId)
-    if (!view) {
-      this.selectNewImage()
-      return
-    }
-    wx.showLoading({ title: '正在切换', mask: true })
-    try {
-      const draft = await createDraft(view.sourceImagePath, view.settings, 'standard')
-      // 放弃这条 AI 任务，改用标准模式生成的草稿
-      await aiTaskManager.cancelTask(this._taskId)
-      await appStore.setCurrentDraft(draft)
-      wx.redirectTo({ url: '/packages/editor/index' })
-    } catch (error) {
-      wx.showToast({ title: error instanceof Error ? error.message : '标准模式生成失败，请重试', icon: 'none' })
+      wx.showToast({ title: error instanceof Error ? error.message : '保存失败，请重试', icon: 'none' })
     } finally {
-      wx.hideLoading()
+      this.setData({ saving: false })
     }
-  },
-
-  selectNewImage() {
-    void aiTaskManager.cancelTask(this._taskId)
-    wx.switchTab({ url: '/pages/home/index' })
   },
 
   goBack() {
@@ -267,16 +284,3 @@ Page({
     wx.switchTab({ url: '/pages/home/index' })
   },
 })
-
-/**
- * 失败卡片主按钮文案：可重试的失败统一叫「重新生成」；
- * 次数不足、图片问题、建议切标准模式等不可直接重试的失败沿用动作表文案，
- * 都没有时不显示主按钮，只留「返回首页」。
- */
-function resolveFailurePrimaryText(view: AiTaskView): string {
-  if (view.canRetry) return '重新生成'
-  if (view.showPurchase || view.action === 'USE_STANDARD_MODE' || view.action === 'SELECT_IMAGE') {
-    return view.retryLabel
-  }
-  return ''
-}

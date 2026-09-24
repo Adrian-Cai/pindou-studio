@@ -63,10 +63,63 @@
   margin: 0;
 }
 
+/* 成功态仍属于本页：结果预览在状态卡片位置原地出现，编辑面板紧随其后启用。 */
+.ai-generation-result-card {
+  padding: 20rpx 20rpx 24rpx;
+  border-radius: 20rpx;
+  background: var(--color-surface, #ffffff);
+  box-shadow: var(--shadow-card, 0 4rpx 16rpx rgba(31, 38, 35, 0.08));
+}
+
+.ai-generation-result-card__eyebrow {
+  color: var(--color-ai-text, #7c5cfc);
+  font-size: 24rpx;
+  line-height: 36rpx;
+  text-align: center;
+}
+
+.ai-generation-result-card__preview {
+  display: flex;
+  box-sizing: border-box;
+  height: 430rpx;
+  margin-top: 16rpx;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 16rpx;
+  background: #f7f7f7;
+}
+
+.ai-generation-result-card__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transition: transform 150ms ease;
+}
+
+.ai-generation-result-card__fallback {
+  color: var(--color-text-secondary, #5f6963);
+  font-size: 26rpx;
+  line-height: 40rpx;
+}
+
+.ai-generation-result-card__meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16rpx;
+  color: var(--color-text-secondary, #5f6963);
+  font-size: 24rpx;
+  line-height: 36rpx;
+}
+
 @media (prefers-color-scheme: dark) {
   .ai-generation-page {
     --color-ai-text: #c2b5ff;
     --color-ai-notice-bg: #3f3215;
     --color-ai-notice-text: #f1e9d8;
+  }
+
+  .ai-generation-result-card__preview {
+    background: #20242a;
   }
 }

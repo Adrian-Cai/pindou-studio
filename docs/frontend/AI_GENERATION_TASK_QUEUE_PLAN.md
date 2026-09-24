@@ -784,15 +784,15 @@ retryLabel: retryActionLabel(work.failureCode),     // 重试 / 购买次数 / �
 
 #### 10.3.3 需要补齐的能力（当前页面没有的）
 
-现有页面只覆盖「生成中」和「失败」两态，改造后必须补齐：
+现有页面覆盖「生成中」「失败」「成功」三态，三种状态都在同一页内切换：
 
 | 能力 | 现状 | 改造后 |
 |------|------|--------|
 | **排队中**（`created` / 等待并发槽位） | ❌ 无对应 UI，会落到 `loading` 卡 | 新增：显示「排队中，前方还有 N 个」+ 取消按钮 |
 | **取消任务** | ❌ 失败态只有「返回首页」 | 所有非终态都提供「取消生成」按钮 → `aiTaskManager.cancelTask()` |
 | **任务元信息** | ⚠️ 仅生成中通过底部面板展示尺寸/色数 | 卡片区常驻：原图缩略图 + 尺寸 × 色数 + 提交时间 |
-| **成功后的去向** | 一律 `redirectTo` 编辑器 | 按来源区分：<br>· `from=home`（刚发起）→ 跳编辑器<br>· `from=projects`（回看）→ **不跳转**，卡片变「已完成」+ 「查看作品」按钮 |
-| **任务已完成/已取消后来访** | ❌ 会卡在 loading | 终态任务直接进入只读态：`succeeded` 显示「查看作品」，`failed` 显示失败原因 + 重试 |
+| **成功后的去向** | 一律 `redirectTo` 编辑器 | **不跳转**，在当前 AI 生成页原地展示结果并启用编辑面板；底部提供「重新生成 / 保存作品」 |
+| **任务已完成/已取消后来访** | ❌ 会卡在 loading | 终态任务直接进入当前页结果态或失败态：`succeeded` 启用编辑面板，`failed` 显示失败卡片 + 重试 |
 
 #### 10.3.4 页面状态映射
 
@@ -800,14 +800,13 @@ retryLabel: retryActionLabel(work.failureCode),     // 重试 / 购买次数 / �
 |-------------|------|--------|
 | `created` | 排队中卡片（含队列位次） | 取消生成 |
 | `uploading` / `submitting` / `queued` / `processing` / `downloading` / `converting` | `generating-preview-card` + 阶段进度 | 取消生成 |
-| `succeeded` | 成功卡片 | 查看作品 |
-| `failed` | 失败卡片 + `failureMessage` | 重试（retryable）/ 购买（VIEW_BENEFITS）/ 重选图（SELECT_IMAGE）/ 用标准模式 |
+| `succeeded` | 当前页结果预览 + 可用编辑面板 | 重新生成 / 保存作品 |
+| `failed` | 失败卡片 | 重新生成 / 返回首页 |
 
 #### 10.3.5 一个必须处理的边界
 
-用户停留在该页面时任务才完成 —— 当前实现 `onDraftReady` 里直接 `redirectTo` 编辑器，
-改造后若 `from=projects` 不应强制跳转（用户只是回来看一眼）。
-判断方式：`onLoad` 时记下 `from`，`onDraftReady` 回调里按 `from` 分流。
+用户停留在该页面时任务完成 —— 当前实现直接把成功态留在 AI 生成页，
+不再按 `from=home` 或 `from=projects` 分流跳转；用户可在当前页编辑、重新生成或保存作品。
 
 ### 10.4 `components/generating-preview-card`
 

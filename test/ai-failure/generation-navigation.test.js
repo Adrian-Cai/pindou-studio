@@ -72,7 +72,14 @@ function setupDetail(t, from = 'home', status = 'processing') {
     return () => { listener = null }
   })
   t.mock.method(aiTaskManager, 'retryTask', async (id) => { context.calls.retries.push(id) })
-  t.mock.method(appStore, 'getLocalDraft', () => ({ id: 'task-1', generationMode: 'ai' }))
+  t.mock.method(appStore, 'getLocalDraft', () => ({
+    id: 'task-1',
+    sourceImagePath: '/tmp/generated.png',
+    createdAt: Date.now(),
+    generationMode: 'ai',
+    settings: { width: 64, height: 64, colorLimit: 32, brand: 'mard' },
+    cells: [{ color: '#7c5cfc', colorCode: 'C01' }],
+  }))
   const detail = loadPage('packages/ai-generation/index.js')
   detail.onLoad({ taskId: 'task-1', from })
   detail.onShow()
@@ -183,7 +190,7 @@ test('生成中的任务启用既有动效状态；失败后可返回首页再�
   notify()
   assert.equal(detail.data.isGenerating, false)
   assert.equal(detail.data.isFailed, true)
-  assert.equal(detail.data.failureMessage, 'AI 生成超时，请稍后重试')
+  assert.equal(detail.data.editorReady, false)
   detail.backHome()
   detail.onUnload()
   home.onShow()
@@ -193,13 +200,15 @@ test('生成中的任务启用既有动效状态；失败后可返回首页再�
   ])
 })
 
-test('当前生成页成功后仅跳转一次，并打开对应 AI 草稿', async (t) => {
+test('当前生成页成功后留在同一页，并加载对应 AI 草稿', async (t) => {
   const { detail, view, calls } = setupDetail(t)
   Object.assign(view, { status: 'succeeded', isSucceeded: true })
   await detail.handleSucceeded()
   await detail.handleSucceeded()
-  assert.deepEqual(calls.navigation, ['/packages/editor/index'])
-  assert.deepEqual(calls.drafts, [{ id: 'task-1', generationMode: 'ai' }])
+  assert.deepEqual(calls.navigation, [])
+  assert.equal(calls.drafts.length, 1)
+  assert.equal(detail.data.editorReady, true)
+  assert.equal(detail.data.draft.id, 'task-1')
 })
 
 test('离开生成页后成功通知不覆盖当前草稿、不跳转', async (t) => {
@@ -212,7 +221,7 @@ test('离开生成页后成功通知不覆盖当前草稿、不跳转', async (t
   assert.deepEqual(calls.drafts, [])
 })
 
-test('成功后保存草稿尚未完成时返回首页，保存完成不抢回编辑器', async (t) => {
+test('成功后返回首页，保存完成也不抢回编辑器', async (t) => {
   const { detail, calls } = setupDetail(t)
   const pending = deferred()
   appStore.setCurrentDraft.mock.mockImplementationOnce(() => pending.promise)
@@ -224,11 +233,11 @@ test('成功后保存草稿尚未完成时返回首页，保存完成不抢回�
   assert.deepEqual(calls.navigation, ['/pages/home/index'])
 })
 
-test('从作品页回看成功任务不自动跳转；失败重试仍绑定原任务', async (t) => {
+test('从作品页回看成功任务仍留在当前页；失败重试仍绑定原任务', async (t) => {
   const { detail, calls } = setupDetail(t, 'projects', 'succeeded')
   await detail.handleSucceeded()
   assert.deepEqual(calls.navigation, [])
-  assert.deepEqual(calls.drafts, [])
+  assert.equal(calls.drafts.length, 1)
   detail.retry()
   assert.deepEqual(calls.retries, ['task-1'])
 })

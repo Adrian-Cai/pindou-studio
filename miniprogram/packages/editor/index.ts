@@ -8,7 +8,7 @@
  * 关键点：手势与绘制共用一套 touch 回调；用 _canvasRenderVersion 版本号防止异步测量/绘制竞态
  *       （旧回调若版本对不上直接丢弃）；底部控制面板复用公共组件 editor-control-panel。
  */
-import { resolveGenerationMode, type GenerationMode, type PatternCell, type PatternDraft } from '../../models/pattern'
+import { getPaletteColors, resolveGenerationMode, type GenerationMode, type PatternCell, type PatternDraft } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
 import {
   cloudSummaryToWorkItem,
@@ -136,7 +136,7 @@ Page({
       draft = { ...draft, generationMode }
     }
 
-    const paletteColors = this.getPaletteColors(draft)
+    const paletteColors = getPaletteColors(draft.cells)
     const firstColor = paletteColors[0] ?? ''
     const firstColorCode = firstColor
       ? (draft.cells.find((c) => c.color === firstColor)?.colorCode ?? '')
@@ -170,19 +170,6 @@ Page({
 
   stopWorkspaceTouch() {
     this._singleTouchActive = false
-  },
-
-  // 统计图纸出现过的颜色并按使用频次排序，取前 16 个作为可选调色板
-  getPaletteColors(draft: PatternDraft): string[] {
-    const counts = new Map<string, number>()
-    draft.cells.forEach((cell) => {
-      if (cell.color === 'transparent') return
-      counts.set(cell.color, (counts.get(cell.color) ?? 0) + 1)
-    })
-    return [...counts.entries()]
-      .sort((left, right) => right[1] - left[1])
-      .slice(0, 16)
-      .map(([color]) => color)
   },
 
   selectTool(event: WechatMiniprogram.CustomEvent<{ tool: string }>) {
@@ -704,7 +691,7 @@ Page({
           updatedAt: Date.now(),
           createdAt: existing?.createdAt ?? draft.createdAt,
           beadCount: this.data.beadCount,
-          colorCount: this.getPaletteColors(draft).length,
+          colorCount: getPaletteColors(draft.cells).length,
           width: draft.settings.width,
           height: draft.settings.height,
           status: 'completed' as const,
