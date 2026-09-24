@@ -144,6 +144,38 @@ test('服务端返回的结构化 failure 也能归一化', () => {
   assert.equal(failure.code, 'AI_SERVICE_BUSY')
 })
 
+test('落库的裸 failure 对象也能解析（列表页正文走的正是这条路径）', () => {
+  // 作品卡片正文来自 applyTaskToWorkItem 写下的 failureMessage，而入参是 task.failure ——
+  // 一个已经是 failure 形态的裸对象，既不是 { failure: {...} } 包装也不是 ApiError。
+  // 这条路径曾对所有码都返回 null，于是列表页永远是「AI 生成失败，请稍后重试」，
+  // 补再多 failureDefinition 也照不出来。
+  const stored = {
+    code: 'RATE_LIMITED',
+    message: '请求过于频繁，请稍后重试',
+    category: 'PROVIDER',
+    retryable: true,
+    action: 'RETRY',
+  }
+  assert.equal(service.aiGenerationErrorMessage(stored), '请求过于频繁，请稍后重试')
+
+  const resolved = service.aiGenerationFailure(stored)
+  assert.ok(resolved, '裸 failure 对象必须能被解析')
+  assert.equal(resolved.code, 'RATE_LIMITED')
+  assert.equal(resolved.action, 'RETRY')
+  assert.equal(manager.canRetryTask(resolved.code), true)
+})
+
+test('未登记的裸 failure 保留自己的文案，不被兜底覆盖', () => {
+  const stored = {
+    code: 'AI_SOMETHING_NEW',
+    message: '服务端新加的失败原因',
+    category: 'INTERNAL',
+    retryable: true,
+    action: 'RETRY',
+  }
+  assert.equal(service.aiGenerationErrorMessage(stored), '服务端新加的失败原因')
+})
+
 test('重试动作只有一张表：manager 与 service 对每个码给同一个动作', () => {
   const codes = [...CODES_WITH_OWN_MESSAGE, ...Object.keys(SERVER_INTERNAL_CODES), 'AI_UNKNOWN_X']
   for (const code of codes) {

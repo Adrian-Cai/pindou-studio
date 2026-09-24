@@ -289,6 +289,15 @@ export function aiGenerationFailure(error: unknown): AiGenerationFailure | null 
     // 下游（重试动作判定、列表页文案）不必自己再猜这份码是不是已经规整过
     if (failure) return { ...failure, code: normalizeFailureCode(failure.code) }
   }
+  // 已经是失败定义形态的裸对象：本地落库的 task.failure 就长这样，作品卡片的正文
+  // （applyTaskToWorkItem 写下的 failureMessage）也是拿它去取文案。缺这一条时
+  // 它对任何码都返回 null，于是列表页永远显示兜底那句「AI 生成失败，请稍后重试」，
+  // 补再多 failureDefinition 也照不出来。parseFailure 要求字段齐全，
+  // 不会把普通对象误认成失败。
+  if (isRecord(error) && typeof error.code === 'string') {
+    const failure = parseFailure(error)
+    if (failure) return { ...failure, code: normalizeFailureCode(failure.code) }
+  }
   // retryable 必须是真正的布尔：category/action 齐全但 retryable 缺失（undefined）时，
   // 走上面的 structured 分支会产出违反 AiGenerationFailure 契约的对象
   if (error instanceof ApiError && error.category && error.action && typeof error.retryable === 'boolean') {
