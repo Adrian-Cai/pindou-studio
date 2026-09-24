@@ -157,6 +157,7 @@ export class AiGenerationFlow {
       await this.query(task)
     } catch (error) {
       if (this.destroyed) return
+      logFlowFailure('poll', this.taskId, error)
       this.setFailure(aiGenerationErrorMessage(error), 'generation', aiGenerationFailure(error))
     } finally {
       this.busy = false
@@ -278,6 +279,7 @@ export class AiGenerationFlow {
         return
       }
       this.setFailure(aiGenerationErrorMessage(error), 'query', aiGenerationFailure(error))
+      logFlowFailure('query', this.taskId, error)
     }
   }
 
@@ -329,6 +331,7 @@ export class AiGenerationFlow {
         ? 'download'
         : 'converting'
       this.setFailure(aiGenerationErrorMessage(error), retryMode, aiGenerationFailure(error))
+      logFlowFailure('complete', this.taskId, error)
     }
   }
 
@@ -401,6 +404,17 @@ export class AiGenerationFlow {
   }
 
   private failTask(failure: AiGenerationFailure | null): void {
+    // 界面上的失败原因一律收口成一句中文文案，只剩文案时真机排查无从下手
+    // （「AI 生成失败，请稍后重试」既可能是图片过大也可能是不支持）；
+    // 这里把真实码落到控制台，真机调试或 vConsole 能直接读到根因。
+    console.error('[ai-generation] 任务进入失败态', JSON.stringify({
+      taskId: this.taskId,
+      code: failure?.code ?? null,
+      category: failure?.category ?? null,
+      retryable: failure?.retryable ?? null,
+      action: failure?.action ?? null,
+      message: failure?.message ?? null,
+    }))
     patchAiTask(this.taskId, {
       status: 'failed',
       failure,
@@ -512,4 +526,33 @@ function canceledFailure(): AiGenerationFailure {
     retryable: true,
     action: 'RETRY',
   }
+}
+
+/**
+ * 原始异常诊断日志（与 failTask 的「码级日志」互补：这里带 HTTP 状态与 requestId）。
+ *
+ * 为什么需要它：所有失败都被翻译成用户可读文案，原始错误对象到此为止就丢了，
+ * 线上只能看到「AI 生成失败，请稍后重试」这一句——同一句文案背后可能是图片过大、
+ * 限流、服务端 500 或 provider 额度耗尽。带 requestId 的日志能直接与服务端对账。
+ */
+function logFlowFailure(context: string, taskId: string, error: unknown): void {
+  if (error instanceof ApiError) {
+    console.error('[ai-generation] 任务请求失败', JSON.stringify({
+      context,
+      taskId,
+      statusCode: error.statusCode,
+      code: error.code,
+      requestId: error.requestId,
+      message: error.message,
+      details: error.details,
+    }))
+    return
+  }
+  const failure = aiGenerationFailure(error)
+  console.error('[ai-generation] 任务请求失败', JSON.stringify({
+    context,
+    taskId,
+    code: failure?.code ?? null,
+    message: failure?.message ?? (error instanceof Error ? error.message : String(error)),
+  }))
 }

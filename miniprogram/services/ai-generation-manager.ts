@@ -11,6 +11,7 @@
  */
 import { AiGenerationFlow } from './ai-generation-flow'
 import {
+  aiFailureAction,
   aiGenerationErrorMessage,
   type AiGenerationFailure,
 } from './ai-generation-service'
@@ -87,7 +88,7 @@ export interface AiTaskView {
   updatedAt: number
 }
 
-/** 失败是否可以重试：只有 action 为 RETRY 且服务端标记 retryable 的失败才给重试入口。 */
+/** 失败是否可以重试：只有 action 为 RETRY 的失败才给重试入口。 */
 export function canRetryTask(failureCode?: string): boolean {
   return retryActionFor(failureCode) === 'RETRY'
 }
@@ -109,34 +110,16 @@ export function retryActionLabel(failureCode?: string): string {
 /**
  * 按失败码决定卡片上的操作类型。
  *
- * 入参必须是**已归一化**的失败码（见 ai-generation-service.normalizeFailureCode）。
- * 调用方拿到的 failureCode 都出自 aiGenerationFailure，已经过归一化，这里不再重复。
+ * 动作表**只有一份**，在 ai-generation-service 的 failureDefinition 里，这里只做转发：
+ * 历史上 manager 自带一张 switch、service 的 failureDefinition 自带一张 action 字段，
+ * 两张表各写各的，同一个码在任务页与列表页可能给出不同按钮（IMAGE_TOO_LARGE 就曾是
+ * 「可重试」与「应换图」并存）。新增失败码只需改 service 一处。
+ *
+ * 入参可以是归一化前或后的码：aiFailureAction 内部会 normalize，未登记的码给 SELECT_IMAGE
+ * （不给重试，避免用户反复撞同一个不可恢复错误）。
  */
 function retryActionFor(failureCode?: string): PublicErrorAction {
-  switch (failureCode) {
-    case 'USER_AI_QUOTA_EXHAUSTED':
-      return 'VIEW_BENEFITS'
-    case 'INVALID_IMAGE':
-    case 'UNSUPPORTED_IMAGE':
-    case 'IMAGE_DECODE_ERROR':
-    case 'CONTENT_REJECTED':
-    case 'AI_INPUT_FILE_UNAVAILABLE':
-      return 'SELECT_IMAGE'
-    case 'AI_SERVICE_UNAVAILABLE':
-      return 'USE_STANDARD_MODE'
-    case 'AI_SERVICE_BUSY':
-    case 'AI_TIMEOUT':
-    case 'AI_TASK_EXPIRED':
-    case 'AI_RESULT_INVALID':
-    case 'AI_GENERATION_FAILED':
-    case 'IMAGE_TOO_LARGE':
-    case 'RATE_LIMITED':
-    case 'NETWORK_ERROR':
-      return 'RETRY'
-    default:
-      // 未知失败默认不给重试，避免用户反复撞同一个不可恢复错误
-      return 'SELECT_IMAGE'
-  }
+  return aiFailureAction(failureCode)
 }
 
 export class AiTaskManager {
