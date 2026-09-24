@@ -49,7 +49,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.covers.publicBaseUrl,
     );
     const paymentGateway = await createWeChatPaymentGateway(config.wechatPay);
-    const virtualPayGateway = createVirtualPayGateway(config.virtualPay);
+    const virtualPayGateway = createVirtualPayGateway(config.virtualPay, config.wechat.appSecret);
     const aiFiles = new FileSystemAiFileStorage(
       config.aiFiles.storageDirectory,
       config.aiFiles.publicBaseUrl,
