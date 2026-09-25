@@ -2,7 +2,6 @@ import {
   createDraft,
   persistImage,
   prepareImageForContentSecurity,
-  stripAiWatermarkBand,
 } from './image-service'
 import {
   aiGenerationFailure,
@@ -358,12 +357,7 @@ export class AiGenerationFlow {
     if (!outputImagePath || !(await isAiOutputImageAvailable(outputImagePath))) {
       this.transition('downloading', 'download')
       patchAiTask(this.taskId, { status: 'downloading' })
-      // 平台把「AI生成」标识同步烙在产物底部，先裁掉再落盘：图案引擎是按像素降采样
-      // 出格子的，不裁的话这几个字会被采样成一格格珠子混进图纸与材料清单。
-      // 裁切放在下载这一步，保证一个任务只裁一次——重试/恢复读到的都已是裁好的图。
-      outputImagePath = await persistImage(
-        await stripAiWatermarkBand(await downloadAiOutput(outputUrl)),
-      )
+      outputImagePath = await persistImage(await downloadAiOutput(outputUrl))
       patchAiTask(this.taskId, { outputImagePath })
     }
 
