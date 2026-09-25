@@ -123,6 +123,26 @@ const PROVIDER_RETRY_BASE_DELAY_MS = 1_500;
 /** 两次 provider 提交之间的最小间隔：主动降速，从源头少撞 EXCEED_REQUEST_LIMIT。 */
 const PROVIDER_SUBMISSION_MIN_INTERVAL_MS = 800;
 /**
+ * 撞到 provider 限流后的**全局冷却期**。
+ *
+ * 存在的理由：混元的 EXCEED_REQUEST_LIMIT 是**账号维度**限流 —— 一个任务被限流，
+ * 说明此刻整个账号都进不去，其它任务此刻提交必然也被拒。此时正确做法是「全体停手等一会儿」，
+ * 而旧实现让每个任务各自退避后继续撞：N 个任务 × 每个轮询请求各撞一次，
+ * 等于把限流窗口自己拖长，最后全部耗尽重试一起失败（线上表现：任务 1 秒内判死，
+ * 用户连点重试又撞同一波限流）。
+ * 冷却期内任务停在 queued、请求立即返回（不调 provider、也不占用请求时间），
+ * 冷却结束后由下一轮轮询自然重试。
+ */
+const PROVIDER_RATE_LIMIT_COOLDOWN_MS = 8_000;
+/**
+ * 单个任务最多撞几次限流。
+ *
+ * 存在的理由：冷却重试必须有个终点 —— 限流持续数分钟时，用户不该无限期卡在「排队中」，
+ * 也不该每小时被重试刷一次。超过次数才判失败（对外仍是 AI_SERVICE_BUSY / RETRY）。
+ * 计数在进程内，进程重启会清零：那条路径由 advance 的提交超时判据兜底。
+ */
+const PROVIDER_RATE_LIMIT_MAX_ATTEMPTS = 6;
+/**
  * 任务被领走（processing 且尚无 requestId）后的静置期。
  * 期间其它推进者（并发轮询）不再重复提交；超过则由下一个推进者接手，兼顾进程崩溃后的恢复。
  */
@@ -225,6 +245,10 @@ export class PostgresAiGenerationService {
   /** 提交闸门：串行推进「发起时刻」，保证相邻两次提交间隔不小于 PROVIDER_SUBMISSION_MIN_INTERVAL_MS。 */
   private submissionGate: Promise<unknown> = Promise.resolve();
   private lastSubmissionAt = 0;
+  /** 限流冷却到期时刻（进程内）：此刻之前不再向 provider 提交；多副本部署时各副本各自生效。 */
+  private rateLimitedUntil = 0;
+  /** 每个任务已撞限流的次数，用于给「一直在限流」一个终点（见 PROVIDER_RATE_LIMIT_MAX_ATTEMPTS）。 */
+  private readonly rateLimitAttempts = new Map<string, number>();
 
   public constructor(
     private readonly pool: Pool,
@@ -353,6 +377,15 @@ export class PostgresAiGenerationService {
    */
   private async advance(job: AiJobRow, requestId: string | undefined = undefined): Promise<AiGenerationResponse> {
     if (job.status === "queued") {
+      // 限流回退过的 queued 任务会被反复重试，started_at 是它的首次提交时刻 ——
+      // 拿它兜底给一个终点：内存里的限流计数会在进程重启时清零，只有这里能挡住
+      // 「provider 长时间不可用 → 任务无限排队到 24 小时保留期结束」。
+      if (
+        job.started_at
+        && this.now().getTime() - new Date(job.started_at).getTime() > PROVIDER_SUBMISSION_TIMEOUT_MS
+      ) {
+        return mapJob(await this.markFailed(job.user_id, job.id, "AI_SUBMISSION_TIMEOUT"));
+      }
       const submitted = await this.submitOnce(job.user_id, job.id, requestId);
       if (submitted.provider_output_url) {
         return this.completeOutput(submitted, submitted.provider_output_url, requestId);
@@ -467,6 +500,10 @@ export class PostgresAiGenerationService {
    * 退避重试，期间任务停在 processing，前端轮询自然等到结果；只有耗尽重试才 markFailed。
    */
   private async submitWithRetry(userId: string, jobId: string, requestId?: string): Promise<AiJobRow> {
+    // 冷却期内不提交，直接把 queued 状态原样返回。
+    // 这里刻意**不**原地等待冷却结束：等待会压在一次 HTTP 请求里，而小程序侧请求超时是 10s，
+    // 把「等一会儿就好」判成网络失败，用户反而更早看到错误、还会再发一次请求。
+    if (this.isRateLimited()) return this.readJob(this.pool, userId, jobId);
     const claim = await this.claimQueuedJob(userId, jobId);
     const claimed = claim.job;
     if (claimed.status !== "processing" || claimed.provider_request_id) return claimed;
@@ -505,6 +542,12 @@ export class PostgresAiGenerationService {
         if (isProviderError(error)) {
           logProviderFailure(claimed, error, requestId, providerPublicCode(error), Date.now() - submissionStartedAt);
         }
+        // 限流单独立一条路：不原地退避重试，而是开启全局冷却并把任务退回 queued。
+        // 原地重试的问题见 PROVIDER_RATE_LIMIT_COOLDOWN_MS 的注释 —— 账号维度限流下，
+        // 「各自退避后继续撞」比「一起等一会儿」更容易把整批任务一起拖死。
+        if (isProviderError(error) && error.failure.kind === "RATE_LIMITED") {
+          return this.handleRateLimited(userId, jobId);
+        }
         if (isTransientProviderError(error) && attempt < PROVIDER_SUBMISSION_MAX_ATTEMPTS) {
           const delayMs = this.retryDelayMs(attempt);
           console.error(JSON.stringify({
@@ -538,7 +581,53 @@ export class PostgresAiGenerationService {
                   NULL::bigint AS output_byte_size`,
       [jobId, submission.requestId, submission.outputUrl, this.now(), userId, claimed.input_object_key, claimed.input_content_type],
     );
+    this.rateLimitAttempts.delete(jobId);
     return updated.rows[0] ?? this.readJob(this.pool, userId, jobId);
+  }
+
+  /** 是否处于限流冷却期：冷却用注入时钟（this.now）而非墙钟，便于测试推进时间。 */
+  private isRateLimited(): boolean {
+    return this.now().getTime() < this.rateLimitedUntil;
+  }
+
+  /**
+   * 撞到 provider 限流：开启全局冷却，并把任务退回 queued 等下一轮轮询重试。
+   * 累计撞墙次数超过 PROVIDER_RATE_LIMIT_MAX_ATTEMPTS 才判失败（对外仍是「服务繁忙 / 可重试」）。
+   */
+  private async handleRateLimited(userId: string, jobId: string): Promise<AiJobRow> {
+    this.rateLimitedUntil = this.now().getTime() + PROVIDER_RATE_LIMIT_COOLDOWN_MS;
+    const attempt = (this.rateLimitAttempts.get(jobId) ?? 0) + 1;
+    this.rateLimitAttempts.set(jobId, attempt);
+    console.error(JSON.stringify({
+      event: "ai_provider_rate_limited",
+      jobId,
+      attempt,
+      maxAttempts: PROVIDER_RATE_LIMIT_MAX_ATTEMPTS,
+      cooldownMs: PROVIDER_RATE_LIMIT_COOLDOWN_MS,
+    }));
+    if (attempt >= PROVIDER_RATE_LIMIT_MAX_ATTEMPTS) {
+      this.rateLimitAttempts.delete(jobId);
+      return this.markFailed(userId, jobId, "AI_PROVIDER_RATE_LIMITED");
+    }
+    return this.requeueAfterRateLimit(userId, jobId);
+  }
+
+  /**
+   * 限流后把任务退回 queued（清掉半截的 provider 引用）。
+   * 保留 started_at：它是首次提交时刻，advance 靠它给反复重试的任务一个超时终点。
+   */
+  private async requeueAfterRateLimit(userId: string, jobId: string): Promise<AiJobRow> {
+    const result = await this.pool.query<AiJobRow>(
+      `UPDATE pindou_ai_generation_jobs
+          SET status = 'queued', provider_request_id = NULL, provider_output_url = NULL,
+              error_code = NULL, updated_at = $2
+        WHERE id = $1 AND user_id = $3 AND status = 'processing'
+        RETURNING *, NULL::text AS input_object_key, NULL::text AS input_content_type,
+                  NULL::text AS output_public_url, NULL::text AS output_content_type,
+                  NULL::bigint AS output_byte_size`,
+      [jobId, this.now(), userId],
+    );
+    return result.rows[0] ?? this.readJob(this.pool, userId, jobId);
   }
 
   /**

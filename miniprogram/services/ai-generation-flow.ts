@@ -16,6 +16,7 @@ import {
   type AiGenerationFailure,
 } from './ai-generation-service'
 import {
+  createIdempotencyKey,
   getAiTask,
   isAiTaskTerminal,
   isFilePathAlive,
@@ -64,6 +65,19 @@ const NETWORK_BACKOFF_MS = [8_000, 15_000, 30_000] as const
 /** 撞限流后的排队退避：比网络退避更长，给服务端限流窗口留出恢复时间 */
 const RATE_LIMIT_BACKOFF_MS = [15_000, 30_000, 60_000] as const
 const MAX_RATE_LIMIT_RETRIES = RATE_LIMIT_BACKOFF_MS.length
+/**
+ * 服务端「瞬时故障」失败码：AI 服务忙 / 超时。
+ *
+ * 真机上 AI 失败绝大多数是这一类（混元账号维度限流码 EXCEED_REQUEST_LIMIT 被翻成
+ * AI_SERVICE_BUSY），而它唯一的解法就是「等一会儿再试一次」——弹一张失败卡片让用户
+ * 手点重试，既没多给用户信息，又让他多等一次操作。这里让程序替他点这个按钮。
+ * 注意 AI_SERVICE_UNAVAILABLE 不在其中：它表示 provider 未配置 / 额度耗尽，
+ * 重投必然再失败，应该引导去用标准模式。
+ */
+const TRANSIENT_FAILURE_CODES = new Set(['AI_SERVICE_BUSY', 'AI_TIMEOUT'])
+/** 瞬时故障自动重投的退避，与网络退避同量级：太短会撞上同一波限流。 */
+const TRANSIENT_RETRY_BACKOFF_MS = [15_000, 30_000] as const
+const MAX_TRANSIENT_RETRIES = TRANSIENT_RETRY_BACKOFF_MS.length
 
 /**
  * 单条 AI 任务的执行器：负责「上传 → 创建 → 轮询 → 下载 → 转网格」这一条链。
@@ -98,6 +112,7 @@ export class AiGenerationFlow {
   private nextPollAt: number | null = null
   private networkFailureCount = 0
   private rateLimitCount = 0
+  private transientRetryCount = 0
   private processingSince: number | null = null
 
   constructor(options: AiGenerationFlowOptions) {
@@ -299,6 +314,9 @@ export class AiGenerationFlow {
       const failure = generation.status === 'canceled'
         ? canceledFailure()
         : generation.failure ?? aiGenerationFailure(generation)
+      // 服务端瞬时故障：先原地排队重投，别把「等一会儿就好」包装成一张失败卡片。
+      // 失败任务不扣次数（扣次数只在服务端成功收口时发生），重投不会让用户多花一次。
+      if (generation.status === 'failed' && this.requeueTransient(failure)) return
       this.failTask(failure)
       return
     }
@@ -384,6 +402,36 @@ export class AiGenerationFlow {
     this.transition('submitting', 'generation')
     this.updateState({ statusMessage: '生成请求较多，正在排队重试' })
     this.nextPollAt = Date.now() + RATE_LIMIT_BACKOFF_MS[this.rateLimitCount - 1]
+  }
+
+  /**
+   * 服务端瞬时故障后原地重投：清 jobId + 换幂等键，退避一段时间后重新走 submit。
+   *
+   * 换幂等键是必须的：沿用旧键会命中服务端那个已 failed 的任务（冷却期内原样返回失败），
+   * 于是重投每次都拿回同一个失败结果 —— 正是「重试按钮形同虚设」的成因。
+   * @param failure 本次失败定义（用于判码）。
+   * @returns true 表示已安排重投，调用方应直接 return，不要进入失败态。
+   */
+  private requeueTransient(failure: AiGenerationFailure | null): boolean {
+    if (!failure || !TRANSIENT_FAILURE_CODES.has(failure.code)) return false
+    if (this.transientRetryCount >= MAX_TRANSIENT_RETRIES) return false
+    const task = getAiTask(this.taskId)
+    // 原图没了就没法重投（要重新上传）：这时才真的进失败态，让用户重新选图。
+    if (!task || !isFilePathAlive(task.sourceImagePath)) return false
+    this.transientRetryCount += 1
+    patchAiTask(this.taskId, {
+      status: 'queued',
+      failure: null,
+      finishedAt: null,
+      jobId: null,
+      idempotencyKey: createIdempotencyKey(),
+      startedAt: Date.now(),
+    })
+    const delayMs = TRANSIENT_RETRY_BACKOFF_MS[this.transientRetryCount - 1] ?? POLL_INTERVAL_MS
+    this.transition('queued', 'generation')
+    this.updateState({ statusMessage: `AI 服务繁忙，${Math.round(delayMs / 1000)} 秒后自动重试` })
+    this.nextPollAt = Date.now() + delayMs
+    return true
   }
 
   /** 切到其他阶段：更新本地 UI 文案并通知订阅者。 */

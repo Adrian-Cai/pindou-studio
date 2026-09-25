@@ -337,8 +337,10 @@ test("provider submission errors fail the task without output or quota debit", a
   assert.equal(state.debitCount, 0);
 });
 
-test("provider rate limit is retried with backoff instead of failing the task immediately", async () => {
+test("provider rate limit parks the job in queued until the cooldown passes", async () => {
+  let current = NOW;
   const state = harness({
+    now: () => current,
     // 线上实测形状（2026-09-24）：混元限流码 EXCEED_REQUEST_LIMIT，无 httpStatus，1 秒内返回。
     providerErrors: [
       new ProviderError({
@@ -350,17 +352,30 @@ test("provider rate limit is retried with backoff instead of failing the task im
     ],
   });
   const created = await state.service.create(REQUEST);
-  const result = await advanceUntilTerminal(state, created.id);
+  await new Promise((resolve) => setImmediate(resolve));
+  const parked = await state.service.get(REQUEST.userId, created.id);
 
-  // 限流属于「等一下就好」：不该把任务直接判死，退避重试后应正常出图。
+  // 限流属于「等一下就好」：任务不该被判死，而是停在 queued 等冷却。
+  assert.equal(parked.status, "queued");
+  assert.equal(state.createCount, 1);
+
+  // 冷却期内继续推进：绝不重复调 provider。限流是账号维度的，
+  // 每个轮询请求各撞一次只会把限流窗口越拖越长（旧实现正是这样把整批任务一起拖死的）。
+  const duringCooldown = await state.service.get(REQUEST.userId, created.id);
+  assert.equal(duringCooldown.status, "queued");
+  assert.equal(state.createCount, 1);
+
+  current = new Date(NOW.getTime() + 30_000);
+  const result = await state.service.get(REQUEST.userId, created.id);
   assert.equal(result.status, "succeeded");
   assert.equal(state.createCount, 2);
-  assert.ok(state.sleeps.some((ms) => ms >= 1500), `expected a backoff sleep, got ${state.sleeps.join(",")}`);
   assert.equal(state.debitCount, 1);
 });
 
-test("provider rate limit still fails the task after the retries are exhausted", async () => {
+test("provider rate limit still fails the task after the attempts are exhausted", async () => {
+  let current = NOW;
   const state = harness({
+    now: () => current,
     providerError: new ProviderError({
       provider: "hunyuan",
       providerCode: "EXCEED_REQUEST_LIMIT",
@@ -369,11 +384,17 @@ test("provider rate limit still fails the task after the retries are exhausted",
     }),
   });
   const created = await state.service.create(REQUEST);
-  const result = await advanceUntilTerminal(state, created.id);
+  await new Promise((resolve) => setImmediate(resolve));
+  // 每次推进超过冷却期让任务真的重试一次；一直限流时最终仍要给用户一个终态。
+  let result = await state.service.get(REQUEST.userId, created.id);
+  for (let attempt = 0; attempt < 10 && result.status !== "failed"; attempt += 1) {
+    current = new Date(current.getTime() + 30_000);
+    result = await state.service.get(REQUEST.userId, created.id);
+  }
 
   assert.equal(result.status, "failed");
   assert.equal(result.failure.code, "AI_SERVICE_BUSY");
-  assert.equal(state.createCount, 3);
+  assert.equal(state.createCount, 6);
   assert.equal(state.debitCount, 0);
 });
 
