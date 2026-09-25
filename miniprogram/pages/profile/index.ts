@@ -31,7 +31,6 @@ Page({
     aiGenerationQuota: 0,
     dailyFreeAiGenerationQuota: 0,
     aiGenerationDailyFreeRemaining: 0,
-    aiGenerationPurchasedQuota: 0,
     aiQuotaTipsOpen: false,
     avatarPath: DEFAULT_AVATAR_PATH,
     isLoggedIn: false,
@@ -113,15 +112,12 @@ Page({
       0,
       aiGenerationDailyFreeQuota - (profile?.quota.aiGeneration.usedToday ?? 0),
     )
-    const aiGenerationPurchasedQuota = profile?.quota.aiGeneration.purchased ?? 0
-
     this.setData({
       downloadQuota,
       dailyFreeDownloadQuota,
       aiGenerationQuota,
       dailyFreeAiGenerationQuota: aiGenerationDailyFreeQuota,
       aiGenerationDailyFreeRemaining,
-      aiGenerationPurchasedQuota,
       avatarPath: normalizeAvatarUrl(user?.avatarUrl) || DEFAULT_AVATAR_PATH,
       isLoggedIn: hasAuthenticatedUser,
       accountName: user?.nickname?.trim() || '拼豆用户',

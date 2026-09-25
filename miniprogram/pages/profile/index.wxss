@@ -257,11 +257,6 @@
   font-size: 22rpx;
   line-height: 32rpx;
 }
-.benefit-card__detail-divider {
-  height: 1rpx;
-  margin-left: 70rpx;
-  background: var(--track);
-}
 .benefit-card__action {
   display: flex;
   width: 100%;
@@ -514,7 +509,6 @@
   .benefit-card__detail-value { margin-left: 8rpx; }
   .benefit-card__detail-label { font-size: 21rpx; }
   .benefit-card__detail-count { font-size: 28rpx; }
-  .benefit-card__detail-divider { margin-left: 60rpx; }
   .benefit-card__action { height: 64rpx; font-size: 24rpx; line-height: 64rpx; }
   .profile-grid { gap: 16rpx; }
   .profile-grid__item { height: 204rpx; padding: 24rpx 20rpx 24rpx 24rpx; }

@@ -23,10 +23,10 @@ Page({
     packagesLoading: false,
     packageMessage: '',
     selected: 0,
+    selectedPrice: '',
     quota: 0,
     dailyFreeQuota: 0,
     dailyFreeRemaining: 0,
-    purchasedQuota: 0,
     paymentLoading: false,
     /** 本次购买的幂等键：成功或明确取消前一直复用，避免重复下单。 */
     paymentIdempotencyKey: '',
@@ -38,7 +38,6 @@ Page({
       quota: aiQuota?.remaining ?? 0,
       dailyFreeQuota: aiQuota?.dailyFree ?? 0,
       dailyFreeRemaining: Math.max(0, (aiQuota?.dailyFree ?? 0) - (aiQuota?.usedToday ?? 0)),
-      purchasedQuota: aiQuota?.purchased ?? 0,
     })
     void this.refreshQuota()
     void this.refreshPackages()
@@ -52,7 +51,6 @@ Page({
         quota: aiQuota.remaining,
         dailyFreeQuota: aiQuota.dailyFree,
         dailyFreeRemaining: Math.max(0, aiQuota.dailyFree - aiQuota.usedToday),
-        purchasedQuota: aiQuota.purchased,
       })
     }
   },
@@ -66,18 +64,23 @@ Page({
         packagesLoading: false,
         packageMessage: packages.length > 0 ? '' : '暂无可购买的 AI 生成套餐',
         selected: 0,
+        selectedPrice: packages[0]?.price ?? '',
       })
     } catch {
       this.setData({
         packages: [],
         packagesLoading: false,
         packageMessage: '套餐加载失败，请稍后重试',
+        selectedPrice: '',
       })
     }
   },
 
   selectPackage(event: WechatMiniprogram.TouchEvent) {
-    this.setData({ selected: Number(event.currentTarget.dataset.index) })
+    const index = Number(event.currentTarget.dataset.index)
+    const selectedPackage = this.data.packages[index]
+    if (!selectedPackage) return
+    this.setData({ selected: index, selectedPrice: selectedPackage.price })
   },
 
   openPaidServiceAgreement() {

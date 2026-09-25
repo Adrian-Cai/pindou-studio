@@ -101,21 +101,6 @@
               </view>
             </view>
           </view>
-          <view class="benefit-card__detail-divider"></view>
-          <view class="benefit-card__detail-row">
-            <view class="benefit-card__detail-icon-wrap">
-              <image class="benefit-card__detail-icon" src="/assets/icons/iconsax/shopping-cart.svg" mode="aspectFit" aria-hidden="true" />
-            </view>
-            <view class="benefit-card__detail-copy">
-              <view class="benefit-card__detail-line">
-                <text class="benefit-card__detail-label">已购买</text>
-                <view class="benefit-card__detail-value">
-                  <text class="benefit-card__detail-count">{{aiGenerationPurchasedQuota}}</text>
-                  <text class="benefit-card__detail-unit">次</text>
-                </view>
-              </view>
-            </view>
-          </view>
           <view class="benefit-card__action" bindtap="showRechargeSheet" aria-role="button" aria-label="购买次数" hover-class="benefit-card__action--pressed">
             <text>购买次数</text>
             <image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
@@ -126,7 +111,6 @@
         <view class="benefit-card__quota-tip-arrow"></view>
         <view class="benefit-card__quota-tip-title">可用次数说明</view>
         <view class="benefit-card__quota-tip-list">
-          <view>· 可用次数 = 今日免费剩余 + 已购买次数</view>
           <view>· 每次 AI 生成消耗 1 次</view>
           <view>· 每日免费次数会在每日 00:00 恢复</view>
         </view>
@@ -186,7 +170,7 @@
       <text class="recharge-sheet__quota-number">{{aiGenerationQuota}}</text>
       <text class="recharge-sheet__quota-unit">次</text>
     </view>
-    <view class="recharge-sheet__quota-detail">免费 {{aiGenerationDailyFreeRemaining}} 次 · 已购买 {{aiGenerationPurchasedQuota}} 次</view>
+    <view class="recharge-sheet__quota-detail">今日免费剩余 {{aiGenerationDailyFreeRemaining}} / {{dailyFreeAiGenerationQuota}} 次</view>
     <view class="recharge-sheet__section-title">选择购买套餐</view>
     <view wx:if="{{packagesLoading}}" class="recharge-sheet__message">正在加载 AI 套餐…</view>
     <view wx:elif="{{packageMessage}}" class="recharge-sheet__message">{{packageMessage}}</view>

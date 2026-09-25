@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<!--
+  购买 AI 生成次数 · 改版 UI 稿（设计稿，非线上代码）
+
+  设计基准：393 × 880（浅色主题），可直接在浏览器打开对照
+  Token 来源：miniprogram/app.wxss + docs 设计规范（--color-primary #12B466、--radius-card 16px、
+              --radius-control 8px、--color-bg #F8F9FB、--color-border #E9EAF0）
+  本次优化三点：
+    1. 顶部次数信息分层：一级「当前总可用 3 次」（36px 主色），二级「今日免费剩余 / 已购买」弱化并排
+    2. 三个套餐图标统一描边风格、含义区分：嫩芽（新用户）/ 闪电（30 次）/ 钻石（80 次）
+    3. 底部提示 + 「在线客服」入口（保留原有《付费服务协议》入口，合规需要）
+  类名沿用现有 wxml 结构（recharge-option / payment-method / recharge-button / recharge-notes），便于直接移植到 wxss
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>购买 AI 生成次数 · 改版 UI 稿</title>
+<style>
+  :root {
+    /* 取自 miniprogram/app.wxss + docs 设计规范，勿另造近似值 */
+    --color-primary: #12B466;
+    --color-primary-gradient-end: #14B668;
+    --color-primary-soft: #ECFAF3;
+    --color-primary-surface: #F4FCF8;
+    --color-bg: #F8F9FB;
+    --color-surface: #FFFFFF;
+    --color-surface-muted: #F5F6F8;
+    --color-border: #E9EAF0;
+    --color-text: #15151A;
+    --color-text-secondary: #626573;
+    --color-text-tertiary: #9699A8;
+    --color-disabled: #D8DAE2;
+
+    --radius-control: 8px;
+    --radius-card: 16px;
+    --radius-full: 999px;
+
+    --font: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    display: flex;
+    min-height: 100vh;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 40px 20px;
+    background: #EFF1F4;
+    font-family: var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ───────────── 设备外框 ───────────── */
+  .device {
+    display: flex;
+    width: 393px;
+    height: 880px;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 40px;
+    background: var(--color-bg);
+    box-shadow: 0 24px 56px rgba(21, 21, 26, .13), 0 2px 6px rgba(21, 21, 26, .05);
+  }
+
+  /* ───────────── 状态栏 ───────────── */
+  .statusbar {
+    display: flex;
+    height: 44px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 26px 0 30px;
+  }
+  .statusbar__time { color: var(--color-text); font-size: 14px; font-weight: 600; letter-spacing: .2px; }
+  .statusbar__icons { display: flex; align-items: center; gap: 5px; }
+
+  /* ───────────── 顶部导航栏 ───────────── */
+  .nav {
+    position: relative;
+    display: flex;
+    height: 48px;
+    flex-shrink: 0;
+    align-items: center;
+    padding: 0 20px;
+  }
+  .nav__back { display: flex; width: 24px; height: 24px; align-items: center; justify-content: center; }
+  .nav__title {
+    position: absolute;
+    right: 0;
+    left: 0;
+    color: var(--color-text);
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    text-align: center;
+  }
+  /* 微信小程序胶囊，右侧固定 8px，标题不被挤压 */
+  .nav__capsule {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    display: flex;
+    width: 87px;
+    height: 32px;
+    align-items: center;
+    border: .5px solid rgba(21, 21, 26, .09);
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, .92);
+    box-shadow: 0 1px 2px rgba(21, 21, 26, .04);
+    transform: translateY(-50%);
+  }
+  .nav__capsule::after {
+    position: absolute;
+    top: 9px;
+    bottom: 9px;
+    left: 50%;
+    width: .5px;
+    background: rgba(21, 21, 26, .1);
+    content: "";
+  }
+  .capsule__half { display: flex; flex: 1; align-items: center; justify-content: center; }
+  .capsule__dots { display: flex; gap: 3px; }
+  .capsule__dots i { display: block; width: 4px; height: 4px; border-radius: 50%; background: #15151A; }
+  .capsule__target { position: relative; width: 15px; height: 15px; border: 1.5px solid #15151A; border-radius: 50%; }
+  .capsule__target::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #15151A;
+    content: "";
+    transform: translate(-50%, -50%);
+  }
+
+  /* ───────────── 内容区 ───────────── */
+  .content {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: 24px;
+    padding: 14px 20px 16px;
+  }
+
+  /* ── 次数信息卡：主次分层，替代原三行密集罗列 ── */
+  .quota-card {
+    flex-shrink: 0;
+    padding: 18px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+  }
+  .quota-card__label { color: var(--color-text-tertiary); font-size: 12px; line-height: 18px; letter-spacing: .2px; }
+  .quota-card__total { display: flex; align-items: baseline; gap: 4px; margin-top: 6px; }
+  .quota-card__total b {
+    color: var(--color-primary);
+    font-size: 36px;
+    font-weight: 600;
+    letter-spacing: -.6px;
+    line-height: 40px;
+    font-variant-numeric: tabular-nums;
+  }
+  .quota-card__total span { color: var(--color-primary); font-size: 14px; font-weight: 500; }
+  .quota-card__divider { height: 1px; margin: 14px 0 12px; background: var(--color-border); }
+  .quota-card__aux { display: flex; align-items: flex-start; justify-content: space-between; }
+  .aux-item { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+  .aux-item--end { align-items: flex-end; }
+  .aux-item__label { color: var(--color-text-tertiary); font-size: 12px; line-height: 18px; }
+  .aux-item__value { display: flex; align-items: baseline; gap: 4px; color: var(--color-text); font-size: 15px; line-height: 20px; }
+  .aux-item__value b { font-weight: 500; font-variant-numeric: tabular-nums; }
+  .aux-item__value em { color: #C6C8D2; font-size: 12px; font-style: normal; }
+  .aux-item__value i { color: var(--color-text-tertiary); font-size: 12px; font-style: normal; }
+
+  /* ── 套餐列表 ── */
+  .packages { display: flex; flex-shrink: 0; flex-direction: column; gap: 10px; }
+  .recharge-option {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    font-family: var(--font);
+    text-align: left;
+    transition: background-color .15s ease, border-color .15s ease;
+  }
+  .recharge-option--active { border-color: var(--color-primary); background: var(--color-primary-surface); }
+  .recharge-option__icon {
+    display: flex;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    background: var(--color-primary-soft);
+  }
+  .recharge-option__body { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+  .recharge-option__label { display: flex; align-items: center; gap: 6px; color: var(--color-text); font-size: 15px; font-weight: 500; line-height: 22px; }
+  .recharge-option__tag {
+    flex-shrink: 0;
+    padding: 0 6px;
+    border-radius: var(--radius-full);
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 18px;
+  }
+  .recharge-option__desc { overflow: hidden; color: var(--color-text-tertiary); font-size: 12px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
+  .recharge-option__price { display: flex; min-width: 52px; flex-shrink: 0; align-items: baseline; justify-content: flex-end; gap: 2px; color: var(--color-text); }
+  .recharge-option__price i { font-size: 12px; font-style: normal; font-weight: 500; }
+  .recharge-option__price b { font-size: 21px; font-weight: 600; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
+  .recharge-option--active .recharge-option__price { color: var(--color-primary); }
+  .recharge-option__check { display: flex; width: 20px; height: 20px; flex-shrink: 0; align-items: center; justify-content: center; border: 1.5px solid var(--color-disabled); border-radius: 50%; background: var(--color-surface); }
+  .recharge-option--active .recharge-option__check { border: 0; background: var(--color-primary); }
+
+  /* ── 支付方式 ── */
+  .payment-method {
+    display: flex;
+    height: 52px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+  }
+  .payment-method__label { color: var(--color-text); font-size: 14px; font-weight: 500; }
+  .payment-method__value { display: flex; align-items: center; gap: 6px; color: var(--color-text-secondary); font-size: 14px; }
+  .payment-method__arrow { margin-left: 2px; }
+
+  /* ── 主按钮与协议 ── */
+  .action { flex-shrink: 0; }
+  .recharge-button {
+    display: flex;
+    width: 100%;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: linear-gradient(90deg, var(--color-primary), var(--color-primary-gradient-end));
+    box-shadow: 0 6px 16px rgba(18, 180, 102, .18);
+    color: #FFFFFF;
+    font-family: var(--font);
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .recharge-button b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .recharge-notes { margin-top: 12px; color: var(--color-text-tertiary); font-size: 12px; line-height: 18px; text-align: center; }
+  .recharge-notes span { color: var(--color-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+
+  /* ── 底部提示 + 在线客服入口 ── */
+  .recharge-hint {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 12px;
+    padding: 13px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+  }
+  .recharge-hint__text { display: flex; min-width: 0; flex: 1; gap: 8px; color: var(--color-text-secondary); font-size: 12px; line-height: 19px; }
+  .recharge-hint__text svg { flex-shrink: 0; margin-top: 2px; }
+  .recharge-hint__contact {
+    display: flex;
+    height: 30px;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 4px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* ───────────── 底部 TabBar ───────────── */
+  .tabbar {
+    display: flex;
+    height: 64px;
+    flex-shrink: 0;
+    align-items: center;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+  .tabbar__item { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 3px; color: var(--color-text-secondary); }
+  .tabbar__item--active { color: var(--color-primary); }
+  .tabbar__label { font-size: 12px; line-height: 18px; }
+  .home-indicator { display: flex; height: 16px; flex-shrink: 0; align-items: center; justify-content: center; background: var(--color-surface); }
+  .home-indicator i { display: block; width: 134px; height: 5px; border-radius: 3px; background: #15151A; }
+
+  .caption { color: #8A8F9C; font-size: 12px; letter-spacing: .2px; }
+</style>
+</head>
+<body>
+  <div class="device">
+    <!-- 状态栏 -->
+    <div class="statusbar">
+      <span class="statusbar__time">9:41</span>
+      <span class="statusbar__icons">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#15151A" aria-hidden="true">
+          <rect x="0" y="7.5" width="3" height="3.5" rx="1"/>
+          <rect x="4.7" y="5.5" width="3" height="5.5" rx="1"/>
+          <rect x="9.4" y="3" width="3" height="8" rx="1"/>
+          <rect x="14.1" y="0" width="3" height="11" rx="1"/>
+        </svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" aria-hidden="true">
+          <path d="M8 10.7a1.15 1.15 0 1 0 0-2.3 1.15 1.15 0 0 0 0 2.3Z" fill="#15151A"/>
+          <path d="M4.5 7.4a5 5 0 0 1 7 0" stroke="#15151A" stroke-width="1.6" stroke-linecap="round"/>
+          <path d="M2.2 5a8.3 8.3 0 0 1 11.6 0" stroke="#15151A" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <svg width="25" height="12" viewBox="0 0 25 12" fill="none" aria-hidden="true">
+          <rect x=".5" y=".5" width="21" height="11" rx="3.2" stroke="rgba(21,21,26,.3)"/>
+          <rect x="2" y="2" width="18" height="8" rx="2.2" fill="#15151A"/>
+          <path d="M23 4.2v3.6a2.1 2.1 0 0 0 0-3.6Z" fill="rgba(21,21,26,.4)"/>
+        </svg>
+      </span>
+    </div>
+
+    <!-- 顶部导航栏 -->
+    <div class="nav">
+      <span class="nav__back">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M14.9998 19.9201L8.47984 13.4001C7.70984 12.6301 7.70984 11.3701 8.47984 10.6001L14.9998 4.08008" stroke="#15151A" stroke-width="1.6" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="nav__title">购买 AI 生成次数</span>
+      <span class="nav__capsule">
+        <span class="capsule__half"><span class="capsule__dots"><i></i><i></i><i></i></span></span>
+        <span class="capsule__half"><span class="capsule__target"></span></span>
+      </span>
+    </div>
+
+    <div class="content">
+      <!-- 次数信息卡：一级信息「当前总可用」，二级信息弱化并排 -->
+      <div class="quota-card">
+        <div class="quota-card__label">当前总可用</div>
+        <div class="quota-card__total"><b>3</b><span>次</span></div>
+        <div class="quota-card__divider"></div>
+        <div class="quota-card__aux">
+          <div class="aux-item">
+            <span class="aux-item__label">今日免费剩余</span>
+            <span class="aux-item__value"><b>3</b><em>/</em><b>3</b><i>次</i></span>
+          </div>
+          <div class="aux-item aux-item--end">
+            <span class="aux-item__label">已购买</span>
+            <span class="aux-item__value"><b>0</b><i>次</i></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 套餐列表：三种含义图标（嫩芽 / 闪电 / 钻石），统一描边风格 -->
+      <div class="packages">
+        <div class="recharge-option recharge-option--active">
+          <span class="recharge-option__icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 21v-8" stroke="#12B466" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M12 15c0-3.6 2.9-6.5 6.5-6.5 0 3.6-2.9 6.5-6.5 6.5Z" stroke="#12B466" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M12 18c0-3-2.4-5.4-5.4-5.4 0 3 2.4 5.4 5.4 5.4Z" stroke="#12B466" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="recharge-option__body">
+            <span class="recharge-option__label">AI 精致生成 5 次<span class="recharge-option__tag">新用户</span></span>
+            <span class="recharge-option__desc">适合体验和日常使用</span>
+          </span>
+          <span class="recharge-option__price"><i>¥</i><b>0.1</b></span>
+          <span class="recharge-option__check">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M5 12.5L9.5 17L19 7.5" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </div>
+
+        <div class="recharge-option">
+          <span class="recharge-option__icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M13.4 2.2 4.4 13.6h6.2l-1 8.2 9-11.4h-6.2l1-8.2Z" stroke="#12B466" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="recharge-option__body">
+            <span class="recharge-option__label">AI 精致生成 30 次</span>
+            <span class="recharge-option__desc">适合经常创作的用户</span>
+          </span>
+          <span class="recharge-option__price"><i>¥</i><b>9.9</b></span>
+          <span class="recharge-option__check"></span>
+        </div>
+
+        <div class="recharge-option">
+          <span class="recharge-option__icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M5.8 3.2h12.4l3.4 5.4-9.6 12.2L2.4 8.6 5.8 3.2Z" stroke="#12B466" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2.4 8.6h19.2" stroke="#12B466" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M5.8 3.2 9.6 8.6M18.2 3.2 14.4 8.6" stroke="#12B466" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="recharge-option__body">
+            <span class="recharge-option__label">AI 精致生成 80 次</span>
+            <span class="recharge-option__desc">适合深度创作，单次更划算</span>
+          </span>
+          <span class="recharge-option__price"><i>¥</i><b>19.9</b></span>
+          <span class="recharge-option__check"></span>
+        </div>
+      </div>
+
+      <!-- 支付方式 -->
+      <div class="payment-method">
+        <span class="payment-method__label">支付方式</span>
+        <span class="payment-method__value">
+          <svg width="18" height="16" viewBox="0 0 32 28" aria-hidden="true">
+            <path fill="#07C160" d="M12 1C5.4 1 0 5.2 0 10.4c0 3 1.8 5.7 4.6 7.4l-1.1 4 4.3-2.2c1.1.3 2.4.5 3.6.5a8.8 8.8 0 0 1-.7-3.4c0-5.4 5.2-9.7 11.6-9.7h.9C21.5 3.5 17.1 1 12 1Z"/>
+            <path fill="#07C160" d="M32 16.7c0-4.6-4.4-8.3-9.8-8.3s-9.8 3.7-9.8 8.3S16.8 25 22.2 25c1.1 0 2.1-.1 3.1-.4l3.5 1.9-.9-3.5c2.5-1.5 4.1-3.7 4.1-6.3Z"/>
+            <g fill="#FFFFFF">
+              <circle cx="8" cy="7.5" r="1.3"/><circle cx="16" cy="7.5" r="1.3"/>
+              <circle cx="19" cy="14" r="1.1"/><circle cx="25.5" cy="14" r="1.1"/>
+            </g>
+          </svg>
+          微信支付
+          <svg class="payment-method__arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M9.57 5.93 15.64 12l-6.07 6.07" stroke="#9699A8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </div>
+
+      <!-- 主按钮 -->
+      <div class="action">
+        <button class="recharge-button" type="button">立即支付<b>¥ 0.1</b></button>
+        <div class="recharge-notes">支付即表示同意<span>《付费服务协议》</span></div>
+      </div>
+
+      <!-- 底部提示 + 在线客服 -->
+      <div class="recharge-hint">
+        <span class="recharge-hint__text">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10Z" stroke="#9699A8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 16v-4M12 8h.01" stroke="#9699A8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>AI 生成次数以服务到账为准，若支付后长时间未到账，请联系在线客服。</span>
+        </span>
+        <button class="recharge-hint__contact" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 15v-3a8 8 0 0 1 16 0v3" stroke="#12B466" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="2.4" y="12.6" width="4" height="7" rx="2" stroke="#12B466" stroke-width="1.7"/>
+            <rect x="17.6" y="12.6" width="4" height="7" rx="2" stroke="#12B466" stroke-width="1.7"/>
+            <path d="M19.6 19.6v.4a3.5 3.5 0 0 1-3.5 3.5h-2.6" stroke="#12B466" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          在线客服
+        </button>
+      </div>
+    </div>
+
+    <!-- 底部 TabBar -->
+    <div class="tabbar">
+      <div class="tabbar__item">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="m3 10.8 7.2-6.03c1.03-.86 2.57-.86 3.6 0L21 10.8V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8.2Z" stroke="#626573" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9.5 21v-5.5a2.5 2.5 0 0 1 5 0V21" stroke="#626573" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="tabbar__label">首页</span>
+      </div>
+      <div class="tabbar__item">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="2" y="2" width="20" height="20" rx="4" stroke="#626573" stroke-width="1.5"/>
+          <circle cx="8.5" cy="8.5" r="1.5" stroke="#626573" stroke-width="1.5"/>
+          <path d="m3 17 4.4-4.4a2 2 0 0 1 2.83 0l1.47 1.47 1.2-1.2a2 2 0 0 1 2.83 0L21 16.17" stroke="#626573" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="tabbar__label">作品</span>
+      </div>
+      <div class="tabbar__item tabbar__item--active">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" stroke="#12B466" stroke-width="1.5"/>
+          <circle cx="12" cy="9" r="3" stroke="#12B466" stroke-width="1.5"/>
+          <path d="M6.5 19c.8-2.18 2.67-3.5 5.5-3.5s4.7 1.32 5.5 3.5" stroke="#12B466" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="tabbar__label">我的</span>
+      </div>
+    </div>
+
+    <div class="home-indicator"><i></i></div>
+  </div>
+
+  <p class="caption">购买 AI 生成次数 · 改版稿　|　基准 393 × 880　|　主色 #12B466</p>
+</body>
+</html>
