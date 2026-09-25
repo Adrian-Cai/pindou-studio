@@ -385,10 +385,10 @@ test("provider rate limit still fails the task after the attempts are exhausted"
   });
   const created = await state.service.create(REQUEST);
   await new Promise((resolve) => setImmediate(resolve));
-  // 每次推进超过冷却期让任务真的重试一次；一直限流时最终仍要给用户一个终态。
+  // 每次推进 61s：大于冷却上限，保证每一轮都能真的重试一次；一直限流时最终仍要给用户一个终态。
   let result = await state.service.get(REQUEST.userId, created.id);
   for (let attempt = 0; attempt < 10 && result.status !== "failed"; attempt += 1) {
-    current = new Date(current.getTime() + 30_000);
+    current = new Date(current.getTime() + 61_000);
     result = await state.service.get(REQUEST.userId, created.id);
   }
 
@@ -396,6 +396,39 @@ test("provider rate limit still fails the task after the attempts are exhausted"
   assert.equal(result.failure.code, "AI_SERVICE_BUSY");
   assert.equal(state.createCount, 6);
   assert.equal(state.debitCount, 0);
+});
+
+test("provider rate limit cooldown grows exponentially with each hit", async (t) => {
+  let current = NOW;
+  const state = harness({
+    now: () => current,
+    providerError: new ProviderError({
+      provider: "hunyuan",
+      providerCode: "EXCEED_REQUEST_LIMIT",
+      httpStatus: null,
+      kind: "RATE_LIMITED",
+    }),
+  });
+  const logged = [];
+  t.mock.method(console, "error", (message) => { logged.push(String(message)); });
+  const created = await state.service.create(REQUEST);
+  await new Promise((resolve) => setImmediate(resolve));
+  let result = await state.service.get(REQUEST.userId, created.id);
+  for (let attempt = 0; attempt < 10 && result.status !== "failed"; attempt += 1) {
+    current = new Date(current.getTime() + 61_000);
+    result = await state.service.get(REQUEST.userId, created.id);
+  }
+
+  const cooldowns = logged
+    .map((message) => { try { return JSON.parse(message); } catch { return null; } })
+    .filter((event) => event && event.event === "ai_provider_rate_limited")
+    .map((event) => event.cooldownMs);
+  // 线上实测（2026-09-25）：1.5s / 3.3s 两次退避全部撞墙，说明窗口长于 5s ——
+  // 固定冷却很可能同样不够，必须随撞墙次数增长并在 60s 封顶。
+  // 第 6 次同样会留一条冷却：判失败的同时仍标记「账号还在限流中」，
+  // 免得紧接着的新任务立刻又撞一次墙。
+  assert.deepEqual(cooldowns, [8_000, 16_000, 32_000, 60_000, 60_000, 60_000]);
+  assert.equal(result.status, "failed");
 });
 
 test("a failed job is requeued when the same idempotency key is reused after the cooldown", async () => {

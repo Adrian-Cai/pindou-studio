@@ -135,6 +135,15 @@ const PROVIDER_SUBMISSION_MIN_INTERVAL_MS = 800;
  */
 const PROVIDER_RATE_LIMIT_COOLDOWN_MS = 8_000;
 /**
+ * 冷却期上限。
+ *
+ * 存在的理由（2026-09-25 线上实测）：旧实现的 1.5s / 3.3s 两次退避**全部撞墙**，
+ * 说明限流窗口明显长于 5s —— 固定 8s 很可能同样不够。所以冷却按撞墙次数指数增长
+ * （8s → 16s → 32s → 60s 封顶）：撞得越多，说明这一波限流越久。
+ * 封顶是为了不让用户在「排队中」无限等下去，超过总尝试次数后会拿到终态失败。
+ */
+const PROVIDER_RATE_LIMIT_MAX_COOLDOWN_MS = 60_000;
+/**
  * 单个任务最多撞几次限流。
  *
  * 存在的理由：冷却重试必须有个终点 —— 限流持续数分钟时，用户不该无限期卡在「排队中」，
@@ -595,15 +604,20 @@ export class PostgresAiGenerationService {
    * 累计撞墙次数超过 PROVIDER_RATE_LIMIT_MAX_ATTEMPTS 才判失败（对外仍是「服务繁忙 / 可重试」）。
    */
   private async handleRateLimited(userId: string, jobId: string): Promise<AiJobRow> {
-    this.rateLimitedUntil = this.now().getTime() + PROVIDER_RATE_LIMIT_COOLDOWN_MS;
     const attempt = (this.rateLimitAttempts.get(jobId) ?? 0) + 1;
     this.rateLimitAttempts.set(jobId, attempt);
+    // 指数增长：8s → 16s → 32s → 60s 封顶。撞墙次数越多，说明这一波限流窗口越长。
+    const cooldownMs = Math.min(
+      PROVIDER_RATE_LIMIT_COOLDOWN_MS * 2 ** (attempt - 1),
+      PROVIDER_RATE_LIMIT_MAX_COOLDOWN_MS,
+    );
+    this.rateLimitedUntil = this.now().getTime() + cooldownMs;
     console.error(JSON.stringify({
       event: "ai_provider_rate_limited",
       jobId,
       attempt,
       maxAttempts: PROVIDER_RATE_LIMIT_MAX_ATTEMPTS,
-      cooldownMs: PROVIDER_RATE_LIMIT_COOLDOWN_MS,
+      cooldownMs,
     }));
     if (attempt >= PROVIDER_RATE_LIMIT_MAX_ATTEMPTS) {
       this.rateLimitAttempts.delete(jobId);
