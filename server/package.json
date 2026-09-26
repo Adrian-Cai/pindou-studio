@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@cloudbase/node-sdk": "3.18.3",
+    "axios": "^1.15.1",
     "busboy": "^1.6.0",
     "pg": "8.23.0"
   },
