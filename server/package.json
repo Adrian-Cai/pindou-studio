@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@cloudbase/node-sdk": "3.18.3",
-    "axios": "1.18.0",
+    "axios": "1.16.0",
     "busboy": "^1.6.0",
     "pg": "8.23.0"
   },
@@ -28,6 +28,6 @@
     "typescript": "5.9.3"
   },
   "overrides": {
-    "axios": "1.18.0"
+    "axios": "1.16.0"
   }
 }
