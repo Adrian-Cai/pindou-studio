@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.30.28
+
+- **修复 axios NO_PROXY 绕过漏洞 CVE-2026-42043**：该 CVE 影响 `axios <1.15.1`（推荐修复版本 1.15.1），请求目标 URL 可控时可用 `127.0.0.0/8` 内任意地址绕过 `NO_PROXY` 保护。
+  `server` 与 `cloudfunctions/generateImage` 的 axios 从 `1.16.0` 升到 `1.18.0`（`dependencies` 与 `overrides` 同步固定），`package-lock.json` 重生成；`1.16.0 → 1.18.0` 为升级，未降级，也高于推荐修复版本。
+  升级同时消除 npm audit 中 `axios >=1.15.1 <1.18.0` 区间的「form serializer maxDepth 绕过」告警。
+
 ## 0.30.27
 
 - **修复 axios 代理绕过漏洞 CVE-2025-62718**：该 CVE 影响 `axios <1.15.0`（推荐修复版本 1.15.0），
