@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.30.27
+
+- **修复 axios 代理绕过漏洞 CVE-2025-62718**：该 CVE 影响 `axios <1.15.0`（推荐修复版本 1.15.0），
+  曾被 `@cloudbase/node-sdk` / `wx-server-sdk` 间接引入的 `0.27.2` 受影响。
+  `server` 与 `cloudfunctions/generateImage` 已用 `overrides` 将 axios 统一钉在 `1.18.0`，
+  高于推荐修复版本，本次无需改动依赖声明；重装校验两处均解析为 `1.18.0`，无降级。
+
 ## 0.30.26
 
 - **修复 axios 安全漏洞 CVE-2023-45857**：`axios` 为 `@cloudbase/node-sdk` / `wx-server-sdk` 间接依赖，
