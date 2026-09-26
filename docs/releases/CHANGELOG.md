@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.30.26
+
+- **修复 axios 安全漏洞 CVE-2023-45857**：`axios` 为 `@cloudbase/node-sdk` 间接依赖，
+  被锁定在受影响的 `0.27.2`（该 CVE 影响 `>=1.0.0 <1.6.0`）。在 `server` 与
+  `cloudfunctions/generateImage` 中通过 `overrides` 提升到官方推荐修复版本 `1.6.0`，
+  并重生成 `package-lock.json`；`0.27.2 → 1.6.0` 为升级，未降级。
+
 ## 0.30.25
 
 - **接入 ToAPIs 异步生图**：新任务默认使用 `gpt-image-2.5-sunburst`，通过公开输入图地址提交异步任务，并按任务状态节流查询、校验输出地址和图片真实格式后落库；生产配置从 `TOAPIS_IMAGE_*` 读取，Key 不进入仓库。
