@@ -30,8 +30,9 @@ test("stage 6 real database flow: AI success, failure, output asset and idempote
     configured: true,
     name: "hunyuan",
     model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
-    async createTask(_image, prompt) {
+    async createTask(input, legacyPrompt) {
       providerCreateCount += 1;
+      const prompt = typeof input === "string" ? legacyPrompt : input.prompt;
       assert.match(prompt, /不要生成拼豆网格、方格、材料标记、施工图、边框、Logo、水印或额外文字/);
       if (providerCreateCount > 1) throw new Error("provider rejected image");
       return {

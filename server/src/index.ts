@@ -20,6 +20,8 @@ import { FileSystemCoverStorage } from "./modules/files/cover-storage";
 import { PostgresFileAssetService } from "./modules/files/file-asset-service";
 import { FileSystemAiFileStorage } from "./modules/files/ai-file-storage";
 import { HunyuanImageProvider } from "./modules/ai/hunyuan-image-provider";
+import { ToapisImageProvider } from "./modules/ai/toapis-image-provider";
+import type { AiGenerationProvider } from "./modules/ai/provider";
 import { PostgresAiGenerationService } from "./modules/ai/ai-generation-service";
 import { PostgresQuotaDownloadService } from "./modules/downloads/quota-download-service";
 import { PostgresPaymentService } from "./modules/payments/payment-service";
@@ -78,13 +80,20 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.contentSecurity.asyncMediaCheckEnabled,
     );
     const hunyuanImage = new HunyuanImageProvider(config.hunyuanImage);
+    const toapisImage = new ToapisImageProvider(config.toapisImage);
+    const defaultAiProvider = config.aiImageProvider === "toapis" ? toapisImage : hunyuanImage;
     const aiGenerations = new PostgresAiGenerationService(
       pool,
-      hunyuanImage,
+      defaultAiProvider,
       aiFiles,
       config.quota,
       () => new Date(),
       config.aiFiles.retentionMs,
+      undefined,
+      new Map<string, AiGenerationProvider>([
+        [hunyuanImage.name, hunyuanImage],
+        [toapisImage.name, toapisImage],
+      ]),
     );
     const aiRateLimiter = new InMemoryRateLimiter(
       config.aiRateLimit.maximumRequests,
@@ -146,7 +155,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         aiGenerations,
         capabilities: {
           wechatPay: paymentGateway.configured,
-          aiGeneration: hunyuanImage.configured,
+          aiGeneration: defaultAiProvider.configured,
           persistentStorage: config.deployment.persistentStorageMounted,
           httpsPublicUrls: config.covers.publicBaseUrl.startsWith("https://")
             && config.aiFiles.publicBaseUrl.startsWith("https://"),

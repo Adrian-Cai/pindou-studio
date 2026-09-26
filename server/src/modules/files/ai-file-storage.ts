@@ -25,6 +25,7 @@ export interface AiFileStorage {
   ): Promise<StoredAiFile>;
   read(publicPath: string): Promise<{ readonly buffer: Buffer; readonly contentType: string } | null>;
   readObject(objectKey: string): Promise<{ readonly buffer: Buffer; readonly contentType: string } | null>;
+  publicUrl(objectKey: string): string | null;
   remove(objectKey: string): Promise<void>;
 }
 
@@ -99,6 +100,14 @@ export class FileSystemAiFileStorage implements AiFileStorage {
   public async readObject(objectKey: string): Promise<{ readonly buffer: Buffer; readonly contentType: string } | null> {
     if (!objectKey.startsWith("ai/")) return null;
     return this.readFilename(objectKey.slice(3));
+  }
+
+  /** 为 ToAPIs 生成一条不含本地路径细节的公开输入图地址。 */
+  public publicUrl(objectKey: string): string | null {
+    if (!objectKey.startsWith("ai/")) return null;
+    const filename = objectKey.slice(3);
+    if (!FILE_PATTERN.test(filename)) return null;
+    return `${this.publicBaseUrl.replace(/\/$/u, "")}/${filename}`;
   }
 
   /** 删除一个 AI 文件：先校验 objectKey 前缀与文件名白名单，再 unlink，缺失不算错误。 */

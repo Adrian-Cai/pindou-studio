@@ -28,6 +28,9 @@ function harness({
   downloadError = null,
   saveError = null,
   providerOutput = PROVIDER_PNG,
+  providerName = "hunyuan",
+  providerPollStatuses = null,
+  providerPollIntervalMs,
   now = () => NOW,
 } = {}) {
   let job = null;
@@ -70,6 +73,7 @@ function harness({
           output_byte_size: null, provider: parameters[3], model: parameters[4], status: "queued",
           prompt_version: parameters[5], style: parameters[6], detail_level: parameters[7],
           background_mode: parameters[8], provider_request_id: null, provider_output_url: null, idempotency_key: parameters[9],
+          provider_next_poll_at: null,
           error_code: null, created_at: parameters[10], updated_at: parameters[10], started_at: null,
           completed_at: null, expires_at: parameters[11],
         };
@@ -78,7 +82,19 @@ function harness({
       if (sql.includes("SET provider_request_id =")) {
         job.provider_request_id = parameters[1];
         job.provider_output_url = parameters[2];
-        job.updated_at = parameters[3];
+        job.provider_next_poll_at = parameters[3];
+        job.updated_at = parameters[4] ?? parameters[3];
+        return { rows: [{ ...job }] };
+      }
+      if (sql.includes("SET provider_output_url = $2, provider_next_poll_at = NULL")) {
+        job.provider_output_url = parameters[1];
+        job.provider_next_poll_at = null;
+        job.updated_at = parameters[2];
+        return { rows: [{ ...job }] };
+      }
+      if (sql.includes("SET provider_next_poll_at = $2")) {
+        job.provider_next_poll_at = parameters[1];
+        job.updated_at = parameters[2];
         return { rows: [{ ...job }] };
       }
       if (sql.includes("WHERE jobs.id = $1") && sql.includes("FOR UPDATE OF jobs")) return { rows: [{ ...job }] };
@@ -126,17 +142,23 @@ function harness({
   let receivedPrompt = "";
   const provider = {
     configured: true,
-    name: "hunyuan",
+    name: providerName,
     model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
-    async createTask(_image, prompt) {
+    async createTask(input, legacyPrompt) {
       events.push({ type: "provider_create" });
+      const prompt = typeof input === "string" ? legacyPrompt : input.prompt;
       receivedPrompt = prompt;
       createCount += 1;
       // providerErrors 是「按调用次序消费一次」的错误队列，用来模拟前几次限流、之后成功。
       const queued = Array.isArray(providerErrors) && providerErrors.length > 0 ? providerErrors.shift() : null;
       const failure = queued ?? providerError;
       if (failure) throw failure;
-      return { requestId: "provider_request_1", outputUrl: providerOutputUrl };
+      return { requestId: "provider_request_1", outputUrl: providerName === "toapis" ? null : providerOutputUrl };
+    },
+    pollIntervalMs: providerPollIntervalMs,
+    async getTask() {
+      const status = providerPollStatuses?.shift() ?? "completed";
+      return { status, outputUrl: status === "completed" ? providerOutputUrl : null };
     },
     async downloadOutput() {
       if (downloadError) throw downloadError;
@@ -158,6 +180,7 @@ function harness({
       return { objectKey: "ai/ai_output_test.png", publicUrl: "https://cdn.example/output.png", contentType: "image/png", byteSize: 12, width: 1024, height: 1024 };
     },
     async remove() {},
+    publicUrl() { return "https://studio.example/api/media/ai/ai_input_test.png"; },
   };
   const sleeps = [];
   const service = new PostgresAiGenerationService(
@@ -214,6 +237,20 @@ test("AI output keeps the real provider format when the upstream returns JPEG", 
     filename: "output.jpg",
     contentType: "image/jpeg",
   });
+});
+
+test("ToAPIs tasks are polled asynchronously and completed exactly once", async () => {
+  const state = harness({
+    providerName: "toapis",
+    providerOutputUrl: "https://files.toapis.com/output.png",
+    providerPollStatuses: ["in_progress", "completed"],
+    providerPollIntervalMs: 0,
+  });
+  const created = await state.service.create(REQUEST);
+  const result = await advanceUntilTerminal(state, created.id);
+  assert.equal(result.status, "succeeded");
+  assert.equal(state.createCount, 1);
+  assert.equal(state.saveCount, 1);
 });
 
 test("AI state machine persists output and debits ai_generation exactly once after success", async () => {

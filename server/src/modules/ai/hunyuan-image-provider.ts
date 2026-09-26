@@ -10,51 +10,33 @@
  */
 import { HUNYUAN_IMAGE_MODEL, type HunyuanImageConfig } from "../../config/env";
 import { AppError } from "../../shared/app-error";
+import {
+  detectOutputFormat,
+  isSupportedOutputFormat,
+  ProviderError,
+  providerErrorCode,
+  providerFailure as createProviderFailure,
+  type AiGenerationProvider,
+  type ProviderFailureKind,
+  type ProviderOutputFormat,
+  type ProviderTaskInput,
+  type ProviderTaskSubmission,
+} from "./provider";
+export {
+  detectOutputFormat,
+  isSupportedOutputFormat,
+  ProviderError,
+} from "./provider";
+export type {
+  AiGenerationProvider,
+  ProviderFailure,
+  ProviderFailureKind,
+  ProviderOutputFormat,
+  ProviderTaskInput,
+  ProviderTaskSubmission,
+  SupportedOutputFormat,
+} from "./provider";
 import cloudbase = require("@cloudbase/node-sdk");
-
-export type ProviderFailureKind =
-  | "QUOTA_EXHAUSTED"
-  | "RATE_LIMITED"
-  | "TIMEOUT"
-  | "UNAVAILABLE"
-  | "INVALID_OUTPUT"
-  | "UNKNOWN";
-
-export interface ProviderFailure {
-  readonly provider: "hunyuan";
-  readonly providerCode: string | null;
-  readonly httpStatus: number | null;
-  readonly kind: ProviderFailureKind;
-}
-
-/** 归一化后的 provider 异常；用 failure.kind 让上层区分额度/限流/超时/不可用/坏输出。 */
-export class ProviderError extends AppError {
-  public constructor(
-    public readonly failure: ProviderFailure,
-    code = providerErrorCode(failure.kind),
-    message = "AI 图像服务请求失败",
-  ) {
-    super(providerErrorStatus(failure.kind), code, message, {
-      providerCode: failure.providerCode,
-      httpStatus: failure.httpStatus,
-      kind: failure.kind,
-    });
-    this.name = "ProviderError";
-  }
-}
-
-export interface ProviderTaskSubmission {
-  readonly requestId: string;
-  readonly outputUrl: string;
-}
-
-export interface AiGenerationProvider {
-  readonly configured: boolean;
-  readonly name: "hunyuan";
-  readonly model: string;
-  createTask(imageDataUrl: string, prompt: string): Promise<ProviderTaskSubmission>;
-  downloadOutput(outputUrl: string): Promise<Buffer>;
-}
 
 type JsonObject = Record<string, unknown>;
 
@@ -81,7 +63,7 @@ function providerFailure(
   code = providerErrorCode(kind),
   message = "AI 图像服务请求失败",
 ): ProviderError {
-  return new ProviderError({ provider: "hunyuan", providerCode, httpStatus, kind }, code, message);
+  return createProviderFailure("hunyuan", kind, providerCode, httpStatus, code, message);
 }
 
 export class HunyuanImageProvider implements AiGenerationProvider {
@@ -107,15 +89,24 @@ export class HunyuanImageProvider implements AiGenerationProvider {
    * @param prompt 由 prompt-template 拼好的生图提示词。
    * @returns requestId（幂等/对账用）+ outputUrl（云文件引用或临时下载地址）。
    */
-  public async createTask(imageDataUrl: string, prompt: string): Promise<ProviderTaskSubmission> {
+  public async createTask(input: ProviderTaskInput): Promise<ProviderTaskSubmission>;
+  /** 兼容已有测试与历史调用方，迁移完成前允许旧的两个字符串参数。 */
+  public async createTask(imageDataUrl: string, prompt: string): Promise<ProviderTaskSubmission>;
+  public async createTask(
+    inputOrImageDataUrl: ProviderTaskInput | string,
+    legacyPrompt?: string,
+  ): Promise<ProviderTaskSubmission> {
+    const input: ProviderTaskInput = typeof inputOrImageDataUrl === "string"
+      ? { imageDataUrl: inputOrImageDataUrl, referenceImageUrl: null, prompt: legacyPrompt ?? "", clientBusinessId: "" }
+      : inputOrImageDataUrl;
     const config = this.requireConfig();
     if (!this.imageModel) throw new AppError(503, "AI_PROVIDER_NOT_CONFIGURED", "AI 图像服务尚未完成配置");
     let response: unknown;
     try {
       response = await this.imageModel.generateImage({
         model: config.model,
-        prompt,
-        images: [imageDataUrl],
+        prompt: input.prompt,
+        images: [input.imageDataUrl],
         size: "1024x1024",
         revise: { value: false },
       });
@@ -318,31 +309,6 @@ function createImageModel(config: HunyuanImageConfig): HunyuanImageModel | null 
   };
 }
 
-function isPng(value: Buffer): boolean {
-  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  return value.subarray(0, signature.length).equals(signature);
-}
-
-export type ProviderOutputFormat = "png" | "jpeg" | "webp" | "empty" | "unknown";
-
-export type SupportedOutputFormat = "png" | "jpeg" | "webp";
-
-export function isSupportedOutputFormat(value: ProviderOutputFormat): value is SupportedOutputFormat {
-  return value === "png" || value === "jpeg" || value === "webp";
-}
-
-export function detectOutputFormat(value: Buffer): ProviderOutputFormat {
-  if (value.length === 0) return "empty";
-  if (isPng(value)) return "png";
-  if (value.length >= 3 && value[0] === 0xff && value[1] === 0xd8 && value[2] === 0xff) return "jpeg";
-  if (
-    value.length >= 12
-    && value.subarray(0, 4).toString("ascii") === "RIFF"
-    && value.subarray(8, 12).toString("ascii") === "WEBP"
-  ) return "webp";
-  return "unknown";
-}
-
 /** 从云文件 ID 的尾缀提取扩展名（小写），诊断用；无扩展名时返回 "none"。 */
 function outputFileExtension(fileId: string): string {
   const match = /\.([A-Za-z0-9]{1,8})$/u.exec(fileId.trim());
@@ -421,19 +387,4 @@ function number(value: unknown): number | null {
 function codeFromMessage(message: string): string | null {
   const match = /\b[A-Z][A-Z0-9_]{4,}\b/u.exec(message);
   return match?.[0] ?? null;
-}
-
-function providerErrorCode(kind: ProviderFailureKind): string {
-  if (kind === "TIMEOUT") return "AI_PROVIDER_TIMEOUT";
-  if (kind === "UNAVAILABLE") return "AI_PROVIDER_UNAVAILABLE";
-  if (kind === "INVALID_OUTPUT") return "AI_PROVIDER_OUTPUT_INVALID";
-  if (kind === "RATE_LIMITED") return "AI_PROVIDER_RATE_LIMITED";
-  return "AI_PROVIDER_ERROR";
-}
-
-/** 把失败种类翻译成 HTTP 状态码（超时 504、不可用/限流 503、其余 502）。 */
-function providerErrorStatus(kind: ProviderFailureKind): number {
-  if (kind === "TIMEOUT") return 504;
-  if (kind === "UNAVAILABLE" || kind === "QUOTA_EXHAUSTED" || kind === "RATE_LIMITED") return 503;
-  return 502;
 }

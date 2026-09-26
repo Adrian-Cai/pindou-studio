@@ -26,6 +26,8 @@ test("readConfig loads validated server and database settings", () => {
   assert.equal(config.quota.dailyStandardDownloads, 9);
   assert.equal(config.quota.dailyAiGenerations, 3);
   assert.deepEqual(config.hunyuanImage, { enabled: false });
+  assert.deepEqual(config.toapisImage, { enabled: false });
+  assert.equal(config.aiImageProvider, "toapis");
   assert.deepEqual(config.wechatPay, { enabled: false });
   assert.equal(config.avatars.maximumBytes, 2 * 1024 * 1024);
   assert.equal(config.aiFiles.maximumBytes, 10 * 1024 * 1024);
@@ -66,6 +68,29 @@ test("readConfig validates the CloudBase Hunyuan image configuration", () => {
     model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
     timeoutMs: 150_000,
     maximumOutputBytes: 10 * 1024 * 1024,
+  });
+});
+
+test("readConfig validates the ToAPIs image configuration without exposing the key", () => {
+  const config = readConfig({
+    ...validEnvironment,
+    TOAPIS_IMAGE_API_KEY: "test-toapis-api-key",
+    TOAPIS_IMAGE_BASE_URL: "https://api.toapis.cn/",
+    TOAPIS_IMAGE_MODEL: "gpt-image-2.5-sunburst",
+    TOAPIS_IMAGE_OUTPUT_HOSTS: "files.toapis.com,cdn.toapis.com",
+  });
+  assert.deepEqual(config.toapisImage, {
+    enabled: true,
+    apiKey: "test-toapis-api-key",
+    baseUrl: "https://api.toapis.cn",
+    model: "gpt-image-2.5-sunburst",
+    size: "1:1",
+    resolution: "1K",
+    quality: "high",
+    timeoutMs: 30_000,
+    pollIntervalMs: 7_000,
+    maximumOutputBytes: 10 * 1024 * 1024,
+    outputHosts: ["files.toapis.com", "cdn.toapis.com"],
   });
 });
 
@@ -126,7 +151,7 @@ test("production configuration refuses incomplete payment, AI, HTTPS, storage an
     () => readConfig({ ...validEnvironment, APP_ENV: "production" }),
     (error) => error instanceof ConfigError
       && error.issues.includes("生产环境必须配置微信支付")
-      && error.issues.includes("生产环境必须配置混元图像服务")
+      && error.issues.includes("生产环境必须配置 ToAPIs 图像服务")
       && error.issues.includes("生产环境 COVER_PUBLIC_BASE_URL 必须使用 HTTPS")
       && error.issues.includes("生产环境 AI_FILE_PUBLIC_BASE_URL 必须使用 HTTPS")
       && error.issues.includes("生产环境必须确认 PERSISTENT_STORAGE_MOUNTED=true")

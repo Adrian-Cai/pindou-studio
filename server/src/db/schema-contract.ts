@@ -162,6 +162,7 @@ export const EXPECTED_SCHEMA = {
     generation_mode: column("varchar", false, 20),
     provider_request_id: column("varchar", true, 128),
     provider_output_url: column("text", true),
+    provider_next_poll_at: column("timestamptz", true),
     idempotency_key: column("varchar", false, 128),
     error_code: column("varchar", true, 80),
     created_at: column("timestamptz"),

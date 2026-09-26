@@ -3,7 +3,7 @@
  *
  * 职责：创建 AI 生图任务、驱动任务状态机（queued→processing→succeeded/failed/canceled）、
  *       扣减额度、落库产物文件、把 provider 异常归一为失败/重试，并批量清理过期任务。
- *       不直接调混元，而是通过注入的 AiGenerationProvider 与 AiFileStorage 协作。
+ *       不直接调具体供应商，而是通过注入的 AiGenerationProvider 与 AiFileStorage 协作。
  * 调用方：HTTP 路由层（建任务、查询任务接口）；cleanupExpired 由进程启动 + 每小时定时器驱动。
  * 关键点：幂等靠 user + idempotencyKey 的 advisory 锁 + 唯一约束；产物格式按真实魔数判定，
  *       不依赖 provider 临时地址的 content-type 头（历史坑：JPEG 被误标 PNG 致整批失败）。
@@ -28,8 +28,10 @@ import {
   isSupportedOutputFormat,
   ProviderError,
   type AiGenerationProvider,
+  type ProviderTaskInput,
+  type ProviderTaskStatus,
   type SupportedOutputFormat,
-} from "./hunyuan-image-provider";
+} from "./provider";
 import { aiPublicFailure, type AiPublicFailure } from "./error-contract";
 import { AI_PROMPT_VERSION, buildAiPrompt } from "./prompt-template";
 
@@ -88,6 +90,7 @@ interface AiJobRow extends QueryResultRow {
   readonly generation_mode?: string;
   readonly provider_request_id: string | null;
   readonly provider_output_url: string | null;
+  readonly provider_next_poll_at: Date | string | null;
   readonly idempotency_key: string;
   readonly error_code: string | null;
   readonly created_at: Date | string;
@@ -240,7 +243,8 @@ const JOB_SELECT = `SELECT jobs.id, jobs.user_id, jobs.input_file_id,
        output_file.byte_size AS output_byte_size,
        jobs.provider, jobs.model, jobs.status, jobs.prompt_version,
        jobs.style, jobs.detail_level, jobs.background_mode, jobs.generation_mode,
-       jobs.provider_request_id, jobs.provider_output_url, jobs.idempotency_key, jobs.error_code,
+       jobs.provider_request_id, jobs.provider_output_url, jobs.provider_next_poll_at,
+       jobs.idempotency_key, jobs.error_code,
        jobs.created_at, jobs.updated_at, jobs.started_at, jobs.completed_at, jobs.expires_at
   FROM pindou_ai_generation_jobs jobs
   JOIN pindou_file_assets input_file ON input_file.id = jobs.input_file_id
@@ -258,6 +262,7 @@ export class PostgresAiGenerationService {
   private rateLimitedUntil = 0;
   /** 每个任务已撞限流的次数，用于给「一直在限流」一个终点（见 PROVIDER_RATE_LIMIT_MAX_ATTEMPTS）。 */
   private readonly rateLimitAttempts = new Map<string, number>();
+  private readonly providers: ReadonlyMap<string, AiGenerationProvider>;
 
   public constructor(
     private readonly pool: Pool,
@@ -267,7 +272,10 @@ export class PostgresAiGenerationService {
     private readonly now: () => Date = () => new Date(),
     private readonly retentionMs = DEFAULT_RETENTION_MS,
     private readonly sleep: (ms: number) => Promise<void> = defaultSleep,
-  ) {}
+    providers: ReadonlyMap<string, AiGenerationProvider> = new Map([[provider.name, provider]]),
+  ) {
+    this.providers = providers;
+  }
 
   /**
    * 创建（或幂等复用）一个 AI 生成任务。
@@ -416,8 +424,80 @@ export class PostgresAiGenerationService {
     if (new Date(job.expires_at).getTime() <= this.now().getTime()) {
       return mapJob(await this.markFailed(job.user_id, job.id, "AI_TASK_EXPIRED"));
     }
-    if (!job.provider_output_url) return mapJob(job);
+    if (!job.provider_output_url) {
+      const provider = this.providerFor(job);
+      if (!provider.getTask) return mapJob(job);
+      if (job.provider_next_poll_at && new Date(job.provider_next_poll_at).getTime() > this.now().getTime()) {
+        return mapJob(job);
+      }
+      const polled = await this.pollTask(job, provider, requestId);
+      if (polled.provider_output_url) return this.completeOutput(polled, polled.provider_output_url, requestId);
+      return mapJob(polled);
+    }
     return this.completeOutput(job, job.provider_output_url, requestId);
+  }
+
+  private providerFor(job: Pick<AiJobRow, "provider">): AiGenerationProvider {
+    return this.providers.get(job.provider) ?? this.provider;
+  }
+
+  private async pollTask(
+    job: AiJobRow,
+    provider: AiGenerationProvider,
+    requestId?: string,
+  ): Promise<AiJobRow> {
+    if (!job.provider_request_id || !provider.getTask) return job;
+    const startedAt = Date.now();
+    let status: ProviderTaskStatus;
+    try {
+      status = await provider.getTask(job.provider_request_id);
+    } catch (error: unknown) {
+      if (isProviderError(error)) {
+        logProviderFailure(job, error, requestId, providerPublicCode(error), Date.now() - startedAt);
+      }
+      if (isTransientProviderError(error)) {
+        return this.scheduleNextPoll(job, provider, isProviderError(error) ? error.failure.retryAfterMs : undefined);
+      }
+      return this.markFailed(job.user_id, job.id, failureCode(error));
+    }
+    if (status.status === "completed") {
+      return this.setProviderOutput(job, status.outputUrl);
+    }
+    return this.scheduleNextPoll(job, provider);
+  }
+
+  private async setProviderOutput(job: AiJobRow, outputUrl: string | null): Promise<AiJobRow> {
+    const currentTime = this.now();
+    const result = await this.pool.query<AiJobRow>(
+      `UPDATE pindou_ai_generation_jobs
+          SET provider_output_url = $2, provider_next_poll_at = NULL, updated_at = $3
+        WHERE id = $1 AND user_id = $4 AND status = 'processing'
+        RETURNING *, $5::text AS input_object_key, $6::text AS input_content_type,
+                  NULL::text AS output_public_url, NULL::text AS output_content_type,
+                  NULL::bigint AS output_byte_size`,
+      [job.id, outputUrl, currentTime, job.user_id, job.input_object_key, job.input_content_type],
+    );
+    return result.rows[0] ?? this.readJob(this.pool, job.user_id, job.id);
+  }
+
+  private async scheduleNextPoll(
+    job: AiJobRow,
+    provider: AiGenerationProvider,
+    retryAfterMs?: number,
+  ): Promise<AiJobRow> {
+    const currentTime = this.now();
+    const delayMs = Math.max(provider.pollIntervalMs ?? 7_000, retryAfterMs ?? 0);
+    const nextPollAt = new Date(currentTime.getTime() + delayMs);
+    const result = await this.pool.query<AiJobRow>(
+      `UPDATE pindou_ai_generation_jobs
+          SET provider_next_poll_at = $2, updated_at = $3
+        WHERE id = $1 AND user_id = $4 AND status = 'processing'
+        RETURNING *, $5::text AS input_object_key, $6::text AS input_content_type,
+                  NULL::text AS output_public_url, NULL::text AS output_content_type,
+                  NULL::bigint AS output_byte_size`,
+      [job.id, nextPollAt, currentTime, job.user_id, job.input_object_key, job.input_content_type],
+    );
+    return result.rows[0] ?? this.readJob(this.pool, job.user_id, job.id);
   }
 
   /**
@@ -452,7 +532,7 @@ export class PostgresAiGenerationService {
     let output: Buffer;
     const downloadStartedAt = Date.now();
     try {
-      output = await this.provider.downloadOutput(outputUrl);
+      output = await this.providerFor(job).downloadOutput(outputUrl);
     } catch (error: unknown) {
       if (isProviderError(error)) {
         logProviderFailure(job, error, requestId, providerPublicCode(error), Date.now() - downloadStartedAt);
@@ -521,31 +601,47 @@ export class PostgresAiGenerationService {
     if (!claim.claimed && this.submissionAgeMs(claimed) < PROVIDER_SUBMISSION_RECLAIM_DELAY_MS) {
       return claimed;
     }
-    let input: Awaited<ReturnType<AiFileStorage["readObject"]>>;
-    try {
-      input = claimed.input_object_key
-        ? await this.storage.readObject(claimed.input_object_key)
-        : null;
-    } catch (error: unknown) {
-      return this.markFailed(userId, jobId, failureCode(error));
+    const provider = this.providerFor(claimed);
+    let imageDataUrl: string | null = null;
+    if (provider.name === "hunyuan") {
+      let input: Awaited<ReturnType<AiFileStorage["readObject"]>>;
+      try {
+        input = claimed.input_object_key
+          ? await this.storage.readObject(claimed.input_object_key)
+          : null;
+      } catch (error: unknown) {
+        return this.markFailed(userId, jobId, failureCode(error));
+      }
+      if (!input || !claimed.input_content_type) {
+        return this.markFailed(userId, jobId, "AI_INPUT_FILE_UNAVAILABLE");
+      }
+      imageDataUrl = `data:${claimed.input_content_type};base64,${input.buffer.toString("base64")}`;
     }
-    if (!input || !claimed.input_content_type) {
+    // ToAPIs 使用服务端 AI 媒体路由提供的 HTTPS 参考图地址，不把输入图转成 base64 上传。
+    const referenceImageUrl = provider.name === "toapis" && claimed.input_object_key
+      ? this.storage.publicUrl(claimed.input_object_key)
+      : null;
+    if (provider.name === "toapis" && !referenceImageUrl) {
       return this.markFailed(userId, jobId, "AI_INPUT_FILE_UNAVAILABLE");
     }
-    // 把输入图编码成 data URL 交给 provider（混元要求以 data URL 形式携带参考图）。
-    const imageDataUrl = `data:${claimed.input_content_type};base64,${input.buffer.toString("base64")}`;
     const prompt = buildAiPrompt({
       style: claimed.style as AiGenerationStyle,
       detailLevel: claimed.detail_level as AiGenerationDetailLevel,
       backgroundMode: claimed.background_mode as AiGenerationBackgroundMode,
     }).text;
 
+    const providerInput: ProviderTaskInput = {
+      imageDataUrl,
+      referenceImageUrl,
+      prompt,
+      clientBusinessId: claimed.id,
+    };
     let providerSubmission: Awaited<ReturnType<AiGenerationProvider["createTask"]>> | null = null;
     for (let attempt = 1; attempt <= PROVIDER_SUBMISSION_MAX_ATTEMPTS; attempt += 1) {
       const submissionStartedAt = Date.now();
       try {
         await this.waitForSubmissionSlot();
-        providerSubmission = await this.provider.createTask(imageDataUrl, prompt);
+        providerSubmission = await provider.createTask(providerInput);
         break;
       } catch (error: unknown) {
         if (isProviderError(error)) {
@@ -580,15 +676,19 @@ export class PostgresAiGenerationService {
     if (!providerSubmission) return this.readJob(this.pool, userId, jobId);
     const submission = providerSubmission;
 
+    const updatedAt = this.now();
+    const nextPollAt = submission.outputUrl
+      ? null
+      : new Date(updatedAt.getTime() + (provider.pollIntervalMs ?? 7_000));
     const updated = await this.pool.query<AiJobRow>(
       `UPDATE pindou_ai_generation_jobs
-          SET provider_request_id = $2, provider_output_url = $3, updated_at = $4
-        WHERE id = $1 AND user_id = $5
+          SET provider_request_id = $2, provider_output_url = $3, provider_next_poll_at = $4, updated_at = $5
+        WHERE id = $1 AND user_id = $6
           AND status = 'processing' AND provider_request_id IS NULL
-        RETURNING *, $6::text AS input_object_key, $7::text AS input_content_type,
+        RETURNING *, $7::text AS input_object_key, $8::text AS input_content_type,
                   NULL::text AS output_public_url, NULL::text AS output_content_type,
                   NULL::bigint AS output_byte_size`,
-      [jobId, submission.requestId, submission.outputUrl, this.now(), userId, claimed.input_object_key, claimed.input_content_type],
+      [jobId, submission.requestId, submission.outputUrl, nextPollAt, updatedAt, userId, claimed.input_object_key, claimed.input_content_type],
     );
     this.rateLimitAttempts.delete(jobId);
     return updated.rows[0] ?? this.readJob(this.pool, userId, jobId);
@@ -634,7 +734,7 @@ export class PostgresAiGenerationService {
     const result = await this.pool.query<AiJobRow>(
       `UPDATE pindou_ai_generation_jobs
           SET status = 'queued', provider_request_id = NULL, provider_output_url = NULL,
-              error_code = NULL, updated_at = $2
+              provider_next_poll_at = NULL, error_code = NULL, updated_at = $2
         WHERE id = $1 AND user_id = $3 AND status = 'processing'
         RETURNING *, NULL::text AS input_object_key, NULL::text AS input_content_type,
                   NULL::text AS output_public_url, NULL::text AS output_content_type,
@@ -688,8 +788,8 @@ export class PostgresAiGenerationService {
         return { job: current, claimed: false };
       }
       const updated = await client.query<AiJobRow>(
-        `UPDATE pindou_ai_generation_jobs
-            SET status = 'processing', started_at = $2, updated_at = $2
+      `UPDATE pindou_ai_generation_jobs
+            SET status = 'processing', provider_next_poll_at = NULL, started_at = $2, updated_at = $2
           WHERE id = $1 AND status = 'queued'
           RETURNING *, $3::text AS input_object_key, $4::text AS input_content_type,
                     NULL::text AS output_public_url, NULL::text AS output_content_type,
@@ -759,6 +859,7 @@ export class PostgresAiGenerationService {
     const result = await client.query<AiJobRow>(
       `UPDATE pindou_ai_generation_jobs
           SET status = 'queued', error_code = NULL, provider_request_id = NULL, provider_output_url = NULL,
+              provider_next_poll_at = NULL,
               started_at = NULL, completed_at = NULL, expires_at = $2, updated_at = $2
         WHERE id = $1 AND status = 'failed'
         RETURNING *,
@@ -831,8 +932,8 @@ export class PostgresAiGenerationService {
         ],
       );
       const updated = await client.query<AiJobRow>(
-        `UPDATE pindou_ai_generation_jobs
-            SET status = 'succeeded', output_file_id = $2, provider_output_url = NULL, error_code = NULL,
+      `UPDATE pindou_ai_generation_jobs
+            SET status = 'succeeded', output_file_id = $2, provider_output_url = NULL, provider_next_poll_at = NULL, error_code = NULL,
                 completed_at = $3, updated_at = $3
           WHERE id = $1
           RETURNING *, NULL::text AS input_object_key, NULL::text AS input_content_type,
@@ -892,7 +993,7 @@ export class PostgresAiGenerationService {
     const currentTime = this.now();
     const result = await client.query<AiJobRow>(
       `UPDATE pindou_ai_generation_jobs
-          SET status = 'failed', provider_output_url = NULL, error_code = $2, completed_at = $3, updated_at = $3
+          SET status = 'failed', provider_output_url = NULL, provider_next_poll_at = NULL, error_code = $2, completed_at = $3, updated_at = $3
         WHERE id = $1
         RETURNING *, NULL::text AS input_object_key, NULL::text AS input_content_type,
                   NULL::text AS output_public_url, NULL::text AS output_content_type,
