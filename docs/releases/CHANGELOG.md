@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 0.30.29
+
+- **核实 axios 未受 CVE-2026-42039 影响**：该 CVE（GHSA-62hf-57xw-28j9，
+  `toFormData` 递归无深度限制导致 DoS）影响 `>=1.0.0 <1.15.1` 与 `<0.31.1`，
+  推荐修复版本为 `1.15.1`。安全扫描上报的 `0.27.2` 为历史（旧）快照，
+  当前 `server` 与 `cloudfunctions/generateImage` 已用 `overrides` 将 axios 统一钉在
+  `1.16.0`，高于推荐修复版本，依赖声明无需改动，**未做任何降级**。
+  校验方式：两处 `package-lock.json` 均解析为 `1.16.0`、无 `0.27.2` 残留；
+  源码级确认 `axios/lib/helpers/toFormData.js` 已内置 `maxDepth`（默认 100）限制，
+  传入 20000 层嵌套对象时抛出受控 `AxiosError` 而非崩溃进程。
+
 ## 0.30.27
 
 - **修复 axios 代理绕过漏洞 CVE-2025-62718**：该 CVE 影响 `axios <1.15.0`（推荐修复版本 1.15.0），
