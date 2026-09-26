@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 0.30.27
+
+- **修复 axios 安全漏洞 CVE-2026-42033**：`axios` 1.15.1 之前版本在 `Object.prototype` 被污染时，可静默篡改 JSON 响应或劫持底层 HTTP 传输。`server` 与 `cloudfunctions/generateImage` 由 `1.18.0` 回落到推荐修复版本 `1.15.1`（`dependencies` 与 `overrides` 同步），两个 `package-lock.json` 重生成；安装节点已不存在 `0.27.2`。
+
 ## 0.30.26
 
 - **修复 axios 安全漏洞 CVE-2023-45857**：`axios` 为 `@cloudbase/node-sdk` / `wx-server-sdk` 间接依赖，
