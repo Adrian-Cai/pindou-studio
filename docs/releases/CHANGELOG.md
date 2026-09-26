@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.30.28
+
+- **复核 axios 原型污染 RCE 漏洞 CVE-2026-40175**：该 CVE 影响 `axios <1.15.0`（推荐修复版本 1.15.0），
+  报告中列为受影响位置的 `server/package-lock.json` 与 `cloudfunctions/generateImage/package-lock.json`
+  实际是 `@cloudbase/node-sdk` / `wx-server-sdk` 的 `dependencies` 元数据里写死的 `axios: "0.27.2"`
+  （上游声明的版本范围），并非真实安装版本；两处的 `overrides` 已把 `axios` 统一钉在 `1.16.0`，
+  高于推荐修复版本，本次无需改动依赖版本，也不存在降级。
+  校验：`npm ci` 重装后 `node_modules/axios` 两处均解析为 `1.16.0`。
+
 ## 0.30.27
 
 - **修复 axios 代理绕过漏洞 CVE-2025-62718**：该 CVE 影响 `axios <1.15.0`（推荐修复版本 1.15.0），
