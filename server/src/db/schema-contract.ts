@@ -244,7 +244,7 @@ export const REQUIRED_INDEXES: readonly RequiredDatabaseObject[] = [
   { table: "pindou_orders", label: "微信交易号唯一索引", includes: ["unique index", "(wx_transaction_id)"] },
   { table: "pindou_orders", label: "虚拟支付商户单号唯一索引", includes: ["unique index", "(virtual_out_trade_no)", "where"] },
   { table: "pindou_orders", label: "订单幂等键唯一索引", includes: ["unique index", "(user_id, idempotency_key)", "where"] },
-  { table: "pindou_orders", label: "未完成订单到期索引", includes: ["(user_id, expires_at)", "where", "status = 'pending'"] },
+  { table: "pindou_orders", label: "未完成订单到期索引", includes: ["(user_id, expires_at)", "where", "(status)::text = 'pending'::text"] },
   { table: "pindou_payment_attempts", label: "支付尝试商户单号唯一索引", includes: ["unique index", "(out_trade_no)"] },
   { table: "pindou_payment_attempts", label: "支付交易号唯一索引", includes: ["unique index", "(wechat_transaction_id)", "where"] },
   { table: "pindou_payment_attempts", label: "订单支付尝试时间索引", includes: ["(order_id, created_at desc)"] },
