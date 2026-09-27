@@ -2,6 +2,21 @@
 
 ## 0.30.32
 
+- **复核 axios fetch 适配器 `maxBodyLength` 绕过漏洞 CVE-2026-67317（MEDIUM，CVSS 7.5）**：
+  该 CVE 影响 `axios@1.16.0`，推荐修复版本 `1.18.0`。`server` 与 `cloudfunctions/generateImage`
+  均声明直接依赖 `axios@1.20.0` 并用 `overrides` 固定，安装树里只存在一份 `axios@1.20.0`，
+  **高于推荐修复版本，本次未改版本、未降级**。
+- **漏洞机理**：`1.16.0` 的 fetch 适配器只在派发前用 `resolveBodyLength()` 校验 `maxBodyLength`，
+  而活体 `ReadableStream` 请求体无法预先确定大小，该校验被显式跳过（上游注释
+  `Skip when the body length cannot be determined`），流式路径也没有逐块计数，
+  于是 `adapter: "fetch"` + `maxBodyLength` 会被整体绕过；HTTP 适配器不受影响。
+  `1.18.0` 起改为对 `ReadableStream` / Node `Stream` 用 `trackStream` 逐块累加，
+  超限抛受控 `AxiosError`（`ERR_BAD_REQUEST` / `Request body larger than maxBodyLength limit`）。
+- **新增 fetch maxBodyLength 守卫**：`server/test/dependency-axios-fetch-max-body-length.test.js`
+  起本地 HTTP server，用 20KB 未知大小流配合 `maxBodyLength: 1000` 断言抛受控错误，
+  不产生外网流量；已接入 CI 的 Server Static Check。
+  变异验证：同一用例在 `axios@1.16.0` 下转红（无错误返回、流被整体发出），
+  在 `1.20.0` 下转绿，确认能拦住回退。
 - **核实 axios 已满足 CVE-2026-67315 修复要求（代理绕过，MEDIUM / CVSS 7.5）**：
   该 CVE 影响 `axios >= 1.1.0 < 1.18.0`——`shouldBypassProxy` 的回环判断只认
   `127.0.0.0/8` 与 `localhost`，`0.0.0.0` 不被视为回环，因而在设置了 `HTTP_PROXY`

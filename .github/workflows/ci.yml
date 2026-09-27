@@ -85,6 +85,10 @@ jobs:
       - name: axios formData depth guard
         run: node --test test/dependency-axios-formdata-depth.test.js
 
+      # axios fetch 适配器 maxBodyLength 守卫：CVE-2026-67317，未知大小的流式请求体也必须受限
+      - name: axios fetch maxBodyLength guard
+        run: node --test test/dependency-axios-fetch-max-body-length.test.js
+
       # axios 代理绕过守卫：CVE-2026-67315，NO_PROXY 覆盖回环地址时 0.0.0.0 目标不得走代理
       - name: axios NO_PROXY guard
         run: node --test test/dependency-axios-noproxy.test.js
