@@ -88,3 +88,7 @@ jobs:
       # axios fetch 适配器 maxBodyLength 守卫：CVE-2026-67317，未知大小的流式请求体也必须受限
       - name: axios fetch maxBodyLength guard
         run: node --test test/dependency-axios-fetch-max-body-length.test.js
+
+      # axios HTTP/2 流式上传守卫：CVE-2026-67318，httpVersion: 2 下 maxBodyLength 必须生效
+      - name: axios http2 maxBodyLength guard
+        run: node --test test/dependency-axios-maxbodylength-http2.test.js
