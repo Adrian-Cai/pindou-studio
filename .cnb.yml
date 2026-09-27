@@ -35,3 +35,23 @@ $:
         - name: 推送镜像到 CNB 制品库
           script: |
             docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${CNB_BRANCH}
+
+main:
+  pull_request:
+    - stages:
+        - name: validate code scan config
+          image: cnbcool/code-security-config
+          args:
+            - validate
+        - name: 开源组件漏洞扫描
+          image: cnbcool/sca-vulnerability:latest
+          settings:
+            failOnSeverity: high
+        - name: License 扫描
+          image: cnbcool/sca-license:latest
+          settings:
+            failOnSeverity: high
+        - name: 生成 SBOM Delta
+          image: cnbcool/sca-sbom:latest
+          settings:
+            output: ${CNB_BUILD_WORKSPACE}/.cnb-sca/sbom-delta.json
