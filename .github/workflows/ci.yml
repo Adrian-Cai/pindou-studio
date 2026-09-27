@@ -80,3 +80,7 @@ jobs:
       # axios 版本守卫：防止 overrides 被误删后 0.27.2 重新可安装（见用例注释）
       - name: axios version guard
         run: node --test test/dependency-axios-version.test.js
+
+      # axios FormData 深度守卫：CVE-2026-67313，恶意括号嵌套字段名不得冲垮调用栈
+      - name: axios formData depth guard
+        run: node --test test/dependency-axios-formdata-depth.test.js
