@@ -12,8 +12,35 @@
   校验方式：两处 `package-lock.json` 均只解析出一份 `axios@1.20.0`，`npm ci` 重装后
   `npm ls axios` 为 `1.20.0 overridden`（`@cloudbase/node-sdk` 硬声明的 `0.27.2`
   被 `overrides` 去重），既有守卫用例 `server/test/dependency-axios-version.test.js` 通过。
+  - **复核 axios 不受控递归漏洞 CVE-2026-67313（MEDIUM，CVSS 7.5）**：该 CVE 影响
+    `axios.formToJSON()` / 命名导出 `formToJSON` / `application/json` 请求体默认转换器底层的
+    `formDataToJSON`——按 `a[x][x][x]...` 字段名**无深度上限**递归构树，攻击者可控的字段名
+    即可耗尽调用栈抛 `RangeError: Maximum call stack size exceeded`。
+    推荐修复版本 `1.18.0` 已在 master 落地（`fix/deps-axios-cve-2026-67316`）并随后续升级收敛到
+    `axios@1.20.0`：`server` 与 `cloudfunctions/generateImage` 均声明直接依赖 `axios@1.20.0`
+    并用 `overrides` 固定，安装树里只存在一份 `axios@1.20.0`，**高于推荐修复版本，
+    本次未改版本、未降级**。
+  - **源码级验证**：`axios@1.18.0` / `1.20.0` 的 `lib/helpers/formDataToJSON.js` 已引入
+    `throwIfDepthExceeded`，复用 `toFormData` 的 `DEFAULT_FORM_DATA_MAX_DEPTH = 100` 上限，
+    超限抛受控 `AxiosError ERR_FORM_DATA_DEPTH_EXCEEDED`。
+    实测 20000 层嵌套字段名在 `1.20.0` 抛受控错误，在受影响的 `1.16.0` 抛 `RangeError`。
+  - **新增 FormData 深度守卫**：`server/test/dependency-axios-formdata-depth.test.js`
+    用公开 API `axios.formToJSON()` 断言恶意深度字段名抛受控错误而非栈溢出，
+    并保留一条正常转换用例；已接入 CI 的 Server Static Check。
+    变异验证：同一用例在 `axios@1.16.0` 下转红（RangeError），确认能拦住回退。
 
 ## 0.30.30
+
+- **核实 axios 未受 CVE-2026-67321 影响**：该 CVE 为 `toFormData.js` 深度限制不完整绕过
+  （顶层键以 `{}` 结尾时 `JSON.stringify` 溢出 `RangeError` 导致 DoS），推荐修复版本 `1.18.0`。
+  安全扫描上报的 `1.16.0` 与受影响范围 `1.16.0` 均为历史（旧）快照：`server` 与
+  `cloudfunctions/generateImage` 已在 0.30.28 用 `overrides` 将 axios 统一钉在 `1.20.0`（本次实测解析结果），
+  高于推荐修复版本，依赖声明无需改动，**未做任何降级**。
+  校验方式：两处 `package-lock.json` 重装后均解析为 `1.20.0`、无旧版本残留；
+  源码级确认 `axios/lib/helpers/toFormData.js` 已内置 `maxDepth`（默认 100）限制，
+  以「顶层键 `{}` 结尾 + 1000/4000/60000 层嵌套值」复现 CVE 场景时抛出受控
+  `AxiosError`（`ERR_FORM_DATA_DEPTH_EXCEEDED`），进程存活；同一场景在修复前的 `1.14.0`
+  上仍抛非受控 `RangeError`，可确认修复已生效。
 
 - **复核 axios 漏洞 CVE-2026-67319（原型链污染导致请求篡改，MEDIUM）**：推荐修复版本
   `1.18.0` 在 master 上已由 `fix/deps-axios-cve-2026-67316` 落地，并随后续依赖升级
@@ -28,6 +55,12 @@
   `package-lock.json` 中所有 axios 条目均为 `1.20.0`（master 当前版本），
   并在 CI 的 Server Static Check 中执行。
   变异验证：移除 `overrides` 后该用例转红，确认能拦住回退。
+- **修复 axios NO_PROXY 绕过漏洞 CVE-2026-42043**：该 CVE 影响 `axios <1.15.1`（推荐修复版本 1.15.1），
+  请求目标 URL 可控时可用 `127.0.0.0/8` 内任意地址绕过 `NO_PROXY` 保护。
+  master 已用 `overrides` 把 axios 钉在 `1.20.0`，高于推荐修复版本，依赖声明无需改动，**未降级**。
+- **合并 master 解决 axios 版本冲突**：本 PR 原先把 axios 从 `1.16.0` 提到 `1.18.0`，master 已收敛到 `1.20.0`。
+  冲突以 master 的 `1.20.0` 为准：两处 `package.json`（`dependencies` 与 `overrides`）与两份
+  `package-lock.json` 均解析为 `1.20.0`，安装树中只保留一份 axios，与 `dependency-axios-version` 守卫一致。
 
 ## 0.30.29
 
