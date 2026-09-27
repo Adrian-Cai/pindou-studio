@@ -270,11 +270,36 @@ function toPaymentApiError(error: unknown): ApiError {
       details: { errMsg, errCode },
     })
   }
-  const friendly = errCode === null ? null : VIRTUAL_PAYMENT_ERROR_TEXT[errCode]
+  const friendly = friendlyVirtualPaymentMessage(errCode, errMsg)
   return new ApiError(
     friendly ?? errMsg ?? '支付未完成，请稍后重试',
     { code: WECHAT_PAYMENT_FAILED, details: { errMsg, errCode } },
   )
+}
+
+/**
+ * 签名校验失败的统一文案（-15005 / -15006，errMsg 上表现为 SIGNATURE_INVALID）。
+ *
+ * 单独成常量是因为它有两个来源：结构化的 errCode，以及**没有 errCode、只在 errMsg 里
+ * 带英文标记**的那一路。本次线上就撞在后一种上——映射表里没有 -15005 且 errCode 缺失，
+ * 用户看到的是 `requestVirtualPayment:fail SIGNATURE_INVALID` 这句英文原文，
+ * 既看不懂也不知道下一步该干什么。
+ *
+ * 文案指向「重新登录」而非「稍后重试」：用户态签名 signature 由 session_key 计算，
+ * 重登能换到新 session_key，这是用户**自己唯一能操作**的动作；
+ * 重新登录后仍失败则基本可判定为服务端/后台配置问题（OfferID 或 AppKey）。
+ */
+const VIRTUAL_SIGNATURE_INVALID_TEXT = '支付签名校验失败，请重新登录后重试'
+
+/** 把虚拟支付失败翻译成人话；识别不出就返回 null，交给调用方回落到原始 errMsg。 */
+function friendlyVirtualPaymentMessage(errCode: number | null, errMsg: string): string | null {
+  if (errCode !== null) {
+    const mapped = VIRTUAL_PAYMENT_ERROR_TEXT[errCode]
+    if (mapped) return mapped
+  }
+  // 部分基础库不给 errCode，只在 errMsg 里带英文标记；这类不能把原文甩给用户
+  if (errMsg.includes('SIGNATURE_INVALID')) return VIRTUAL_SIGNATURE_INVALID_TEXT
+  return null
 }
 
 /** 虚拟支付常见错误码 → 用户可理解且可行动的文案。 */
@@ -283,6 +308,9 @@ const VIRTUAL_PAYMENT_ERROR_TEXT: Readonly<Record<number, string>> = {
   [-15002]: '订单已失效，请重新发起支付',
   // 调用米大师失败导致关单：官方口径「请换新单号重试」
   [-15012]: '订单已失效，请重新发起支付',
+  // 签名校验失败：用户态签名（session_key）或支付签名（OfferID/AppKey）不对
+  [-15005]: VIRTUAL_SIGNATURE_INVALID_TEXT,
+  [-15006]: VIRTUAL_SIGNATURE_INVALID_TEXT,
   [-15004]: '支付币种异常，请联系客服',
   [-15007]: '登录状态已失效，请重新登录后支付',
   [-15010]: '商品暂不可购买，请稍后再试',

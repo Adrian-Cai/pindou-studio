@@ -184,6 +184,32 @@ test('session_key 过期被翻译成可行动文案而不是原始错误码', as
   assert.equal(isWechatPaymentCancelled(error), false)
 })
 
+test('签名校验失败（-15005）翻译成可行动文案而不是 SIGNATURE_INVALID 原文', async () => {
+  installHarness({
+    virtualFail: (payload) =>
+      payload.fail({ errMsg: 'requestVirtualPayment:fail SIGNATURE_INVALID', errCode: -15005 }),
+  })
+  const { payForAiGenerationPackage, paymentErrorMessage } = loadModule()
+
+  const error = await payForAiGenerationPackage('ai_generation_30', 'key-sig-invalid')
+    .then(() => null, (caught) => caught)
+  assert.ok(error)
+  // 用户态签名由 session_key 算出，重登是用户自己唯一能做的动作
+  assert.equal(paymentErrorMessage(error), '支付签名校验失败，请重新登录后重试')
+})
+
+test('基础库不给 errCode、只在 errMsg 带 SIGNATURE_INVALID 时同样不甩英文原文', async () => {
+  installHarness({
+    virtualFail: (payload) => payload.fail({ errMsg: 'requestVirtualPayment:fail SIGNATURE_INVALID' }),
+  })
+  const { payForAiGenerationPackage, paymentErrorMessage } = loadModule()
+
+  const error = await payForAiGenerationPackage('ai_generation_30', 'key-sig-no-code')
+    .then(() => null, (caught) => caught)
+  assert.ok(error)
+  assert.equal(paymentErrorMessage(error), '支付签名校验失败，请重新登录后重试')
+})
+
 test('商户单号被微信关单（-15012）时提示重新发起，而不是让用户对着原始错误码发呆', async () => {
   installHarness({
     virtualFail: (payload) =>
