@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 0.30.33
+
+- **处理 BSD-ZERO（0BSD）许可证合规项，将 tslib 收敛到 2.8.1**：扫描上报
+  `tslib@1.14.1`（0BSD）存在于 `cloudfunctions/generateImage` 依赖树中。0BSD 本身
+  是宽松许可（允许商用、分发、修改、私有使用，仅禁止 Liability / Warranty 主张，
+  无传染性），**不构成本次需要规避的许可风险**；这里按依赖卫生口径把它升到当前
+  稳定版 `2.8.1`（许可证同为 0BSD），避免低版本长期滞留。
+- **根因**：`tslib` 并非本项目直接依赖，而是 `wx-server-sdk@4.0.2` 的 manifest
+  声明带进来的（`tslib: ^1.9.3`）。该 SDK 的实际产物里已把用到的 helper 内联，
+  打包产物 `index.js` 与源码中均无任何 `require('tslib')`，属 manifest 级死依赖，
+  只能从依赖版本口径处理。
+- **改动**：`cloudfunctions/generateImage/package.json` 新增 `overrides.tslib: "2.8.1"`，
+  并同步 `package-lock.json` 中的 tslib 条目（`1.14.1` → `2.8.1`，integrity 为
+  2.8.1 官方 tarball 值）。未降级、未改用更低的候选版本。
+- **验证**：`npm ci` 通过，安装树只解析出一份 `tslib@2.8.1`（无嵌套副本）；
+  `wx-server-sdk` 声明 `^1.9.3`，而 tslib 2.x 的 CJS 入口是 1.x 导出面的严格超集
+  （1.14.1 的 23 个导出在 2.8.1 中全部保留，另有 9 个新增），且项目源码不 require
+  tslib，无行为影响；`cloudfunctions/generateImage/index.js` 在升级后可正常加载。
+- **新增 0BSD 许可证守卫**：`server/test/dependency-tslib-license.test.js` 直接校验
+  lock 中 tslib 的版本与 `license` 字段，并断言 `overrides.tslib` 存在；
+  已接入 CI 的 Server Static Check。变异验证：移除 `overrides.tslib` 时第二例转红，
+  lock 回退到 `1.14.1` 时第一例转红，确认能拦住回退。
+
 ## 0.30.32
 
 - **复核 axios fetch 适配器 `maxBodyLength` 绕过漏洞 CVE-2026-67317（MEDIUM，CVSS 7.5）**：
