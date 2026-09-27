@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## 0.30.32
+
+- **核实 axios 已满足 CVE-2026-67315 修复要求（代理绕过，MEDIUM / CVSS 7.5）**：
+  该 CVE 影响 `axios >= 1.1.0 < 1.18.0`——`shouldBypassProxy` 的回环判断只认
+  `127.0.0.0/8` 与 `localhost`，`0.0.0.0` 不被视为回环，因而在设置了 `HTTP_PROXY`
+  且 `NO_PROXY` 覆盖本地流量时，发往 `http://0.0.0.0:<port>/` 的请求会绕开 `NO_PROXY`
+  被送去代理；请求目标可控（如重定向）时可借此中继到只监听本机的服务，构成 SSRF。
+  推荐修复版本 `1.18.0` 已在 master 落地并收敛到 `axios@1.20.0`：`server` 与
+  `cloudfunctions/generateImage` 均直接依赖 `axios@1.20.0` 并用 `overrides` 固定，
+  安装树里只有一份 `axios@1.20.0`，**高于推荐修复版本，本次未改版本、未降级**。
+  扫描器上报的 `1.16.0` 为历史（旧）快照。
+- **源码级验证**：`axios@1.20.0` 的 `lib/helpers/shouldBypassProxy.js` 已引入
+  `LOOPBACK_HOSTNAMES = new Set(['localhost', '0.0.0.0'])`，并把 IPv4 七/八/十六进制等
+  非规范写法归一化后再比对、解析失败时按「不绕过」失败关闭；
+  `lib/adapters/http.js` 的 `setProxy()` 仅在 `shouldBypassProxy(location) === false` 时才应用代理。
+- **新增 NO_PROXY 代理绕过守卫**：`server/test/dependency-axios-noproxy.test.js`
+  起一个只应答 `PROXY` 的假代理 + 一个应答 `LOCAL` 的本地服务，断言
+  `NO_PROXY=localhost,127.0.0.1,::1` 时请求 `http://0.0.0.0:<port>/` 命中本地而非代理，
+  并断言代理命中次数为 0；已接入 CI 的 Server Static Check。
+  变异验证：同一用例在 `axios@1.16.0` 下拿到 `PROXY` 并转红，确认能拦住回退。
+
 ## 0.30.31
 
 - **复核 axios 不受控递归漏洞 CVE-2026-67313（MEDIUM，CVSS 7.5）**：该 CVE 影响
