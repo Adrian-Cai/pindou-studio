@@ -76,3 +76,7 @@ jobs:
 
       - name: TypeScript typecheck
         run: npm run typecheck
+
+      # axios 版本守卫：防止 overrides 被误删后 0.27.2 重新可安装（见用例注释）
+      - name: axios version guard
+        run: node --test test/dependency-axios-version.test.js

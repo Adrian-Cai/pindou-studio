@@ -1,10 +1,44 @@
 # CHANGELOG
 
+## 0.30.30
+
+- **复核 axios 漏洞 CVE-2026-67319（原型链污染导致请求篡改，MEDIUM）**：推荐修复版本
+  `1.18.0` 在 master 上已由 `fix/deps-axios-cve-2026-67316` 落地，并随后续依赖升级
+  收敛到 `axios@1.20.0`：`server` 与 `cloudfunctions/generateImage` 均声明直接依赖
+  `axios@1.20.0` 并用 `overrides` 固定，安装树里只存在一份 `axios@1.20.0`，
+  高于推荐修复版本，**无需再改版本，也未降级**。
+  扫描器仍报 `0.27.2` 属**误报**：该字符串来自 `@cloudbase/node-sdk` 已发布 manifest 里
+  硬声明的 `axios: 0.27.2`（截至 4.1.0 仍未改），并非实际安装版本。
+  已用「删掉 overrides 会重新装出 `node_modules/@cloudbase/node-sdk/node_modules/axios@0.27.2`」
+  验证：`overrides` 是这棵树的唯一收敛点。
+- **新增 axios 版本守卫**：`server/test/dependency-axios-version.test.js` 直接校验
+  `package-lock.json` 中所有 axios 条目均为 `1.20.0`（master 当前版本），
+  并在 CI 的 Server Static Check 中执行。
+  变异验证：移除 `overrides` 后该用例转红，确认能拦住回退。
+- **修复 axios NO_PROXY 绕过漏洞 CVE-2026-42043**：该 CVE 影响 `axios <1.15.1`（推荐修复版本 1.15.1），
+  请求目标 URL 可控时可用 `127.0.0.0/8` 内任意地址绕过 `NO_PROXY` 保护。
+  master 已用 `overrides` 把 axios 钉在 `1.20.0`，高于推荐修复版本，依赖声明无需改动，**未降级**。
+- **合并 master 解决 axios 版本冲突**：本 PR 原先把 axios 从 `1.16.0` 提到 `1.18.0`，master 已收敛到 `1.20.0`。
+  冲突以 master 的 `1.20.0` 为准：两处 `package.json`（`dependencies` 与 `overrides`）与两份
+  `package-lock.json` 均解析为 `1.20.0`，安装树中只保留一份 axios，与 `dependency-axios-version` 守卫一致。
+
+## 0.30.29
+
+- **核实 axios 未受 CVE-2026-42039 影响**：该 CVE（GHSA-62hf-57xw-28j9，
+  `toFormData` 递归无深度限制导致 DoS）影响 `>=1.0.0 <1.15.1` 与 `<0.31.1`，
+  推荐修复版本为 `1.15.1`。安全扫描上报的 `0.27.2` 为历史（旧）快照，
+  当前 `server` 与 `cloudfunctions/generateImage` 已用 `overrides` 将 axios 统一钉在
+  `1.20.0`，高于推荐修复版本，依赖声明无需改动，**未做任何降级**。
+  校验方式：两处 `package-lock.json` 均解析为 `1.20.0`、无 `0.27.2` 残留；
+  源码级确认 `axios/lib/helpers/toFormData.js` 已内置 `maxDepth`（默认 100）限制，
+  传入 20000 层嵌套对象时抛出受控 `AxiosError` 而非崩溃进程。
+
 ## 0.30.28
 
-- **修复 axios NO_PROXY 绕过漏洞 CVE-2026-42043**：该 CVE 影响 `axios <1.15.1`（推荐修复版本 1.15.1），请求目标 URL 可控时可用 `127.0.0.0/8` 内任意地址绕过 `NO_PROXY` 保护。
-  `server` 与 `cloudfunctions/generateImage` 的 axios 从 `1.16.0` 升到 `1.18.0`（`dependencies` 与 `overrides` 同步固定），`package-lock.json` 重生成；`1.16.0 → 1.18.0` 为升级，未降级，也高于推荐修复版本。
-  升级同时消除 npm audit 中 `axios >=1.15.1 <1.18.0` 区间的「form serializer maxDepth 绕过」告警。
+- **修复 axios 原型污染漏洞 CVE-2026-42033**：该 CVE 影响 `axios <1.15.1`（推荐修复版本 1.15.1）。
+  `server` 与 `cloudfunctions/generateImage` 以 `overrides` 钉住的 `1.20.0`，
+  高于推荐修复版本且同时满足此前 CVE-2023-45857 / CVE-2026-44496 / CVE-2025-62718 的修复要求，
+  本次无需改动依赖声明，未降级；两个 `package-lock.json` 合并后仍解析为 `1.20.0`。
 
 ## 0.30.27
 
