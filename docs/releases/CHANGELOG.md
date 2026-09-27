@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 0.30.30
+
+- **复核 axios 漏洞 CVE-2026-67319（原型链污染导致请求篡改，MEDIUM）**：推荐修复版本
+  `1.18.0` 在 master 上已由 `fix/deps-axios-cve-2026-67316` 落地，并随后续依赖升级
+  收敛到 `axios@1.20.0`：`server` 与 `cloudfunctions/generateImage` 均声明直接依赖
+  `axios@1.20.0` 并用 `overrides` 固定，安装树里只存在一份 `axios@1.20.0`，
+  高于推荐修复版本，**无需再改版本，也未降级**。
+  扫描器仍报 `0.27.2` 属**误报**：该字符串来自 `@cloudbase/node-sdk` 已发布 manifest 里
+  硬声明的 `axios: 0.27.2`（截至 4.1.0 仍未改），并非实际安装版本。
+  已用「删掉 overrides 会重新装出 `node_modules/@cloudbase/node-sdk/node_modules/axios@0.27.2`」
+  验证：`overrides` 是这棵树的唯一收敛点。
+- **新增 axios 版本守卫**：`server/test/dependency-axios-version.test.js` 直接校验
+  `package-lock.json` 中所有 axios 条目均为 `1.20.0`（master 当前版本），
+  并在 CI 的 Server Static Check 中执行。
+  变异验证：移除 `overrides` 后该用例转红，确认能拦住回退。
+
 ## 0.30.29
 
 - **核实 axios 未受 CVE-2026-42039 影响**：该 CVE（GHSA-62hf-57xw-28j9，
