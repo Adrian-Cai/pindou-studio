@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 0.30.32
+
+- **核实 axios 未受 HTTP/2 流式请求 maxBodyLength 绕过漏洞 CVE-2026-67318 影响（MEDIUM，CVSS 5.3）**：
+  该 CVE 影响 `>=1.13.0 <1.18.0`，推荐修复版本 `1.18.0`。安全扫描上报的 `1.16.0`
+  为历史（旧）快照：`server` 与 `cloudfunctions/generateImage` 均声明直接依赖
+  `axios@1.20.0` 并用 `overrides` 固定，两份 `package-lock.json` 重装后都只解析出
+  `axios@1.20.0`，**高于推荐修复版本，本次未改版本、未降级**。
+- **源码级验证**：`axios@1.20.0` 的 `lib/adapters/http.js` 已对 HTTP/2、原生 http/https
+  及自定义 transport 显式补齐 `maxBodyLength` 字节计数管道（`transportEnforcesMaxBodyLength`
+  之外的传输统一走 `stream.pipeline` 计数），HTTP/2 流式上传不再绕过上限。
+- **可达性评估**：本仓库源码（`server/src`、`cloudfunctions`、`miniprogram`）无任何
+  `httpVersion` / `maxBodyLength` 用法，该 CVE 的两个受影响条件在本项目均不可达，
+  属仅依赖版本口径的合规修复。
+- **新增 HTTP/2 流式上传守卫**：`server/test/dependency-axios-maxbodylength-http2.test.js`
+  起本地 HTTP/2 服务，用 `httpVersion: 2` + 4MB 流 + `maxBodyLength: 1024` 断言上传被
+  拦截且服务端实收字节不超过上限，并保留一条未超限正常发送用例；已接入 CI 的 Server Static Check。
+  变异验证：同一用例在 `axios@1.16.0` 下转红（服务端实收 4MB，限制被绕过），确认能拦住回退。
+
 ## 0.30.31
 
 - **复核 axios 不受控递归漏洞 CVE-2026-67313（MEDIUM，CVSS 7.5）**：该 CVE 影响
