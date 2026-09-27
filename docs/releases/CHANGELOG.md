@@ -17,6 +17,24 @@
   不产生外网流量；已接入 CI 的 Server Static Check。
   变异验证：同一用例在 `axios@1.16.0` 下转红（无错误返回、流被整体发出），
   在 `1.20.0` 下转绿，确认能拦住回退。
+- **核实 axios 已满足 CVE-2026-67315 修复要求（代理绕过，MEDIUM / CVSS 7.5）**：
+  该 CVE 影响 `axios >= 1.1.0 < 1.18.0`——`shouldBypassProxy` 的回环判断只认
+  `127.0.0.0/8` 与 `localhost`，`0.0.0.0` 不被视为回环，因而在设置了 `HTTP_PROXY`
+  且 `NO_PROXY` 覆盖本地流量时，发往 `http://0.0.0.0:<port>/` 的请求会绕开 `NO_PROXY`
+  被送去代理；请求目标可控（如重定向）时可借此中继到只监听本机的服务，构成 SSRF。
+  推荐修复版本 `1.18.0` 已在 master 落地并收敛到 `axios@1.20.0`：`server` 与
+  `cloudfunctions/generateImage` 均直接依赖 `axios@1.20.0` 并用 `overrides` 固定，
+  安装树里只有一份 `axios@1.20.0`，**高于推荐修复版本，本次未改版本、未降级**。
+  扫描器上报的 `1.16.0` 为历史（旧）快照。
+- **源码级验证**：`axios@1.20.0` 的 `lib/helpers/shouldBypassProxy.js` 已引入
+  `LOOPBACK_HOSTNAMES = new Set(['localhost', '0.0.0.0'])`，并把 IPv4 七/八/十六进制等
+  非规范写法归一化后再比对、解析失败时按「不绕过」失败关闭；
+  `lib/adapters/http.js` 的 `setProxy()` 仅在 `shouldBypassProxy(location) === false` 时才应用代理。
+- **新增 NO_PROXY 代理绕过守卫**：`server/test/dependency-axios-noproxy.test.js`
+  起一个只应答 `PROXY` 的假代理 + 一个应答 `LOCAL` 的本地服务，断言
+  `NO_PROXY=localhost,127.0.0.1,::1` 时请求 `http://0.0.0.0:<port>/` 命中本地而非代理，
+  并断言代理命中次数为 0；已接入 CI 的 Server Static Check。
+  变异验证：同一用例在 `axios@1.16.0` 下拿到 `PROXY` 并转红，确认能拦住回退。
 - **核实 axios 未受 HTTP/2 流式请求 maxBodyLength 绕过漏洞 CVE-2026-67318 影响（MEDIUM，CVSS 5.3）**：
   该 CVE 影响 `>=1.13.0 <1.18.0`，推荐修复版本 `1.18.0`。安全扫描上报的 `1.16.0`
   为历史（旧）快照：`server` 与 `cloudfunctions/generateImage` 均声明直接依赖
@@ -35,22 +53,32 @@
 
 ## 0.30.31
 
-- **复核 axios 不受控递归漏洞 CVE-2026-67313（MEDIUM，CVSS 7.5）**：该 CVE 影响
-  `axios.formToJSON()` / 命名导出 `formToJSON` / `application/json` 请求体默认转换器底层的
-  `formDataToJSON`——按 `a[x][x][x]...` 字段名**无深度上限**递归构树，攻击者可控的字段名
-  即可耗尽调用栈抛 `RangeError: Maximum call stack size exceeded`。
-  推荐修复版本 `1.18.0` 已在 master 落地（`fix/deps-axios-cve-2026-67316`）并随后续升级收敛到
-  `axios@1.20.0`：`server` 与 `cloudfunctions/generateImage` 均声明直接依赖 `axios@1.20.0`
-  并用 `overrides` 固定，安装树里只存在一份 `axios@1.20.0`，**高于推荐修复版本，
-  本次未改版本、未降级**。
-- **源码级验证**：`axios@1.18.0` / `1.20.0` 的 `lib/helpers/formDataToJSON.js` 已引入
-  `throwIfDepthExceeded`，复用 `toFormData` 的 `DEFAULT_FORM_DATA_MAX_DEPTH = 100` 上限，
-  超限抛受控 `AxiosError ERR_FORM_DATA_DEPTH_EXCEEDED`。
-  实测 20000 层嵌套字段名在 `1.20.0` 抛受控错误，在受影响的 `1.16.0` 抛 `RangeError`。
-- **新增 FormData 深度守卫**：`server/test/dependency-axios-formdata-depth.test.js`
-  用公开 API `axios.formToJSON()` 断言恶意深度字段名抛受控错误而非栈溢出，
-  并保留一条正常转换用例；已接入 CI 的 Server Static Check。
-  变异验证：同一用例在 `axios@1.16.0` 下转红（RangeError），确认能拦住回退。
+- **核实 axios 未受 CVE-2026-67312 影响**：该 CVE（`formDataToJSON` 对字段名中的嵌套括号片段
+  无深度限制，攻击者可控字段名可耗尽调用栈导致 DoS）影响 `1.16.0`，推荐修复版本 `1.18.0`。
+  master 已钉在 `axios@1.20.0`，高于推荐修复版本，依赖声明无需改动，**未做任何降级**，
+  未复用漏洞库中的较低候选。
+  源码级确认 `axios/lib/helpers/formDataToJSON.js` 已内置 `MAX_DEPTH`（默认 100）守卫：
+  字段名嵌套 101 层即抛出受控 `AxiosError`（`ERR_FORM_DATA_DEPTH_EXCEEDED`），
+  实测 5000 层同样被拦截，进程不崩溃。
+  校验方式：两处 `package-lock.json` 均只解析出一份 `axios@1.20.0`，`npm ci` 重装后
+  `npm ls axios` 为 `1.20.0 overridden`（`@cloudbase/node-sdk` 硬声明的 `0.27.2`
+  被 `overrides` 去重），既有守卫用例 `server/test/dependency-axios-version.test.js` 通过。
+  - **复核 axios 不受控递归漏洞 CVE-2026-67313（MEDIUM，CVSS 7.5）**：该 CVE 影响
+    `axios.formToJSON()` / 命名导出 `formToJSON` / `application/json` 请求体默认转换器底层的
+    `formDataToJSON`——按 `a[x][x][x]...` 字段名**无深度上限**递归构树，攻击者可控的字段名
+    即可耗尽调用栈抛 `RangeError: Maximum call stack size exceeded`。
+    推荐修复版本 `1.18.0` 已在 master 落地（`fix/deps-axios-cve-2026-67316`）并随后续升级收敛到
+    `axios@1.20.0`：`server` 与 `cloudfunctions/generateImage` 均声明直接依赖 `axios@1.20.0`
+    并用 `overrides` 固定，安装树里只存在一份 `axios@1.20.0`，**高于推荐修复版本，
+    本次未改版本、未降级**。
+  - **源码级验证**：`axios@1.18.0` / `1.20.0` 的 `lib/helpers/formDataToJSON.js` 已引入
+    `throwIfDepthExceeded`，复用 `toFormData` 的 `DEFAULT_FORM_DATA_MAX_DEPTH = 100` 上限，
+    超限抛受控 `AxiosError ERR_FORM_DATA_DEPTH_EXCEEDED`。
+    实测 20000 层嵌套字段名在 `1.20.0` 抛受控错误，在受影响的 `1.16.0` 抛 `RangeError`。
+  - **新增 FormData 深度守卫**：`server/test/dependency-axios-formdata-depth.test.js`
+    用公开 API `axios.formToJSON()` 断言恶意深度字段名抛受控错误而非栈溢出，
+    并保留一条正常转换用例；已接入 CI 的 Server Static Check。
+    变异验证：同一用例在 `axios@1.16.0` 下转红（RangeError），确认能拦住回退。
 
 ## 0.30.30
 
@@ -64,6 +92,24 @@
   以「顶层键 `{}` 结尾 + 1000/4000/60000 层嵌套值」复现 CVE 场景时抛出受控
   `AxiosError`（`ERR_FORM_DATA_DEPTH_EXCEEDED`），进程存活；同一场景在修复前的 `1.14.0`
   上仍抛非受控 `RangeError`，可确认修复已生效。
+
+- **修复 lodash.set 原型污染漏洞 CVE-2020-8203**：该 CVE 由 lodash 4.17.19 修复，
+  但独立子包 `lodash.set` 的最后一个版本就是 `4.3.2`（2016-08 发布，早已停更），
+  扫描器给出的「推荐修复版本」为空 —— **不存在高于 4.3.2 的安全版本，也无法降级**。
+  受影响链路：`server` 与 `cloudfunctions/generateImage` 经
+  `@cloudbase/node-sdk` → `@cloudbase/database@1.4.3` 间接依赖 `lodash.set@4.3.2`。
+  处理方式：用 `overrides` 把 `lodash.set` 替换为随包内置的安全实现
+  `file:./vendor/lodash.set-safe`（`_.set` 语义对齐 lodash 4.17.21，
+  路径中出现 `__proto__` / `constructor` / `prototype` 时放弃写入），
+  两处 `package-lock.json` 已不再解析 registry 上的 `lodash.set@4.3.2`，**未降级任何依赖**。
+  校验：两处 `npm ci` 通过；`node -e "require('lodash.set')..."` 确认正常写入生效、
+  `__proto__.x` 不再污染 `Object.prototype`；与 lodash 4.17.21 的 `_.set` 做 4 万次随机路径对比无差异；
+  `server` typecheck/build/222 例测试（217 通过 / 5 跳过 / 0 失败）通过。
+
+- **合并 master 解决依赖冲突**：master 新增 `lodash.unset@4.18.0` 覆写（CVE-2025-13465），与本次的
+  `lodash.set` 本地安全实现覆写落在同一段 `overrides`。合并后两处 `package.json` 同时保留
+  `axios@1.20.0`、`lodash.unset@4.18.0` 与 `lodash.set` 的 `file:./vendor/lodash.set-safe` 三项覆写，
+  两份 `package-lock.json` 均保留两处修复结果，**未回退任何一方的修复**。
 
 - **复核 axios 漏洞 CVE-2026-67319（原型链污染导致请求篡改，MEDIUM）**：推荐修复版本
   `1.18.0` 在 master 上已由 `fix/deps-axios-cve-2026-67316` 落地，并随后续依赖升级

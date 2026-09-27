@@ -1,0 +1,8 @@
+{
+  "name": "lodash.set-safe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "lodash.set 的安全替代实现，阻断 __proto__/constructor/prototype 路径写入（CVE-2020-8203）",
+  "main": "index.js",
+  "license": "MIT"
+}
