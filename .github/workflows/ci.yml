@@ -96,3 +96,7 @@ jobs:
       # axios HTTP/2 流式上传守卫：CVE-2026-67318，httpVersion: 2 下 maxBodyLength 必须生效
       - name: axios http2 maxBodyLength guard
         run: node --test test/dependency-axios-maxbodylength-http2.test.js
+
+      # tslib 版本/许可证守卫：BSD-ZERO 0BSD 合规项，依赖树必须收敛到 tslib@2.8.1
+      - name: tslib 0BSD license guard
+        run: node --test test/dependency-tslib-license.test.js
