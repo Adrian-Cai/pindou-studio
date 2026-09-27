@@ -20,22 +20,32 @@
 
 ## 0.30.31
 
-- **复核 axios 不受控递归漏洞 CVE-2026-67313（MEDIUM，CVSS 7.5）**：该 CVE 影响
-  `axios.formToJSON()` / 命名导出 `formToJSON` / `application/json` 请求体默认转换器底层的
-  `formDataToJSON`——按 `a[x][x][x]...` 字段名**无深度上限**递归构树，攻击者可控的字段名
-  即可耗尽调用栈抛 `RangeError: Maximum call stack size exceeded`。
-  推荐修复版本 `1.18.0` 已在 master 落地（`fix/deps-axios-cve-2026-67316`）并随后续升级收敛到
-  `axios@1.20.0`：`server` 与 `cloudfunctions/generateImage` 均声明直接依赖 `axios@1.20.0`
-  并用 `overrides` 固定，安装树里只存在一份 `axios@1.20.0`，**高于推荐修复版本，
-  本次未改版本、未降级**。
-- **源码级验证**：`axios@1.18.0` / `1.20.0` 的 `lib/helpers/formDataToJSON.js` 已引入
-  `throwIfDepthExceeded`，复用 `toFormData` 的 `DEFAULT_FORM_DATA_MAX_DEPTH = 100` 上限，
-  超限抛受控 `AxiosError ERR_FORM_DATA_DEPTH_EXCEEDED`。
-  实测 20000 层嵌套字段名在 `1.20.0` 抛受控错误，在受影响的 `1.16.0` 抛 `RangeError`。
-- **新增 FormData 深度守卫**：`server/test/dependency-axios-formdata-depth.test.js`
-  用公开 API `axios.formToJSON()` 断言恶意深度字段名抛受控错误而非栈溢出，
-  并保留一条正常转换用例；已接入 CI 的 Server Static Check。
-  变异验证：同一用例在 `axios@1.16.0` 下转红（RangeError），确认能拦住回退。
+- **核实 axios 未受 CVE-2026-67312 影响**：该 CVE（`formDataToJSON` 对字段名中的嵌套括号片段
+  无深度限制，攻击者可控字段名可耗尽调用栈导致 DoS）影响 `1.16.0`，推荐修复版本 `1.18.0`。
+  master 已钉在 `axios@1.20.0`，高于推荐修复版本，依赖声明无需改动，**未做任何降级**，
+  未复用漏洞库中的较低候选。
+  源码级确认 `axios/lib/helpers/formDataToJSON.js` 已内置 `MAX_DEPTH`（默认 100）守卫：
+  字段名嵌套 101 层即抛出受控 `AxiosError`（`ERR_FORM_DATA_DEPTH_EXCEEDED`），
+  实测 5000 层同样被拦截，进程不崩溃。
+  校验方式：两处 `package-lock.json` 均只解析出一份 `axios@1.20.0`，`npm ci` 重装后
+  `npm ls axios` 为 `1.20.0 overridden`（`@cloudbase/node-sdk` 硬声明的 `0.27.2`
+  被 `overrides` 去重），既有守卫用例 `server/test/dependency-axios-version.test.js` 通过。
+  - **复核 axios 不受控递归漏洞 CVE-2026-67313（MEDIUM，CVSS 7.5）**：该 CVE 影响
+    `axios.formToJSON()` / 命名导出 `formToJSON` / `application/json` 请求体默认转换器底层的
+    `formDataToJSON`——按 `a[x][x][x]...` 字段名**无深度上限**递归构树，攻击者可控的字段名
+    即可耗尽调用栈抛 `RangeError: Maximum call stack size exceeded`。
+    推荐修复版本 `1.18.0` 已在 master 落地（`fix/deps-axios-cve-2026-67316`）并随后续升级收敛到
+    `axios@1.20.0`：`server` 与 `cloudfunctions/generateImage` 均声明直接依赖 `axios@1.20.0`
+    并用 `overrides` 固定，安装树里只存在一份 `axios@1.20.0`，**高于推荐修复版本，
+    本次未改版本、未降级**。
+  - **源码级验证**：`axios@1.18.0` / `1.20.0` 的 `lib/helpers/formDataToJSON.js` 已引入
+    `throwIfDepthExceeded`，复用 `toFormData` 的 `DEFAULT_FORM_DATA_MAX_DEPTH = 100` 上限，
+    超限抛受控 `AxiosError ERR_FORM_DATA_DEPTH_EXCEEDED`。
+    实测 20000 层嵌套字段名在 `1.20.0` 抛受控错误，在受影响的 `1.16.0` 抛 `RangeError`。
+  - **新增 FormData 深度守卫**：`server/test/dependency-axios-formdata-depth.test.js`
+    用公开 API `axios.formToJSON()` 断言恶意深度字段名抛受控错误而非栈溢出，
+    并保留一条正常转换用例；已接入 CI 的 Server Static Check。
+    变异验证：同一用例在 `axios@1.16.0` 下转红（RangeError），确认能拦住回退。
 
 ## 0.30.30
 
