@@ -8,6 +8,7 @@
     "wx-server-sdk": "4.0.2"
   },
   "overrides": {
+    "lodash.set": "file:./vendor/lodash.set-safe",
     "axios": "1.20.0"
   }
 }

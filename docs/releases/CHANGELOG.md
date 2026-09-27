@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.30.30
+
+- **修复 lodash.set 原型污染漏洞 CVE-2020-8203**：该 CVE 由 lodash 4.17.19 修复，
+  但独立子包 `lodash.set` 的最后一个版本就是 `4.3.2`（2016-08 发布，早已停更），
+  扫描器给出的「推荐修复版本」为空 —— **不存在高于 4.3.2 的安全版本，也无法降级**。
+  受影响链路：`server` 与 `cloudfunctions/generateImage` 经
+  `@cloudbase/node-sdk` → `@cloudbase/database@1.4.3` 间接依赖 `lodash.set@4.3.2`。
+  处理方式：用 `overrides` 把 `lodash.set` 替换为随包内置的安全实现
+  `file:./vendor/lodash.set-safe`（`_.set` 语义对齐 lodash 4.17.21，
+  路径中出现 `__proto__` / `constructor` / `prototype` 时放弃写入），
+  两处 `package-lock.json` 已不再解析 registry 上的 `lodash.set@4.3.2`，**未降级任何依赖**。
+  校验：两处 `npm ci` 通过；`node -e "require('lodash.set')..."` 确认正常写入生效、
+  `__proto__.x` 不再污染 `Object.prototype`；与 lodash 4.17.21 的 `_.set` 做 4 万次随机路径对比无差异；
+  `server` typecheck/build/222 例测试（217 通过 / 5 跳过 / 0 失败）通过。
+
 ## 0.30.29
 
 - **核实 axios 未受 CVE-2026-42039 影响**：该 CVE（GHSA-62hf-57xw-28j9，
