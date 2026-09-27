@@ -84,3 +84,7 @@ jobs:
       # axios FormData 深度守卫：CVE-2026-67313，恶意括号嵌套字段名不得冲垮调用栈
       - name: axios formData depth guard
         run: node --test test/dependency-axios-formdata-depth.test.js
+
+      # axios fetch 适配器 maxBodyLength 守卫：CVE-2026-67317，未知大小的流式请求体也必须受限
+      - name: axios fetch maxBodyLength guard
+        run: node --test test/dependency-axios-fetch-max-body-length.test.js
