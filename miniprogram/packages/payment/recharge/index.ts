@@ -10,6 +10,8 @@ import { authStore } from '../../../store/auth-store'
 import {
   createPaymentIdempotencyKey,
   fetchAiGenerationPackages,
+  getPaidPaymentOrderId,
+  isPaymentOrderExpired,
   isWechatPaymentCancelled,
   isWechatPaymentOrderClosed,
   payForAiGenerationPackage,
@@ -28,8 +30,9 @@ Page({
     dailyFreeQuota: 0,
     dailyFreeRemaining: 0,
     paymentLoading: false,
-    /** 本次购买的幂等键：成功或明确取消前一直复用，避免重复下单。 */
+    /** 本次购买的幂等键：支付未确认结束时持续复用，避免重复下单。 */
     paymentIdempotencyKey: '',
+    paymentIdempotencyPackageId: '',
   },
 
   onShow() {
@@ -80,7 +83,12 @@ Page({
     const index = Number(event.currentTarget.dataset.index)
     const selectedPackage = this.data.packages[index]
     if (!selectedPackage) return
-    this.setData({ selected: index, selectedPrice: selectedPackage.price })
+    this.setData({
+      selected: index,
+      selectedPrice: selectedPackage.price,
+      paymentIdempotencyKey: selectedPackage.id === this.data.paymentIdempotencyPackageId ? this.data.paymentIdempotencyKey : '',
+      paymentIdempotencyPackageId: selectedPackage.id === this.data.paymentIdempotencyPackageId ? this.data.paymentIdempotencyPackageId : '',
+    })
   },
 
   openPaidServiceAgreement() {
@@ -91,29 +99,38 @@ Page({
     const selectedPackage = this.data.packages[this.data.selected]
     if (!selectedPackage || this.data.paymentLoading) return
 
-    // 幂等键绑定「这一次购买意图」：失败重试复用同一个键（服务端据此去重），
-    // 用户主动取消才清掉 —— 每次现造一个会让去重形同虚设，重复下单即重复扣款。
+    // 同一套餐的取消与重试复用业务订单幂等键；服务端仅在微信确认前一尝试已关闭后才签发新尝试。
     const idempotencyKey = this.data.paymentIdempotencyKey || createPaymentIdempotencyKey()
-    this.setData({ paymentLoading: true, paymentIdempotencyKey: idempotencyKey })
+    this.setData({
+      paymentLoading: true,
+      paymentIdempotencyKey: idempotencyKey,
+      paymentIdempotencyPackageId: selectedPackage.id,
+    })
     try {
       const created = await payForAiGenerationPackage(selectedPackage.id, idempotencyKey)
-      this.setData({ paymentLoading: false, paymentIdempotencyKey: '' })
+      this.setData({ paymentLoading: false, paymentIdempotencyKey: '', paymentIdempotencyPackageId: '' })
       wx.navigateTo({
         url: `/packages/payment/payment-success/index?orderId=${encodeURIComponent(created.orderId)}`,
       })
     } catch (error) {
-      if (isWechatPaymentCancelled(error)) {
-        this.setData({ paymentIdempotencyKey: '' })
+      const paidOrderId = getPaidPaymentOrderId(error)
+      if (paidOrderId) {
+        this.setData({ paymentIdempotencyKey: '', paymentIdempotencyPackageId: '' })
+        wx.navigateTo({
+          url: `/packages/payment/payment-success/index?orderId=${encodeURIComponent(paidOrderId)}`,
+        })
+      } else if (isWechatPaymentCancelled(error)) {
         wx.showToast({ title: '已取消支付', icon: 'none' })
       } else if (isWechatPaymentOrderClosed(error)) {
-        // 微信侧这张单已经关了（-15012）或单号撞了（-15002）：原样重试仍会撞同一个
-        // 单号，必须换一个幂等键开新单。
-        this.setData({ paymentIdempotencyKey: '' })
+        // 保留业务订单幂等键；下一次创建请求会先查微信，再为已关闭尝试签发新单号。
         wx.showModal({
           title: '支付未完成',
-          content: paymentErrorMessage(error),
+          content: '微信已关闭这次支付，请再次点击继续当前订单',
           showCancel: false,
         })
+      } else if (isPaymentOrderExpired(error)) {
+        this.setData({ paymentIdempotencyKey: '', paymentIdempotencyPackageId: '' })
+        wx.showModal({ title: '订单已关闭', content: paymentErrorMessage(error), showCancel: false })
       } else {
         // 其余失败保留同一个键，让用户「再试一次」仍归属同一笔
         wx.showModal({

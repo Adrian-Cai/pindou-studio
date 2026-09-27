@@ -64,29 +64,17 @@ export function verifyPushMessageSignature(
 /**
  * 判断一次推送请求是否来自微信，并按需选择校验方式。
  *
- * 「没带签名参数就放行」不是偷懒：明文模式下我们无法确认微信是否一定带 signature，
- * 强制要求会把合法推送误杀成 403，而放行也放不出问题 —— 推送本身不被信任，
- * 是否放款由 payment-service 侧调 query_order 验真决定，推送只用来定位订单。
- * 但**有密文就必须校验**（安全模式一定带 msg_signature），否则解密等于替攻击者代劳。
+ * 支付和退款推送必须 fail closed：没有 Token 或签名时拒绝；安全模式下必须验证
+ * 覆盖密文的 msg_signature，不能退回只覆盖 timestamp/nonce 的明文签名。
  */
 export function verifyPushRequest(
   credentials: VirtualPayPushCredentials,
   parameters: PushQueryParameters,
   ciphertext: string | null,
 ): boolean {
-  if (!credentials.token) return true;
-  if (ciphertext) {
-    if (parameters.msgSignature) {
-      return verifyPushMessageSignature(credentials.token, parameters, ciphertext);
-    }
-    if (parameters.signature) {
-      return verifyPushSignature(credentials.token, parameters);
-    }
-    // 有密文却一个签名都没有：既可能是伪造，也说明后台模式与服务端配置不一致
-    return false;
-  }
-  if (parameters.signature) return verifyPushSignature(credentials.token, parameters);
-  return true;
+  if (!credentials.token) return false;
+  if (ciphertext) return verifyPushMessageSignature(credentials.token, parameters, ciphertext);
+  return verifyPushSignature(credentials.token, parameters);
 }
 
 /**

@@ -69,6 +69,8 @@ pindou_users
   ├── pindou_file_assets
   ├── pindou_quota_transactions
   ├── pindou_orders ─── pindou_packages
+  │      ├── pindou_payment_attempts ─── pindou_payment_events
+  │      └── pindou_payment_events
   └── pindou_content_security_checks
 ```
 
@@ -98,11 +100,13 @@ pindou_users
 | `pindou_quota_transactions` | 额度流水表 | 记录免费额度、购买额度、下载扣减、退款和人工调整 |
 | `pindou_packages` | 充值套餐表 | 保存可购买套餐的名称、价格、额度和会员配置 |
 | `pindou_orders` | 支付订单表 | 保存微信支付订单、金额、状态和支付回调信息 |
+| `pindou_payment_attempts` | 支付尝试表 | 保留每个永久唯一商户单号、微信交易号和查询状态 |
+| `pindou_payment_events` | 支付事件表 | 去重并追踪已验签推送的处理状态，不保存原始报文 |
 | `pindou_content_security_checks` | 内容安全审核表 | 保存微信文本/图片审核任务、异步回调状态和临时媒体引用 |
 
 维护要求：建表 SQL 必须为每张表和每个字段写数据库注释注释至少说明“这是什么”和“在什么业务场景使用”，不能只重复字段名
 
-### 3.11 `pindou_content_security_checks`
+#### `pindou_content_security_checks`
 
 用于记录作品名称和上传图片的微信内容安全检测表内不保存明文 OpenID 或原始文本；图片对象只在微信异步审核完成或记录过期前临时保留
 
@@ -358,6 +362,10 @@ pindou_users
 | `status` | varchar(20) | NOT NULL | `pending`、`paid`、`failed`、`closed`、`refunded` |
 | `wx_prepay_id` | varchar(128) | NULL | 微信预支付 id |
 | `wx_transaction_id` | varchar(128) | UNIQUE, NULL | 微信支付交易号 |
+| `virtual_out_trade_no` | varchar(32) | NULL | 当前虚拟支付单号；历史支付尝试以 `pindou_payment_attempts` 为准 |
+| `idempotency_key` | varchar(128) | NULL | 用户订单创建幂等键 |
+| `expires_at` | timestamptz | NULL | 服务端计算的支付有效期截止时间 |
+| `closed_at` | timestamptz | NULL | 确认关闭时间 |
 | `paid_at` | timestamp | NULL | 支付成功时间 |
 | `created_at` | timestamp | NOT NULL | 创建时间 |
 | `updated_at` | timestamp | NOT NULL | 更新时间 |
@@ -367,6 +375,47 @@ pindou_users
 - 订单金额以 `price_fen` 为准，客户端不得提交或覆盖
 - 回调确认的金额、商户、订单号必须与订单快照一致
 - `paid` 订单只能产生一次 `purchase_grant` 流水
+- 同一用户的订单幂等键唯一；最多保留 5 个未完成订单，`UNKNOWN` 仍占用名额
+- 只有微信明确返回已关闭时，支付尝试和订单才能转为 `CLOSED`
+
+### 3.11 `pindou_payment_attempts`
+
+每次虚拟支付尝试单独保存；`out_trade_no` 永不复用。因虚拟支付单号不能安全复用，只有微信确认前一次已关闭后才允许为同一业务订单签发新尝试。
+
+| 字段 | 类型建议 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | varchar(32) | PK | 支付尝试 ID |
+| `order_id` | varchar(32) | FK, NOT NULL | 业务订单 |
+| `user_id` | varchar(32) | FK, NOT NULL | 下单用户 |
+| `out_trade_no` | varchar(32) | UNIQUE, NOT NULL | 永久唯一的微信虚拟支付商户单号 |
+| `status` | varchar(16) | CHECK, NOT NULL | `ISSUED`、`SUCCEEDED`、`CLOSED`、`UNKNOWN` |
+| `wechat_transaction_id` | varchar(128) | UNIQUE, NULL | 微信交易号 |
+| `amount_fen` | integer | NOT NULL | 支付尝试金额，必须大于 0 |
+| `currency` | varchar(3) | NOT NULL | 当前仅允许 `CNY` |
+| `created_at` | timestamptz | NOT NULL | 创建时间 |
+| `issued_at` | timestamptz | NULL | 签发时间 |
+| `paid_at` | timestamptz | NULL | 支付成功时间 |
+| `closed_at` | timestamptz | NULL | 微信确认关闭时间 |
+| `last_query_at` | timestamptz | NULL | 最近一次查单时间 |
+| `query_count` | integer | NOT NULL | 查单次数 |
+| `failure_reason` | varchar(255) | NULL | 最近一次异常摘要，不保存原始报文 |
+
+### 3.12 `pindou_payment_events`
+
+记录已验签支付推送的去重指纹和处理结果，不存储原始请求报文。
+
+| 字段 | 类型建议 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | varchar(32) | PK | 支付事件 ID |
+| `provider` | varchar(32) | NOT NULL | 事件来源 |
+| `event_type` | varchar(80) | NOT NULL | 支付或退款事件类型 |
+| `event_fingerprint` | varchar(64) | UNIQUE(provider), NOT NULL | 同一来源的事件去重指纹 |
+| `order_id` | varchar(32) | FK, NULL | 关联业务订单 |
+| `attempt_id` | varchar(32) | FK, NULL | 关联支付尝试 |
+| `status` | varchar(24) | CHECK, NOT NULL | `RECEIVED`、`PROCESSED`、`QUERY_FAILED`、`DATA_MISMATCH`、`PROCESS_FAILED` |
+| `failure_reason` | varchar(255) | NULL | 处理失败摘要 |
+| `created_at` | timestamptz | NOT NULL | 接收时间 |
+| `processed_at` | timestamptz | NULL | 完成处理时间 |
 
 ## 4. 事务与一致性
 
@@ -402,13 +451,16 @@ pindou_users
 ### 4.3 支付回调
 
 ```text
-验签与金额校验
-  → 锁定订单
-  → 若已 paid：直接返回幂等成功
-  → 更新 pindou_orders.status = paid
+验签并记录事件指纹
+  → 根据商户单号查询微信支付事实
+  → 锁定订单与支付尝试
+  → 校验金额、币种、付款人和订单归属
+  → 更新订单与支付尝试状态
   → 写 pindou_quota_transactions(amount > 0, order_id = order.id)
 提交事务
 ```
+
+定时 reconciliation 会重新查询过期的 `ISSUED` / `UNKNOWN` 尝试；查询失败或状态不明确时保持 `UNKNOWN`，不得直接关闭订单。
 
 ## 5. 关键索引与约束汇总
 
@@ -421,7 +473,9 @@ pindou_users
 | `pindou_favorites` | `(user_id, work_id) UNIQUE`；有效收藏 `(user_id, favorited_at DESC) WHERE deleted_at IS NULL` | 收藏操作幂等及最近收藏查询 |
 | `pindou_download_records` | `idempotency_key UNIQUE` | 下载重试不重复扣费 |
 | `pindou_quota_transactions` | 每日免费发放唯一 | 防止重复发放 |
-| `pindou_orders` | `wx_transaction_id UNIQUE` | 支付回调幂等 |
+| `pindou_orders` | `(user_id, idempotency_key) UNIQUE`；`(user_id, expires_at) WHERE status = 'pending'` | 订单创建幂等与待支付过期查询 |
+| `pindou_payment_attempts` | `out_trade_no UNIQUE`、`wechat_transaction_id UNIQUE` | 防止支付尝试或交易号重复绑定 |
+| `pindou_payment_events` | `(provider, event_fingerprint) UNIQUE` | 防止支付推送重复处理 |
 
 所有外键都要配合用户归属校验；不能因为存在外键就省略 `user_id` 条件
 

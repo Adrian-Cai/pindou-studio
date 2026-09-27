@@ -260,9 +260,7 @@ function toPaymentApiError(error: unknown): ApiError {
   }
   /**
    * 商户单号作废：微信侧这张单已经关了（-15012）或单号撞了（-15002）。
-   *
-   * 单独成一个 code 而不是只给一句文案，是因为调用方必须**换一笔新单**才能继续 ——
-   * 保留原幂等键重试只会反复撞同一个已关闭的单号。
+   * 保留独立错误码，让服务端在复用业务订单前先查询并确认旧尝试状态。
    */
   if (errCode === VIRTUAL_ORDER_CLOSED_ERR_CODE || errCode === VIRTUAL_OUT_TRADE_NO_REUSED_ERR_CODE) {
     return new ApiError('订单已失效，请重新发起支付', {
@@ -323,7 +321,7 @@ const VIRTUAL_PAYMENT_ERROR_TEXT: Readonly<Record<number, string>> = {
 
 /** 用户主动取消支付：errCode -2 是微信文档的取值，errMsg 文案跨版本/语言会变。 */
 const WECHAT_PAYMENT_CANCELLED = 'WECHAT_PAYMENT_CANCELLED'
-/** 商户单号已作废，必须换一笔新单才能继续支付（详见 toPaymentApiError）。 */
+/** 商户单号已作废，服务端核对后再决定是否签发新尝试（详见 toPaymentApiError）。 */
 const WECHAT_PAYMENT_ORDER_CLOSED = 'WECHAT_PAYMENT_ORDER_CLOSED'
 /** 支付拉起失败的其它原因（余额不足、参数错误等）。 */
 const WECHAT_PAYMENT_FAILED = 'WECHAT_PAYMENT_FAILED'
@@ -365,6 +363,16 @@ export function isWechatPaymentOrderClosed(error: unknown): boolean {
   if (!isRecord(error)) return false
   const code = error.errCode ?? (isRecord(error.details) ? error.details.errCode : null)
   return code === VIRTUAL_ORDER_CLOSED_ERR_CODE || code === VIRTUAL_OUT_TRADE_NO_REUSED_ERR_CODE
+}
+
+export function isPaymentOrderExpired(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'ORDER_EXPIRED'
+}
+
+export function getPaidPaymentOrderId(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.code !== 'ORDER_ALREADY_PAID') return null
+  const orderId = error.details.orderId
+  return typeof orderId === 'string' && orderId ? orderId : null
 }
 
 /** 把支付失败错误归一化为用户可读文案，无 message 时回退默认提示。 */

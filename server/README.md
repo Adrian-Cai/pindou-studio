@@ -24,7 +24,7 @@
 node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
 ```
 
-服务在监听端口前会开启 `READ ONLY` 事务，检查数据库产品、版本、12 张表、字段、索引、外键、CHECK 约束和注释发现任何结构差异时会拒绝启动，不会自动修复数据库
+服务在监听端口前会开启 `READ ONLY` 事务，检查数据库产品、版本、14 张表、字段、索引、外键、CHECK 约束和注释发现任何结构差异时会拒绝启动，不会自动修复数据库
 
 已有数据库部署本版本前，先由数据库工具或运维脚本使用 `pindou_*` 表 owner 按编号顺序执行 `sql/` 下的迁移脚本，再执行 `npm run db:inspect`。Jenkins 只负责部署 API，不连接数据库，也不会自动执行 SQL 迁移。`000_schema_migrations.sql` 会创建迁移记录表；如使用 `deploy/migrate.sh`，它会按文件编号和 SHA-256 校验值只执行未记录的迁移，已成功执行且文件未变化的迁移会跳过。**必须用表 owner 或超级用户执行**：迁移含 `ALTER TABLE` / `COMMENT ON` / `CREATE INDEX`，PostgreSQL 只允许 owner 改表，仅有表级 `GRANT` 会报 `ERROR: must be owner of table pindou_*`：
 
@@ -38,7 +38,7 @@ sh deploy/migrate.sh server/sql
 unset DB_PASSWORD
 ```
 
-迁移连接必须是 **API 实际使用的那个库**（即 `config/api.env` 中 `DB_HOST` 指向的实例），迁移到别的库不会生效。手工执行时可先导出 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`，再运行 `sh deploy/migrate.sh server/sql`；使用数据库工具手工修改时，也要对准同一数据库并使用 owner 账号。`001` 增加双额度字段、AI 任务表和 AI 套餐并停用历史下载/无限会员套餐；`002` 增加 `palette` 下载类型；`003` 增加微信内容安全审核表；`004` 增加隐私偏好字段；`005` 允许注销账号后清空 OpenID；`006` 回填历史收藏时间并增加收藏软删除字段与有效收藏时间索引；`008` 增加订单用户时间索引；`009` 增加内容安全图片哈希以复用同图检测结果；`011` 下架 AI 精致生成 150 次套餐；`012` 增加 ¥0.10/5 次新人支付联调套餐；`013` 增加混元同步生成结果的临时输出地址字段。部署代码前必须先完成结构迁移，否则结构校验会阻止服务启动。
+迁移连接必须是 **API 实际使用的那个库**（即 `config/api.env` 中 `DB_HOST` 指向的实例），迁移到别的库不会生效。手工执行时可先导出 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`，再运行 `sh deploy/migrate.sh server/sql`；使用数据库工具手工修改时，也要对准同一数据库并使用 owner 账号。`001` 增加双额度字段、AI 任务表和 AI 套餐并停用历史下载/无限会员套餐；`002` 增加 `palette` 下载类型；`003` 增加微信内容安全审核表；`004` 增加隐私偏好字段；`005` 允许注销账号后清空 OpenID；`006` 回填历史收藏时间并增加收藏软删除字段与有效收藏时间索引；`008` 增加订单用户时间索引；`009` 增加内容安全图片哈希以复用同图检测结果；`011` 下架 AI 精致生成 150 次套餐；`012` 增加 ¥0.10/5 次新人支付联调套餐；`013` 增加混元同步生成结果的临时输出地址字段；`018` 增加支付尝试、支付事件及订单幂等和过期字段。部署代码前必须先完成结构迁移，否则结构校验会阻止服务启动。
 
 健康检查：
 
@@ -133,7 +133,7 @@ Content-Type: application/json
 
 ## 阶段 5 接口
 
-`GET /api/packages` 公开返回数据库中已启用的 AI 生成次数套餐；创建支付订单需要登录和稳定的 `Idempotency-Key`，请求体只允许包含服务端套餐 ID：
+`GET /api/packages` 公开返回数据库中已启用的 AI 生成次数套餐；创建虚拟支付订单需要登录和稳定的 `Idempotency-Key`，请求体只允许包含服务端套餐 ID：
 
 ```http
 POST /api/payments/create
@@ -144,9 +144,11 @@ Content-Type: application/json
 {"packageId":"ai_generation_80"}
 ```
 
-服务端从 `pindou_packages` 读取价格和额度、写入订单快照，再调用微信支付 v3 JSAPI/小程序下单客户端只会收到 `wx.requestPayment` 所需字段，不会收到商户私钥、API v3 密钥、AppSecret 或签名原文
+服务端从 `pindou_packages` 读取价格和额度、写入 5 分钟有效的订单快照，并签发 `wx.requestVirtualPayment` 所需参数。支付事实由服务端查单核实后再发放额度；同一用户最多保留 5 个未完成订单，状态未知的订单继续占用名额。支付尝试和推送事件分别持久化，商户单号不会被覆盖。
 
-`POST /api/payments/notify` 仅使用微信支付请求头和原始请求体完成验签，不读取 Bearer token回调通过平台公钥验签并使用 API v3 密钥解密后，服务端再次校验商户号、AppID、订单号、金额、币种、付款人和支付状态；首次成功在同一事务内把订单改为 `paid` 并写一笔 `purchase_grant`，重复回调只确认成功
+`POST /api/payments/virtual-notify` 处理小程序虚拟支付推送，必须配置 Token 并验签；加密模式使用 `msg_signature`。推送后仍查询微信事实再修改订单或额度。当前虚拟支付网关无主动关单实现，过期但未能确认关闭的单会保留为 `UNKNOWN` 并等待补单或人工排查。
+
+`POST /api/payments/notify` 只保留给普通微信支付旧通道的在途订单收尾。
 
 支付环境变量见 [`.env.example`](./.env.example) 和 [`WECHAT_PAYMENT_SETUP.md`](../docs/backend/operations/WECHAT_PAYMENT_SETUP.md)。支付配置全部缺省时，套餐读取仍可用，创建支付与回调返回 `PAYMENT_NOT_CONFIGURED`；部分配置会被视为配置错误并阻止启动。已有用户需要重新登录一次，以便服务端在 `openid_ciphertext` 中保存支付所需的加密身份。
 

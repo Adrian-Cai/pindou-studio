@@ -866,7 +866,7 @@ paths:
     post:
       tags: [套餐与支付]
       operationId: createPayment
-      summary: 创建微信支付订单
+      summary: 创建小程序虚拟支付订单
       security:
         - BearerAuth: []
       parameters:
@@ -891,7 +891,62 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          description: 支付幂等、状态或未完成订单上限冲突；业务错误码包括 MAX_PENDING_ORDERS_REACHED、PAYMENT_STATUS_CONFIRMING、ORDER_EXPIRED、ORDER_ALREADY_PAID。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/payments/virtual-notify:
+    get:
+      tags: [套餐与支付]
+      operationId: verifyVirtualPaymentNotificationUrl
+      summary: 验证虚拟支付推送 URL
+      description: 微信平台 URL 握手；服务端验证 signature 后原样回显 echostr。
+      parameters:
+        - { name: signature, in: query, required: true, schema: { type: string } }
+        - { name: timestamp, in: query, required: true, schema: { type: string } }
+        - { name: nonce, in: query, required: true, schema: { type: string } }
+        - { name: echostr, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 回显微信发送的 echostr。
+          content:
+            text/plain:
+              schema: { type: string }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [套餐与支付]
+      operationId: receiveVirtualPaymentNotification
+      summary: 接收小程序虚拟支付推送
+      description: 验证 Token 与签名后记录事件，并通过微信查单核实支付事实；加密模式必须校验覆盖密文的 msg_signature。
+      parameters:
+        - { name: signature, in: query, required: false, schema: { type: string } }
+        - { name: msg_signature, in: query, required: false, schema: { type: string } }
+        - { name: timestamp, in: query, required: true, schema: { type: string } }
+        - { name: nonce, in: query, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema: { type: string }
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: XML acknowledgement; ErrCode=0 means accepted, ErrCode=1 asks WeChat to retry.
+          content:
+            application/xml:
+              schema: { type: string }
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -899,8 +954,9 @@ paths:
     post:
       tags: [套餐与支付]
       operationId: receivePaymentNotification
-      summary: 接收微信支付回调
-      description: 由微信支付服务器调用，不使用 Bearer Token；服务端根据微信支付请求头完成验签。
+      summary: 接收旧通道微信支付回调
+      deprecated: true
+      description: 仅用于收尾普通微信支付旧订单；新订单使用 /api/payments/virtual-notify。
       parameters:
         - $ref: '#/components/parameters/WechatPayTimestamp'
         - $ref: '#/components/parameters/WechatPayNonce'
@@ -1658,11 +1714,25 @@ components:
         paySign: { type: string }
     CreatePaymentResponse:
       type: object
-      required: [orderId, payment]
+      required: [orderId, virtual, payment]
       properties:
         orderId: { type: string }
+        virtual:
+          anyOf:
+            - $ref: '#/components/schemas/VirtualPaymentPayload'
+            - type: 'null'
         payment:
-          $ref: '#/components/schemas/PaymentParameters'
+          anyOf:
+            - $ref: '#/components/schemas/PaymentParameters'
+            - type: 'null'
+    VirtualPaymentPayload:
+      type: object
+      required: [signData, paySig, signature, mode]
+      properties:
+        signData: { type: string, description: 微信虚拟支付签名数据，客户端需原样透传。 }
+        paySig: { type: string }
+        signature: { type: string }
+        mode: { type: string, const: short_series_goods }
     PaymentNotificationResponse:
       type: object
       additionalProperties: false

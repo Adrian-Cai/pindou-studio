@@ -709,9 +709,9 @@ Authorization: Bearer <token>
 
 ### POST `/api/payments/create`
 
-用途：根据服务端套餐创建微信支付订单
+用途：根据服务端套餐创建订单并签发小程序虚拟支付参数。
 
-鉴权：需要
+鉴权：需要；请求头必须带该次购买意图的 `Idempotency-Key`。
 
 请求：
 
@@ -724,38 +724,38 @@ Authorization: Bearer <token>
 ```json
 {
   "orderId": "order_xxx",
-  "payment": {
-    "timeStamp": "1724660400",
-    "nonceStr": "nonce_xxx",
-    "package": "prepay_id=wx_xxx",
-    "signType": "RSA",
-    "paySign": "sign_xxx"
-  }
+  "virtual": {
+    "signData": "{...}",
+    "paySig": "...",
+    "signature": "...",
+    "mode": "short_series_goods"
+  },
+  "payment": null
 }
 ```
 
-规则：
+小程序必须原样把 `virtual` 字段交给 `wx.requestVirtualPayment`。服务端从 `pindou_packages` 读取金额和额度并保存订单快照；客户端不能提交金额、额度或套餐名称。
 
-- 服务端根据 `packageId` 读取价格和发放额度，忽略客户端传入的金额、额度、套餐名称
-- 一个订单保存套餐快照，避免套餐之后改价导致无法对账
-- 创建订单不直接增加用户额度；只有验签通过的支付回调可以发放额度
-- 重试创建订单应使用幂等键，避免重复生成待支付订单
+订单在服务端创建时开始 5 分钟有效期。同一幂等键会定位同一业务订单；已确认未支付时重用当前尝试，只有微信明确返回 `CLOSED` 后才能签发新的不可变支付尝试。用户主动取消不代表订单失败。用户最多同时有 5 个未完成订单；`PENDING` 和 `UNKNOWN` 都占用名额。
 
-### POST `/api/payments/notify`
+只有服务端通过 `query_order` 核实支付事实后才会把订单改为 `paid` 并在同一事务写入一次 `purchase_grant`。以下 `409` 错误需由客户端区分处理：
 
-用途：接收微信支付服务器回调
+- `MAX_PENDING_ORDERS_REACHED`：已有 5 个未完成支付订单。
+- `PAYMENT_STATUS_CONFIRMING`：微信状态无法确认；保留订单和名额，稍后再试。
+- `ORDER_EXPIRED`：订单已关闭，可开始一次新的购买意图。
+- `ORDER_ALREADY_PAID`：订单已到账；`error.details.orderId` 可用于打开支付结果页。
 
-调用方：微信支付服务器；不是小程序前端调用
+当前虚拟支付网关未实现主动关单；订单过期后，若微信只确认“未支付”而未明确返回 `CLOSED`，服务端将保留 `UNKNOWN` 并等待补单核实，不按本地超时关闭。
 
-鉴权：微信支付回调签名、证书和通知内容校验
+### POST `/api/payments/virtual-notify`
 
-处理要求：
+用途：接收微信小程序虚拟支付发货、退款等消息推送。
 
-- 验证签名、商户号、应用标识、订单号、金额和支付状态
-- 只有首次确认支付成功时，订单从 `pending` 变为 `paid`，并写入一笔带 `orderId`、`quota_kind=ai_generation` 的 `purchase_grant`
-- 重复回调必须返回成功确认，但不得重复增加额度
-- 支付失败、关闭或金额不符不得发放额度
-- 回调处理完成后返回微信要求的成功响应；内部异步任务失败不能造成重复发放
+微信先以 GET 验证回调 URL；POST 必须配置 Token 并验证签名。安全模式的加密消息必须验证覆盖密文的 `msg_signature`。缺少 Token 或签名时拒绝处理。
+
+发货与退款推送只作为通知：事件先落库去重，服务端再查微信事实，并校验付款人、金额、订单与支付尝试；不得仅根据推送 Body 发放或扣回额度。重复事件幂等处理。无法核验的事件进入补单或人工排查路径。
+
+`POST /api/payments/notify` 保留给旧微信支付通道的在途订单收尾，不用于小程序虚拟支付新订单。
 
 ## 阶段 6：AI 精致生成
 

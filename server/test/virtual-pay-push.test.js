@@ -117,21 +117,23 @@ test("verifyPushMessageSignature 把密文纳入签名，换一封密文就验�
   );
 });
 
-test("verifyPushRequest 有密文必须有签名，明文缺签名则放行", () => {
+test("verifyPushRequest 必须验签；安全模式签名必须覆盖密文", () => {
   const timestamp = "1700000000";
   const nonce = "nonce12345";
   const ciphertext = encryptPushMessage(DELIVERY_JSON, ENCODING_AES_KEY, APP_ID);
   const credentials = { token: TOKEN, encodingAesKey: ENCODING_AES_KEY, appId: APP_ID };
 
   assert.equal(verifyPushRequest(credentials, { msgSignature: sha1Hex([TOKEN, timestamp, nonce, ciphertext]), timestamp, nonce }, ciphertext), true);
-  assert.equal(verifyPushRequest(credentials, { signature: sha1Hex([TOKEN, timestamp, nonce]), timestamp, nonce }, ciphertext), true);
-  // 有密文却没有任何签名参数 —— 无法确认来源，必须拒绝
+  // 安全模式不能用未覆盖密文的普通 signature 降级通过
+  assert.equal(verifyPushRequest(credentials, { signature: sha1Hex([TOKEN, timestamp, nonce]), timestamp, nonce }, ciphertext), false);
+  // 没有签名参数 —— 无法确认来源，必须拒绝
   assert.equal(verifyPushRequest(credentials, { timestamp, nonce }, ciphertext), false);
-  // 明文模式下签名错要拒绝，没带签名则放行（放款不依赖推送，靠 query_order 验真）
+  // 明文模式必须有有效签名
   assert.equal(verifyPushRequest(credentials, { signature: "wrong", timestamp, nonce }, null), false);
-  assert.equal(verifyPushRequest(credentials, { timestamp, nonce }, null), true);
-  // 未配置 token 时无从校验，一律放行
-  assert.equal(verifyPushRequest({ ...credentials, token: "" }, { signature: "wrong", timestamp, nonce }, ciphertext), true);
+  assert.equal(verifyPushRequest(credentials, { timestamp, nonce }, null), false);
+  assert.equal(verifyPushRequest(credentials, { signature: sha1Hex([TOKEN, timestamp, nonce]), timestamp, nonce }, null), true);
+  // 未配置 token 时不能确认来源，一律拒绝
+  assert.equal(verifyPushRequest({ ...credentials, token: "" }, { signature: sha1Hex([TOKEN, timestamp, nonce]), timestamp, nonce }, null), false);
 });
 
 test("extractPushCiphertext 同时认 XML 与 JSON 两种包装", () => {

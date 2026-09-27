@@ -44,9 +44,13 @@ test("packages is public and payment creation accepts only packageId from an aut
     },
     async createPayment(input) {
       createCalls.push(input);
+      if (input.idempotencyKey === "payment-http-paid") {
+        throw new AppError(409, "ORDER_ALREADY_PAID", "订单已支付", { orderId: "order_0123456789abcdef0123456789" });
+      }
       return {
         orderId: "order_http",
-        payment: { timeStamp: "1", nonceStr: "n", package: "prepay_id=wx", signType: "RSA", paySign: "p" },
+        virtual: { signData: "{}", paySig: "p", signature: "s", mode: "short_series_goods" },
+        payment: null,
       };
     },
     async handleNotification() { throw new Error("unused"); },
@@ -82,6 +86,18 @@ test("packages is public and payment creation accepts only packageId from an aut
     assert.equal(created.status, 201);
     assert.equal((await created.json()).orderId, "order_http");
     assert.deepEqual(createCalls, [{ userId: "usr_payment", packageId: "ai_generation_30", idempotencyKey: "payment-http-2" }]);
+
+    const alreadyPaid = await fetch(`${baseUrl}/api/payments/create`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer valid-payment-token-1234567890",
+        "content-type": "application/json",
+        "idempotency-key": "payment-http-paid",
+      },
+      body: JSON.stringify({ packageId: "ai_generation_30" }),
+    });
+    assert.equal(alreadyPaid.status, 409);
+    assert.deepEqual((await alreadyPaid.json()).error.details, { orderId: "order_0123456789abcdef0123456789" });
   });
 });
 

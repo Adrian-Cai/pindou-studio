@@ -51,9 +51,8 @@ export interface CreateVirtualPaymentInput {
   /**
    * 业务订单号（8-32 位，数字/字母/_ - | * @，不以 _ 开头）。
    *
-   * **不是订单号，也不得由订单号推导**：微信规定每个 outTradeNo 只能用于一次支付
-   * 尝试，重复即 -15012（ORDER_CLOSED）；而同一笔订单会被反复拉起支付。
-   * 取值 `pindou_orders.virtual_out_trade_no`，每次签发都换新。
+   * **不是订单号，也不得由订单号推导**：每个 outTradeNo 只绑定一个支付尝试，
+   * 永不覆盖；同一尝试仍未支付时复用该号，微信明确关闭后才签发新尝试号。
    */
   readonly outTradeNo: string;
   /** MP 后台道具管理里已发布的道具 ID。 */
@@ -135,8 +134,12 @@ export interface IosRefundQueryAnswer {
   readonly evidence: string;
 }
 
-/** query_order 的标准化结果：只有 paid=true 才允许发货。 */
+/** query_order 的标准化事实；缺失或无法识别的状态必须保留为 UNKNOWN。 */
+export type VirtualOrderState = "PAID" | "UNPAID" | "CLOSED" | "REFUNDED" | "UNKNOWN";
+
 export interface QueriedVirtualOrder {
+  readonly state: VirtualOrderState;
+  /** 兼容已有调用方；只有 state=PAID 时为 true。 */
   readonly paid: boolean;
   readonly mchOrderNo: string | null;
   readonly transactionId: string | null;
@@ -395,8 +398,18 @@ function parseQueriedOrder(record: Record<string, unknown>): QueriedVirtualOrder
   const order = isRecord(record.order) ? record.order : {};
   const status = integerOrNull(order.status);
   const fee = integerOrNull(order.paid_fee) ?? integerOrNull(order.order_fee);
+  const state: VirtualOrderState = status !== null && PAID_STATUS_SET.has(status)
+    ? "PAID"
+    : status === 1
+      ? "UNPAID"
+      : status === 5 || status === 8
+        ? "REFUNDED"
+        : status === 6
+          ? "CLOSED"
+          : "UNKNOWN";
   return {
-    paid: status !== null && PAID_STATUS_SET.has(status),
+    state,
+    paid: state === "PAID",
     mchOrderNo: stringOrNull(order.channel_order_id),
     transactionId: stringOrNull(order.wxpay_order_id) ?? stringOrNull(order.wx_order_id),
     paidTimeSeconds: integerOrNull(order.paid_time),
