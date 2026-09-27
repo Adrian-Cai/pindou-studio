@@ -20,6 +20,7 @@ import { FileSystemCoverStorage } from "./modules/files/cover-storage";
 import { PostgresFileAssetService } from "./modules/files/file-asset-service";
 import { FileSystemAiFileStorage } from "./modules/files/ai-file-storage";
 import { HunyuanImageProvider } from "./modules/ai/hunyuan-image-provider";
+import { TokenhubHunyuanImageProvider } from "./modules/ai/tokenhub-hunyuan-image-provider";
 import { ToapisImageProvider } from "./modules/ai/toapis-image-provider";
 import type { AiGenerationProvider } from "./modules/ai/provider";
 import { PostgresAiGenerationService } from "./modules/ai/ai-generation-service";
@@ -80,8 +81,9 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.contentSecurity.asyncMediaCheckEnabled,
     );
     const hunyuanImage = new HunyuanImageProvider(config.hunyuanImage);
+    const tokenhubHunyuanImage = new TokenhubHunyuanImageProvider(config.tokenhubHunyuanImage);
     const toapisImage = new ToapisImageProvider(config.toapisImage);
-    const defaultAiProvider = config.aiImageProvider === "toapis" ? toapisImage : hunyuanImage;
+    const defaultAiProvider = tokenhubHunyuanImage;
     const aiGenerations = new PostgresAiGenerationService(
       pool,
       defaultAiProvider,
@@ -92,6 +94,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       undefined,
       new Map<string, AiGenerationProvider>([
         [hunyuanImage.name, hunyuanImage],
+        [tokenhubHunyuanImage.name, tokenhubHunyuanImage],
         [toapisImage.name, toapisImage],
       ]),
     );

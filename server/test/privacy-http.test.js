@@ -131,8 +131,9 @@ test("legal documents expose only controlled keys", async () => {
       assert.equal(response.status, 200);
       assert.equal(body.document.key, key);
       assert.equal(body.document.contentType, "rich-text");
-      assert.equal(body.document.version, "2026-09-07");
-      assert.equal(body.document.effectiveAt, "2026-09-07T00:00:00+08:00");
+      const version = key === "user-agreement" ? "2026-09-07" : "2026-09-27";
+      assert.equal(body.document.version, version);
+      assert.equal(body.document.effectiveAt, `${version}T00:00:00+08:00`);
       assert.equal(typeof body.document.content, "string");
       assert.ok(body.document.content.length > 100);
       assert.equal(/<script\b/i.test(body.document.content), false);

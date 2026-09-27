@@ -29,6 +29,7 @@ function harness({
   saveError = null,
   providerOutput = PROVIDER_PNG,
   providerName = "hunyuan",
+  providerModel = providerName === "hunyuan-tokenhub-v35" ? "hy-image-v3.5-preview" : "HY-Image-v3.0-I2I-ToB-v1.0.1",
   providerPollStatuses = null,
   providerPollIntervalMs,
   now = () => NOW,
@@ -143,7 +144,7 @@ function harness({
   const provider = {
     configured: true,
     name: providerName,
-    model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
+    model: providerModel,
     async createTask(input, legacyPrompt) {
       events.push({ type: "provider_create" });
       const prompt = typeof input === "string" ? legacyPrompt : input.prompt;
@@ -251,6 +252,43 @@ test("ToAPIs tasks are polled asynchronously and completed exactly once", async 
   assert.equal(result.status, "succeeded");
   assert.equal(state.createCount, 1);
   assert.equal(state.saveCount, 1);
+});
+
+test("new image tasks use TokenHub Hy-Image-3.5 and debit once after saving", async () => {
+  const state = harness({ providerName: "hunyuan-tokenhub-v35" });
+  const created = await state.service.create(REQUEST);
+  const result = await advanceUntilTerminal(state, created.id);
+
+  assert.equal(state.job.provider, "hunyuan-tokenhub-v35");
+  assert.equal(state.job.model, "hy-image-v3.5-preview");
+  assert.equal(result.status, "succeeded");
+  assert.equal(state.saveCount, 1);
+  assert.equal(state.debitCount, 1);
+});
+
+test("TokenHub content moderation rejection is non-retryable and does not debit quota", async () => {
+  const rejection = new ProviderError({
+    provider: "hunyuan-tokenhub-v35",
+    providerCode: "CONTENT_REJECTED",
+    httpStatus: 422,
+    kind: "UNKNOWN",
+  }, "CONTENT_REJECTED", "图片内容不符合生成要求");
+  const state = harness({
+    providerName: "hunyuan-tokenhub-v35",
+    providerError: rejection,
+  });
+  const created = await state.service.create(REQUEST);
+  const result = await advanceUntilTerminal(state, created.id);
+
+  assert.equal(result.status, "failed");
+  assert.deepEqual(result.failure, {
+    code: "CONTENT_REJECTED",
+    message: "当前图片内容不支持生成",
+    category: "CONTENT",
+    retryable: false,
+    action: "SELECT_IMAGE",
+  });
+  assert.equal(state.debitCount, 0);
 });
 
 test("AI state machine persists output and debits ai_generation exactly once after success", async () => {

@@ -1,6 +1,6 @@
 import { AppError } from "../../shared/app-error";
 
-export type ProviderName = "hunyuan" | "toapis";
+export type ProviderName = "hunyuan" | "toapis" | "hunyuan-tokenhub-v35";
 
 export type ProviderFailureKind =
   | "QUOTA_EXHAUSTED"
@@ -36,7 +36,7 @@ export class ProviderError extends AppError {
 }
 
 export interface ProviderTaskInput {
-  /** 混元兼容路径使用 data URL；ToAPIs 不需要读取输入图片字节。 */
+  /** CloudBase 混元兼容路径使用 data URL；ToAPIs 与 TokenHub 使用服务端图片 URL。 */
   readonly imageDataUrl: string | null;
   readonly referenceImageUrl: string | null;
   readonly prompt: string;

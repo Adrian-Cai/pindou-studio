@@ -102,7 +102,7 @@ export class FileSystemAiFileStorage implements AiFileStorage {
     return this.readFilename(objectKey.slice(3));
   }
 
-  /** 为 ToAPIs 生成一条不含本地路径细节的公开输入图地址。 */
+  /** 为需要 HTTPS 参考图的 Provider 生成一条不含本地路径细节的公开输入图地址。 */
   public publicUrl(objectKey: string): string | null {
     if (!objectKey.startsWith("ai/")) return null;
     const filename = objectKey.slice(3);

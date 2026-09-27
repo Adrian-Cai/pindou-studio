@@ -636,11 +636,12 @@ export class PostgresAiGenerationService {
       }
       imageDataUrl = `data:${claimed.input_content_type};base64,${input.buffer.toString("base64")}`;
     }
-    // ToAPIs 使用服务端 AI 媒体路由提供的 HTTPS 参考图地址，不把输入图转成 base64 上传。
-    const referenceImageUrl = provider.name === "toapis" && claimed.input_object_key
+    // ToAPIs 与 TokenHub 使用服务端 AI 媒体路由提供的 HTTPS 参考图地址；
+    // CloudBase 混元历史任务仍使用 data URL。
+    const referenceImageUrl = provider.name !== "hunyuan" && claimed.input_object_key
       ? this.storage.publicUrl(claimed.input_object_key)
       : null;
-    if (provider.name === "toapis" && !referenceImageUrl) {
+    if (provider.name !== "hunyuan" && !referenceImageUrl) {
       return this.markFailed(userId, jobId, "AI_INPUT_FILE_UNAVAILABLE");
     }
     const prompt = buildAiPrompt({
@@ -1139,6 +1140,7 @@ function isTransientProviderError(error: unknown): boolean {
 
 /** 把 ProviderError 的失败种类翻译成对外公开的错误码（配额/超时/繁忙/失败等）。 */
 function providerPublicCode(error: ProviderError): string {
+  if (error.code === "CONTENT_REJECTED") return "CONTENT_REJECTED";
   if (error.failure.kind === "QUOTA_EXHAUSTED") return "AI_SERVICE_UNAVAILABLE";
   if (error.failure.kind === "TIMEOUT") return "AI_TIMEOUT";
   if (error.failure.kind === "INVALID_OUTPUT") return "AI_RESULT_INVALID";

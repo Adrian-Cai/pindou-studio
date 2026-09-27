@@ -26,8 +26,8 @@ test("readConfig loads validated server and database settings", () => {
   assert.equal(config.quota.dailyStandardDownloads, 9);
   assert.equal(config.quota.dailyAiGenerations, 3);
   assert.deepEqual(config.hunyuanImage, { enabled: false });
+  assert.deepEqual(config.tokenhubHunyuanImage, { enabled: false });
   assert.deepEqual(config.toapisImage, { enabled: false });
-  assert.equal(config.aiImageProvider, "toapis");
   assert.deepEqual(config.wechatPay, { enabled: false });
   assert.equal(config.avatars.maximumBytes, 2 * 1024 * 1024);
   assert.equal(config.aiFiles.maximumBytes, 10 * 1024 * 1024);
@@ -69,6 +69,31 @@ test("readConfig validates the CloudBase Hunyuan image configuration", () => {
     timeoutMs: 150_000,
     maximumOutputBytes: 10 * 1024 * 1024,
   });
+});
+
+test("readConfig validates the TokenHub Hy-Image-3.5 configuration", () => {
+  const config = readConfig({
+    ...validEnvironment,
+    TOKENHUB_HUNYUAN_IMAGE_API_KEY: "test-tokenhub-api-key",
+    TOKENHUB_HUNYUAN_IMAGE_BASE_URL: "https://tokenhub.tencentmaas.com/",
+  });
+  assert.deepEqual(config.tokenhubHunyuanImage, {
+    enabled: true,
+    apiKey: "test-tokenhub-api-key",
+    baseUrl: "https://tokenhub.tencentmaas.com",
+    model: "hy-image-v3.5-preview",
+    timeoutMs: 150_000,
+    maximumOutputBytes: 10 * 1024 * 1024,
+  });
+  assert.throws(
+    () => readConfig({
+      ...validEnvironment,
+      TOKENHUB_HUNYUAN_IMAGE_API_KEY: "test-tokenhub-api-key",
+      TOKENHUB_HUNYUAN_IMAGE_BASE_URL: "https://example.test",
+    }),
+    (error) => error instanceof ConfigError
+      && error.issues.includes("TOKENHUB_HUNYUAN_IMAGE_BASE_URL 必须是 https://tokenhub.tencentmaas.com"),
+  );
 });
 
 test("readConfig validates the ToAPIs image configuration without exposing the key", () => {
@@ -151,7 +176,7 @@ test("production configuration refuses incomplete payment, AI, HTTPS, storage an
     () => readConfig({ ...validEnvironment, APP_ENV: "production" }),
     (error) => error instanceof ConfigError
       && error.issues.includes("生产环境必须配置微信支付")
-      && error.issues.includes("生产环境必须配置 ToAPIs 图像服务")
+      && error.issues.includes("生产环境必须配置 TokenHub 混元图像服务")
       && error.issues.includes("生产环境 COVER_PUBLIC_BASE_URL 必须使用 HTTPS")
       && error.issues.includes("生产环境 AI_FILE_PUBLIC_BASE_URL 必须使用 HTTPS")
       && error.issues.includes("生产环境必须确认 PERSISTENT_STORAGE_MOUNTED=true")

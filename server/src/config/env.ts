@@ -5,6 +5,7 @@ export type AppEnvironment = "development" | "test" | "production";
 export type DatabaseSslMode = "disable" | "require" | "verify-full";
 
 export const HUNYUAN_IMAGE_MODEL = "HY-Image-v3.0-I2I-ToB-v1.0.1" as const;
+export const TOKENHUB_HUNYUAN_IMAGE_MODEL = "hy-image-v3.5-preview" as const;
 export const TOAPIS_IMAGE_MODELS = ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst"] as const;
 export type ToapisImageModel = (typeof TOAPIS_IMAGE_MODELS)[number];
 
@@ -110,6 +111,17 @@ export type HunyuanImageConfig =
       readonly maximumOutputBytes: number;
     };
 
+export type TokenhubHunyuanImageConfig =
+  | { readonly enabled: false }
+  | {
+      readonly enabled: true;
+      readonly apiKey: string;
+      readonly baseUrl: string;
+      readonly model: typeof TOKENHUB_HUNYUAN_IMAGE_MODEL;
+      readonly timeoutMs: number;
+      readonly maximumOutputBytes: number;
+    };
+
 export type ToapisImageConfig =
   | { readonly enabled: false }
   | {
@@ -149,8 +161,8 @@ export interface ServerConfig {
    */
   readonly newUserPackageGateEnabled: boolean;
   readonly hunyuanImage: HunyuanImageConfig;
+  readonly tokenhubHunyuanImage: TokenhubHunyuanImageConfig;
   readonly toapisImage: ToapisImageConfig;
-  readonly aiImageProvider: "hunyuan" | "toapis";
   readonly auth: {
     readonly openidHashSecret: string;
     readonly tokenTtlDays: number;
@@ -475,6 +487,48 @@ function parseHunyuanImageConfig(env: NodeJS.ProcessEnv, issues: string[]): Huny
   };
 }
 
+function parseTokenhubHunyuanImageConfig(
+  env: NodeJS.ProcessEnv,
+  issues: string[],
+): TokenhubHunyuanImageConfig {
+  const apiKey = env.TOKENHUB_HUNYUAN_IMAGE_API_KEY?.trim();
+  const rawBaseUrl = env.TOKENHUB_HUNYUAN_IMAGE_BASE_URL?.trim();
+  if (!apiKey && !rawBaseUrl) return { enabled: false };
+  if (!apiKey) issues.push("TOKENHUB_HUNYUAN_IMAGE_API_KEY 未配置");
+
+  let baseUrl = rawBaseUrl || "https://tokenhub.tencentmaas.com";
+  try {
+    const parsed = new URL(baseUrl);
+    if (parsed.protocol !== "https:") issues.push("TOKENHUB_HUNYUAN_IMAGE_BASE_URL 必须使用 HTTPS");
+    if (parsed.hostname.toLowerCase() !== "tokenhub.tencentmaas.com" || parsed.pathname !== "/") {
+      issues.push("TOKENHUB_HUNYUAN_IMAGE_BASE_URL 必须是 https://tokenhub.tencentmaas.com");
+    }
+    if (parsed.username || parsed.password || parsed.search || parsed.hash || parsed.port) {
+      issues.push("TOKENHUB_HUNYUAN_IMAGE_BASE_URL 不能包含凭据、端口、查询参数或片段");
+    }
+    baseUrl = parsed.origin;
+  } catch {
+    issues.push("TOKENHUB_HUNYUAN_IMAGE_BASE_URL 必须是合法 URL");
+    baseUrl = "";
+  }
+
+  return {
+    enabled: Boolean(apiKey),
+    apiKey: apiKey ?? "",
+    baseUrl,
+    model: TOKENHUB_HUNYUAN_IMAGE_MODEL,
+    timeoutMs: integer(env, "TOKENHUB_HUNYUAN_IMAGE_TIMEOUT_MS", 150_000, 1_000, 900_000, issues),
+    maximumOutputBytes: integer(
+      env,
+      "TOKENHUB_HUNYUAN_IMAGE_MAX_OUTPUT_BYTES",
+      10 * 1_024 * 1_024,
+      64 * 1_024,
+      20 * 1_024 * 1_024,
+      issues,
+    ),
+  };
+}
+
 function parseToapisImageConfig(env: NodeJS.ProcessEnv, issues: string[]): ToapisImageConfig {
   const apiKey = env.TOAPIS_IMAGE_API_KEY?.trim();
   const baseUrl = env.TOAPIS_IMAGE_BASE_URL?.trim() || "https://api.toapis.cn";
@@ -544,13 +598,6 @@ function parseToapisImageConfig(env: NodeJS.ProcessEnv, issues: string[]): Toapi
   };
 }
 
-function parseAiImageProvider(env: NodeJS.ProcessEnv, issues: string[]): "hunyuan" | "toapis" {
-  const value = env.AI_IMAGE_PROVIDER?.trim() || "toapis";
-  if (value === "toapis" || value === "hunyuan") return value;
-  issues.push("AI_IMAGE_PROVIDER 必须是 toapis 或 hunyuan");
-  return "toapis";
-}
-
 export function loadLocalEnv(): void {
   const envPath = resolve(__dirname, "../../.env");
   try {
@@ -586,8 +633,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     ),
     virtualPayPush: parseVirtualPayPushConfig(env, wechatAppId, issues),
     hunyuanImage: parseHunyuanImageConfig(env, issues),
+    tokenhubHunyuanImage: parseTokenhubHunyuanImageConfig(env, issues),
     toapisImage: parseToapisImageConfig(env, issues),
-    aiImageProvider: parseAiImageProvider(env, issues),
     auth: {
       openidHashSecret: requiredSecret(env, "OPENID_HASH_SECRET", 32, issues),
       tokenTtlDays: integer(env, "AUTH_TOKEN_TTL_DAYS", 30, 1, 365, issues),
@@ -667,11 +714,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       issues.push("生产环境 CONTENT_SECURITY_ASYNC_MEDIA_CHECK_ENABLED 必须为 true");
     }
     if (!config.wechatPay.enabled) issues.push("生产环境必须配置微信支付");
-    if (config.aiImageProvider === "toapis" && !config.toapisImage.enabled) {
-      issues.push("生产环境必须配置 ToAPIs 图像服务");
-    }
-    if (config.aiImageProvider === "hunyuan" && !config.hunyuanImage.enabled) {
-      issues.push("生产环境必须配置混元图像服务");
+    if (!config.tokenhubHunyuanImage.enabled) {
+      issues.push("生产环境必须配置 TokenHub 混元图像服务");
     }
     if (!config.covers.publicBaseUrl.startsWith("https://")) {
       issues.push("生产环境 COVER_PUBLIC_BASE_URL 必须使用 HTTPS");

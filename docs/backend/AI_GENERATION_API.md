@@ -8,17 +8,19 @@
 
 1. 项目文件接口：上传 AI 输入图片。
 2. 项目 AI 接口：创建生成任务、查询任务状态。
-3. 服务端上游接口：后端调用 `generateImage` 云函数，由云函数内置的 `wx-server-sdk` 调用混元 Hy-Image-3.0。
+3. 服务端上游接口：后端调用腾讯 TokenHub 混元 Hy-Image-3.5。
 
-小程序只允许调用项目自己的接口，不能直接调用混元接口，也不能接触 `HUNYUAN_IMAGE_API_KEY`。
+小程序只允许调用项目自己的接口，不能直接调用 TokenHub，也不能接触 `TOKENHUB_HUNYUAN_IMAGE_API_KEY`。
 
 当前实现对应：
 
-- Provider：`hunyuan`
-- 模型：`HY-Image-v3.0-I2I-ToB-v1.0.1`（Hy-Image-3.0 图生图）
+- Provider：`hunyuan-tokenhub-v35`
+- 模型：`hy-image-v3.5-preview`（Hy-Image-3.5 图生图）
 - Prompt 模板版本：`v2`
 - 输入/输出文件默认保留：24 小时
 - 默认本地服务地址：`http://127.0.0.1:4000`
+
+CloudBase `hunyuan` 与 ToAPIs Provider 仅按数据库中既有任务快照处理在途旧任务；它们不会被分配给新任务。旧任务排空后可移除相应兼容配置。
 
 ## 2. 总体参数流转
 
@@ -37,14 +39,13 @@
          └─ 返回项目任务 id，通常为 queued
               │
               ├─ 服务端读取 inputFileId 对应的文件字节
-              ├─ 转成 data:image/...;base64,...
               ├─ 根据三个业务参数生成固定 Prompt
-              ├─ CloudBase Node SDK 调用 generateImage 云函数
-              │    └─ 云函数内 wx-server-sdk 调用混元图像同步接口
+              ├─ 请求 TokenHub Hy-Image-3.5 同步图生图接口
+              │    └─ 发送 Prompt + 服务端 AI 文件 HTTPS URL（不发送 footnote）
               ├─ 保存 request_id 和临时 output URL
               │
               └─ GET /api/ai/generations/{id}
-                   ├─ 下载混元临时 PNG 地址
+                   ├─ 下载 TokenHub 临时图片
                    ├─ 校验并保存为 ai_output
                    ├─ 成功完成额度扣减
                    └─ 返回项目自己的 outputFile.url
@@ -55,17 +56,17 @@
 | 来源参数 | 服务端处理 | 下游参数/结果 |
 | --- | --- | --- |
 | 上传文件二进制 | 校验真实图片格式、大小、尺寸并保存 | `pindou_file_assets.id`，即 `inputFileId` |
-| `inputFileId` | 查询当前用户的 `ai_input` 文件并读取字节 | 混元 `images[0]` |
+| `inputFileId` | 校验当前用户的 `ai_input` 文件并生成服务端媒体 URL | 混元 `image_url` |
 | `style` | 选择风格 Prompt 片段 | 固定 Prompt |
 | `detailLevel` | 选择细节 Prompt 片段 | 固定 Prompt |
 | `backgroundMode` | 选择背景 Prompt 片段 | 固定 Prompt |
-| 服务端 `HUNYUAN_IMAGE_MODEL` | 客户端不可覆盖 | 混元 `model` |
+| 服务端固定模型 `hy-image-v3.5-preview` | 客户端不可覆盖 | 混元 `model` |
 | 服务端固定 Prompt | 客户端不可传入 | 混元 `prompt` |
 | 混元 `request_id` | 保存到任务记录 | 服务端日志定位 |
 | 混元临时图片 URL | 服务端下载，不向客户端透传 | 项目 `ai_output` 文件 |
 | 项目 `outputFile.url` | 客户端下载并进入本地拼豆算法 | 最终 AI 中间图 |
 
-安全审核边界：AI 输入图片只执行一次项目配置的微信内容安全审核。首页已检测过同一图片时，`POST /api/files/upload` 通过 `securityCheckId` 复用结果；旧客户端未携带标识时仍在 AI 输入上传阶段检测。混元生成结果不再调用本项目的微信内容安全接口，生成结果的安全审核由混元服务商负责。服务端仍会校验混元输出地址、真实图片格式、大小、尺寸和像素数，再将结果保存为 `ai_output`。
+安全审核边界：AI 输入图片只执行一次项目配置的微信内容安全审核。首页已检测过同一图片时，`POST /api/files/upload` 通过 `securityCheckId` 复用结果；旧客户端未携带标识时仍在 AI 输入上传阶段检测。混元生成结果的安全审核由模型服务商负责。服务端仍会校验 TokenHub 输出地址、真实图片格式、大小、尺寸和像素数，再将结果保存为 `ai_output`。
 
 ## 3. 公共约定
 
@@ -395,40 +396,42 @@ GET /api/media/ai/ai_output_<32位小写十六进制>.png
 
 响应为 PNG 二进制，服务端返回 `Cache-Control: private, no-store`。客户端禁止拼接或替换成混元临时图片地址。
 
-## 8. 服务端调用混元接口
+## 8. 服务端调用 TokenHub 混元
 
-以下接口只允许由服务端调用，不能放到小程序代码中。
+以下接口只允许由服务端调用，不能放到小程序代码中。新任务固定使用：
 
-### 8.1 通过 `generateImage` 云函数创建混元同步生成请求
+```text
+POST https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v35-generation
+Authorization: Bearer <TOKENHUB_HUNYUAN_IMAGE_API_KEY>
+Content-Type: application/json
+```
 
-服务端依赖 `@cloudbase/node-sdk >= 3.18.3`，从 `HUNYUAN_IMAGE_BASE_URL` 解析 CloudBase 环境 ID，并用 `HUNYUAN_IMAGE_API_KEY` 初始化 SDK。服务端通过 SDK 调用 `generateImage` 云函数；云函数依赖微信云函数环境内置的 `wx-server-sdk >= 4.0.2`，再由 `cloud.ai().createImageModel("hunyuan-image")` 调用混元模型。小程序和服务端都不直接拼接或直连混元图片接口。
-
-SDK 调用参数为：
+请求体由服务端构造，客户端不能覆盖模型、Prompt 或参考图地址：
 
 ```json
 {
-  "model": "HY-Image-v3.0-I2I-ToB-v1.0.1",
-  "prompt": "<服务端根据业务参数生成的固定Prompt>",
-  "images": ["data:image/png;base64,<输入图片Base64>"],
+  "model": "hy-image-v3.5-preview",
+  "session": "<项目任务ID>",
   "size": "1024x1024",
-  "revise": {"value": false}
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "<服务端生成的固定Prompt>" },
+        { "type": "image_url", "image_url": { "url": "https://<项目AI文件地址>" } }
+      ]
+    }
+  ]
 }
 ```
 
-云函数通过 `cloud.ai().createImageModel("hunyuan-image")` 调用上面的参数，使用 `images` 传入参考图 Base64。云函数下载模型临时图片并上传到云存储，返回 `fileID`；服务端再通过 CloudBase SDK 下载该云存储文件并持久化到项目自己的 AI 文件存储。云函数请求 ID 仍会回传到服务端任务记录：
+请求**不包含可选 `footnote` 字段**，因此项目不会要求 TokenHub 添加该字段对应的自定义文字水印。模型是否有其他服务端标记，以腾讯服务实际响应和发布前验收结果为准。
 
-```json
-{
-  "requestId": "<CloudBase请求ID>",
-  "fileID": "cloud://<env-id>/ai-images/<generated>.<png|jpg|webp>",
-  "contentType": "image/png | image/jpeg | image/webp",
-  "size": 172543
-}
-```
+TokenHub 同步响应中的 `choices[0].delta.image.url` 是临时图片地址；`request_id` 用于服务端定位，`tokenhub_usage` 可用于供应商用量核对。服务端限制输出地址主机并立即下载，检查 HTTPS、响应大小和真实图片格式后保存到项目文件存储，不把临时 URL 返回或作为长期作品地址。
 
-云函数的 `contentType` 与文件名后缀按**下载字节的真实魔数**判定，不依赖模型临时地址可能缺失的 `content-type` 响应头；混元图生图实际可能返回 JPEG。
+项目自己的任务接口仍保留 `queued -> processing -> succeeded/failed` 状态，避免小程序等待长 HTTP 请求。输出图持久化且任务成功更新后，才扣一次额度。
 
-该接口为同步调用，不需要服务端向混元再次查询。项目自己的任务接口仍保留 `queued -> processing -> succeeded/failed` 状态，用于避免小程序长时间等待 HTTP 请求。云存储 `fileID` 只在服务端内部使用，下载后按真实字节魔数识别格式（支持 PNG / JPEG / WEBP），再按实际格式写入项目自己的 AI 文件存储；`provider_output_url` 暂存该内部文件引用，成功持久化后清空。
+部署过渡期间，数据库里 `provider=toapis` 的旧任务仍由 ToAPIs Provider 收口，`provider=hunyuan` 的旧任务仍由 CloudBase Hunyuan Provider 收口。二者不会被分配给新任务；待生产在途任务排空后可以移除对应代码和密钥。
 
 ## 9. 额度与幂等规则
 
@@ -455,15 +458,16 @@ npm start
 GET http://127.0.0.1:4000/health
 ```
 
-后端启动依赖 PostgreSQL、文件存储目录、内容安全配置和混元环境变量。混元配置项为：
+后端启动依赖 PostgreSQL、文件存储目录、内容安全配置和 TokenHub 配置。当前生图配置项为：
 
 ```text
-HUNYUAN_IMAGE_API_KEY=<仅服务端配置>
-HUNYUAN_IMAGE_BASE_URL=https://<env-id>.api.tcloudbasegateway.com/v1/ai/cloudbase
-HUNYUAN_IMAGE_MODEL=HY-Image-v3.0-I2I-ToB-v1.0.1
-HUNYUAN_IMAGE_TIMEOUT_MS=150000
-HUNYUAN_IMAGE_MAX_OUTPUT_BYTES=10485760
+TOKENHUB_HUNYUAN_IMAGE_API_KEY=<仅服务端配置>
+TOKENHUB_HUNYUAN_IMAGE_BASE_URL=https://tokenhub.tencentmaas.com
+TOKENHUB_HUNYUAN_IMAGE_TIMEOUT_MS=150000
+TOKENHUB_HUNYUAN_IMAGE_MAX_OUTPUT_BYTES=10485760
 ```
+
+`model=hy-image-v3.5-preview` 固定在服务端代码中。`HUNYUAN_IMAGE_*` 与 `TOAPIS_IMAGE_*` 只在处理各自旧 Provider 任务期间保留。
 
 ### 10.2 小程序本地请求
 
@@ -487,7 +491,7 @@ develop: 'http://127.0.0.1:4000',
 | --- | --- |
 | 项目 HTTP 路由 | `server/src/http/app.ts` |
 | 请求字段校验 | `server/src/http/request-validation.ts` |
-| 混元 Provider | `server/src/modules/ai/hunyuan-image-provider.ts` |
+| TokenHub 混元 Provider | `server/src/modules/ai/tokenhub-hunyuan-image-provider.ts` |
 | AI 任务状态机 | `server/src/modules/ai/ai-generation-service.ts` |
 | 固定 Prompt 模板 | `server/src/modules/ai/prompt-template.ts` |
 | 小程序 AI 请求封装 | `miniprogram/services/ai-generation-service.ts` |
