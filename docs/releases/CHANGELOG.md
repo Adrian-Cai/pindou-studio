@@ -21,6 +21,17 @@
 
 ## 0.30.30
 
+- **核实 axios 未受 CVE-2026-67321 影响**：该 CVE 为 `toFormData.js` 深度限制不完整绕过
+  （顶层键以 `{}` 结尾时 `JSON.stringify` 溢出 `RangeError` 导致 DoS），推荐修复版本 `1.18.0`。
+  安全扫描上报的 `1.16.0` 与受影响范围 `1.16.0` 均为历史（旧）快照：`server` 与
+  `cloudfunctions/generateImage` 已在 0.30.28 用 `overrides` 将 axios 统一钉在 `1.20.0`（本次实测解析结果），
+  高于推荐修复版本，依赖声明无需改动，**未做任何降级**。
+  校验方式：两处 `package-lock.json` 重装后均解析为 `1.20.0`、无旧版本残留；
+  源码级确认 `axios/lib/helpers/toFormData.js` 已内置 `maxDepth`（默认 100）限制，
+  以「顶层键 `{}` 结尾 + 1000/4000/60000 层嵌套值」复现 CVE 场景时抛出受控
+  `AxiosError`（`ERR_FORM_DATA_DEPTH_EXCEEDED`），进程存活；同一场景在修复前的 `1.14.0`
+  上仍抛非受控 `RangeError`，可确认修复已生效。
+
 - **复核 axios 漏洞 CVE-2026-67319（原型链污染导致请求篡改，MEDIUM）**：推荐修复版本
   `1.18.0` 在 master 上已由 `fix/deps-axios-cve-2026-67316` 落地，并随后续依赖升级
   收敛到 `axios@1.20.0`：`server` 与 `cloudfunctions/generateImage` 均声明直接依赖
