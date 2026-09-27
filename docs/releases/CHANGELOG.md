@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 0.30.31
+
+- **核实 axios 未受 CVE-2026-67312 影响**：该 CVE（`formDataToJSON` 对字段名中的嵌套括号片段
+  无深度限制，攻击者可控字段名可耗尽调用栈导致 DoS）影响 `1.16.0`，推荐修复版本 `1.18.0`。
+  master 已钉在 `axios@1.20.0`，高于推荐修复版本，依赖声明无需改动，**未做任何降级**，
+  未复用漏洞库中的较低候选。
+  源码级确认 `axios/lib/helpers/formDataToJSON.js` 已内置 `MAX_DEPTH`（默认 100）守卫：
+  字段名嵌套 101 层即抛出受控 `AxiosError`（`ERR_FORM_DATA_DEPTH_EXCEEDED`），
+  实测 5000 层同样被拦截，进程不崩溃。
+  校验方式：两处 `package-lock.json` 均只解析出一份 `axios@1.20.0`，`npm ci` 重装后
+  `npm ls axios` 为 `1.20.0 overridden`（`@cloudbase/node-sdk` 硬声明的 `0.27.2`
+  被 `overrides` 去重），既有守卫用例 `server/test/dependency-axios-version.test.js` 通过。
+
 ## 0.30.30
 
 - **复核 axios 漏洞 CVE-2026-67319（原型链污染导致请求篡改，MEDIUM）**：推荐修复版本
