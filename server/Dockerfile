@@ -2,6 +2,7 @@ FROM node:24-bookworm-slim AS build
 
 WORKDIR /build
 COPY package.json package-lock.json ./
+COPY vendor ./vendor
 RUN npm ci
 
 COPY tsconfig.json ./
@@ -14,6 +15,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
+COPY vendor ./vendor
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /build/dist ./dist
 
