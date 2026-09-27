@@ -17,7 +17,7 @@ const test = require("node:test");
  * 低版本 axios 已知问题：CVE-2023-45857 / CVE-2026-42034 / CVE-2026-67319 等。
  */
 
-const REQUIRED_VERSION = "1.18.0";
+const REQUIRED_VERSION = "1.20.0";
 
 test(`package-lock 中所有 axios 均为 ${REQUIRED_VERSION}`, () => {
   const lock = JSON.parse(

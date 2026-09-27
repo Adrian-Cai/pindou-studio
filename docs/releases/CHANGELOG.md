@@ -1,18 +1,38 @@
 # CHANGELOG
 
-## 0.30.27
+## 0.30.30
 
 - **复核 axios 漏洞 CVE-2026-67319（原型链污染导致请求篡改，MEDIUM）**：推荐修复版本
-  `1.18.0` 在 master 上已由 `fix/deps-axios-cve-2026-67316` 落地 —— `server` 与
-  `cloudfunctions/generateImage` 均声明直接依赖 `axios@1.18.0` 并用 `overrides` 固定，
-  安装树里只存在一份 `axios@1.18.0`，**无需再改版本，也未降级**。
+  `1.18.0` 在 master 上已由 `fix/deps-axios-cve-2026-67316` 落地，并随后续依赖升级
+  收敛到 `axios@1.20.0`：`server` 与 `cloudfunctions/generateImage` 均声明直接依赖
+  `axios@1.20.0` 并用 `overrides` 固定，安装树里只存在一份 `axios@1.20.0`，
+  高于推荐修复版本，**无需再改版本，也未降级**。
   扫描器仍报 `0.27.2` 属**误报**：该字符串来自 `@cloudbase/node-sdk` 已发布 manifest 里
   硬声明的 `axios: 0.27.2`（截至 4.1.0 仍未改），并非实际安装版本。
   已用「删掉 overrides 会重新装出 `node_modules/@cloudbase/node-sdk/node_modules/axios@0.27.2`」
   验证：`overrides` 是这棵树的唯一收敛点。
-- **新增 axios 版本守卫**：`server/test/dependency-axios-version.test.js` 在真实安装树上
-  校验所有 axios 版本不得低于 `1.18.0`，并在 CI 的 Server Static Check 中执行。
-  变异验证：移除 `overrides` 后该用例转红（`actual: ['0.27.2']`），确认能拦住回退。
+- **新增 axios 版本守卫**：`server/test/dependency-axios-version.test.js` 直接校验
+  `package-lock.json` 中所有 axios 条目均为 `1.20.0`（master 当前版本），
+  并在 CI 的 Server Static Check 中执行。
+  变异验证：移除 `overrides` 后该用例转红，确认能拦住回退。
+
+## 0.30.29
+
+- **核实 axios 未受 CVE-2026-42039 影响**：该 CVE（GHSA-62hf-57xw-28j9，
+  `toFormData` 递归无深度限制导致 DoS）影响 `>=1.0.0 <1.15.1` 与 `<0.31.1`，
+  推荐修复版本为 `1.15.1`。安全扫描上报的 `0.27.2` 为历史（旧）快照，
+  当前 `server` 与 `cloudfunctions/generateImage` 已用 `overrides` 将 axios 统一钉在
+  `1.16.0`，高于推荐修复版本，依赖声明无需改动，**未做任何降级**。
+  校验方式：两处 `package-lock.json` 均解析为 `1.16.0`、无 `0.27.2` 残留；
+  源码级确认 `axios/lib/helpers/toFormData.js` 已内置 `maxDepth`（默认 100）限制，
+  传入 20000 层嵌套对象时抛出受控 `AxiosError` 而非崩溃进程。
+
+## 0.30.27
+
+- **修复 axios 代理绕过漏洞 CVE-2025-62718**：该 CVE 影响 `axios <1.15.0`（推荐修复版本 1.15.0），
+  曾被 `@cloudbase/node-sdk` / `wx-server-sdk` 间接引入的 `0.27.2` 受影响。
+  `server` 与 `cloudfunctions/generateImage` 已用 `overrides` 将 axios 统一钉在 `1.18.0`，
+  高于推荐修复版本，本次无需改动依赖声明；重装校验两处均解析为 `1.18.0`，无降级。
 
 ## 0.30.26
 
