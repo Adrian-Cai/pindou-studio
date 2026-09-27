@@ -37,6 +37,17 @@ class InMemoryAuthRepository {
     };
   }
 
+  async revokeSession(tokenHash, now) {
+    const session = this.sessions.find((item) => item.tokenHash === tokenHash);
+    if (session) session.revokedAt ??= now;
+  }
+
+  async revokeUserSessions(userId, now) {
+    for (const session of this.sessions) {
+      if (session.userId === userId) session.revokedAt ??= now;
+    }
+  }
+
   deleteAccount(openidHash) {
     const user = this.usersByOpenidHash.get(openidHash);
     if (user) user.deletedAt = new Date();
@@ -164,4 +175,34 @@ test("missing or malformed Bearer token is unauthorized", async () => {
   });
   await assert.rejects(() => authenticator.authenticate(undefined), (error) => error.code === "UNAUTHORIZED");
   await assert.rejects(() => authenticator.authenticate("Bearer short"), (error) => error.code === "UNAUTHORIZED");
+});
+
+test("AuthService hashes session tokens before repository revocation and repeats the request", async () => {
+  const received = [];
+  const repository = {
+    async revokeSession(...args) { received.push(args); },
+    async revokeUserSessions() {},
+  };
+  const service = new AuthService(repository, {}, authConfig, () => fixedNow);
+  const token = "opaque_token_12345678901234567890";
+
+  await service.revokeSession(token);
+  await service.revokeSession(token);
+
+  assert.deepEqual(received, [
+    [hashToken(token), fixedNow],
+    [hashToken(token), fixedNow],
+  ]);
+});
+
+test("AuthService forwards user IDs when revoking all sessions", async () => {
+  let received;
+  const service = new AuthService({
+    async revokeSession() {},
+    async revokeUserSessions(...args) { received = args; },
+  }, {}, authConfig, () => fixedNow);
+
+  await service.revokeUserSessions("usr_test");
+
+  assert.deepEqual(received, ["usr_test", fixedNow]);
 });

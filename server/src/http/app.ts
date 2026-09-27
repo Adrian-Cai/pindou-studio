@@ -29,7 +29,8 @@ import type { FavoriteListOptions, PostgresWorkService } from "../modules/works/
 import type { WorkStatus } from "../modules/works/work-service";
 import { validatePersistedPattern } from "../modules/works/pattern";
 import { aiPublicFailure, aiPublicHttpStatus, type AiPublicFailure } from "../modules/ai/error-contract";
-import { AppError, invalidArgument } from "../shared/app-error";
+import { AppError, invalidArgument, unauthorized } from "../shared/app-error";
+import { parseBearerToken } from "../modules/auth/authenticator";
 import type { InMemoryRateLimiter } from "./rate-limit";
 import { readJsonObject, readRawBody, readRawJsonObject, readSingleUploadedFile, xmlValue } from "./request-body";
 import {
@@ -456,6 +457,12 @@ function sendNoContent(response: ServerResponse): void {
   response.end();
 }
 
+function hasRequestBody(request: IncomingMessage): boolean {
+  const length = request.headers["content-length"];
+  if (length !== undefined) return Number.parseInt(length, 10) > 0;
+  return request.headers["transfer-encoding"] !== undefined;
+}
+
 export function createHttpApplication(dependencies: HttpApplicationDependencies): HttpApplication {
   return (request, response) => {
     const id = requestId();
@@ -512,6 +519,26 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         const body = await readJsonObject(request);
         const result = await dependencies.auth.login(validateLoginBody(body));
         sendJson(response, 200, result);
+        return;
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/api/auth/session") {
+        if (url.searchParams.size > 0) throw invalidArgument("登出接口不接受查询参数");
+        if (hasRequestBody(request)) throw invalidArgument("登出接口不接受请求体");
+        await dependencies.authenticator.authenticate(request.headers.authorization);
+        const token = parseBearerToken(request.headers.authorization);
+        if (!token) throw unauthorized();
+        await dependencies.auth.revokeSession(token);
+        sendNoContent(response);
+        return;
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/api/auth/sessions") {
+        if (url.searchParams.size > 0) throw invalidArgument("登出接口不接受查询参数");
+        if (hasRequestBody(request)) throw invalidArgument("登出接口不接受请求体");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        await dependencies.auth.revokeUserSessions(currentUser.id);
+        sendNoContent(response);
         return;
       }
 

@@ -2,7 +2,7 @@
 
 > 状态：当前实现基线
 >
-> 适用版本：0.30.1
+> 适用版本：0.32.0
 >
 > 本文描述当前已经落地的系统，不包含尚未接入的 Ai 模式未来 AI 架构见 `docs/backend/AI_GENERATION_DESIGN.md`
 
@@ -96,6 +96,23 @@ wx.login
 ```
 
 登录或恢复登录后，客户端先切换到当前账号的数据空间并恢复云端作品、收藏；历史游客作品自动迁移至当前账号。运行期云端缓存不会持久化，待同步作品按账号隔离；迁移成功后使用云端作品 ID 替换本地关联 ID，失败则保留本地作品并标记同步状态。
+
+退出当前设备时，小程序先清除本地凭证和登录 UI，再调用 `DELETE /api/auth/session` 吊销服务端会话；网络失败不阻塞本地登出。设备丢失或疑似泄漏时，`DELETE /api/auth/sessions` 会吊销该用户所有设备会话，包含当前设备。
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant MP as 小程序
+    participant API as 后端
+    participant DB as PostgreSQL
+    U->>MP: 退出登录
+    MP->>MP: 清除 token、内存会话并切换游客态
+    MP->>API: DELETE /api/auth/session
+    API->>DB: 设置当前会话 revoked_at
+    DB-->>API: 更新完成
+    API-->>MP: 204 No Content
+    Note over API,DB: 后续 Bearer 请求因 revoked_at 返回 401
+```
 
 ### 2.3 下载额度
 

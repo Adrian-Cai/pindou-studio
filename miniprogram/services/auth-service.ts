@@ -39,6 +39,16 @@ export async function deleteCurrentUser(token: string): Promise<void> {
   })
 }
 
+/** 吊销当前会话，用于退出登录。 */
+export async function revokeCurrentSession(token: string): Promise<void> {
+  await apiRequest<unknown>({ path: '/api/auth/session', method: 'DELETE', token })
+}
+
+/** 吊销该账号在所有设备上的会话。 */
+export async function revokeAllSessions(token: string): Promise<void> {
+  await apiRequest<unknown>({ path: '/api/auth/sessions', method: 'DELETE', token })
+}
+
 /** 携带 token 修改昵称（/api/users/me PUT），返回更新后的用户基础信息。 */
 export async function updateNickname(token: string, nickname: string): Promise<AuthUser> {
   const response = await apiRequest<unknown>({

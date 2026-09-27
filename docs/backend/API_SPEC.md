@@ -14,7 +14,7 @@
 
 | 阶段 | 能力 | 接口 |
 | --- | --- | --- |
-| 1 | 微信登录、当前用户 | `POST /api/auth/login`、`GET/PUT/PATCH /api/users/me`、`POST /api/users/me/avatar` |
+| 1 | 微信登录、会话管理、当前用户 | `POST /api/auth/login`、`DELETE /api/auth/session`、`DELETE /api/auth/sessions`、`GET/PUT/PATCH /api/users/me`、`POST /api/users/me/avatar` |
 | 2 | 封面上传、作品保存与恢复 | `POST /api/files/upload`、`GET /api/media/covers/:filename`、`POST /api/works`、`GET /api/works`、`GET /api/works/:id`、`PUT/PATCH /api/works/:id`、`DELETE /api/works/:id` |
 | 3 | 收藏 | `PATCH /api/works/:id/favorite`、`GET /api/favorites` |
 | 4 | 额度与下载记录 | `GET /api/quota/me`、`GET /api/downloads`、`POST /api/downloads` |
@@ -283,6 +283,22 @@ Authorization: Bearer <token>
 - 服务端通过微信接口得到 `openid`，用 `openid` 找到或创建用户
 - `openid` 不返回给小程序；`session_key` 不返回给小程序
 - 重复登录可以创建新会话，但不能创建重复用户
+
+### DELETE `/api/auth/session`
+
+用途：吊销当前 Bearer token 对应的会话。
+
+鉴权：需要；请求不接受查询参数或请求体。
+
+成功返回 `204 No Content`。会话已吊销或 token 已过期时返回 `401`；客户端应将其视为登出已完成。接口通过鉴权后吊销当前 token，后续鉴权请求立即返回 `401`。
+
+### DELETE `/api/auth/sessions`
+
+用途：吊销当前用户的全部设备会话，包含发起请求的当前设备。
+
+鉴权：需要；用户身份只从 Bearer token 推导，请求不接受查询参数或请求体。
+
+成功返回 `204 No Content`。成功后当前 token 也立即失效；小程序应同步清除本地登录态。此接口用于设备丢失或怀疑 token 泄漏时止损。
 
 ### GET `/api/users/me`
 

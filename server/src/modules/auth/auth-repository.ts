@@ -45,6 +45,10 @@ export interface CreateLoginInput {
 export interface AuthRepository {
   createLogin(input: CreateLoginInput): Promise<UserRecord>;
   findSessionByTokenHash(tokenHash: string): Promise<SessionRecord | null>;
+  /** 按 token 哈希吊销单个会话。 */
+  revokeSession(tokenHash: string, now: Date): Promise<void>;
+  /** 吊销指定用户的所有会话。 */
+  revokeUserSessions(userId: string, now: Date): Promise<void>;
 }
 
 function userRecord(row: UserRow): UserRecord {
@@ -128,5 +132,25 @@ export class PostgresAuthRepository implements AuthRepository {
       revokedAt: row.revoked_at,
       userDeletedAt: row.user_deleted_at,
     };
+  }
+
+  /** 吊销单个会话；已吊销或不存在也视为目标状态已达成。 */
+  public async revokeSession(tokenHash: string, now: Date): Promise<void> {
+    await this.pool.query(
+      `UPDATE pindou_auth_sessions
+          SET revoked_at = COALESCE(revoked_at, $2)
+        WHERE token_hash = $1`,
+      [tokenHash, now],
+    );
+  }
+
+  /** 吊销该用户的全部会话，包含当前设备。 */
+  public async revokeUserSessions(userId: string, now: Date): Promise<void> {
+    await this.pool.query(
+      `UPDATE pindou_auth_sessions
+          SET revoked_at = COALESCE(revoked_at, $2)
+        WHERE user_id = $1`,
+      [userId, now],
+    );
   }
 }

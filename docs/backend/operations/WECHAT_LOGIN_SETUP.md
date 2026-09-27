@@ -97,4 +97,6 @@ https://<API域名>/api/wechat/content-security/callback
 3. 重新执行后端 `npm run build` 并重启进程，避免旧进程继续返回 404
 4. 点击“微信快捷登录”，`POST /api/auth/login` 返回 token
 5. 小程序携带 Bearer token 请求 `GET /api/users/me` 成功
-6. 清除或篡改本地 token 后，页面恢复游客状态
+6. 在小程序退出登录后，用原 token 请求 `GET /api/users/me` 返回 `401`
+7. 设备丢失联调时，以任一有效 token 调用 `DELETE /api/auth/sessions`，确认该用户其他 token 后续请求也返回 `401`
+8. 清除或篡改本地 token 后，页面恢复游客状态

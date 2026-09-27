@@ -107,6 +107,104 @@ test("login failures follow the shared error contract", async () => {
   );
 });
 
+test("DELETE /api/auth/session passes the authenticated token to revocation", async () => {
+  let receivedToken;
+  await withApplication(
+    baseDependencies({
+      auth: { async revokeSession(token) { receivedToken = token; } },
+      authenticator: { async authenticate() { return { id: "usr_test" }; } },
+    }),
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/auth/session`, {
+        method: "DELETE",
+        headers: { authorization: "Bearer opaque_token_12345678901234567890" },
+      });
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.has("content-type"), false);
+      assert.equal(receivedToken, "opaque_token_12345678901234567890");
+    },
+  );
+});
+
+test("DELETE /api/auth/sessions revokes sessions for the authenticated user", async () => {
+  let receivedUserId;
+  await withApplication(
+    baseDependencies({
+      auth: { async revokeUserSessions(userId) { receivedUserId = userId; } },
+      authenticator: { async authenticate() { return { id: "usr_from_token" }; } },
+    }),
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/auth/sessions`, {
+        method: "DELETE",
+        headers: { authorization: "Bearer opaque_token_12345678901234567890" },
+      });
+      assert.equal(response.status, 204);
+      assert.equal(receivedUserId, "usr_from_token");
+    },
+  );
+});
+
+test("session revocation rejects missing auth, query parameters and request bodies", async (t) => {
+  let authenticated = 0;
+  let revoked = 0;
+  await withApplication(
+    baseDependencies({
+      auth: {
+        async revokeSession() { revoked += 1; },
+        async revokeUserSessions() { revoked += 1; },
+      },
+      authenticator: { async authenticate() {
+        authenticated += 1;
+        if (authenticated === 1) throw new AppError(401, "UNAUTHORIZED", "登录状态已失效");
+        return { id: "usr_test" };
+      } },
+    }),
+    async (baseUrl) => {
+      const missing = await fetch(`${baseUrl}/api/auth/session`, { method: "DELETE" });
+      assert.equal(missing.status, 401);
+      assert.equal(revoked, 0);
+
+      const query = await fetch(`${baseUrl}/api/auth/sessions?userId=usr_attacker`, {
+        method: "DELETE",
+        headers: { authorization: "Bearer opaque_token_12345678901234567890" },
+      });
+      assert.equal(query.status, 400);
+      assert.equal(authenticated, 1);
+
+      const body = await fetch(`${baseUrl}/api/auth/session`, {
+        method: "DELETE",
+        headers: {
+          authorization: "Bearer opaque_token_12345678901234567890",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ userId: "usr_attacker" }),
+      });
+      assert.equal(body.status, 400);
+      assert.equal(authenticated, 1);
+      assert.equal(revoked, 0);
+    },
+  );
+});
+
+test("session revocation failures use the shared error contract", async () => {
+  await withApplication(
+    baseDependencies({
+      auth: { async revokeSession() { throw new AppError(503, "AUTH_UNAVAILABLE", "会话存储不可用"); } },
+      authenticator: { async authenticate() { return { id: "usr_test" }; } },
+    }),
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/auth/session`, {
+        method: "DELETE",
+        headers: { authorization: "Bearer opaque_token_12345678901234567890" },
+      });
+      const body = await response.json();
+      assert.equal(response.status, 503);
+      assert.equal(body.error.code, "AUTH_UNAVAILABLE");
+      assert.equal(body.error.requestId, response.headers.get("x-request-id"));
+    },
+  );
+});
+
 test("GET /api/users/me derives ownership exclusively from Bearer token", async () => {
   let receivedAuthorization;
   let receivedUserId;

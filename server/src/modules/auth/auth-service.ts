@@ -16,6 +16,10 @@ const MAX_CODE_LENGTH = 256;
 
 export interface AuthLoginService {
   login(code: string): Promise<LoginResult>;
+  /** 接受 token 原文并由服务端完成哈希后吊销。 */
+  revokeSession(token: string): Promise<void>;
+  /** 吊销指定用户的全部会话。 */
+  revokeUserSessions(userId: string): Promise<void>;
 }
 
 export class AuthService implements AuthLoginService {
@@ -60,5 +64,14 @@ export class AuthService implements AuthLoginService {
       expiresAt: expiresAt.toISOString(),
       user: { id: user.id, nickname: user.nickname, avatarUrl: user.avatarUrl },
     };
+  }
+
+  /** 接受 token 原文并在服务端计算哈希后吊销。 */
+  public async revokeSession(token: string): Promise<void> {
+    await this.repository.revokeSession(hashToken(token), this.now());
+  }
+
+  public async revokeUserSessions(userId: string): Promise<void> {
+    await this.repository.revokeUserSessions(userId, this.now());
   }
 }

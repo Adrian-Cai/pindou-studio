@@ -7,6 +7,7 @@ const { createHttpApplication } = require("../dist/http/app.js");
 const { startHttpServer } = require("../dist/http/server.js");
 const { PostgresAuthRepository } = require("../dist/modules/auth/auth-repository.js");
 const { BearerTokenAuthenticator } = require("../dist/modules/auth/authenticator.js");
+const { AuthService } = require("../dist/modules/auth/auth-service.js");
 const { FileSystemCoverStorage } = require("../dist/modules/files/cover-storage.js");
 const { PostgresFileAssetService } = require("../dist/modules/files/file-asset-service.js");
 const { PostgresWorkService } = require("../dist/modules/works/work-service.js");
@@ -26,7 +27,7 @@ function pattern(firstCell = 0) {
   };
 }
 
-test("stage 2 real database flow: upload, create, list, detail, update, media read and delete", { skip: !enabled }, async () => {
+test("stage 2 real database flow: works, media and session revocation", { skip: !enabled }, async () => {
   loadLocalEnv();
   const config = readConfig();
   const pool = createPool(config.database);
@@ -34,6 +35,8 @@ test("stage 2 real database flow: upload, create, list, detail, update, media re
   const userId = `usr_it_${suffix}`;
   const sessionId = `ses_it_${suffix}`;
   const token = randomBytes(32).toString("base64url");
+  const otherSessionId = `ses_it_other_${suffix}`;
+  const otherToken = randomBytes(32).toString("base64url");
   const storedObjects = [];
   let running;
   let activeCovers;
@@ -49,8 +52,8 @@ test("stage 2 real database flow: upload, create, list, detail, update, media re
     await pool.query(
       `INSERT INTO pindou_auth_sessions (
          id, user_id, token_hash, expires_at, revoked_at, created_at, last_used_at
-       ) VALUES ($1, $2, $3, $4, NULL, $5, NULL)`,
-      [sessionId, userId, hashToken(token), new Date(now.getTime() + 60 * 60 * 1_000), now],
+       ) VALUES ($1, $2, $3, $4, NULL, $5, NULL), ($6, $2, $7, $4, NULL, $5, NULL)`,
+      [sessionId, userId, hashToken(token), new Date(now.getTime() + 60 * 60 * 1_000), now, otherSessionId, hashToken(otherToken)],
     );
 
     const covers = {
@@ -67,11 +70,12 @@ test("stage 2 real database flow: upload, create, list, detail, update, media re
         return activeCovers.remove(...args);
       },
     };
+    const authRepository = new PostgresAuthRepository(pool);
     running = await startHttpServer(createHttpApplication({
       database: { async check() { return { status: "up", product: "PostgreSQL", version: "integration", schemaStatus: "valid" }; } },
-      auth: { async login() { throw new Error("unused"); } },
-      authenticator: new BearerTokenAuthenticator(new PostgresAuthRepository(pool)),
-      users: { async getCurrentUser() { throw new Error("unused"); } },
+      auth: new AuthService(authRepository, { async exchangeCode() { throw new Error("unused"); } }, config.auth),
+      authenticator: new BearerTokenAuthenticator(authRepository),
+      users: { async getCurrentUser() { return { user: { id: userId } }; } },
       avatars: { async save() { throw new Error("unused"); }, async read() { return null; }, async remove() {} },
       avatarMaximumBytes: config.avatars.maximumBytes,
       covers,
@@ -137,6 +141,28 @@ test("stage 2 real database flow: upload, create, list, detail, update, media re
     assert.equal(deleteResponse.status, 204);
     const deletedDetail = await fetch(`${baseUrl}/api/works/${created.id}`, { headers: authorization });
     assert.equal(deletedDetail.status, 404);
+
+    const currentUser = await fetch(`${baseUrl}/api/users/me`, { headers: authorization });
+    assert.equal(currentUser.status, 200);
+    const revokeCurrent = await fetch(`${baseUrl}/api/auth/session`, { method: "DELETE", headers: authorization });
+    assert.equal(revokeCurrent.status, 204);
+    const afterCurrentRevoke = await fetch(`${baseUrl}/api/users/me`, { headers: authorization });
+    assert.equal(afterCurrentRevoke.status, 401);
+    assert.equal((await afterCurrentRevoke.json()).error.code, "UNAUTHORIZED");
+    const repeatedRevoke = await fetch(`${baseUrl}/api/auth/session`, { method: "DELETE", headers: authorization });
+    assert.equal(repeatedRevoke.status, 401);
+    assert.equal((await repeatedRevoke.json()).error.code, "UNAUTHORIZED");
+
+    const revokeAll = await fetch(`${baseUrl}/api/auth/sessions`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${otherToken}` },
+    });
+    assert.equal(revokeAll.status, 204);
+    const otherDeviceAfterRevoke = await fetch(`${baseUrl}/api/users/me`, {
+      headers: { authorization: `Bearer ${otherToken}` },
+    });
+    assert.equal(otherDeviceAfterRevoke.status, 401);
+    assert.equal((await otherDeviceAfterRevoke.json()).error.code, "UNAUTHORIZED");
 
     const assets = await pool.query("SELECT object_key FROM pindou_file_assets WHERE user_id = $1", [userId]);
     storedObjects.push(...assets.rows.map((row) => row.object_key));

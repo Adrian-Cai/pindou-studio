@@ -70,6 +70,42 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /api/auth/session:
+    delete:
+      tags: [认证]
+      operationId: revokeCurrentSession
+      summary: 退出当前设备
+      description: 吊销当前 Bearer token。拒绝查询参数和请求体；重复调用或已过期 token 返回 401。
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: 当前会话已吊销。
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/auth/sessions:
+    delete:
+      tags: [认证]
+      operationId: revokeAllSessions
+      summary: 退出所有设备
+      description: 吊销当前用户的全部会话，包括当前设备。用户身份只从 Bearer token 推导；拒绝查询参数和请求体。
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: 该用户的全部会话已吊销。
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/users/me:
     get:
       tags: [用户]

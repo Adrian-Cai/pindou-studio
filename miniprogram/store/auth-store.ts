@@ -14,6 +14,8 @@ import {
   deleteCurrentUser,
   fetchCurrentUser,
   loginWithWechat,
+  revokeAllSessions,
+  revokeCurrentSession,
   updateNickname,
 } from '../services/auth-service'
 import { fetchQuota, type QuotaResponse } from '../services/download-service'
@@ -27,6 +29,7 @@ import {
 import { appStore } from './app-store'
 import { cloudSummaryToWorkItem, fetchCloudFavorites, fetchCloudWorks } from '../services/work-service'
 import { syncPendingWorks } from '../services/work-sync-service'
+import { clearSecuritySession } from '../services/session-service'
 
 /** 登录状态的有限状态机取值（用于驱动页面的加载/登录/错误展示）。 */
 export type AuthStatus =
@@ -66,6 +69,7 @@ export class AuthStore {
   private state: AuthState = { ...initialState }
   private listeners = new Set<AuthListener>()
   private restoreTask: Promise<void> | null = null
+  private authVersion = 0
 
   /** 返回当前状态快照（只读），供订阅者与页面读取。 */
   getSnapshot(): Readonly<AuthState> {
@@ -105,13 +109,17 @@ export class AuthStore {
   /** 微信登录：拿 wx.login 的 code 换取 token，激活会话。已登录中或 401 过期则直接返回。 */
   async login(): Promise<void> {
     if (this.state.status === 'authenticating') return
+    this.bumpAuthVersion()
+    const version = this.authVersion
     this.setState({ ...initialState, status: 'authenticating' })
 
     try {
       const session = await loginWithWechat()
+      if (!this.isCurrentVersion(version)) return
       saveAuthSession(session)
-      await this.activateSession(session)
+      await this.activateSession(session, version)
     } catch (error) {
+      if (!this.isCurrentVersion(version)) return
       if (isUnauthorized(error)) {
         this.expireSession()
         return
@@ -126,6 +134,7 @@ export class AuthStore {
 
   /** 刷新用户信息：用本地 session 调 /api/users/me 取最新 profile 并恢复云端数据；失败则退回离线缓存。 */
   async refresh(): Promise<void> {
+    const version = this.authVersion
     const session = loadAuthSession()
     if (!session || isAuthSessionExpired(session)) {
       this.expireSession()
@@ -139,6 +148,7 @@ export class AuthStore {
     })
     try {
       const profile = await fetchCurrentUser(session.token)
+      if (!this.isCurrentVersion(version)) return
       saveAuthSession({ ...session, user: profile.user, profile })
       this.setState({
         status: 'refreshing',
@@ -147,15 +157,17 @@ export class AuthStore {
         isOffline: false,
         errorMessage: '',
       })
-      await this.restoreAccountData(profile.user.id)
+      await this.restoreAccountData(profile.user.id, version)
+      if (!this.isCurrentVersion(version)) return
       this.setState({ ...this.state, status: 'authenticated', user: profile.user, profile })
     } catch (error) {
+      if (!this.isCurrentVersion(version)) return
       if (isUnauthorized(error)) {
         this.expireSession()
         return
       }
       // 刷新接口失败但本地有缓存：退到离线 profile，保证页面仍然可用
-      await this.fallbackToOffline(session, error)
+      await this.fallbackToOffline(session, error, version)
     }
   }
 
@@ -168,13 +180,18 @@ export class AuthStore {
    * 拿不到用户身份时应判定登录过期让用户重新登录，而不是硬撑出一个残缺态。
    * @returns 是否成功降级到离线可用态
    */
-  private async fallbackToOffline(session: AuthSession, error: unknown): Promise<boolean> {
+  private async fallbackToOffline(
+    session: AuthSession,
+    error: unknown,
+    version: number,
+  ): Promise<boolean> {
     const cachedUser = session.profile?.user ?? session.user
     if (!cachedUser?.id) {
       this.expireSession()
       return false
     }
     await appStore.activateAccount(cachedUser.id)
+    if (!this.isCurrentVersion(version)) return false
     this.setState({
       status: 'authenticated',
       user: cachedUser,
@@ -187,11 +204,13 @@ export class AuthStore {
 
   /** 刷新标准下载额度（dailyFree/usedToday/purchased/remaining），写入本地 profile 缓存；过期则进 expired。 */
   async refreshQuota(): Promise<QuotaResponse | null> {
+    const version = this.authVersion
     const session = loadAuthSession()
     if (!session || isAuthSessionExpired(session)) return null
 
     try {
       const quota = await fetchQuota()
+      if (!this.isCurrentVersion(version)) return null
       const profile = this.state.profile
       if (profile) {
         const nextProfile: CurrentUserProfile = {
@@ -211,6 +230,7 @@ export class AuthStore {
       }
       return quota
     } catch (error) {
+      if (!this.isCurrentVersion(version)) return null
       if (isUnauthorized(error)) {
         this.expireSession()
         return null
@@ -222,11 +242,13 @@ export class AuthStore {
 
   /** 刷新 AI 生成额度（仅更新 quota.aiGeneration 部分），用于充值页与支付成功页。 */
   async refreshAiQuota(): Promise<QuotaResponse | null> {
+    const version = this.authVersion
     const session = loadAuthSession()
     if (!session || isAuthSessionExpired(session)) return null
 
     try {
       const quota = await fetchQuota()
+      if (!this.isCurrentVersion(version)) return null
       const profile = this.state.profile
       if (profile) {
         const nextProfile: CurrentUserProfile = {
@@ -241,6 +263,7 @@ export class AuthStore {
       }
       return quota
     } catch (error) {
+      if (!this.isCurrentVersion(version)) return null
       if (isUnauthorized(error)) {
         this.expireSession()
         return null
@@ -252,6 +275,7 @@ export class AuthStore {
 
   /** 保存昵称：调接口更新，若遇 401 会先用微信重新登录再试一次；session 失效则抛错。 */
   async saveProfile(nickname: string): Promise<void> {
+    const version = this.authVersion
     const session = loadAuthSession()
     if (!session || isAuthSessionExpired(session)) {
       this.expireSession()
@@ -266,11 +290,14 @@ export class AuthStore {
       try {
         profile = await this.persistProfile(activeSession, nickname)
       } catch (error) {
+        if (!this.isCurrentVersion(version)) return
         if (!isUnauthorized(error)) throw error
         activeSession = await loginWithWechat()
+        if (!this.isCurrentVersion(version)) return
         saveAuthSession(activeSession)
         profile = await this.persistProfile(activeSession, nickname)
       }
+      if (!this.isCurrentVersion(version)) return
       saveAuthSession({ ...activeSession, user: profile.user, profile })
       this.setState({
         status: 'authenticated',
@@ -280,6 +307,7 @@ export class AuthStore {
         errorMessage: '',
       })
     } catch (error) {
+      if (!this.isCurrentVersion(version)) return
       if (isUnauthorized(error)) {
         this.expireSession()
         throw new Error('登录状态已失效，请重新登录')
@@ -292,6 +320,7 @@ export class AuthStore {
 
   /** 删除账号：调 /api/users/me(DELETE) 后本地登出；session 失效或接口 401 会先过期再抛错。 */
   async deleteAccount(): Promise<void> {
+    const version = this.authVersion
     const session = loadAuthSession()
     if (!session || isAuthSessionExpired(session)) {
       this.expireSession()
@@ -300,18 +329,44 @@ export class AuthStore {
 
     try {
       await deleteCurrentUser(session.token)
-      await this.logout()
+      if (!this.isCurrentVersion(version)) return
+      await this.logout({ remote: false })
     } catch (error) {
+      if (!this.isCurrentVersion(version)) return
       if (isUnauthorized(error)) this.expireSession()
       throw error
     }
   }
 
-  /** 登出：离开本地账号、清空 session 并重置为 guest 态。 */
-  async logout(): Promise<void> {
-    await appStore.leaveAccount()
+  /** 先清凭证并退出 UI，再尽力清理本地数据和吊销服务端会话。 */
+  async logout(options: { readonly remote?: boolean } = {}): Promise<void> {
+    const session = loadAuthSession()
+    const token = session && !isAuthSessionExpired(session) ? session.token : null
+    this.bumpAuthVersion()
     clearAuthSession()
+    clearSecuritySession()
     this.setState({ ...initialState })
+
+    try {
+      await appStore.leaveAccount()
+    } catch (error) {
+      console.error('本地数据清理失败，登录凭证已清除', error)
+    }
+
+    if (!token || options.remote === false) return
+    try {
+      await revokeCurrentSession(token)
+    } catch (error) {
+      if (!isUnauthorized(error)) console.error('服务端会话吊销失败', error)
+    }
+  }
+
+  /** 吊销该账号所有设备的会话；失败时向调用方返回错误。 */
+  async revokeAllDevices(): Promise<void> {
+    const session = loadAuthSession()
+    if (!session) return
+    await revokeAllSessions(session.token)
+    await this.logout({ remote: false })
   }
 
   /** 清除 error 态，回到 guest（仅当当前处于 error 时生效）。 */
@@ -371,6 +426,7 @@ export class AuthStore {
   }
 
   private async performRestore(): Promise<void> {
+    const version = this.authVersion
     const session = loadAuthSession()
     if (!session) {
       this.setState({ ...initialState })
@@ -388,12 +444,13 @@ export class AuthStore {
       isOffline: false,
       errorMessage: '',
     })
-    await this.activateSession(session)
+    await this.activateSession(session, version)
   }
 
-  private async activateSession(session: AuthSession): Promise<void> {
+  private async activateSession(session: AuthSession, version: number): Promise<void> {
     try {
       const profile = await fetchCurrentUser(session.token)
+      if (!this.isCurrentVersion(version)) return
       saveAuthSession({ ...session, user: profile.user, profile })
       this.setState({
         status: this.state.status === 'restoring' ? 'restoring' : 'authenticating',
@@ -402,15 +459,17 @@ export class AuthStore {
         isOffline: false,
         errorMessage: '',
       })
-      await this.restoreAccountData(profile.user.id)
+      await this.restoreAccountData(profile.user.id, version)
+      if (!this.isCurrentVersion(version)) return
       this.setState({ ...this.state, status: 'authenticated', user: profile.user, profile })
     } catch (error) {
+      if (!this.isCurrentVersion(version)) return
       if (isUnauthorized(error)) {
         this.expireSession()
         return
       }
       // 刷新接口失败但本地有缓存：退到离线 profile，保证页面仍然可用
-      await this.fallbackToOffline(session, error)
+      await this.fallbackToOffline(session, error, version)
     }
   }
 
@@ -433,19 +492,28 @@ export class AuthStore {
   }
 
   private expireSession(): void {
+    this.bumpAuthVersion()
     void appStore.leaveAccount()
     clearAuthSession()
+    clearSecuritySession()
     this.setState({ ...initialState, status: 'expired' })
   }
+
+  private bumpAuthVersion(): void { this.authVersion += 1 }
+
+  private isCurrentVersion(version: number): boolean { return this.authVersion === version }
 
   private setState(state: AuthState): void {
     this.state = state
     this.listeners.forEach((listener) => listener(this.state))
   }
 
-  private async restoreAccountData(userId: string): Promise<void> {
+  private async restoreAccountData(userId: string, version: number): Promise<void> {
+    if (!this.isCurrentVersion(version)) return
     await appStore.activateAccount(userId)
+    if (!this.isCurrentVersion(version)) return
     if (appStore.getGuestWorkCount() > 0) await appStore.adoptGuestWorks(userId)
+    if (!this.isCurrentVersion(version)) return
     try {
       const PAGE_SIZE = 50
       // 分页上限：哪怕是服务端分页字段失灵，也不能让用户在这个循环里无限打请求。
@@ -455,6 +523,7 @@ export class AuthStore {
         fetchCloudWorks(),
         fetchCloudFavorites({ page: 1, pageSize: PAGE_SIZE }),
       ])
+      if (!this.isCurrentVersion(version)) return
       const cloudFavorites = [...firstFavorites.items]
       // 页码用**本地计数器**推进，不信服务端回的 page/pageSize：
       // 那两个字段一旦缺失，undefined + 1 会变成 NaN，请求反复打到同一页，
@@ -463,6 +532,7 @@ export class AuthStore {
       while (page < MAX_PAGES && cloudFavorites.length < firstFavorites.total && firstFavorites.items.length > 0) {
         page += 1
         const next = await fetchCloudFavorites({ page, pageSize: PAGE_SIZE })
+        if (!this.isCurrentVersion(version)) return
         // 服务端无视页码返回了同一批 id：继续翻下去只会重复 append
         if (next.items.length === 0) break
         const before = cloudFavorites.length
@@ -472,9 +542,12 @@ export class AuthStore {
         if (cloudFavorites.length === before) break
       }
       await appStore.replaceCloudWorks(works.items.map(cloudSummaryToWorkItem))
+      if (!this.isCurrentVersion(version)) return
       await appStore.replaceCloudFavorites(cloudFavorites.map(cloudSummaryToWorkItem))
+      if (!this.isCurrentVersion(version)) return
       await syncPendingWorks(userId)
     } catch (error) {
+      if (!this.isCurrentVersion(version)) return
       if (isUnauthorized(error)) throw error
       this.setState({ ...this.state, isOffline: true, errorMessage: friendlyAuthError(error) })
     }

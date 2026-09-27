@@ -7,6 +7,11 @@ import {
 
 let securitySession: AuthSession | null = null
 
+/** 清除内容安全等服务复用的内存登录会话。 */
+export function clearSecuritySession(): void {
+  securitySession = null
+}
+
 export async function ensureLoggedInSession(): Promise<AuthSession> {
   const current = loadAuthSession()
   if (current && !isAuthSessionExpired(current)) return current
