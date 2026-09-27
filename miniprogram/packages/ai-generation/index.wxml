@@ -77,15 +77,17 @@
       <view class="ai-generation-result-card">
         <view class="ai-generation-result-card__eyebrow">AI 精致生成</view>
         <view class="ai-generation-result-card__preview">
-          <image
-            wx:if="{{draft && !resultImageError}}"
-            class="ai-generation-result-card__image"
-            src="{{draft.sourceImagePath}}"
-            mode="aspectFit"
-            style="transform: scale({{scalePercent / 100}});"
-            binderror="handleResultImageError"
-          />
-          <view wx:else class="ai-generation-result-card__fallback">拼豆图结果已生成</view>
+          <canvas
+            wx:if="{{draft}}"
+            id="aiPatternCanvas"
+            class="ai-generation-result-card__canvas"
+            type="2d"
+            style="transform: scale({{scalePercent / 100}}); opacity: {{patternCanvasReady ? 1 : 0}};"
+            aria-label="拼豆图预览"
+          ></canvas>
+          <view wx:if="{{patternRenderError}}" class="ai-generation-result-card__fallback">拼豆图预览失败，请重新生成</view>
+          <view wx:elif="{{!draft}}" class="ai-generation-result-card__fallback">拼豆图结果已生成</view>
+          <view wx:elif="{{!patternCanvasReady}}" class="ai-generation-result-card__fallback">正在绘制拼豆图</view>
         </view>
         <view class="ai-generation-result-card__meta">
           <text>{{panelWidth}}×{{panelHeight}} · {{panelColorLimit}}色</text>

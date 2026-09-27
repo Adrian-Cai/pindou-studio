@@ -58,6 +58,32 @@ test("ToAPIs maps pending and completed task status", async () => {
   assert.deepEqual(await provider.getTask("task_123"), { status: "completed", outputUrl: "https://files.toapis.com/output.png" });
 });
 
+test("ToAPIs accepts a completed result URL returned outside result.data", async () => {
+  const responses = [
+    new Response(JSON.stringify({ id: "task_123", status: "completed", result: { url: "https://files.toapis.com/output.png" } }), { status: 200 }),
+    new Response(JSON.stringify({ id: "task_124", status: "completed", url: "https://files.toapis.com/output-2.png" }), { status: 200 }),
+  ];
+  const provider = new ToapisImageProvider(config(), async () => responses.shift());
+  assert.deepEqual(await provider.getTask("task_123"), { status: "completed", outputUrl: "https://files.toapis.com/output.png" });
+  assert.deepEqual(await provider.getTask("task_124"), { status: "completed", outputUrl: "https://files.toapis.com/output-2.png" });
+});
+
+test("ToAPIs preserves the provider task failure code and message for server logs", async () => {
+  const provider = new ToapisImageProvider(config(), async () => new Response(JSON.stringify({
+    id: "task_123",
+    status: "failed",
+    error: { code: "generation_failed", message: "upstream returned status 422" },
+  }), { status: 200 }));
+  await assert.rejects(
+    () => provider.getTask("task_123"),
+    (error) => error instanceof ProviderError
+      && error.code === "AI_PROVIDER_TASK_FAILED"
+      && error.failure.providerCode === "generation_failed"
+      && error.message.includes("status 422")
+      && !error.message.includes("secret-test-key"),
+  );
+});
+
 test("ToAPIs downloads only allow-listed HTTPS output and enforces response bytes", async () => {
   const provider = new ToapisImageProvider(config(), async () => new Response(PNG, {
     status: 200,

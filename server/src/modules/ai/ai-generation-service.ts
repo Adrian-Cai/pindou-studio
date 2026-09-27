@@ -453,7 +453,7 @@ export class PostgresAiGenerationService {
       status = await provider.getTask(job.provider_request_id);
     } catch (error: unknown) {
       if (isProviderError(error)) {
-        logProviderFailure(job, error, requestId, providerPublicCode(error), Date.now() - startedAt);
+        logProviderFailure(job, error, requestId, "poll", providerPublicCode(error), Date.now() - startedAt);
       }
       if (isTransientProviderError(error)) {
         return this.scheduleNextPoll(job, provider, isProviderError(error) ? error.failure.retryAfterMs : undefined);
@@ -535,11 +535,19 @@ export class PostgresAiGenerationService {
       output = await this.providerFor(job).downloadOutput(outputUrl);
     } catch (error: unknown) {
       if (isProviderError(error)) {
-        logProviderFailure(job, error, requestId, providerPublicCode(error), Date.now() - downloadStartedAt);
+        logProviderFailure(
+          job,
+          error,
+          requestId,
+          "download",
+          providerPublicCode(error),
+          Date.now() - downloadStartedAt,
+          outputHost(outputUrl),
+        );
       }
       if (isTransientProviderError(error)) {
         if (!isProviderError(error)) {
-          logProviderFailure(job, null, requestId, "AI_SERVICE_BUSY", Date.now() - downloadStartedAt);
+          logProviderFailure(job, null, requestId, "download", "AI_SERVICE_BUSY", Date.now() - downloadStartedAt, outputHost(outputUrl));
         }
         return mapJob(job);
       }
@@ -547,6 +555,17 @@ export class PostgresAiGenerationService {
     }
     const detectedFormat = detectOutputFormat(output);
     if (!isSupportedOutputFormat(detectedFormat)) {
+      console.error(JSON.stringify({
+        event: "ai_provider_output_rejected",
+        jobId: job.id,
+        requestId: requestId ?? null,
+        provider: job.provider,
+        model: job.model,
+        reason: "unsupported_format",
+        detectedFormat,
+        byteSize: output.length,
+        signatureHex: output.subarray(0, 16).toString("hex"),
+      }));
       return mapJob(await this.markFailed(job.user_id, job.id, "AI_PROVIDER_OUTPUT_INVALID"));
     }
     const outputName = outputFileName(detectedFormat);
@@ -645,7 +664,7 @@ export class PostgresAiGenerationService {
         break;
       } catch (error: unknown) {
         if (isProviderError(error)) {
-          logProviderFailure(claimed, error, requestId, providerPublicCode(error), Date.now() - submissionStartedAt);
+          logProviderFailure(claimed, error, requestId, "submit", providerPublicCode(error), Date.now() - submissionStartedAt);
         }
         // 限流单独立一条路：不原地退避重试，而是开启全局冷却并把任务退回 queued。
         // 原地重试的问题见 PROVIDER_RATE_LIMIT_COOLDOWN_MS 的注释 —— 账号维度限流下，
@@ -1136,8 +1155,10 @@ function logProviderFailure(
   job: AiJobRow,
   error: ProviderError | null,
   requestId: string | undefined,
+  stage: "submit" | "poll" | "download",
   publicCode: string,
   duration: number,
+  outputHostValue?: string | null,
 ): void {
   console.error(JSON.stringify({
     event: "ai_provider_failure",
@@ -1145,10 +1166,22 @@ function logProviderFailure(
     jobId: job.id,
     provider: job.provider,
     model: job.model,
+    stage,
     promptVersion: job.prompt_version,
     publicErrorCode: aiPublicFailure(publicCode)?.code ?? "AI_GENERATION_FAILED",
     internalProviderCode: error?.failure.providerCode ?? null,
+    providerFailureKind: error?.failure.kind ?? null,
     httpStatus: error?.failure.httpStatus ?? null,
+    message: error?.message ? error.message.slice(0, 240) : null,
+    ...(outputHostValue ? { outputHost: outputHostValue } : {}),
     duration,
   }));
+}
+
+function outputHost(value: string): string | null {
+  try {
+    return new URL(value).hostname.toLowerCase() || null;
+  } catch {
+    return null;
+  }
 }

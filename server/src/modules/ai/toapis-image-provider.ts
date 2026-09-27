@@ -19,10 +19,6 @@ function string(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function number(value: unknown): number | null {
-  return typeof value === "number" && Number.isInteger(value) ? value : null;
-}
-
 /** ToAPIs GPT-Image 普通接口：提交异步任务、查询任务状态、下载完成图片。 */
 export class ToapisImageProvider implements AiGenerationProvider {
   public readonly name = "toapis" as const;
@@ -79,13 +75,14 @@ export class ToapisImageProvider implements AiGenerationProvider {
     );
     const status = taskStatus(response.body);
     if (status === "failed") {
+      const providerMessage = messageFromBody(response.body);
       throw providerFailure(
         "toapis",
         "UNKNOWN",
         codeFromBody(response.body),
         response.status,
-        "AI_PROVIDER_UNAVAILABLE",
-        "ToAPIs 图片生成失败",
+        "AI_PROVIDER_TASK_FAILED",
+        `ToAPIs 图片生成失败${providerMessage ? `: ${providerMessage}` : ""}`,
       );
     }
     if (!status) {
@@ -216,7 +213,7 @@ function resultObject(body: JsonObject): JsonObject | null {
 function outputUrlFromBody(body: JsonObject): string | null {
   const result = resultObject(body);
   const data = Array.isArray(result?.data) ? result.data : Array.isArray(body.data) ? body.data : [];
-  return string(object(data[0])?.url);
+  return string(object(data[0])?.url) ?? string(result?.url) ?? string(body.url);
 }
 
 function taskStatus(body: JsonObject): ProviderTaskStatus["status"] | null {
@@ -226,7 +223,18 @@ function taskStatus(body: JsonObject): ProviderTaskStatus["status"] | null {
 }
 
 function codeFromBody(body: JsonObject | null): string | null {
-  return string(body?.code) ?? string(body?.error_code) ?? string(object(body?.error)?.code);
+  return scalarCode(body?.code) ?? scalarCode(body?.error_code) ?? scalarCode(object(body?.error)?.code);
+}
+
+function messageFromBody(body: JsonObject | null): string | null {
+  const error = object(body?.error);
+  const value = string(error?.message) ?? string(body?.message);
+  return value ? value.slice(0, 240) : null;
+}
+
+function scalarCode(value: unknown): string | null {
+  if (typeof value === "number" && Number.isInteger(value)) return String(value);
+  return string(value);
 }
 
 function responseFailure(
@@ -237,11 +245,13 @@ function responseFailure(
 ): ProviderError {
   const retryAfterMs = retryAfter(headers.get("retry-after"));
   const code = codeFromBody(body);
-  if (status === 429) return providerFailure(provider, "RATE_LIMITED", code, status, "AI_PROVIDER_RATE_LIMITED", "ToAPIs 请求繁忙", retryAfterMs);
-  if (status === 408 || status === 504) return providerFailure(provider, "TIMEOUT", code, status, "AI_PROVIDER_TIMEOUT", "ToAPIs 请求超时", retryAfterMs);
-  if (status === 401 || status === 403) return providerFailure(provider, "UNAVAILABLE", code, status, "AI_SERVICE_UNAVAILABLE", "ToAPIs 服务暂时不可用");
-  if (status >= 500) return providerFailure(provider, "UNAVAILABLE", code, status, "AI_PROVIDER_UNAVAILABLE", "ToAPIs 服务暂时不可用", retryAfterMs);
-  return providerFailure(provider, "UNKNOWN", code, status, undefined, "ToAPIs 请求失败");
+  const detail = messageFromBody(body);
+  const message = (fallback: string) => `${fallback}${detail ? `: ${detail}` : ""}`;
+  if (status === 429) return providerFailure(provider, "RATE_LIMITED", code, status, "AI_PROVIDER_RATE_LIMITED", message("ToAPIs 请求繁忙"), retryAfterMs);
+  if (status === 408 || status === 504) return providerFailure(provider, "TIMEOUT", code, status, "AI_PROVIDER_TIMEOUT", message("ToAPIs 请求超时"), retryAfterMs);
+  if (status === 401 || status === 403) return providerFailure(provider, "UNAVAILABLE", code, status, "AI_SERVICE_UNAVAILABLE", message("ToAPIs 服务暂时不可用"));
+  if (status >= 500) return providerFailure(provider, "UNAVAILABLE", code, status, "AI_PROVIDER_UNAVAILABLE", message("ToAPIs 服务暂时不可用"), retryAfterMs);
+  return providerFailure(provider, "UNKNOWN", code, status, undefined, message("ToAPIs 请求失败"));
 }
 
 function retryAfter(value: string | null): number | undefined {

@@ -15,8 +15,23 @@ import { aiTaskManager, type AiTaskView } from '../../services/ai-generation-man
 import type { AiTaskStatus } from '../../services/ai-task-store'
 import { getPaletteColors, type PatternDraft, type WorkItem } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
+import { drawPatternOnCanvas, type PatternCanvasContext } from '../../services/pattern-renderer'
+import { cloudSummaryToWorkItem, hasCloudSession, saveNewCloudWork, updateCloudWork } from '../../services/work-service'
+import { isNetworkError, queueWorkForSync } from '../../services/work-sync-service'
 
 type TaskFrom = 'home' | 'projects'
+
+interface PatternPreviewCanvas {
+  width: number
+  height: number
+  getContext(type: '2d'): PatternCanvasContext
+}
+
+interface PatternPreviewQueryResult {
+  node: PatternPreviewCanvas
+  width: number
+  height: number
+}
 
 const GENERATING_STATUSES: ReadonlySet<AiTaskStatus> = new Set<AiTaskStatus>([
   'uploading',
@@ -44,7 +59,8 @@ Page({
     /** 成功态在当前页面直接展示结果，编辑面板随草稿就绪切换为可用。 */
     draft: null as PatternDraft | null,
     editorReady: false,
-    resultImageError: false,
+    patternCanvasReady: false,
+    patternRenderError: false,
     activeTool: 'pencil',
     scalePercent: 100,
     canZoomOut: false,
@@ -151,7 +167,8 @@ Page({
         draft: null,
         paletteColors: [],
         selectedColor: '',
-        resultImageError: false,
+        patternCanvasReady: false,
+        patternRenderError: false,
       }),
     })
   },
@@ -169,10 +186,11 @@ Page({
     this.setData({
       draft,
       editorReady: true,
-      resultImageError: false,
+      patternCanvasReady: false,
+      patternRenderError: false,
       paletteColors,
       selectedColor,
-    })
+    }, () => this.renderPatternPreview())
     if (draftChanged && appStore.getSnapshot().currentDraft?.id !== draft.id) {
       try {
         await appStore.setCurrentDraft(draft)
@@ -235,8 +253,32 @@ Page({
     })
   },
 
-  handleResultImageError() {
-    this.setData({ resultImageError: true })
+  renderPatternPreview() {
+    const draft = this.data.draft
+    if (!draft) return
+    wx.createSelectorQuery()
+      .in(this)
+      .select('#aiPatternCanvas')
+      .fields({ node: true, size: true })
+      .exec((results) => {
+        const result = results[0] as PatternPreviewQueryResult | undefined
+        if (!result?.node || !result.width || !result.height) {
+          this.setData({ patternRenderError: true })
+          return
+        }
+        const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
+        try {
+          result.node.width = Math.round(result.width * pixelRatio)
+          result.node.height = Math.round(result.height * pixelRatio)
+          const context = result.node.getContext('2d')
+          context.scale(pixelRatio, pixelRatio)
+          drawPatternOnCanvas(context, result.width, result.height, draft)
+          this.setData({ patternCanvasReady: true })
+        } catch (error) {
+          console.error('AI 拼豆图预览绘制失败', error)
+          this.setData({ patternRenderError: true })
+        }
+      })
   },
 
   async saveWork() {
@@ -245,7 +287,7 @@ Page({
     this.setData({ saving: true })
     try {
       const existing = appStore.getSnapshot().works.find((work) => work.id === draft.id)
-      const work: WorkItem = {
+      const localWork: WorkItem = {
         id: draft.id,
         title: existing?.title ?? '未命名作品',
         coverPath: draft.sourceImagePath,
@@ -257,13 +299,36 @@ Page({
         width: draft.settings.width,
         height: draft.settings.height,
         status: 'completed',
-        syncStatus: existing?.syncStatus ?? 'guest',
-        isCloud: existing?.isCloud,
       }
-      await appStore.saveLocalDraft(draft)
-      await appStore.saveWork(work)
-      await appStore.setCurrentDraft(draft)
-      wx.showToast({ title: '已保存作品', icon: 'success' })
+
+      if (!hasCloudSession()) {
+        await appStore.saveLocalDraft(draft)
+        await appStore.saveWork({ ...localWork, syncStatus: 'guest' })
+        wx.showToast({ title: '已保存到本机', icon: 'success' })
+      } else {
+        try {
+          const summary = existing?.syncStatus === 'synced' || existing?.isCloud
+            ? await updateCloudWork(existing.id, draft, draft.sourceImagePath, existing.title)
+            : await saveNewCloudWork(draft, draft.sourceImagePath, existing?.title ?? '未命名作品')
+          const savedDraft = { ...draft, id: summary.id, sourceImagePath: '' }
+          if (existing && existing.id !== summary.id) await appStore.deleteWork(existing.id)
+          await appStore.removeLocalDraft(draft.id)
+          await appStore.saveWork(cloudSummaryToWorkItem(summary))
+          await appStore.setCurrentDraft(savedDraft)
+          wx.showToast({ title: '已保存到云端', icon: 'success' })
+        } catch (error) {
+          const pending = isNetworkError(error)
+          await queueWorkForSync({
+            ...localWork,
+            syncStatus: pending ? 'pending' : 'failed',
+            syncError: error instanceof Error ? error.message : '云端保存失败，请稍后重试',
+          }, draft)
+          wx.showToast({
+            title: pending ? '已保存到本机，联网后自动同步' : '已保存到本机，云端保存失败',
+            icon: 'none',
+          })
+        }
+      }
       wx.redirectTo({ url: '/packages/result/index' })
     } catch (error) {
       wx.showToast({ title: error instanceof Error ? error.message : '保存失败，请重试', icon: 'none' })
