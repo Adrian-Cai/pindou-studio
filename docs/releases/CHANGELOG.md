@@ -1,13 +1,15 @@
 # CHANGELOG
 
-## 0.30.28
+## 0.30.29
 
-- **复核 axios 原型污染 RCE 漏洞 CVE-2026-40175**：该 CVE 影响 `axios <1.15.0`（推荐修复版本 1.15.0），
-  报告中列为受影响位置的 `server/package-lock.json` 与 `cloudfunctions/generateImage/package-lock.json`
-  实际是 `@cloudbase/node-sdk` / `wx-server-sdk` 的 `dependencies` 元数据里写死的 `axios: "0.27.2"`
-  （上游声明的版本范围），并非真实安装版本；两处的 `overrides` 已把 `axios` 统一钉在 `1.16.0`，
-  高于推荐修复版本，本次无需改动依赖版本，也不存在降级。
-  校验：`npm ci` 重装后 `node_modules/axios` 两处均解析为 `1.16.0`。
+- **核实 axios 未受 CVE-2026-42039 影响**：该 CVE（GHSA-62hf-57xw-28j9，
+  `toFormData` 递归无深度限制导致 DoS）影响 `>=1.0.0 <1.15.1` 与 `<0.31.1`，
+  推荐修复版本为 `1.15.1`。安全扫描上报的 `0.27.2` 为历史（旧）快照，
+  当前 `server` 与 `cloudfunctions/generateImage` 已用 `overrides` 将 axios 统一钉在
+  `1.16.0`，高于推荐修复版本，依赖声明无需改动，**未做任何降级**。
+  校验方式：两处 `package-lock.json` 均解析为 `1.16.0`、无 `0.27.2` 残留；
+  源码级确认 `axios/lib/helpers/toFormData.js` 已内置 `maxDepth`（默认 100）限制，
+  传入 20000 层嵌套对象时抛出受控 `AxiosError` 而非崩溃进程。
 
 ## 0.30.27
 
