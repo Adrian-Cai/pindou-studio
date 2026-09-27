@@ -85,6 +85,10 @@ jobs:
       - name: axios formData depth guard
         run: node --test test/dependency-axios-formdata-depth.test.js
 
+      # axios 代理绕过守卫：CVE-2026-67315，NO_PROXY 覆盖回环地址时 0.0.0.0 目标不得走代理
+      - name: axios NO_PROXY guard
+        run: node --test test/dependency-axios-noproxy.test.js
+
       # axios HTTP/2 流式上传守卫：CVE-2026-67318，httpVersion: 2 下 maxBodyLength 必须生效
       - name: axios http2 maxBodyLength guard
         run: node --test test/dependency-axios-maxbodylength-http2.test.js
