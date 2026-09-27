@@ -15,6 +15,12 @@
   `package-lock.json` 中所有 axios 条目均为 `1.20.0`（master 当前版本），
   并在 CI 的 Server Static Check 中执行。
   变异验证：移除 `overrides` 后该用例转红，确认能拦住回退。
+- **修复 axios NO_PROXY 绕过漏洞 CVE-2026-42043**：该 CVE 影响 `axios <1.15.1`（推荐修复版本 1.15.1），
+  请求目标 URL 可控时可用 `127.0.0.0/8` 内任意地址绕过 `NO_PROXY` 保护。
+  master 已用 `overrides` 把 axios 钉在 `1.20.0`，高于推荐修复版本，依赖声明无需改动，**未降级**。
+- **合并 master 解决 axios 版本冲突**：本 PR 原先把 axios 从 `1.16.0` 提到 `1.18.0`，master 已收敛到 `1.20.0`。
+  冲突以 master 的 `1.20.0` 为准：两处 `package.json`（`dependencies` 与 `overrides`）与两份
+  `package-lock.json` 均解析为 `1.20.0`，安装树中只保留一份 axios，与 `dependency-axios-version` 守卫一致。
 
 ## 0.30.29
 
