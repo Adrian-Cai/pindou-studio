@@ -15,9 +15,24 @@ import { aiTaskManager, type AiTaskView } from '../../services/ai-generation-man
 import type { AiTaskStatus } from '../../services/ai-task-store'
 import { getPaletteColors, type PatternDraft, type WorkItem } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
-import { drawPatternOnCanvas, type PatternCanvasContext } from '../../services/pattern-renderer'
+import type { PatternCanvasContext } from '../editor/services/pattern-renderer'
 import { cloudSummaryToWorkItem, hasCloudSession, saveNewCloudWork, updateCloudWork } from '../../services/work-service'
 import { isNetworkError, queueWorkForSync } from '../../services/work-sync-service'
+
+/**
+ * pattern-renderer 的单一来源在 editor 分包（主包不留未使用的 JS），跨分包经「分包异步化」按需加载。
+ * 基础库 ≥ 2.17.3 才有 require.async；本页已在用 wx.getWindowInfo（≥ 2.20.1），无新增兼容门槛。
+ * 加载失败（含首次拉取 editor 分包失败）由调用方 catch 后走 patternRenderError 兜底。
+ */
+type PatternRendererModule = typeof import('../editor/services/pattern-renderer')
+let patternRendererPromise: Promise<PatternRendererModule> | null = null
+
+function loadPatternRenderer(): Promise<PatternRendererModule> {
+  if (!patternRendererPromise) {
+    patternRendererPromise = require.async('../editor/services/pattern-renderer.js') as Promise<PatternRendererModule>
+  }
+  return patternRendererPromise
+}
 
 type TaskFrom = 'home' | 'projects'
 
@@ -267,17 +282,19 @@ Page({
           return
         }
         const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
-        try {
-          result.node.width = Math.round(result.width * pixelRatio)
-          result.node.height = Math.round(result.height * pixelRatio)
-          const context = result.node.getContext('2d')
-          context.scale(pixelRatio, pixelRatio)
-          drawPatternOnCanvas(context, result.width, result.height, draft)
-          this.setData({ patternCanvasReady: true })
-        } catch (error) {
-          console.error('AI 拼豆图预览绘制失败', error)
-          this.setData({ patternRenderError: true })
-        }
+        loadPatternRenderer()
+          .then(({ drawPatternOnCanvas }) => {
+            result.node.width = Math.round(result.width * pixelRatio)
+            result.node.height = Math.round(result.height * pixelRatio)
+            const context = result.node.getContext('2d')
+            context.scale(pixelRatio, pixelRatio)
+            drawPatternOnCanvas(context, result.width, result.height, draft, true)
+            this.setData({ patternCanvasReady: true })
+          })
+          .catch((error) => {
+            console.error('AI 拼豆图预览绘制失败', error)
+            this.setData({ patternRenderError: true })
+          })
       })
   },
 

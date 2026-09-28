@@ -222,12 +222,13 @@ navigationStyle: "custom"
 
 - 主包代码 import / require 任何 `packages/` 下的模块（`.ts` / `.wxs` / 组件 / 资源）
 - 主包页面 `usingComponents` 指向 `packages/` 下的组件
-- 分包 A 引用分包 B 的模块
+- 分包 A 静态 import / require 分包 B 的模块（各分包独立打包，静态引用在对方分包未下载时必崩）
 
 允许：
 
 - 分包 import 主包模块（单向依赖，如分包页面 `import { ... } from '../../services/xxx'`）
 - 同一分包内部互相引用
+- 分包 A 通过 `require.async`（分包异步化，基础库 ≥ 2.17.3）异步引用分包 B 的 JS 模块；仅限「主包不使用、无法上提主包」的共享逻辑（见 7.4），组件不走这条路（见 7.6）
 
 ### 7.3 原因
 
@@ -252,7 +253,16 @@ module 'packages/xxx/services/xxx.js' is not defined, require args is '../packag
 例如 `ai-generation-flow.ts` 被主包 `services/ai-generation-manager.ts`（`app.ts` 引用）使用，
 必须放在 `miniprogram/services/`，不能放在 `miniprogram/packages/ai-generation/services/`。
 
-跨分包共用的逻辑一律上提到主包，不要为了"就近"放进某个分包。
+跨分包共用、且主包自己也会用到的逻辑才上提到主包，不要为了"就近"放进某个分包。
+
+只被分包使用（主包零引用）的共享逻辑**不要**上提主包：主包内没有任何主包代码引用的 JS 会触发
+代码质量扫描「主包内不应存在主包未使用的 JS 文件」告警，还白占主包体积。这类逻辑保持单一来源，
+放进其中一个分包，其他分包用 `require.async` 异步引用；不要复制成多份，绘制风格这类会调参的
+常量复制后必然改一处漏一处。
+
+例如 `pattern-renderer.ts`（拼豆圆点绘制）只有 editor 与 ai-generation 两个分包使用，
+已迁入 `packages/editor/services/pattern-renderer.ts`；ai-generation 页绘制预览前
+`require.async('../editor/services/pattern-renderer.js')` 按需加载，失败走页面内 `patternRenderError` 兜底。
 
 ### 7.5 排查方法
 

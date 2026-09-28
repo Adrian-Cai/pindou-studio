@@ -1,9 +1,13 @@
 /**
  * 拼豆图画布渲染：把 PatternDraft 绘制为带阴影与高光的圆点网格。
  *
- * 调用方：编辑器页与 AI 生成页的预览/封面画布。只负责绘制，不负责画布查询、导出或交互。
+ * 单一来源放在 editor 分包：主包自身不使用它，留在主包会触发
+ * 「主包内不应存在主包未使用的 JS 文件」告警并白占主包体积。
+ * 调用方：editor 分包（pattern-editor-service，封面绘制）与
+ *         ai-generation 分包（require.async 分包异步化按需加载，失败走页面内 patternRenderError 兜底）。
+ * 只负责绘制，不负责画布查询、导出或交互。
  */
-import type { PatternDraft } from '../models/pattern'
+import type { PatternDraft } from '../../../models/pattern'
 
 /** 2d canvas 上下文的最小子集（绘制拼豆点所需 API）。 */
 export interface PatternCanvasContext {
@@ -17,23 +21,28 @@ export interface PatternCanvasContext {
 }
 
 /**
- * 把整张图纸按「拼豆圆点」风格画满整个 canvas。
+ * 把整张图纸按「拼豆圆点」风格绘制到 canvas。
  * @param context 2d canvas 上下文
  * @param canvasWidth/canvasHeight 画布尺寸（CSS px）
  * @param draft 图纸草稿
+ * @param preserveAspectRatio 是否保持网格比例并居中绘制
  */
 export function drawPatternOnCanvas(
   context: PatternCanvasContext,
   canvasWidth: number,
   canvasHeight: number,
   draft: PatternDraft,
+  preserveAspectRatio = false,
 ): void {
   context.fillStyle = '#f7f7f7'
   context.fillRect(0, 0, canvasWidth, canvasHeight)
   const columns = draft.settings.width
   const rows = draft.settings.height
-  const cellWidth = canvasWidth / columns
-  const cellHeight = canvasHeight / rows
+  const fittedCellSize = Math.min(canvasWidth / columns, canvasHeight / rows)
+  const cellWidth = preserveAspectRatio ? fittedCellSize : canvasWidth / columns
+  const cellHeight = preserveAspectRatio ? fittedCellSize : canvasHeight / rows
+  const offsetX = preserveAspectRatio ? (canvasWidth - cellWidth * columns) / 2 : 0
+  const offsetY = preserveAspectRatio ? (canvasHeight - cellHeight * rows) / 2 : 0
   // 圆点半径取格宽高较小者的 0.44，留出格间缝隙
   const radius = Math.min(cellWidth, cellHeight) * 0.44
 
@@ -41,8 +50,8 @@ export function drawPatternOnCanvas(
     if (cell.color === 'transparent') return
     const column = index % columns
     const row = Math.floor(index / columns)
-    const centerX = column * cellWidth + cellWidth / 2
-    const centerY = row * cellHeight + cellHeight / 2
+    const centerX = offsetX + column * cellWidth + cellWidth / 2
+    const centerY = offsetY + row * cellHeight + cellHeight / 2
     // 先画一层半透明黑色作为右下阴影，制造立体感
     context.globalAlpha = 0.18
     context.fillStyle = '#000000'

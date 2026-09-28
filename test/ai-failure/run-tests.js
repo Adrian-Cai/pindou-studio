@@ -22,6 +22,7 @@ try {
   run(['--test',
     path.join(__dirname, 'ai-failure-contract.test.js'),
     path.join(__dirname, 'generation-navigation.test.js'),
+    path.join(__dirname, 'pattern-preview.test.js'),
     path.join(__dirname, 'transient-retry.test.js'),
   ])
 } finally {

@@ -8,9 +8,9 @@
  * 关键点：所有绘制用「拼豆圆点」风格（带阴影/高光）；坐标换算以 viewport 中心为原点，scale/translate 描述图片相对中心的位置。
  */
 import type { PatternCell, PatternDraft } from '../../../models/pattern'
-import { drawPatternOnCanvas, type PatternCanvasContext } from '../../../services/pattern-renderer'
+import { drawPatternOnCanvas, type PatternCanvasContext } from './pattern-renderer'
 
-export { drawPatternOnCanvas, type PatternCanvasContext } from '../../../services/pattern-renderer'
+export { drawPatternOnCanvas, type PatternCanvasContext } from './pattern-renderer'
 
 /** 鐭╁舰浣嶇疆涓庡昂瀵革紙CSS 鍍忕礌锛?*/
 export interface CanvasRect {
