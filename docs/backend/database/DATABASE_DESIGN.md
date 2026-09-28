@@ -460,7 +460,7 @@ pindou_users
 提交事务
 ```
 
-定时 reconciliation 会重新查询过期的 `ISSUED` / `UNKNOWN` 尝试；查询失败或状态不明确时保持 `UNKNOWN`，不得直接关闭订单。
+定时 reconciliation 会重新查询过期的 `ISSUED` / `UNKNOWN` 尝试；查询失败或状态不明确时保持 `UNKNOWN`。查单确认未支付、且超过 `VIRTUAL_PAY_RECONCILE_CLOSE_AFTER_MS` 后会关闭本地订单；微信确认已支付的迟到推送仍可将本地订单纠正为 `paid` 并发放权益。
 
 ## 5. 关键索引与约束汇总
 

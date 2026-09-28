@@ -652,7 +652,8 @@ export class PaymentSettlementService {
         }));
         return { duplicate: true };
       }
-      if (order.status !== "pending") {
+      // 本地过期关单不等于微信侧关单；迟到通知若经 query_order 确认已付，仍须发放权益。
+      if (order.status !== "pending" && !(order.status === "closed" && payment.attemptId)) {
         throw new AppError(409, "ORDER_NOT_PAYABLE", "订单当前状态不能确认支付");
       }
       if (order.quota_amount_snapshot <= 0) {
@@ -674,8 +675,8 @@ export class PaymentSettlementService {
       }
       await client.query(
         `UPDATE pindou_orders
-            SET status = 'paid', wx_transaction_id = $2, paid_at = $3, updated_at = $3
-          WHERE id = $1 AND status = 'pending'`,
+            SET status = 'paid', closed_at = NULL, wx_transaction_id = $2, paid_at = $3, updated_at = $3
+          WHERE id = $1 AND status IN ('pending', 'closed')`,
         [order.id, payment.transactionId, paidAt],
       );
       const inserted = await client.query(

@@ -414,6 +414,24 @@ function aiGenerationId(pathname: string): string | null {
   return match?.[1] ?? null;
 }
 
+/** 订单页的支付订单操作路由：POST /api/payments/{orderId}/continue|cancel。 */
+export interface PaymentOrderActionRoute {
+  readonly orderId: string;
+  readonly action: "continue" | "cancel";
+}
+
+/**
+ * 解析支付订单操作路径。
+ *
+ * 精确匹配 continue/cancel 两个后缀，避免把 /api/payments/create、
+ * /api/payments/notify 等既有固定路由误捕成 orderId。
+ */
+function paymentOrderAction(pathname: string): PaymentOrderActionRoute | null {
+  const match = pathname.match(/^\/api\/payments\/([^/]+)\/(continue|cancel)$/u);
+  if (!match?.[1] || !match[2]) return null;
+  return { orderId: match[1], action: match[2] as PaymentOrderActionRoute["action"] };
+}
+
 function sendNoContent(response: ServerResponse): void {
   response.statusCode = 204;
   response.removeHeader("content-type");
@@ -427,4 +445,4 @@ function hasRequestBody(request: IncomingMessage): boolean {
   return request.headers["transfer-encoding"] !== undefined;
 }
 
-export { requestId, sendJson, sendRaw, parseDeliveryNotification, parseEventName, parseRefundNotification, parseIosRefundQuery, sendImage, errorPayload, sendText, requireContentSecurity, wechatPaymentHeaders, listOptions, favoriteListOptions, downloadListOptions, orderListOptions, positiveQueryInteger, workId, favoriteWorkId, aiGenerationId, sendNoContent, hasRequestBody };
+export { requestId, sendJson, sendRaw, parseDeliveryNotification, parseEventName, parseRefundNotification, parseIosRefundQuery, sendImage, errorPayload, sendText, requireContentSecurity, wechatPaymentHeaders, listOptions, favoriteListOptions, downloadListOptions, orderListOptions, positiveQueryInteger, workId, favoriteWorkId, aiGenerationId, paymentOrderAction, sendNoContent, hasRequestBody };

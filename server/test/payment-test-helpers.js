@@ -163,6 +163,8 @@ function existingOrderPool(orderOverrides = {}) {
     virtual_out_trade_no: "vpay_existingtradeno00001",
     created_at: new Date(NOW.getTime() - 60_000),
     expires_at: new Date(NOW.getTime() + 4 * 60_000),
+    // 继续支付/取消查到微信已付时会走 confirmAndGrant，它需要可解密的付款人身份
+    openid_ciphertext: ENCRYPTED_OPENID,
     ...orderOverrides,
   };
   const pool = clientPool((sql, parameters) => {
@@ -174,6 +176,10 @@ function existingOrderPool(orderOverrides = {}) {
     if (sql.includes("FROM pindou_payment_attempts")) return { rows: [attempts.at(-1)] };
     if (sql.includes("FROM pindou_users") && sql.includes("SELECT openid_ciphertext, session")) {
       return { rows: [{ openid_ciphertext: ENCRYPTED_OPENID, session_key_ciphertext: ENCRYPTED_SESSION_KEY }] };
+    }
+    // 取消订单链路只取 openid（无需 session_key 签名）
+    if (sql.includes("FROM pindou_users") && sql.includes("SELECT openid_ciphertext")) {
+      return { rows: [{ openid_ciphertext: ENCRYPTED_OPENID }] };
     }
     if (sql.includes("UPDATE pindou_orders")) {
       pool.updates.push(parameters);
@@ -195,6 +201,12 @@ function existingOrderPool(orderOverrides = {}) {
     }
     // 命中既有订单就意味着重复建单：此时再 INSERT 会撞主键，属于实现错误
     if (sql.includes("INSERT INTO pindou_orders")) throw new Error("命中既有订单时不应再 INSERT");
+    if (sql.includes("INSERT INTO pindou_quota_transactions")) {
+      pool.quotaInserts.push(parameters);
+      return { rows: [{ id: "qt_grant_existing" }] };
+    }
+    if (sql.includes("FROM pindou_quota_transactions")) return { rows: [] };
+    if (sql.includes("SELECT status FROM pindou_orders")) return { rows: [{ status: orderRow.status }] };
     if (sql.includes("SELECT session_key_ciphertext")) {
       return { rows: [{ session_key_ciphertext: ENCRYPTED_SESSION_KEY }] };
     }
@@ -203,6 +215,7 @@ function existingOrderPool(orderOverrides = {}) {
   pool.updates = updates;
   pool.updateSql = updateSql;
   pool.attempts = attempts;
+  pool.quotaInserts = [];
   return pool;
 }
 
@@ -346,6 +359,7 @@ function deliveryInput(overrides = {}) {
 const RECONCILE_OPTIONS = {
   graceMs: 3 * 60_000,
   staleAfterMs: 30 * 60_000,
+  closeAfterMs: 60 * 60_000,
   batchSize: 10,
 };
 

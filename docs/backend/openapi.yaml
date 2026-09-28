@@ -899,6 +899,92 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /api/payments/{orderId}/continue:
+    post:
+      tags: [套餐与支付]
+      operationId: continuePayment
+      summary: 继续支付一笔待支付订单
+      description: >-
+        订单页「继续支付」。服务端按路径上的订单号校验归属与状态，查询微信真实支付状态后
+        重新签发虚拟支付参数：未关单沿用原商户单号，已关单且未过期则签发新的支付尝试。
+        不创建新订单、不需要幂等键。
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 返回小程序调起支付所需参数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePaymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 订单不存在，或订单不属于当前用户（两者不区分，避免订单号被枚举探测）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 订单状态冲突或微信状态不可确认；业务错误码包括 ORDER_ALREADY_PAID、ORDER_EXPIRED、PAYMENT_STATUS_CONFIRMING、ORDER_NOT_PAYABLE、PACKAGE_NOT_PAYABLE。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/payments/{orderId}/cancel:
+    post:
+      tags: [套餐与支付]
+      operationId: cancelOrder
+      summary: 取消一笔待支付订单
+      description: >-
+        订单页「取消订单」。必须先查询微信支付事实：已支付则照常发货并返回冲突，
+        查单失败不关单，确认未支付才本地置为 closed。重复取消按成功返回。
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 订单已关闭
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: closed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 订单不存在，或订单不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 订单已支付、已关闭或状态不可确认；业务错误码包括 ORDER_ALREADY_PAID、ORDER_NOT_PAYABLE、PAYMENT_STATUS_CONFIRMING。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/payments/virtual-notify:
     get:
       tags: [套餐与支付]
@@ -1683,6 +1769,10 @@ components:
         status:
           $ref: '#/components/schemas/OrderStatus'
         createdAt: { type: string, format: date-time }
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+          description: 支付截止时间；仅用于客户端倒计时，是否过期以服务端与微信事实为准。
         paidAt:
           type: [string, 'null']
           format: date-time
@@ -1693,6 +1783,14 @@ components:
         total: { type: integer, minimum: 0 }
         page: { type: integer, minimum: 1 }
         pageSize: { type: integer, minimum: 1, maximum: 50 }
+        pendingCount:
+          type: integer
+          minimum: 0
+          description: 当前用户未完成支付订单数，与下单接口的 5 个上限同口径。
+        serverTime:
+          type: string
+          format: date-time
+          description: 服务端当前时间；客户端据此校准本机时钟后再做支付倒计时。
         items:
           type: array
           items:

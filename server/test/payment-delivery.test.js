@@ -28,6 +28,29 @@ test("delivery grants quota once and a duplicate notification does not grant twi
   assert.equal(pool.inserts.length, 1);
 });
 
+test("a late verified virtual payment can settle an order closed locally after expiry", async () => {
+  const pool = deliveryPool({ status: "closed" });
+  const gateway = fakeVirtualGateway({
+    async queryOrder() {
+      return {
+        paid: true,
+        state: "PAID",
+        mchOrderNo: "mch_order_1",
+        transactionId: "transaction_late",
+        paidTimeSeconds: Math.floor(NOW.getTime() / 1000),
+        actualPriceFen: 990,
+      };
+    },
+  });
+  const service = new PostgresPaymentService(pool, gateway, fakeLegacyGateway(), SECRET, () => NOW);
+
+  const outcome = await service.handleDelivery(deliveryInput());
+
+  assert.equal(outcome.duplicate, false);
+  assert.equal(pool.orderRow.status, "paid");
+  assert.equal(pool.inserts.length, 1);
+});
+
 test("delivery refuses to grant when the server-side query does not confirm payment", async () => {
   const pool = deliveryPool();
   const gateway = fakeVirtualGateway({

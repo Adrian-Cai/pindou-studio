@@ -32,6 +32,7 @@ import type {
   VirtualPaymentPayload,
 } from "./virtual-pay-client";
 import {
+  decryptOpenidOrEmpty,
   ensurePayablePackage,
   orderCreatedAtMs,
   orderResponse,
@@ -46,6 +47,13 @@ import { PaymentReconciliationService } from "./payment-reconciliation";
 const NEW_USER_TEST_PACKAGE_ID = "ai_generation_new_user_5";
 const PAYMENT_EXPIRY_MS = 5 * 60_000;
 const MAX_PENDING_ORDERS = 5;
+
+/** 订单页传入的 orderId 只做长度与空白净化：具体存在性/归属由数据库校验。 */
+function normalizeOrderId(value: string): string {
+  const orderId = value.trim();
+  if (!orderId || orderId.length > 64) throw invalidArgument("orderId 无效");
+  return orderId;
+}
 
 export interface PaymentPackage {
   readonly id: string;
@@ -77,7 +85,7 @@ export interface CreatePaymentResponse {
   readonly payment: PaymentParameters | null;
 }
 
-/** 订单状态机：pending 待支付 → paid 已支付 / failed 失败 / closed 已关闭，paid 后可 refunded。 */
+/** 订单状态机：pending 可转 paid / failed / closed；经微信确认的迟到支付可将 closed 修正为 paid。 */
 export type OrderStatus = "pending" | "paid" | "failed" | "closed" | "refunded";
 
 export interface OrderListOptions {
@@ -96,6 +104,8 @@ export interface OrderItem {
   readonly currency: "CNY";
   readonly status: OrderStatus;
   readonly createdAt: string;
+  /** 支付截止时间；超时后服务端尚未关闭的订单由客户端展示为「支付状态确认中」。 */
+  readonly expiresAt: string | null;
   readonly paidAt: string | null;
 }
 
@@ -103,7 +113,23 @@ export interface OrderListResponse {
   readonly total: number;
   readonly page: number;
   readonly pageSize: number;
+  /** 当前 pending 订单数，与 createPayment 的 MAX_PENDING_ORDERS 上限同口径。 */
+  readonly pendingCount: number;
+  /** 服务端当前时间：客户端倒计时用它校准时钟偏差，不能用本机时间直减。 */
+  readonly serverTime: string;
   readonly items: readonly OrderItem[];
+}
+
+/** 继续支付输入：订单页只持有 orderId，归属校验在服务端完成。 */
+export interface ContinuePaymentInput {
+  readonly userId: string;
+  readonly orderId: string;
+}
+
+/** 用户主动取消订单的输入。 */
+export interface CancelOrderInput {
+  readonly userId: string;
+  readonly orderId: string;
 }
 
 /**
@@ -127,6 +153,8 @@ export interface PendingOrderReconcileOptions {
    * 太长则让用户付完钱迟迟拿不到次数。
    */
   readonly staleAfterMs: number;
+  /** 查单确认未支付后，订单最多保留多久再本地关闭。 */
+  readonly closeAfterMs: number;
   /** 单轮最多处置多少笔。超出部分留到下一轮，避免积压集中爆发时长时间占用连接池。 */
   readonly batchSize: number;
 }
@@ -134,6 +162,7 @@ export interface PendingOrderReconcileOptions {
 export const DEFAULT_RECONCILE_OPTIONS: PendingOrderReconcileOptions = {
   graceMs: 3 * 60_000,
   staleAfterMs: 30 * 60_000,
+  closeAfterMs: 60 * 60_000,
   batchSize: 100,
 };
 
@@ -179,6 +208,20 @@ export interface PaymentService {
   listPackages(): Promise<{ readonly items: readonly PaymentPackage[] }>;
   listOrders(options: OrderListOptions): Promise<OrderListResponse>;
   createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse>;
+  /**
+   * 继续支付一笔 pending 订单：不创建新订单，经微信查单核实后重发支付参数。
+   *
+   * 与 createPayment 的区别：入口是订单页上的 orderId（没有幂等键），
+   * 归属与状态校验全部在服务端完成；「继续支付」永远指向当前这张 Order。
+   */
+  continuePayment(input: ContinuePaymentInput): Promise<CreatePaymentResponse>;
+  /**
+   * 用户主动取消一笔 pending 订单。
+   *
+   * 取消前必须先查微信真实状态：已支付的要照常发货并告诉用户「已支付」，
+   * 查单失败时不能关单（PAYMENT_STATUS_CONFIRMING），只有确认未付/已关才本地关闭。
+   */
+  cancelOrder(input: CancelOrderInput): Promise<{ readonly status: "closed" }>;
   /** 处理虚拟支付发货推送：先验真再发货。 */
   handleDelivery(input: DeliveryNotification): Promise<{ readonly duplicate: boolean }>;
   /**
@@ -242,9 +285,19 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
           AND quota_kind_snapshot = 'ai_generation'`,
       [options.userId],
     );
+    // pending 计数**不筛 quota_kind**：createPayment 的 MAX_PENDING_ORDERS 上限
+    // 统计的是该用户全部 pending 订单，两处口径必须一致，
+    // 否则旧 download 订单会把页面显示成 4/5 而服务端按 5/5 拦截。
+    const pendingResult = await this.pool.query<{ pending: number }>(
+      `SELECT COUNT(*)::int AS pending
+         FROM pindou_orders
+        WHERE user_id = $1
+          AND status = 'pending'`,
+      [options.userId],
+    );
     const result = await this.pool.query<OrderRow>(
       `SELECT id, package_id, package_label_snapshot, quota_amount_snapshot,
-              quota_kind_snapshot, price_fen, status, created_at, paid_at
+              quota_kind_snapshot, price_fen, status, created_at, expires_at, paid_at
          FROM pindou_orders
         WHERE user_id = $1
           AND quota_kind_snapshot = 'ai_generation'
@@ -256,6 +309,8 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
       total: countResult.rows[0]?.total ?? 0,
       page: options.page,
       pageSize: options.pageSize,
+      pendingCount: pendingResult.rows[0]?.pending ?? 0,
+      serverTime: this.now().toISOString(),
       items: result.rows.map(orderResponse),
     };
   }
@@ -468,6 +523,264 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
     if (created) return created;
     if (!existing) throw new Error("支付订单未生成");
     return this.resumeExistingPayment(orderId, existing);
+  }
+
+  /**
+   * 继续支付一笔 pending 订单（订单页「继续支付」入口）。
+   *
+   * 与 createPayment 复用同一条 resumeExistingPayment 收尾链路：
+   * 微信仍在支付中 → 沿用原订单、原支付尝试、原商户单号重新签发；
+   * 微信已关单且订单未过期 → 为**同一张订单**签发新尝试号；
+   * 微信已支付 → 补发货并回答 ORDER_ALREADY_PAID；
+   * 订单过期未关 → PAYMENT_STATUS_CONFIRMING，交给发货轮询收尾。
+   *
+   * 前置校验（归属、状态）在短事务里完成，网络查单放在锁外 ——
+   * 拿着行锁等微信接口会把并发下单/查单全部堵死。
+   */
+  public async continuePayment(input: ContinuePaymentInput): Promise<CreatePaymentResponse> {
+    if (!this.virtualPay.configured) {
+      throw new AppError(503, "VIRTUAL_PAYMENT_NOT_CONFIGURED", "虚拟支付尚未完成服务端配置");
+    }
+    const orderId = normalizeOrderId(input.orderId);
+    const existing = await this.loadPayableOrderForUser(input.userId, orderId);
+    return this.resumeExistingPayment(orderId, existing);
+  }
+
+  /**
+   * 加载一笔属于指定用户的 pending 订单及其最新支付尝试，供继续支付使用。
+   *
+   * 归属不符与订单不存在同样回答「订单不存在」：订单号对其他用户是敏感信息，
+   * 不能让枚举请求区分「存在但不是你的」和「不存在」。
+   */
+  private async loadPayableOrderForUser(
+    userId: string,
+    orderId: string,
+  ): Promise<{ readonly order: OrderRow; readonly attempt: PaymentAttemptRow; readonly openid: string; readonly sessionKey: string; readonly productId: string }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        `pindou-payment:${orderId}`,
+      ]);
+      const orderResult = await client.query<OrderRow>(
+        `SELECT id, user_id, package_id, package_label_snapshot, quota_amount_snapshot,
+                quota_kind_snapshot,
+                membership_type_snapshot, price_fen, status, wx_prepay_id, wx_transaction_id,
+                virtual_out_trade_no, created_at, expires_at, paid_at
+           FROM pindou_orders
+          WHERE id = $1
+          LIMIT 1
+          FOR UPDATE`,
+        [orderId],
+      );
+      const order = orderResult.rows[0];
+      if (!order || order.user_id !== userId) throw notFound("订单不存在");
+      if (order.status === "paid") {
+        throw new AppError(409, "ORDER_ALREADY_PAID", "订单已支付", { orderId: order.id });
+      }
+      if (order.status === "closed") {
+        throw new AppError(409, "ORDER_EXPIRED", "订单已关闭，请重新下单");
+      }
+      if (order.status !== "pending") {
+        throw new AppError(409, "ORDER_NOT_PAYABLE", "订单当前状态不能再次支付");
+      }
+      const attemptResult = await client.query<PaymentAttemptRow>(
+        `SELECT id, order_id, user_id, out_trade_no, status, wechat_transaction_id,
+                amount_fen, created_at, paid_at, closed_at
+           FROM pindou_payment_attempts
+          WHERE order_id = $1
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1`,
+        [orderId],
+      );
+      const attempt = attemptResult.rows[0];
+      if (!attempt) throw new AppError(409, "PAYMENT_STATUS_CONFIRMING", "支付状态确认中，请稍后重试");
+      const userResult = await client.query<UserPaymentRow>(
+        `SELECT openid_ciphertext, session_key_ciphertext
+           FROM pindou_users
+          WHERE id = $1 AND deleted_at IS NULL
+          LIMIT 1
+          FOR SHARE`,
+        [userId],
+      );
+      const user = userResult.rows[0];
+      if (!user) throw unauthorized("用户不存在或已失效");
+      if (!user.openid_ciphertext) {
+        throw new AppError(409, "PAYMENT_IDENTITY_UNAVAILABLE", "请重新登录后再发起支付");
+      }
+      let openid: string;
+      try {
+        openid = decryptOpenid(user.openid_ciphertext, this.openidEncryptionSecret);
+      } catch {
+        throw new AppError(409, "PAYMENT_IDENTITY_UNAVAILABLE", "支付身份不可用，请重新登录");
+      }
+      const sessionKey = decryptSessionKey(user.session_key_ciphertext, this.openidEncryptionSecret);
+      if (!sessionKey) {
+        throw new AppError(409, "VIRTUAL_PAYMENT_SESSION_EXPIRED", "登录状态已失效，请重新登录后支付");
+      }
+      const productId = await this.continueProductId(client, order.package_id);
+      await client.query("COMMIT");
+      return { order, attempt, openid, sessionKey, productId };
+    } catch (error: unknown) {
+      await rollbackTransaction(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * 继续支付所需的虚拟支付道具 id。
+   *
+   * 刻意**不校验套餐 enabled**：继续支付针对的是已创建的订单，金额取支付尝试快照，
+   * 套餐后续下架/改价都不应把用户的在途订单卡死；但道具缺失就真的没法签名了。
+   */
+  private async continueProductId(client: Pick<Pool, "query">, packageId: string | null): Promise<string> {
+    if (!packageId) {
+      throw new AppError(409, "PACKAGE_NOT_PAYABLE", "订单缺少套餐信息，无法继续支付");
+    }
+    const result = await client.query<Pick<PackageRow, "id" | "virtual_product_id">>(
+      `SELECT id, virtual_product_id
+         FROM pindou_packages
+        WHERE id = $1
+        LIMIT 1`,
+      [packageId],
+    );
+    const productId = result.rows[0]?.virtual_product_id;
+    if (!productId) {
+      throw new AppError(409, "PACKAGE_NOT_PAYABLE", "套餐支付配置已变化，无法继续支付该订单");
+    }
+    return productId;
+  }
+
+  /**
+   * 用户主动取消一笔 pending 订单。
+   *
+   * 三条铁律：
+   * ① 先查微信再关单 —— 用户点取消时可能其实已支付成功（success 回调丢失），
+   *    查到 PAID 必须照常发货并回答 ORDER_ALREADY_PAID，绝不能把已付订单关掉；
+   * ② 查单失败不关单 —— 网络/5xx 时订单状态未知，回答 PAYMENT_STATUS_CONFIRMING，
+   *    客户端展示「支付状态确认中」，留给发货轮询收尾；
+   * ③ 虚拟支付没有商户侧关单接口，微信侧 UNPAID 时只能本地关闭；
+   *    若用户仍在某个未关闭的支付面板里完成付款，迟到的发货推送会把
+   *    closed 修正回 paid（confirmAndGrant 支持），钱和货都不丢。
+   */
+  public async cancelOrder(input: CancelOrderInput): Promise<{ readonly status: "closed" }> {
+    const orderId = normalizeOrderId(input.orderId);
+    const client = await this.pool.connect();
+    let attempt: PaymentAttemptRow | null = null;
+    let openid = "";
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        `pindou-payment:${orderId}`,
+      ]);
+      const orderResult = await client.query<OrderRow>(
+        `SELECT id, user_id, package_id, package_label_snapshot, quota_amount_snapshot,
+                quota_kind_snapshot, membership_type_snapshot, price_fen, status,
+                wx_prepay_id, wx_transaction_id, virtual_out_trade_no,
+                created_at, expires_at, paid_at
+           FROM pindou_orders
+          WHERE id = $1
+          LIMIT 1
+          FOR UPDATE`,
+        [orderId],
+      );
+      const order = orderResult.rows[0];
+      if (!order || order.user_id !== input.userId) throw notFound("订单不存在");
+      // 幂等：重复点击取消（或发货轮询已关单）直接按成功返回
+      if (order.status === "closed") {
+        await client.query("COMMIT");
+        return { status: "closed" };
+      }
+      if (order.status === "paid") {
+        throw new AppError(409, "ORDER_ALREADY_PAID", "订单已支付", { orderId: order.id });
+      }
+      if (order.status !== "pending") {
+        throw new AppError(409, "ORDER_NOT_PAYABLE", "订单当前状态不能取消");
+      }
+      const attemptResult = await client.query<PaymentAttemptRow>(
+        `SELECT id, order_id, user_id, out_trade_no, status, wechat_transaction_id,
+                amount_fen, created_at, paid_at, closed_at
+           FROM pindou_payment_attempts
+          WHERE order_id = $1
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1`,
+        [orderId],
+      );
+      attempt = attemptResult.rows[0] ?? null;
+      if (attempt && order.user_id) {
+        const userResult = await client.query<UserPaymentRow>(
+          `SELECT openid_ciphertext
+             FROM pindou_users
+            WHERE id = $1 AND deleted_at IS NULL
+            LIMIT 1`,
+          [input.userId],
+        );
+        const ciphertext = userResult.rows[0]?.openid_ciphertext ?? null;
+        openid = decryptOpenidOrEmpty(ciphertext, this.openidEncryptionSecret);
+      }
+      await client.query("COMMIT");
+    } catch (error: unknown) {
+      await rollbackTransaction(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    if (attempt) {
+      if (!openid) {
+        // 解不出付款人身份就无法向微信核实，宁可不动订单也不能盲关
+        throw new AppError(409, "PAYMENT_STATUS_CONFIRMING", "支付状态确认中，请稍后重试");
+      }
+      let verified: QueriedVirtualOrder;
+      try {
+        verified = await this.virtualPay.queryOrder({ openid, outTradeNo: attempt.out_trade_no });
+      } catch (error: unknown) {
+        await this.updateAttemptQuery(attempt.id, "UNKNOWN", error instanceof Error ? error.message : String(error));
+        throw new AppError(409, "PAYMENT_STATUS_CONFIRMING", "支付状态确认中，请稍后重试");
+      }
+      const state = queriedPaymentState(verified);
+      if (state === "PAID") {
+        await this.confirmAndGrant(orderId, {
+          attemptId: attempt.id,
+          mchOrderNo: verified.mchOrderNo,
+          transactionId: verified.transactionId,
+          actualPriceFen: verified.actualPriceFen,
+          payerOpenid: openid,
+          paidAt: verified.paidTimeSeconds ? new Date(verified.paidTimeSeconds * 1_000) : this.now(),
+        });
+        throw new AppError(409, "ORDER_ALREADY_PAID", "订单已支付", { orderId });
+      }
+      if (state === "REFUNDED") {
+        // 退款推送还没被处理：状态滞后，交给发货轮询按退款链路收尾
+        await this.updateAttemptQuery(attempt.id, "UNKNOWN", "cancel_refunded_state");
+        throw new AppError(409, "PAYMENT_STATUS_CONFIRMING", "支付状态确认中，请稍后重试");
+      }
+      // UNPAID：本地关单 + 关闭尝试（迟到支付仍可经发货推送修正回 paid）
+      // CLOSED：微信侧已关，把本地尝试同步成 CLOSED 保持「全关才关单」的不变式
+      await this.updateAttemptQuery(attempt.id, "CLOSED", state === "UNPAID" ? "user_cancelled" : null);
+    }
+
+    const currentTime = this.now();
+    const closed = await this.pool.query(
+      `UPDATE pindou_orders
+          SET status = 'closed', closed_at = $2, updated_at = $2
+        WHERE id = $1 AND status = 'pending'`,
+      [orderId, currentTime],
+    );
+    if (!closed.rowCount) {
+      // 并发期间状态被改（继续支付成功发货等）：重读一次给出准确答案
+      const reread = await this.pool.query<{ readonly status: string }>(
+        `SELECT status FROM pindou_orders WHERE id = $1 LIMIT 1`,
+        [orderId],
+      );
+      if (reread.rows[0]?.status === "paid") {
+        throw new AppError(409, "ORDER_ALREADY_PAID", "订单已支付", { orderId });
+      }
+    }
+    console.log(JSON.stringify({ event: "payment_order_cancelled", orderId, source: "user" }));
+    return { status: "closed" };
   }
 
   /**

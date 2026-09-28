@@ -101,6 +101,51 @@ test("packages is public and payment creation accepts only packageId from an aut
   });
 });
 
+test("payment order continue and cancel require auth, forward the order id, and reject query params", async () => {
+  const calls = [];
+  const payments = {
+    async listPackages() { return { items: [] }; },
+    async createPayment() { throw new Error("unused"); },
+    async continuePayment(input) {
+      calls.push({ action: "continue", ...input });
+      return {
+        orderId: input.orderId,
+        virtual: { signData: "{}", paySig: "p", signature: "s", mode: "short_series_goods" },
+        payment: null,
+      };
+    },
+    async cancelOrder(input) {
+      calls.push({ action: "cancel", ...input });
+      return { status: "closed" };
+    },
+    async handleNotification() { throw new Error("unused"); },
+  };
+  await withServer(payments, async (baseUrl) => {
+    const auth = { authorization: "Bearer valid-payment-token-1234567890" };
+
+    const continued = await fetch(`${baseUrl}/api/payments/order_abc123/continue`, { method: "POST", headers: auth });
+    assert.equal(continued.status, 200);
+    assert.equal((await continued.json()).orderId, "order_abc123");
+
+    const cancelled = await fetch(`${baseUrl}/api/payments/order_abc123/cancel`, { method: "POST", headers: auth });
+    assert.equal(cancelled.status, 200);
+    assert.deepEqual(await cancelled.json(), { status: "closed" });
+    assert.deepEqual(calls, [
+      { action: "continue", userId: "usr_payment", orderId: "order_abc123" },
+      { action: "cancel", userId: "usr_payment", orderId: "order_abc123" },
+    ]);
+
+    const anonymous = await fetch(`${baseUrl}/api/payments/order_abc123/cancel`, { method: "POST" });
+    assert.equal(anonymous.status, 401);
+
+    const withQuery = await fetch(`${baseUrl}/api/payments/order_abc123/continue?force=1`, { method: "POST", headers: auth });
+    assert.equal(withQuery.status, 400);
+
+    const wrongMethod = await fetch(`${baseUrl}/api/payments/order_abc123/continue`, { headers: auth });
+    assert.equal(wrongMethod.status, 404, "只开放 POST，GET 落到通用 404");
+  });
+});
+
 test("WeChat notification bypasses Bearer auth, preserves raw body, and returns WeChat acknowledgements", async () => {
   const notifications = [];
   const payments = {

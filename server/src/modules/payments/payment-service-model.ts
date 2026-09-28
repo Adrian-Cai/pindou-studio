@@ -115,6 +115,8 @@ export function orderResponse(row: OrderRow): OrderItem {
     currency: "CNY",
     status: orderStatus(row.status),
     createdAt,
+    // 支付截止时间随订单下发：客户端倒计时只做展示，是否真的过期以服务端/微信为准
+    expiresAt: isoTimestamp(row.expires_at, "expires_at"),
     paidAt: isoTimestamp(row.paid_at, "paid_at"),
   };
 }

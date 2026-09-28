@@ -40,6 +40,7 @@ import {
   parseEventName,
   parseIosRefundQuery,
   parseRefundNotification,
+  paymentOrderAction,
   positiveQueryInteger,
   requestId,
   requireContentSecurity,
@@ -373,6 +374,26 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           packageId,
           idempotencyKey: idempotencyKey(request),
         }));
+        return;
+      }
+
+      // 订单页的两个支付订单操作：继续支付（复用原订单重新拉起）与主动取消。
+      // 都要求登录；orderId 在服务端做归属校验，路径里带什么都拿不到别人的订单。
+      const paymentOrderActionRoute = paymentOrderAction(url.pathname);
+      if (request.method === "POST" && paymentOrderActionRoute) {
+        if (url.searchParams.size > 0) throw invalidArgument("支付订单操作接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        if (paymentOrderActionRoute.action === "continue") {
+          sendJson(response, 200, await dependencies.payments.continuePayment({
+            userId: currentUser.id,
+            orderId: paymentOrderActionRoute.orderId,
+          }));
+        } else {
+          sendJson(response, 200, await dependencies.payments.cancelOrder({
+            userId: currentUser.id,
+            orderId: paymentOrderActionRoute.orderId,
+          }));
+        }
         return;
       }
 

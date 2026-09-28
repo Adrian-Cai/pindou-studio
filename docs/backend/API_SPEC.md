@@ -690,6 +690,8 @@ Authorization: Bearer <token>
   "total": 1,
   "page": 1,
   "pageSize": 20,
+  "pendingCount": 1,
+  "serverTime": "2026-09-10T06:31:05.000Z",
   "items": [
     {
       "id": "order_xxx",
@@ -701,11 +703,16 @@ Authorization: Bearer <token>
       "currency": "CNY",
       "status": "paid",
       "createdAt": "2026-09-10T06:30:00.000Z",
+      "expiresAt": "2026-09-10T06:35:00.000Z",
       "paidAt": "2026-09-10T06:31:00.000Z"
     }
   ]
 }
 ```
+
+- `expiresAt`：订单支付截止时间（下单后 5 分钟）。仅用于客户端倒计时展示，**是否真的过期一律以服务端为准**；`pending` 订单过了这个时间不等于已关闭，服务端还要向微信核实。
+- `pendingCount`：当前用户未完成支付订单数，与 `POST /api/payments/create` 的 5 个上限同口径（不加 `quota_kind` 过滤），用于页面提示「还能再下几单」。
+- `serverTime`：服务端当前时间。客户端用它校准本机时钟偏差后再做倒计时，本机时间不可信。
 
 ### POST `/api/payments/create`
 
@@ -745,7 +752,47 @@ Authorization: Bearer <token>
 - `ORDER_EXPIRED`：订单已关闭，可开始一次新的购买意图。
 - `ORDER_ALREADY_PAID`：订单已到账；`error.details.orderId` 可用于打开支付结果页。
 
-当前虚拟支付网关未实现主动关单；订单过期后，若微信只确认“未支付”而未明确返回 `CLOSED`，服务端将保留 `UNKNOWN` 并等待补单核实，不按本地超时关闭。
+虚拟支付网关没有微信侧主动关单接口。订单过期后，查单确认仍未支付且超过 `VIRTUAL_PAY_RECONCILE_CLOSE_AFTER_MS`（默认 1 小时）时，服务端会将本地订单置为 `closed` 并释放未完成订单名额；查询失败或状态不明的订单继续保留为 `UNKNOWN`。本地关单后若收到迟到的发货推送，仍以 `query_order` 确认支付事实，确认已支付则补发权益。
+
+### POST `/api/payments/:orderId/continue`
+
+用途：对一笔已存在的 `pending` 订单重新签发虚拟支付参数（订单页「继续支付」）。
+
+鉴权：需要。`orderId` 来自路径；服务端按 Bearer Token 解析出的用户 ID 校验归属，不属于当前用户时回答 `404`（不区分「不存在」和「不是你的」，避免订单号被枚举探测）。
+
+请求：无请求体；带查询参数一律 `400`。
+
+响应 `200`：与 `POST /api/payments/create` 相同（`orderId` + `virtual`）。
+
+服务端必须：
+
+- 复用同一张业务订单与它的最新支付尝试，**不创建新订单**、不接受幂等键；
+- 先按订单行锁校验归属与状态，再在锁外调用 `query_order` 核实微信事实，最后按结果分流：
+  - 微信未关单且在有效期内 → 沿用原商户单号重新签发 `virtual`；
+  - 微信已关单且订单未过期 → 为同一订单签发新的支付尝试（新商户单号）；
+  - 微信已支付 → 补发权益并回答 `409 ORDER_ALREADY_PAID`；
+  - 查单失败或状态无法确认 → `409 PAYMENT_STATUS_CONFIRMING`，支付尝试置 `UNKNOWN`，订单保持 `pending` 并继续占用名额。
+- 套餐后续下架或改价不阻断继续支付（金额取支付尝试快照），但套餐缺少 `virtual_product_id` 时回答 `409 PACKAGE_NOT_PAYABLE`。
+
+`409` 错误码与 `POST /api/payments/create` 一致：`ORDER_ALREADY_PAID`、`ORDER_EXPIRED`、`PAYMENT_STATUS_CONFIRMING`、`ORDER_NOT_PAYABLE`。
+
+用户在微信面板里取消不算失败：订单继续留在待支付列表，可再次继续支付。
+
+### POST `/api/payments/:orderId/cancel`
+
+用途：用户主动取消一笔 `pending` 订单（订单页「取消订单」）。
+
+鉴权：需要；归属校验与 `continue` 相同。
+
+请求：无请求体；带查询参数一律 `400`。
+
+响应 `200`：`{ "status": "closed" }`。重复取消（或发货轮询已关单）按成功返回。
+
+服务端必须先 `query_order` 再关单：
+
+- 查到已支付 → **不能关单**，照常发货并回答 `409 ORDER_ALREADY_PAID`（用户点取消时可能其实已付款）；
+- 查单失败 → 不关单，回答 `409 PAYMENT_STATUS_CONFIRMING`，订单保持 `pending`；
+- 确认未支付 → 本地置 `closed`。虚拟支付没有商户侧关单接口，若用户仍在某个未关闭的支付面板里完成付款，迟到的发货推送仍会以 `query_order` 验真并把订单修正回 `paid`，钱和权益都不会丢。
 
 ### POST `/api/payments/virtual-notify`
 

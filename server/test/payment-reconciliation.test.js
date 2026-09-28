@@ -123,6 +123,42 @@ test("an order pending past the stale window raises a reconcile alert", async ()
   }
 });
 
+test("a confirmed unpaid order past the close window is closed locally", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 90 * 60_000)]);
+  const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
+  const capture = captureConsole();
+  try {
+    const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
+    assert.equal(summary.closed, 1);
+    assert.equal(summary.stalled, 0);
+    assert.deepEqual(summary.attention, []);
+    assert.equal(pool.orderRow.status, "closed");
+    assert.match(pool.updateSql[0], /status = 'closed'/);
+    assert.match(pool.updateSql[0], /AND status = 'pending'/);
+    assert.equal(
+      capture.warnings.filter((entry) => entry.event === "virtual_payment_order_closed").length,
+      1,
+    );
+  } finally {
+    capture.restore();
+  }
+});
+
+test("an unknown payment result remains pending after the close window", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 90 * 60_000)]);
+  const gateway = fakeVirtualGateway({ async queryOrder() { throw new Error("provider timeout"); } });
+  const capture = captureConsole();
+  try {
+    const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
+    assert.equal(summary.closed, 0);
+    assert.equal(summary.unresolved, 1);
+    assert.equal(pool.orderRow.status, "pending");
+    assert.equal(pool.updates.length, 0);
+  } finally {
+    capture.restore();
+  }
+});
+
 test("a provider-confirmed closed attempt closes the expired local order", async () => {
   const pool = deliveryPool({}, [candidateRow("order_test", 90 * 60_000)]);
   const gateway = fakeVirtualGateway({ async queryOrder() { return { ...UNPAID_QUERY, state: "CLOSED" }; } });

@@ -146,7 +146,12 @@ Content-Type: application/json
 
 服务端从 `pindou_packages` 读取价格和额度、写入 5 分钟有效的订单快照，并签发 `wx.requestVirtualPayment` 所需参数。支付事实由服务端查单核实后再发放额度；同一用户最多保留 5 个未完成订单，状态未知的订单继续占用名额。支付尝试和推送事件分别持久化，商户单号不会被覆盖。
 
-`POST /api/payments/virtual-notify` 处理小程序虚拟支付推送，必须配置 Token 并验签；加密模式使用 `msg_signature`。推送后仍查询微信事实再修改订单或额度。当前虚拟支付网关无主动关单实现，过期但未能确认关闭的单会保留为 `UNKNOWN` 并等待补单或人工排查。
+订单页的两个动作走独立端点，都只接受登录用户且按服务端解析的用户 ID 校验归属（不属于本人时回答 404，与「订单不存在」同文案）：
+
+- `POST /api/payments/:orderId/continue`：继续支付一笔待支付订单。不创建新订单、不带幂等键；先查微信再分流 —— 未关单沿用原商户单号重发参数，已关单且未过期签发新的支付尝试，已支付则补发权益并回答 `ORDER_ALREADY_PAID`，查询失败回答 `PAYMENT_STATUS_CONFIRMING` 且订单保留待支付。
+- `POST /api/payments/:orderId/cancel`：取消待支付订单。同样先查微信：已支付不许关单（照常发货），查询失败不关单，确认未支付才本地置 `closed`。虚拟支付没有商户侧关单接口，因此本地关单后若收到迟到的已支付推送，仍会验真并把订单修正回 `paid`。
+
+`POST /api/payments/virtual-notify` 处理小程序虚拟支付推送，必须配置 Token 并验签；加密模式使用 `msg_signature`。推送后仍查询微信事实再修改订单或额度。过期订单经查单确认未支付且超过 `VIRTUAL_PAY_RECONCILE_CLOSE_AFTER_MS`（默认 1 小时）后会在本地关闭；查询失败或状态不明时保留为 `UNKNOWN`。迟到推送经查单确认已支付后仍会补发权益。
 
 `POST /api/payments/notify` 只保留给普通微信支付旧通道的在途订单收尾。
 
