@@ -82,8 +82,9 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
     );
     const hunyuanImage = new HunyuanImageProvider(config.hunyuanImage);
     const tokenhubHunyuanImage = new TokenhubHunyuanImageProvider(config.tokenhubHunyuanImage);
-    const toapisImage = new ToapisImageProvider(config.toapisImage);
-    const defaultAiProvider = tokenhubHunyuanImage;
+    // 保留旧任务快照的 Provider 映射，但生产不再提供 ToAPIs 凭据，旧任务会失败关闭。
+    const toapisImage = new ToapisImageProvider({ enabled: false });
+    const defaultAiProvider = hunyuanImage;
     const aiGenerations = new PostgresAiGenerationService(
       pool,
       defaultAiProvider,
@@ -114,8 +115,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
      * 少了轮询就等于默许「用户扣了款、次数没到账」且系统毫无告警。
      * 启动先跑一次是为了重启期间丢掉的推送能被立刻捞回来，而不是白等一个间隔。
      *
-     * reconcilePendingOrders 内部已吞掉所有异常（单笔失败记告警后继续），
-     * 这里的 catch 只是防止将来漏网的错误打穿进程。
+     * 单笔异常由 reconcilePendingOrders 记录后继续；批次级异常在这里记录，避免静默停摆。
      */
     const payments = new PostgresPaymentService(
       pool,
@@ -126,10 +126,16 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.virtualPayReconcile,
       config.newUserPackageGateEnabled,
     );
-    void payments.reconcilePendingOrders().catch(() => undefined);
-    const paymentReconcileTimer = setInterval(() => {
-      void payments.reconcilePendingOrders().catch(() => undefined);
-    }, config.virtualPayReconcile.intervalMs);
+    const reconcilePayments = (): void => {
+      void payments.reconcilePendingOrders().catch((error: unknown) => {
+        console.error(JSON.stringify({
+          event: "virtual_payment_reconcile_failed",
+          message: error instanceof Error ? error.message : String(error),
+        }));
+      });
+    };
+    reconcilePayments();
+    const paymentReconcileTimer = setInterval(reconcilePayments, config.virtualPayReconcile.intervalMs);
     paymentReconcileTimer.unref();
     const http = await startHttpServer(
       createHttpApplication({

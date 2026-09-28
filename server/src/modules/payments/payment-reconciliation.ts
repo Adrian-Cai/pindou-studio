@@ -142,26 +142,13 @@ export class PaymentReconciliationService extends PaymentSettlementService {
         counter.unpaid += 1;
         return;
       }
-      if (state === "UNPAID"
-        && currentTime.getTime() >= orderCreatedAtMs(candidate.expires_at)
-        && ageMs >= this.reconcileOptions.closeAfterMs) {
-        const closed = await this.pool.query(
-          `UPDATE pindou_orders
-              SET status = 'closed', closed_at = $2, updated_at = $2
-            WHERE id = $1 AND status = 'pending'`,
-          [candidate.id, currentTime],
-        );
-        if (closed.rowCount) {
+      if (state === "UNPAID") {
+        await this.updateAttemptQuery(candidate.attempt_id, "CLOSED", "expired_unpaid");
+        if (await this.closeOrderIfAttemptsClosed(candidate.id, currentTime)) {
           counter.closed += 1;
           console.warn(JSON.stringify({ event: "virtual_payment_order_closed", orderId: candidate.id }));
         } else {
-          counter.unresolved += 1;
-          counter.attention.push(candidate.id);
-          console.error(JSON.stringify({
-            event: "virtual_payment_reconcile_alert",
-            reason: "close_conflict",
-            orderId: candidate.id,
-          }));
+          counter.unpaid += 1;
         }
         return;
       }
@@ -179,7 +166,7 @@ export class PaymentReconciliationService extends PaymentSettlementService {
         return;
       }
       if (state !== "PAID") {
-        const reason = state === "UNPAID" ? "unpaid_without_virtual_close_api" : "provider_status_unknown";
+        const reason = "provider_status_unknown";
         await this.updateAttemptQuery(candidate.attempt_id, "UNKNOWN", reason);
         counter.unresolved += 1;
         counter.attention.push(candidate.id);

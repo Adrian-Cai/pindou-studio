@@ -36,7 +36,7 @@ export class ProviderError extends AppError {
 }
 
 export interface ProviderTaskInput {
-  /** CloudBase 混元兼容路径使用 data URL；ToAPIs 与 TokenHub 使用服务端图片 URL。 */
+  /** CloudBase 混元兼容路径使用 data URL；旧 HTTP Provider 使用服务端图片 URL。 */
   readonly imageDataUrl: string | null;
   readonly referenceImageUrl: string | null;
   readonly prompt: string;

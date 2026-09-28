@@ -160,4 +160,4 @@ test("legacy notification still settles in-flight orders from the previous chann
   assert.equal(pool.inserts.length, 1);
 });
 
-/** 补单轮询的调度参数：静默期 3 分钟、兜底窗口 30 分钟、关单窗口 1 小时。 */
+/** 补单轮询的调度参数：静默期 3 分钟、兜底告警窗口 30 分钟；订单到期即按微信结果关单。 */

@@ -23,13 +23,6 @@ interface GenerationModeOption {
   quotaCost: number
 }
 
-interface SampleImage {
-  src: string
-  mode: GenerationMode
-  label: string
-  alt: string
-}
-
 // AI 模式正式开放时改为 true，即可恢复首页选择和启动链路。
 const AI_MODE_ENABLED = true
 
@@ -53,33 +46,6 @@ const GENERATION_MODES: GenerationModeOption[] = [
     badge: '更精致',
     enabled: AI_MODE_ENABLED,
     quotaCost: 1,
-  },
-]
-
-const SAMPLE_IMAGES: SampleImage[] = [
-  {
-    src: '/assets/samples/home-sample-standard-1.jpg',
-    mode: 'standard',
-    label: '标准模式',
-    alt: '标准模式示例作品一',
-  },
-  {
-    src: '/assets/samples/home-sample-standard-2.jpg',
-    mode: 'standard',
-    label: '标准模式',
-    alt: '标准模式示例作品二',
-  },
-  {
-    src: '/assets/samples/home-sample-ai-1.jpg',
-    mode: 'ai',
-    label: 'Ai 模式',
-    alt: 'Ai 模式示例作品一',
-  },
-  {
-    src: '/assets/samples/home-sample-ai-2.jpg',
-    mode: 'ai',
-    label: 'Ai 模式',
-    alt: 'Ai 模式示例作品二',
   },
 ]
 
@@ -112,8 +78,6 @@ Page({
     generationTipsOpen: false,
     /** 生成方式选项列表（数据驱动渲染，避免 UI 写死） */
     generationModes: GENERATION_MODES,
-    /** 示例图片列表 */
-    sampleImages: SAMPLE_IMAGES,
   },
 
   _visible: false,
@@ -160,7 +124,7 @@ Page({
       if (!message.toLowerCase().includes('cancel')) {
         logHomeError('choose_image_failed', error)
         wx.showToast({
-          title: imageErrorMessage(error),
+          title: error instanceof ApiError ? error.message : '上传失败，请稍后重试',
           icon: 'none',
         })
       }
@@ -302,20 +266,6 @@ Page({
    */
   async startAiCreating(): Promise<void> {
     if (this.data.submitting) return
-    if (!this.data.sourceImagePath) {
-      wx.showToast({ title: '请先上传图片', icon: 'none' })
-      return
-    }
-    if (this.data.uploadStatus !== 'success') {
-      wx.showToast({
-        title: this.data.uploadStatus === 'uploading' || this.data.uploadStatus === 'checking'
-          ? '图片正在检测，请稍候'
-          : '请先通过图片安全检测',
-        icon: 'none',
-      })
-      return
-    }
-
     this.setData({ submitting: true })
     // 固定本次提交的输入，避免异步保存期间用户换图或调参串到同一任务。
     const { sourceImagePath: selectedImagePath, contentSecurityImagePath, securityCheckId } = this.data
@@ -349,37 +299,6 @@ Page({
 
   },
 })
-
-function imageErrorMessage(error: unknown): string {
-  if (!(error instanceof ApiError)) return '上传失败，请稍后重试'
-  if (error.statusCode === 502 || error.statusCode === 503) {
-    return '图片安全检测暂时不可用，请稍后重试'
-  }
-  switch (error.code) {
-    case 'UNSUPPORTED_IMAGE':
-      return '仅支持 JPG、PNG、WEBP 格式'
-    case 'IMAGE_DECODE_ERROR':
-      return '图片无法读取，请换一张重试'
-    case 'NETWORK_ERROR':
-      return '网络连接失败，请检查网络后重试'
-    case 'CONTENT_RISKY':
-      return '你发布的内容含违规信息，请修改后重试'
-    case 'CONTENT_SECURITY_UNAVAILABLE':
-    case 'WECHAT_CONTENT_SECURITY_UNAVAILABLE':
-    case 'WECHAT_CONTENT_SECURITY_ERROR':
-    case 'WECHAT_CONTENT_SECURITY_INVALID_RESPONSE':
-      return '图片安全检测暂时不可用，请稍后重试'
-    case 'API_CONFIGURATION_ERROR':
-      return '当前服务配置异常，请稍后重试'
-    case 'UNAUTHORIZED':
-    case 'TOKEN_EXPIRED':
-    case 'WX_LOGIN_FAILED':
-    case 'CONTENT_SECURITY_IDENTITY_UNAVAILABLE':
-      return '登录状态异常，请重新尝试'
-    default:
-      return '上传失败，请稍后重试'
-  }
-}
 
 function logHomeError(event: string, error: unknown): void {
   const metadata = error instanceof ApiError

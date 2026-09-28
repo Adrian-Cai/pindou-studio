@@ -102,25 +102,23 @@
     </view>
   </view>
 
-  <!-- ④ 示例图片 -->
+  <!-- ④ 标准模式效果 -->
   <view class="section-block">
-    <view class="section-label">示例图片</view>
-    <view class="samples__grid">
-      <view
-        wx:for="{{sampleImages}}"
-        wx:key="src"
-        class="sample-card"
-      >
-        <view class="sample-card__media">
-          <image
-            class="sample-card__image"
-            src="{{item.src}}"
-            mode="aspectFill"
-            aria-label="{{item.alt}}"
-          />
+    <view class="section-label">标准模式效果</view>
+    <view class="standard-example">
+      <view class="standard-example__media">
+        <image
+          class="standard-example__image"
+          src="/assets/samples/home-standard-example.jpg"
+          mode="aspectFit"
+          aria-label="女性原图转换为标准拼豆网格的前后对照"
+        />
+        <view class="standard-example__labels">
+          <text class="standard-example__label">原图</text>
+          <text class="standard-example__label">标准拼豆图</text>
         </view>
-        <view class="sample-card__label sample-card__label--{{item.mode}}">{{item.label}}</view>
       </view>
+      <view class="standard-example__description">图片直接转换为拼豆网格，保留原图构图</view>
     </view>
   </view>
 

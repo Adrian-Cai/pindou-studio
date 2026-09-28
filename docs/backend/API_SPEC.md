@@ -749,10 +749,10 @@ Authorization: Bearer <token>
 
 - `MAX_PENDING_ORDERS_REACHED`：已有 5 个未完成支付订单。
 - `PAYMENT_STATUS_CONFIRMING`：微信状态无法确认；保留订单和名额，稍后再试。
-- `ORDER_EXPIRED`：订单已关闭，可开始一次新的购买意图。
+- `ORDER_EXPIRED`：订单已过期或关闭，需开始一次新的购买意图。
 - `ORDER_ALREADY_PAID`：订单已到账；`error.details.orderId` 可用于打开支付结果页。
 
-虚拟支付网关没有微信侧主动关单接口。订单过期后，查单确认仍未支付且超过 `VIRTUAL_PAY_RECONCILE_CLOSE_AFTER_MS`（默认 1 小时）时，服务端会将本地订单置为 `closed` 并释放未完成订单名额；查询失败或状态不明的订单继续保留为 `UNKNOWN`。本地关单后若收到迟到的发货推送，仍以 `query_order` 确认支付事实，确认已支付则补发权益。
+虚拟支付网关没有微信侧主动关单接口。订单创建 5 分钟后，服务端先查询微信：确认未支付或已关闭时立即将支付尝试及本地订单置为 `CLOSED` / `closed` 并释放未完成订单名额；查询失败或状态不明时保留为待核实，但不允许继续支付当前订单。用户需重新下单。若本地关单后收到迟到的发货推送，仍以 `query_order` 确认支付事实，确认已支付则补发权益。
 
 ### POST `/api/payments/:orderId/continue`
 
@@ -766,12 +766,13 @@ Authorization: Bearer <token>
 
 服务端必须：
 
-- 复用同一张业务订单与它的最新支付尝试，**不创建新订单**、不接受幂等键；
+- 复用同一张业务订单与它已有的支付尝试，**不创建新订单或新支付尝试**、不接受幂等键；
 - 先按订单行锁校验归属与状态，再在锁外调用 `query_order` 核实微信事实，最后按结果分流：
   - 微信未关单且在有效期内 → 沿用原商户单号重新签发 `virtual`；
-  - 微信已关单且订单未过期 → 为同一订单签发新的支付尝试（新商户单号）；
+  - 微信已关单 → 不在原订单下创建新尝试；所有该订单的支付尝试都已关闭时关闭订单并回答 `409 ORDER_EXPIRED`，若历史尝试仍未结束则回答 `409 PAYMENT_STATUS_CONFIRMING` 并等待对账；
   - 微信已支付 → 补发权益并回答 `409 ORDER_ALREADY_PAID`；
-  - 查单失败或状态无法确认 → `409 PAYMENT_STATUS_CONFIRMING`，支付尝试置 `UNKNOWN`，订单保持 `pending` 并继续占用名额。
+  - 订单过期且微信确认未支付或已关闭 → 关闭支付尝试和订单，回答 `409 ORDER_EXPIRED`，用户需创建新订单；
+  - 查单失败或状态无法确认 → `409 PAYMENT_STATUS_CONFIRMING`，支付尝试置 `UNKNOWN`，订单保持 `pending` 并继续占用名额，但不允许继续支付当前订单。
 - 套餐后续下架或改价不阻断继续支付（金额取支付尝试快照），但套餐缺少 `virtual_product_id` 时回答 `409 PACKAGE_NOT_PAYABLE`。
 
 `409` 错误码与 `POST /api/payments/create` 一致：`ORDER_ALREADY_PAID`、`ORDER_EXPIRED`、`PAYMENT_STATUS_CONFIRMING`、`ORDER_NOT_PAYABLE`。

@@ -25,6 +25,17 @@ function config(overrides = {}) {
   };
 }
 
+test("disabled legacy ToAPIs provider fails without contacting the upstream", async () => {
+  let requests = 0;
+  const provider = new ToapisImageProvider({ enabled: false }, async () => {
+    requests += 1;
+    throw new Error("unexpected request");
+  });
+
+  await assert.rejects(provider.getTask("legacy-task"), { code: "AI_PROVIDER_NOT_CONFIGURED" });
+  assert.equal(requests, 0);
+});
+
 test("ToAPIs submits a public reference URL and returns an async task id", async () => {
   let request;
   const provider = new ToapisImageProvider(config(), async (url, init) => {

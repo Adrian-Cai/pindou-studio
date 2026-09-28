@@ -1,6 +1,6 @@
 # 一起拼豆吧 · Ai 模式接入设计
 
-> 状态：服务端 AI 生成链路、Prompt v2 与小程序 Phase 3 接入已实现，待预发布环境和真机验收
+> 状态：CloudBase 混元 Provider 与 Prompt v2 已实现并设为新任务默认，待服务端部署、预发布环境和真机验收
 >
 > 当前标准模式继续使用本地 Standard Pattern Engine；Ai 模式作为独立上游图像处理能力接入，不替换现有 Pattern Schema
 
@@ -21,7 +21,7 @@ Ai 模式解决的问题不是“让模型直接输出最终拼豆格子”，�
 
 ## 2. 模型选择
 
-### 当前生产模型：腾讯混元 Hy-Image-3.0
+### 当前代码默认模型：腾讯混元 Hy-Image-3.0
 
 适合原因：
 
@@ -30,7 +30,7 @@ Ai 模式解决的问题不是“让模型直接输出最终拼豆格子”，�
 - 国内云服务接入更适合微信小程序生产环境
 - 服务端通过 `@cloudbase/node-sdk` 调用 `generateImage` 云函数，不需要让小程序直连模型厂商
 
-当前默认使用 Hy-Image-3.0，服务端固定 `revise={ value: false }`，减少不必要的 Prompt 改写等待；如后续切换模型，只替换 Provider 和服务端配置。
+新任务默认使用 Hy-Image-3.0，服务端固定 `revise={ value: false }`，减少不必要的 Prompt 改写等待；云函数使用品牌标识文案“小露拼豆”。
 
 ### Benchmark / 备用：OpenAI GPT-Image-2
 

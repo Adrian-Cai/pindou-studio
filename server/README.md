@@ -151,7 +151,7 @@ Content-Type: application/json
 - `POST /api/payments/:orderId/continue`：继续支付一笔待支付订单。不创建新订单、不带幂等键；先查微信再分流 —— 未关单沿用原商户单号重发参数，已关单且未过期签发新的支付尝试，已支付则补发权益并回答 `ORDER_ALREADY_PAID`，查询失败回答 `PAYMENT_STATUS_CONFIRMING` 且订单保留待支付。
 - `POST /api/payments/:orderId/cancel`：取消待支付订单。同样先查微信：已支付不许关单（照常发货），查询失败不关单，确认未支付才本地置 `closed`。虚拟支付没有商户侧关单接口，因此本地关单后若收到迟到的已支付推送，仍会验真并把订单修正回 `paid`。
 
-`POST /api/payments/virtual-notify` 处理小程序虚拟支付推送，必须配置 Token 并验签；加密模式使用 `msg_signature`。推送后仍查询微信事实再修改订单或额度。过期订单经查单确认未支付且超过 `VIRTUAL_PAY_RECONCILE_CLOSE_AFTER_MS`（默认 1 小时）后会在本地关闭；查询失败或状态不明时保留为 `UNKNOWN`。迟到推送经查单确认已支付后仍会补发权益。
+`POST /api/payments/virtual-notify` 处理小程序虚拟支付推送，必须配置 Token 并验签；加密模式使用 `msg_signature`。推送后仍查询微信事实再修改订单或额度。订单创建 5 分钟后，查单确认未支付或已关闭时会立即在本地关闭；查询失败或状态不明时保留待核实且不能继续支付当前订单。迟到推送经查单确认已支付后仍会补发权益。
 
 `POST /api/payments/notify` 只保留给普通微信支付旧通道的在途订单收尾。
 
@@ -163,7 +163,7 @@ Content-Type: application/json
 
 上传 AI 输入图片时复用 `POST /api/files/upload` 并设置 `type=ai_input`随后使用 `Idempotency-Key` 调用 `POST /api/ai/generations`，请求体只包含 `inputFileId`、`style`、`detailLevel` 和 `backgroundMode`；用 `GET /api/ai/generations/:id` 轮询状态
 
-新任务由服务端调用腾讯 TokenHub 混元 Hy-Image-3.5（`hy-image-v3.5-preview`），请求不包含可选 `footnote`。服务端持久化 Provider 请求 ID 和临时输出地址，并在输出图片下载、格式校验和文件资产落库成功后才扣除一笔 `ai_generation`。迁移前已创建的 ToAPIs 与 CloudBase 混元任务按原 Provider 快照收尾；新任务不会再进入 ToAPIs。
+新任务由服务端通过 CloudBase `generateImage` 云函数调用混元 `HY-Image-v3.0-I2I-ToB-v1.0.1`，云函数设置品牌标识文案“小露拼豆”。服务端持久化 Provider 请求 ID 和 CloudBase 文件引用，并在下载、格式校验和文件资产落库成功后才扣除一笔 `ai_generation`。切换前已创建的 TokenHub 与 CloudBase 混元任务按原 Provider 快照收尾；ToAPIs 凭据配置已移除，历史 ToAPIs 任务推进时会失败关闭。
 
 ## 可用命令
 

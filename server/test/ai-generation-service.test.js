@@ -254,7 +254,7 @@ test("ToAPIs tasks are polled asynchronously and completed exactly once", async 
   assert.equal(state.saveCount, 1);
 });
 
-test("new image tasks use TokenHub Hy-Image-3.5 and debit once after saving", async () => {
+test("an explicitly injected TokenHub provider task debits once after saving", async () => {
   const state = harness({ providerName: "hunyuan-tokenhub-v35" });
   const created = await state.service.create(REQUEST);
   const result = await advanceUntilTerminal(state, created.id);

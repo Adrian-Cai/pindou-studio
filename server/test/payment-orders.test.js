@@ -114,7 +114,7 @@ test("a user's fifth active payment order is rejected while the user lock is hel
 });
 
 /** 构造「订单已存在且仍是 pending」的假 Pool。 */
-test("same-key retry reuses an unpaid attempt and only issues a new trade number after WeChat closes it", async () => {
+test("same-key retry reuses an unpaid attempt and never adds an attempt after WeChat closes it", async () => {
   const signed = [];
   let queryCount = 0;
   const gateway = fakeVirtualGateway({
@@ -138,18 +138,19 @@ test("same-key retry reuses an unpaid attempt and only issues a new trade number
   const service = new PostgresPaymentService(pool, gateway, fakeLegacyGateway(), SECRET, () => NOW);
   const input = { userId: "usr_a", packageId: "ai_generation_30", idempotencyKey: "retry-same-intent" };
   const first = await service.createPayment(input);
-  const second = await service.createPayment(input);
+  await assert.rejects(
+    () => service.createPayment(input),
+    (error) => error.code === "ORDER_EXPIRED",
+  );
 
-  // 订单号不变：幂等键仍然保证同一笔购买意图只有一张订单
-  assert.equal(first.orderId, second.orderId);
-  assert.equal(signed.length, 2);
+  // 第一次仍沿用原商户单号；关闭后拒绝在原购买意图下再签发支付尝试。
+  assert.match(first.orderId, /^order_/u);
+  assert.equal(signed.length, 1);
   assert.equal(signed[0], "vpay_existingtradeno00001", "状态仍是未支付时应沿用原尝试，避免传输重试创建第二笔");
-  assert.notEqual(signed[0], signed[1], "只有微信确认前一单号已关闭后才重新签发");
-  assert.equal(pool.attempts.length, 2);
-  assert.equal(pool.attempts[0].out_trade_no, signed[0], "关闭的尝试保留原始商户单号");
-  assert.equal(pool.attempts[1].out_trade_no, signed[1]);
-  assert.equal(pool.updates.length, 1);
-  assert.equal(pool.updates[0][1], signed[1]);
+  assert.equal(pool.attempts.length, 1, "关闭后不在原订单下签发第二个尝试");
+  assert.equal(pool.attempts[0].out_trade_no, signed[0]);
+  assert.equal(pool.attempts[0].status, "CLOSED");
+  assert.equal(pool.updateSql.some((sql) => sql.includes("status = 'closed'")), true);
 });
 
 test("same-key retry reports an already-paid order with its order id", async () => {
@@ -170,16 +171,16 @@ test("same-key retry reports a closed order as expired so the client can start a
   );
 });
 
-test("an expired order with an unconfirmed unpaid attempt stays active and blocks retry", async () => {
+test("an expired order confirmed unpaid is closed and requires a new order", async () => {
   const pool = existingOrderPool({ expires_at: new Date(NOW.getTime() - 1_000) });
   const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
   const service = new PostgresPaymentService(pool, gateway, fakeLegacyGateway(), SECRET, () => NOW);
   await assert.rejects(
     () => service.createPayment({ userId: "usr_a", packageId: "ai_generation_30", idempotencyKey: "retry-same-intent" }),
-    (error) => error.code === "PAYMENT_STATUS_CONFIRMING",
+    (error) => error.code === "ORDER_EXPIRED",
   );
   assert.equal(pool.attempts.length, 1);
-  assert.equal(pool.attempts[0].status, "UNKNOWN");
+  assert.equal(pool.attempts[0].status, "CLOSED");
 });
 
 test("package without a virtual product id is rejected before any payment parameters are signed", async () => {

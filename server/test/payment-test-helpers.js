@@ -304,7 +304,8 @@ function deliveryPool(orderOverrides = {}, candidates = null) {
       return { rows: hit ? [{ id: orderRow.id }] : [] };
     }
     if (sql.includes("FROM pindou_orders") && sql.includes("status = 'pending'") && sql.includes("FOR UPDATE")) {
-      return { rows: orderRow.status === "pending" && orderRow.expires_at <= parameters[1] ? [{ id: orderRow.id }] : [] };
+      const expiredOnly = sql.includes("expires_at <=");
+      return { rows: orderRow.status === "pending" && (!expiredOnly || orderRow.expires_at <= parameters[1]) ? [{ id: orderRow.id }] : [] };
     }
     if (sql.includes("FOR UPDATE OF orders")) return { rows: parameters[0] === orderRow.id ? [orderRow] : [] };
     if (sql.includes("UPDATE pindou_orders")) {
@@ -359,7 +360,6 @@ function deliveryInput(overrides = {}) {
 const RECONCILE_OPTIONS = {
   graceMs: 3 * 60_000,
   staleAfterMs: 30 * 60_000,
-  closeAfterMs: 60 * 60_000,
   batchSize: 10,
 };
 

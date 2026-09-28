@@ -143,12 +143,13 @@ test("order list uses only the current user, sorts by creation time, returns sna
   });
   assert.equal(calls[0].parameters[0], "usr_current");
   assert.equal(calls[1].parameters[0], "usr_current");
-  assert.match(calls[1].sql, /status = 'pending'/);
+  assert.match(calls[2].sql, /status = 'pending'/);
   assert.equal(calls[2].parameters[0], "usr_current");
-  assert.equal(calls[2].parameters[1], 20);
-  assert.equal(calls[2].parameters[2], 0);
-  assert.match(calls[2].sql, /quota_kind_snapshot = 'ai_generation'/);
-  assert.match(calls[2].sql, /ORDER BY created_at DESC, id DESC/);
+  assert.equal(calls[3].parameters[0], "usr_current");
+  assert.equal(calls[3].parameters[1], 20);
+  assert.equal(calls[3].parameters[2], 0);
+  assert.match(calls[3].sql, /quota_kind_snapshot = 'ai_generation'/);
+  assert.match(calls[3].sql, /ORDER BY created_at DESC, id DESC/);
   assert.equal(response.items[0].wx_prepay_id, undefined);
   assert.equal(response.items[0].wx_transaction_id, undefined);
 });
@@ -158,7 +159,7 @@ test("empty order list is returned without loading package configuration", async
   const response = await service.listOrders({ userId: "usr_empty", page: 3, pageSize: 5 });
   assert.match(response.serverTime, /^\d{4}-\d{2}-\d{2}T/u);
   assert.deepEqual({ ...response, serverTime: null }, { total: 0, page: 3, pageSize: 5, pendingCount: 0, serverTime: null, items: [] });
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
   assert.equal(calls.some((call) => call.sql.includes("pindou_packages")), false);
 });
 

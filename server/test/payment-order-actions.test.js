@@ -53,22 +53,19 @@ test("continue payment keeps the same order and trade number while WeChat still 
   assert.equal(pool.updates.length, 0, "未关单分支不应改写订单");
 });
 
-test("continue payment issues a fresh attempt number for the same order after WeChat closed the old one", async () => {
+test("continue payment closes the order after WeChat closed its only attempt", async () => {
   const gateway = spyGateway({
     queryResult: { state: "CLOSED", paid: false, mchOrderNo: null, transactionId: null, paidTimeSeconds: null, actualPriceFen: null },
   });
   const pool = existingOrderPool();
   const service = new PostgresPaymentService(pool, gateway, fakeLegacyGateway(), SECRET, () => NOW);
-  const result = await service.continuePayment({ userId: "usr_a", orderId: "order_existing" });
-
-  assert.equal(result.orderId, "order_existing", "换号也必须是同一张订单");
-  const signed = JSON.parse(result.virtual.signData);
-  assert.notEqual(signed.outTradeNo, "vpay_existingtradeno00001");
-  assert.equal(pool.attempts.length, 2, "旧尝试关闭后为同一订单签发新尝试");
-  assert.equal(pool.attempts[1].status, "ISSUED");
-  const orderUpdate = pool.updates.find((_, index) => pool.updateSql[index]?.includes("virtual_out_trade_no"));
-  assert.ok(orderUpdate, "订单必须指向新商户单号");
-  assert.equal(orderUpdate[1], signed.outTradeNo);
+  await assert.rejects(
+    () => service.continuePayment({ userId: "usr_a", orderId: "order_existing" }),
+    (error) => error.code === "ORDER_EXPIRED",
+  );
+  assert.equal(pool.attempts.length, 1, "已关闭的支付生命周期不能在同一订单下新增尝试");
+  assert.equal(pool.attempts[0].status, "CLOSED");
+  assert.equal(pool.updateSql.some((sql) => sql.includes("status = 'closed'")), true);
 });
 
 test("continue payment grants the paid order and answers ORDER_ALREADY_PAID with the order id", async () => {
@@ -112,6 +109,18 @@ test("continue payment answers PAYMENT_STATUS_CONFIRMING when the WeChat query f
     (error) => error.code === "PAYMENT_STATUS_CONFIRMING",
   );
   assert.equal(pool.attempts[0].status, "UNKNOWN", "查单失败后尝试必须标记为状态未知");
+});
+
+test("continue payment closes an expired unpaid order and requires a new order", async () => {
+  const gateway = spyGateway({ queryResult: UNPAID_QUERY });
+  const pool = existingOrderPool({ expires_at: new Date(NOW.getTime() - 1) });
+  const service = new PostgresPaymentService(pool, gateway, fakeLegacyGateway(), SECRET, () => NOW);
+  await assert.rejects(
+    () => service.continuePayment({ userId: "usr_a", orderId: "order_existing" }),
+    (error) => error.code === "ORDER_EXPIRED",
+  );
+  assert.equal(pool.attempts[0].status, "CLOSED");
+  assert.equal(pool.updateSql.some((sql) => sql.includes("status = 'closed'")), true);
 });
 
 test("continue payment hides other users' orders behind not-found", async () => {

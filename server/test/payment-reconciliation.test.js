@@ -106,9 +106,9 @@ test("an unpaid order inside the stale window stays pending without alerting", a
   }
 });
 
-test("an order pending past the stale window raises a reconcile alert", async () => {
+test("an unknown payment state past the stale window raises a reconcile alert", async () => {
   const pool = deliveryPool({}, [candidateRow("order_test", 45 * 60_000)]);
-  const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
+  const gateway = fakeVirtualGateway({ async queryOrder() { return { ...UNPAID_QUERY, state: "UNKNOWN" }; } });
   const capture = captureConsole();
   try {
     const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
@@ -116,15 +116,15 @@ test("an order pending past the stale window raises a reconcile alert", async ()
     assert.deepEqual(summary.attention, ["order_test"]);
     const alerts = capture.errors.filter((entry) => entry.event === "virtual_payment_reconcile_alert");
     assert.equal(alerts.length, 1);
-    assert.equal(alerts[0].reason, "unpaid_without_virtual_close_api");
+    assert.equal(alerts[0].reason, "provider_status_unknown");
     assert.equal(alerts[0].orderId, "order_test");
   } finally {
     capture.restore();
   }
 });
 
-test("a confirmed unpaid order past the close window is closed locally", async () => {
-  const pool = deliveryPool({}, [candidateRow("order_test", 90 * 60_000)]);
+test("a confirmed unpaid order closes immediately after its five-minute expiry", async () => {
+  const pool = deliveryPool({}, [candidateRow("order_test", 5 * 60_000 + 1)]);
   const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
   const capture = captureConsole();
   try {
@@ -133,6 +133,11 @@ test("a confirmed unpaid order past the close window is closed locally", async (
     assert.equal(summary.stalled, 0);
     assert.deepEqual(summary.attention, []);
     assert.equal(pool.orderRow.status, "closed");
+    assert.equal(pool.attempt.status, "CLOSED");
+    const attemptUpdate = pool.calls.find(({ sql }) => sql.includes("query_count = query_count + 1"));
+    assert.ok(attemptUpdate);
+    assert.match(attemptUpdate.sql, /status = \$2::varchar/);
+    assert.match(attemptUpdate.sql, /CASE WHEN \$2::varchar = 'CLOSED'/);
     assert.match(pool.updateSql[0], /status = 'closed'/);
     assert.match(pool.updateSql[0], /AND status = 'pending'/);
     assert.equal(
@@ -159,7 +164,7 @@ test("an unknown payment result remains pending after the close window", async (
   }
 });
 
-test("a provider-confirmed closed attempt closes the expired local order", async () => {
+test("a provider-confirmed closed attempt closes the local order", async () => {
   const pool = deliveryPool({}, [candidateRow("order_test", 90 * 60_000)]);
   const gateway = fakeVirtualGateway({ async queryOrder() { return { ...UNPAID_QUERY, state: "CLOSED" }; } });
   const capture = captureConsole();

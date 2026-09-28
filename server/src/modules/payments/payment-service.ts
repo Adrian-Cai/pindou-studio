@@ -75,8 +75,8 @@ export interface CreatePaymentInput {
 /**
  * 下单结果。
  *
- * virtual 里的 signData 使用一个不可变支付尝试号。已确认未支付时重用该尝试；
- * 只有微信明确关闭旧尝试后，才为同一业务订单签发新尝试号。
+ * virtual 里的 signData 使用该订单唯一的支付尝试号；微信确认未支付时沿用原号，
+ * 尝试已关闭后必须新建订单，不能在原订单下创建第二个尝试。
  */
 export interface CreatePaymentResponse {
   readonly orderId: string;
@@ -104,7 +104,7 @@ export interface OrderItem {
   readonly currency: "CNY";
   readonly status: OrderStatus;
   readonly createdAt: string;
-  /** 支付截止时间；超时后服务端尚未关闭的订单由客户端展示为「支付状态确认中」。 */
+  /** 支付截止时间；超时后由服务端核实微信状态，确认未支付或已关闭才关闭订单。 */
   readonly expiresAt: string | null;
   readonly paidAt: string | null;
 }
@@ -153,8 +153,6 @@ export interface PendingOrderReconcileOptions {
    * 太长则让用户付完钱迟迟拿不到次数。
    */
   readonly staleAfterMs: number;
-  /** 查单确认未支付后，订单最多保留多久再本地关闭。 */
-  readonly closeAfterMs: number;
   /** 单轮最多处置多少笔。超出部分留到下一轮，避免积压集中爆发时长时间占用连接池。 */
   readonly batchSize: number;
 }
@@ -162,7 +160,6 @@ export interface PendingOrderReconcileOptions {
 export const DEFAULT_RECONCILE_OPTIONS: PendingOrderReconcileOptions = {
   graceMs: 3 * 60_000,
   staleAfterMs: 30 * 60_000,
-  closeAfterMs: 60 * 60_000,
   batchSize: 100,
 };
 
@@ -278,6 +275,7 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
   }
 
   public async listOrders(options: OrderListOptions): Promise<OrderListResponse> {
+    await this.reconcileExpiredOrders(options.userId);
     const countResult = await this.pool.query<{ total: number }>(
       `SELECT COUNT(*)::int AS total
          FROM pindou_orders
@@ -315,6 +313,17 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
     };
   }
 
+  private async reconcileExpiredOrders(userId: string): Promise<void> {
+    const expiredOrders = await this.pool.query<{ readonly found: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM pindou_orders
+          WHERE user_id = $1 AND status = 'pending' AND expires_at <= $2
+       ) AS found`,
+      [userId, this.now()],
+    );
+    if (expiredOrders.rows[0]?.found) await this.reconcilePendingOrders(userId);
+  }
+
   /**
    * 创建支付订单并签发虚拟支付参数。
    *
@@ -338,14 +347,7 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
     const idempotencyKey = input.idempotencyKey.trim();
     if (!idempotencyKey || idempotencyKey.length > 128) throw invalidArgument("idempotencyKey 无效");
     const orderId = createIdempotentOrderId(input.userId, idempotencyKey);
-    const expiredOrders = await this.pool.query<{ readonly found: boolean }>(
-      `SELECT EXISTS (
-         SELECT 1 FROM pindou_orders
-          WHERE user_id = $1 AND status = 'pending' AND expires_at <= $2
-       ) AS found`,
-      [input.userId, this.now()],
-    );
-    if (expiredOrders.rows[0]?.found) await this.reconcilePendingOrders(input.userId);
+    await this.reconcileExpiredOrders(input.userId);
     const client = await this.pool.connect();
     let existing: { readonly order: OrderRow; readonly attempt: PaymentAttemptRow; readonly openid: string; readonly sessionKey: string; readonly productId: string } | null = null;
     let created: CreatePaymentResponse | null = null;
@@ -532,7 +534,7 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
    * 微信仍在支付中 → 沿用原订单、原支付尝试、原商户单号重新签发；
    * 微信已关单且订单未过期 → 为**同一张订单**签发新尝试号；
    * 微信已支付 → 补发货并回答 ORDER_ALREADY_PAID；
-   * 订单过期未关 → PAYMENT_STATUS_CONFIRMING，交给发货轮询收尾。
+   * 订单过期且确认未支付/已关 → 关闭订单并回答 ORDER_EXPIRED；状态未知则禁止重试并继续核实。
    *
    * 前置校验（归属、状态）在短事务里完成，网络查单放在锁外 ——
    * 拿着行锁等微信接口会把并发下单/查单全部堵死。
@@ -832,98 +834,36 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
     }
     if (state === "CLOSED") {
       await this.updateAttemptQuery(existing.attempt.id, "CLOSED", null);
-      if (existing.order.expires_at && currentTime.getTime() >= orderCreatedAtMs(existing.order.expires_at)) {
-        if (await this.closeOrderIfAttemptsClosed(orderId, currentTime)) {
-          throw new AppError(409, "ORDER_EXPIRED", "订单已关闭，请重新下单");
-        }
+      if (!await this.closeOrderIfAttemptsClosed(orderId, currentTime)) {
         throw new AppError(409, "PAYMENT_STATUS_CONFIRMING", "支付状态确认中，请稍后重试");
       }
-      return this.createRetryAttempt(orderId, existing, currentTime);
+      throw new AppError(409, "ORDER_EXPIRED", "订单支付已关闭，请重新下单");
     }
-    if (state === "UNPAID" && (!existing.order.expires_at || currentTime.getTime() < orderCreatedAtMs(existing.order.expires_at))) {
-      await this.updateAttemptQuery(existing.attempt.id, "ISSUED", null);
-      return {
-        orderId,
-        payment: null,
-        virtual: this.signVirtualPayment({
+    if (state === "UNPAID") {
+      if (!existing.order.expires_at || currentTime.getTime() < orderCreatedAtMs(existing.order.expires_at)) {
+        await this.updateAttemptQuery(existing.attempt.id, "ISSUED", null);
+        return {
           orderId,
-          outTradeNo: existing.attempt.out_trade_no,
-          productId: existing.productId,
-          goodsPriceFen: existing.attempt.amount_fen,
-          sessionKey: existing.sessionKey,
-        }),
-      };
+          payment: null,
+          virtual: this.signVirtualPayment({
+            orderId,
+            outTradeNo: existing.attempt.out_trade_no,
+            productId: existing.productId,
+            goodsPriceFen: existing.attempt.amount_fen,
+            sessionKey: existing.sessionKey,
+          }),
+        };
+      }
+      await this.updateAttemptQuery(existing.attempt.id, "CLOSED", "expired_unpaid");
+      await this.closeOrderIfAttemptsClosed(orderId, currentTime);
+      throw new AppError(409, "ORDER_EXPIRED", "订单已过期，请重新下单");
     }
     await this.updateAttemptQuery(
       existing.attempt.id,
       "UNKNOWN",
-      state === "UNPAID" ? "expired_unpaid" : "unconfirmed_provider_status",
+      "unconfirmed_provider_status",
     );
     throw new AppError(409, "PAYMENT_STATUS_CONFIRMING", "支付状态确认中，请稍后重试");
   }
-
-  private async createRetryAttempt(
-    orderId: string,
-    existing: { readonly order: OrderRow; readonly attempt: PaymentAttemptRow; readonly openid: string; readonly sessionKey: string; readonly productId: string },
-    currentTime: Date,
-  ): Promise<CreatePaymentResponse> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
-        `pindou-payment-user:${existing.order.user_id}`,
-      ]);
-      const orderResult = await client.query<OrderRow>(
-        `SELECT id, user_id, package_id, package_label_snapshot, quota_amount_snapshot,
-                quota_kind_snapshot, membership_type_snapshot, price_fen, status,
-                virtual_out_trade_no, created_at, expires_at, paid_at
-           FROM pindou_orders WHERE id = $1 LIMIT 1 FOR UPDATE`,
-        [orderId],
-      );
-      const order = orderResult.rows[0];
-      if (!order || order.status !== "pending" || !order.expires_at || currentTime.getTime() >= orderCreatedAtMs(order.expires_at)) {
-        throw new AppError(409, "ORDER_EXPIRED", "订单已关闭，请重新下单");
-      }
-      const latestResult = await client.query<PaymentAttemptRow>(
-        `SELECT id, order_id, user_id, out_trade_no, status, wechat_transaction_id,
-                amount_fen, created_at, paid_at, closed_at
-           FROM pindou_payment_attempts
-          WHERE order_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1 FOR UPDATE`,
-        [orderId],
-      );
-      const latest = latestResult.rows[0];
-      if (!latest || latest.id !== existing.attempt.id || latest.status !== "CLOSED") {
-        throw new AppError(409, "PAYMENT_STATUS_CONFIRMING", "支付状态确认中，请稍后重试");
-      }
-      const outTradeNo = createVirtualOutTradeNo();
-      const attemptId = createEntityId("pa");
-      await client.query(
-        `INSERT INTO pindou_payment_attempts (
-           id, order_id, user_id, out_trade_no, status, amount_fen, currency, created_at, issued_at
-         ) VALUES ($1, $2, $3, $4, 'ISSUED', $5, 'CNY', $6, $6)`,
-        [attemptId, orderId, existing.order.user_id, outTradeNo, existing.attempt.amount_fen, currentTime],
-      );
-      await client.query(
-        `UPDATE pindou_orders SET virtual_out_trade_no = $2, updated_at = $3
-          WHERE id = $1 AND status = 'pending'`,
-        [orderId, outTradeNo, currentTime],
-      );
-      const virtual = this.signVirtualPayment({
-        orderId,
-        outTradeNo,
-        productId: existing.productId,
-        goodsPriceFen: existing.attempt.amount_fen,
-        sessionKey: existing.sessionKey,
-      });
-      await client.query("COMMIT");
-      return { orderId, payment: null, virtual };
-    } catch (error: unknown) {
-      await rollbackTransaction(client);
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
 
 }

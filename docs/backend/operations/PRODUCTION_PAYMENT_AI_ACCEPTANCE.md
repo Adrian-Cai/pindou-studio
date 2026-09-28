@@ -42,10 +42,11 @@ npm test
 
 ## 混元、存储、HTTPS 与监控
 
-- 新任务配置 `TOKENHUB_HUNYUAN_IMAGE_API_KEY` 与 `TOKENHUB_HUNYUAN_IMAGE_BASE_URL=https://tokenhub.tencentmaas.com`；服务端固定调用 Hy-Image-3.5 `hy-image-v3.5-preview`，Key 只能注入服务端运行环境
-- 发布前用真实 TokenHub Key 在预发布执行图生图，确认请求不包含可选 `footnote`，参考图 URL 可访问，返回字段与输出 COS 主机符合预期；核对超时、成本、并发限制及实际输出标记
-- 新任务应保存 Provider `hunyuan-tokenhub-v35` 与模型 `hy-image-v3.5-preview`；确认没有新增 ToAPIs 请求。通过只读查询统计 `pindou_ai_generation_jobs` 中 `provider='toapis'`、`status IN ('queued','processing')` 的任务；旧任务未排空时保留 ToAPIs 与 CloudBase Hunyuan 服务端配置，排空后再删旧 Provider 与密钥
-- 验收客户端包、接口响应和日志均无 TokenHub/ToAPIs/CloudBase API Key、供应商原始错误或内部堆栈
+- 新任务配置 `HUNYUAN_IMAGE_API_KEY` 与 `HUNYUAN_IMAGE_BASE_URL`；服务端固定调用 CloudBase 混元 `HY-Image-v3.0-I2I-ToB-v1.0.1`，凭据只能注入服务端运行环境
+- 发布前在预发布执行图生图，确认参考图可达、CloudBase 文件下载与项目文件持久化正常、错误不会泄漏凭据，并检查模型实际输出标识及额度扣减时机
+- 新任务应保存 Provider `hunyuan` 与模型 `HY-Image-v3.0-I2I-ToB-v1.0.1`；确认没有新增 TokenHub 请求。只读核对 `pindou_ai_generation_jobs` 中 `provider='hunyuan-tokenhub-v35'` 且状态为 `queued` / `processing` 的旧任务；保留 TokenHub 配置直至其排空
+- ToAPIs 凭据配置已移除；只读核对 `provider='toapis'` 的在途任务数量并记录残留。代码按未配置 Provider 失败关闭，不会改由混元提交
+- 验收客户端包、接口响应和日志均无 CloudBase 或 TokenHub API Key、供应商原始错误或内部堆栈
 - 验收 AI 输入/输出真实格式、10 MiB 大小、4096×4096 尺寸及 16 MP 像素限制；验收每用户 10 分钟 5 次的上传/任务创建限流
 - 使用恶意或非腾讯云 COS 输出地址、跨域跳转和不支持的输出格式做回归，确认均不会被服务端下载或持久化
 - 用正常、输入命中风险和审核服务不可用样本验收：输入图片必须先通过微信内容安全审核再提交模型服务商；输出安全审核由模型服务商负责，服务端校验输出格式、大小、尺寸后才进入 `ai_output`
@@ -53,7 +54,7 @@ npm test
 - `AVATAR_STORAGE_DIR`、`COVER_STORAGE_DIR`、`AI_FILE_STORAGE_DIR` 必须挂载到有备份和恢复能力的生产持久卷；完成恢复演练后才设置 `PERSISTENT_STORAGE_MOUNTED=true`
 - `COVER_PUBLIC_BASE_URL` 与 `AI_FILE_PUBLIC_BASE_URL` 必须为 HTTPS；API HTTPS 由入口网关/负载均衡终止，HTTP 只允许在受信任内网回源
 - 监控至少探测 `/health`，采集 `wechat_payment_notification_rejected`、`wechat_payment_granted`、`ai_generation_failed` 和 `request_failed` 结构化事件，并为连续失败、5xx、数据库不可用和支付回调失败设置告警；完成告警演练后才设置 `MONITORING_ALERTS_CONFIGURED=true`
-- `APP_ENV=production` 时，代码会拒绝缺少微信支付、TokenHub、HTTPS 文件地址、持久存储确认或监控确认的配置
+- `APP_ENV=production` 时，代码会拒绝缺少微信支付、CloudBase 新任务配置、在途 TokenHub 配置、HTTPS 文件地址、持久存储确认或监控确认的配置；不读取 ToAPIs 配置
 
 ## 放行门槛
 

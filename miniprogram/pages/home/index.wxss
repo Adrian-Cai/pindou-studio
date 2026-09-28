@@ -21,10 +21,6 @@ page {
   --color-ai-soft: #f5f1ff;
   --color-ai-border: rgba(124, 92, 252, 0.4);
   --color-ai-text: #7c5cfc;
-
-  /* ── 示例图片统一尺寸 token（标准 / AI 共用同一套，禁止各自定义） ── */
-  --sample-media-height: 156rpx;
-  --sample-label-height: 44rpx;
 }
 
 .home-page {
@@ -414,63 +410,56 @@ page {
 }
 
 /* ════════════════════════════════
-   示例图片 — 四个 item 共用同一套 flex / 尺寸规则
-   标准模式与 Ai 模式只允许颜色不同，不允许尺寸不同
+   标准模式效果
 ════════════════════════════════ */
-.samples__grid {
-  display: flex;
-  gap: 16rpx;
+.standard-example {
   margin-top: 16rpx;
-}
-
-/* flex-basis 为 0 + 等比放大：四列宽度必然相等，不受标签文字长度影响 */
-.sample-card {
-  box-sizing: border-box;
-  min-width: 0;
-  flex: 1 1 0;
-  overflow: hidden;
+  padding: 8rpx;
   border-radius: var(--radius-card-small);
-  background: var(--color-surface-muted);
+  background: var(--color-surface);
   box-shadow: var(--shadow-card);
 }
 
-.sample-card__media {
-  width: 100%;
-  height: var(--sample-media-height);
+.standard-example__media {
+  position: relative;
   overflow: hidden;
-  background: var(--color-surface-muted);
+  border-radius: 12rpx;
 }
 
-/* 图片始终铺满 media 容器，尺寸不再单独声明 */
-.sample-card__image {
+.standard-example__image {
   display: block;
   width: 100%;
-  height: 100%;
+  height: 336rpx;
 }
 
-.sample-card__label {
-  box-sizing: border-box;
-  display: block;
-  height: var(--sample-label-height);
-  padding: 8rpx 6rpx 0;
-  overflow: hidden;
-  font-size: 20rpx;
-  font-weight: 500;
-  line-height: 28rpx;
+.standard-example__labels {
+  position: absolute;
+  right: 16rpx;
+  bottom: 12rpx;
+  left: 16rpx;
+  display: flex;
+  gap: 24rpx;
+}
+
+.standard-example__label {
+  min-width: 0;
+  flex: 1;
+  padding: 0 8rpx;
+  border-radius: 8rpx;
+  background: var(--color-primary-soft);
+  color: var(--color-text-secondary);
+  font-size: 22rpx;
+  line-height: 32rpx;
   text-align: center;
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
-/* 仅配色差异 */
-.sample-card__label--standard {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-}
-
-.sample-card__label--ai {
-  background: var(--color-ai-soft);
-  color: var(--color-ai-text);
+.standard-example__description {
+  margin-top: 8rpx;
+  color: var(--color-text-secondary);
+  font-size: 22rpx;
+  line-height: 30rpx;
+  text-align: center;
 }
 
 /* ════════════════════════════════
@@ -562,14 +551,8 @@ page {
 
 /* ════════════════════════════════
    小屏幕适配（≤ 340px / 320rpx 逻辑宽度）
-   只调整统一变量，不单独给某一类示例图写尺寸
 ════════════════════════════════ */
 @media (max-width: 340px) {
-  page {
-    /* 内容区 686rpx - 3 × 16rpx 间距 = 638rpx，四等分 ≈ 160rpx */
-    --sample-media-height: 160rpx;
-  }
-
   .home-page {
     padding-right: 32rpx;
     padding-left: 32rpx;

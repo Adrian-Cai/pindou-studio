@@ -6,8 +6,6 @@ export type DatabaseSslMode = "disable" | "require" | "verify-full";
 
 export const HUNYUAN_IMAGE_MODEL = "HY-Image-v3.0-I2I-ToB-v1.0.1" as const;
 export const TOKENHUB_HUNYUAN_IMAGE_MODEL = "hy-image-v3.5-preview" as const;
-export const TOAPIS_IMAGE_MODELS = ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst"] as const;
-export type ToapisImageModel = (typeof TOAPIS_IMAGE_MODELS)[number];
 
 export interface DatabaseConfig {
   readonly host: string;
@@ -71,13 +69,6 @@ export interface VirtualPayReconcileConfig {
   readonly graceMs: number;
   /** pending 持续多久仍查不到已支付就升级为告警。 */
   readonly staleAfterMs: number;
-  /**
-   * pending 持续多久且查单确认未支付就自动关单（置 closed，此后不再扫描）。
-   *
-   * 为什么必须有：用户下单后没付钱的订单会永远停在 pending，而补单轮询每扫到一笔
-   * 就记一条「需要人工介入」的告警 —— 一天下来真实漏发货会被这些噪音彻底淹没。
-   */
-  readonly closeAfterMs: number;
   /** 单轮最多处置多少笔。 */
   readonly batchSize: number;
 }
@@ -123,22 +114,6 @@ export type TokenhubHunyuanImageConfig =
       readonly outputHosts: readonly string[];
     };
 
-export type ToapisImageConfig =
-  | { readonly enabled: false }
-  | {
-      readonly enabled: true;
-      readonly apiKey: string;
-      readonly baseUrl: string;
-      readonly model: ToapisImageModel;
-      readonly size: string;
-      readonly resolution: "1K" | "2K" | "4K";
-      readonly quality: "high";
-      readonly timeoutMs: number;
-      readonly pollIntervalMs: number;
-      readonly maximumOutputBytes: number;
-      readonly outputHosts: readonly string[];
-    };
-
 export interface ServerConfig {
   readonly appEnvironment: AppEnvironment;
   readonly host: string;
@@ -163,7 +138,6 @@ export interface ServerConfig {
   readonly newUserPackageGateEnabled: boolean;
   readonly hunyuanImage: HunyuanImageConfig;
   readonly tokenhubHunyuanImage: TokenhubHunyuanImageConfig;
-  readonly toapisImage: ToapisImageConfig;
   readonly auth: {
     readonly openidHashSecret: string;
     readonly tokenTtlDays: number;
@@ -403,12 +377,6 @@ function parseVirtualPayReconcileConfig(
     intervalMs: integer(env, "VIRTUAL_PAY_RECONCILE_INTERVAL_MS", 5 * 60_000, 60_000, 60 * 60_000, issues),
     graceMs,
     staleAfterMs,
-    /**
-     * 关单窗口必须不小于告警窗口：先告警一阵子再关，才留出人工发现「其实付了钱但查单异常」的余地。
-     * 关单是不可逆的（closed 之后即便迟到的发货推送也只会得到 ORDER_NOT_PAYABLE），
-     * 因此默认给 1 小时，远大于 30 分钟的告警窗口。
-     */
-    closeAfterMs: integer(env, "VIRTUAL_PAY_RECONCILE_CLOSE_AFTER_MS", 60 * 60_000, staleAfterMs, 7 * 24 * 60 * 60_000, issues),
     batchSize: integer(env, "VIRTUAL_PAY_RECONCILE_BATCH_SIZE", 100, 1, 1_000, issues),
   };
 }
@@ -556,75 +524,6 @@ function parseTokenhubHunyuanImageConfig(
   };
 }
 
-function parseToapisImageConfig(env: NodeJS.ProcessEnv, issues: string[]): ToapisImageConfig {
-  const apiKey = env.TOAPIS_IMAGE_API_KEY?.trim();
-  const baseUrl = env.TOAPIS_IMAGE_BASE_URL?.trim() || "https://api.toapis.cn";
-  if (!apiKey) return { enabled: false };
-
-  let normalizedBaseUrl = baseUrl;
-  try {
-    const parsed = new URL(baseUrl);
-    if (parsed.protocol !== "https:") issues.push("TOAPIS_IMAGE_BASE_URL 必须使用 HTTPS");
-    if (parsed.username || parsed.password || parsed.search || parsed.hash) {
-      issues.push("TOAPIS_IMAGE_BASE_URL 不能包含凭据、查询参数或片段");
-    }
-    normalizedBaseUrl = parsed.href.replace(/\/$/u, "");
-  } catch {
-    issues.push("TOAPIS_IMAGE_BASE_URL 必须是合法 URL");
-    normalizedBaseUrl = "";
-  }
-
-  const rawModel = env.TOAPIS_IMAGE_MODEL?.trim() || "gpt-image-2.5-sunburst";
-  const model = (TOAPIS_IMAGE_MODELS as readonly string[]).includes(rawModel)
-    ? rawModel as ToapisImageModel
-    : "gpt-image-2.5-sunburst";
-  if (model !== rawModel) {
-    issues.push(`TOAPIS_IMAGE_MODEL 必须是 ${TOAPIS_IMAGE_MODELS.join(" 或 ")}`);
-  }
-  const rawResolution = env.TOAPIS_IMAGE_RESOLUTION?.trim() || "1K";
-  const resolution = rawResolution === "1K" || rawResolution === "2K" || rawResolution === "4K"
-    ? rawResolution
-    : "1K";
-  if (resolution !== rawResolution) issues.push("TOAPIS_IMAGE_RESOLUTION 必须是 1K、2K 或 4K");
-  const quality = env.TOAPIS_IMAGE_QUALITY?.trim() || "high";
-  if (quality !== "high") issues.push("TOAPIS_IMAGE_QUALITY 必须是 high");
-
-  const size = env.TOAPIS_IMAGE_SIZE?.trim() || "1:1";
-  if (!/^\d+:\d+$/u.test(size)) issues.push("TOAPIS_IMAGE_SIZE 必须是宽高比格式，例如 1:1");
-  const outputHosts = (env.TOAPIS_IMAGE_OUTPUT_HOSTS?.trim() || "files.toapis.com")
-    .split(",")
-    .map((host) => host.trim().toLowerCase())
-    .filter(Boolean);
-  if (outputHosts.length === 0) issues.push("TOAPIS_IMAGE_OUTPUT_HOSTS 至少配置一个域名");
-  for (const host of outputHosts) {
-    if (!/^[a-z0-9.-]+$/u.test(host) || host.startsWith(".") || host.endsWith(".")) {
-      issues.push("TOAPIS_IMAGE_OUTPUT_HOSTS 必须是逗号分隔的域名");
-      break;
-    }
-  }
-
-  return {
-    enabled: true,
-    apiKey,
-    baseUrl: normalizedBaseUrl,
-    model,
-    size,
-    resolution,
-    quality: "high",
-    timeoutMs: integer(env, "TOAPIS_IMAGE_TIMEOUT_MS", 30_000, 1_000, 120_000, issues),
-    pollIntervalMs: integer(env, "TOAPIS_IMAGE_POLL_INTERVAL_MS", 7_000, 2_000, 60_000, issues),
-    maximumOutputBytes: integer(
-      env,
-      "TOAPIS_IMAGE_MAX_OUTPUT_BYTES",
-      10 * 1_024 * 1_024,
-      64 * 1_024,
-      20 * 1_024 * 1_024,
-      issues,
-    ),
-    outputHosts,
-  };
-}
-
 export function loadLocalEnv(): void {
   const envPath = resolve(__dirname, "../../.env");
   try {
@@ -661,7 +560,6 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     virtualPayPush: parseVirtualPayPushConfig(env, wechatAppId, issues),
     hunyuanImage: parseHunyuanImageConfig(env, issues),
     tokenhubHunyuanImage: parseTokenhubHunyuanImageConfig(env, issues),
-    toapisImage: parseToapisImageConfig(env, issues),
     auth: {
       openidHashSecret: requiredSecret(env, "OPENID_HASH_SECRET", 32, issues),
       tokenTtlDays: integer(env, "AUTH_TOKEN_TTL_DAYS", 30, 1, 365, issues),
@@ -741,8 +639,11 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       issues.push("生产环境 CONTENT_SECURITY_ASYNC_MEDIA_CHECK_ENABLED 必须为 true");
     }
     if (!config.wechatPay.enabled) issues.push("生产环境必须配置微信支付");
+    if (!config.hunyuanImage.enabled) {
+      issues.push("生产环境必须配置 CloudBase 混元图像服务");
+    }
     if (!config.tokenhubHunyuanImage.enabled) {
-      issues.push("生产环境必须配置 TokenHub 混元图像服务");
+      issues.push("生产环境必须保留在途 TokenHub 混元图像服务配置");
     }
     if (!config.covers.publicBaseUrl.startsWith("https://")) {
       issues.push("生产环境 COVER_PUBLIC_BASE_URL 必须使用 HTTPS");

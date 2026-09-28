@@ -89,10 +89,6 @@
           <view wx:elif="{{!draft}}" class="ai-generation-result-card__fallback">拼豆图结果已生成</view>
           <view wx:elif="{{!patternCanvasReady}}" class="ai-generation-result-card__fallback">正在绘制拼豆图</view>
         </view>
-        <view class="ai-generation-result-card__meta">
-          <text>{{panelWidth}}×{{panelHeight}} · {{panelColorLimit}}色</text>
-          <text>共 {{panelBeadCount}} 颗</text>
-        </view>
       </view>
       <editor-control-panel
         ready="{{editorReady}}"

@@ -1,4 +1,3 @@
-import type { ToapisImageConfig } from "../../config/env";
 import { AppError } from "../../shared/app-error";
 import {
   providerFailure,
@@ -10,6 +9,21 @@ import {
 } from "./provider";
 
 type JsonObject = Record<string, unknown>;
+type ToapisImageConfig =
+  | { readonly enabled: false }
+  | {
+      readonly enabled: true;
+      readonly apiKey: string;
+      readonly baseUrl: string;
+      readonly model: "gpt-image-2.5-flare" | "gpt-image-2.5-sunburst";
+      readonly size: string;
+      readonly resolution: "1K" | "2K" | "4K";
+      readonly quality: "high";
+      readonly timeoutMs: number;
+      readonly pollIntervalMs: number;
+      readonly maximumOutputBytes: number;
+      readonly outputHosts: readonly string[];
+    };
 
 function object(value: unknown): JsonObject | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : null;

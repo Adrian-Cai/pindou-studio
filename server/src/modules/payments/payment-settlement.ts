@@ -34,8 +34,8 @@ export class PaymentSettlementService {
     const queriedAt = this.now();
     await this.pool.query(
       `UPDATE pindou_payment_attempts
-          SET status = $2,
-              closed_at = CASE WHEN $2 = 'CLOSED' THEN COALESCE(closed_at, $4) ELSE closed_at END,
+          SET status = $2::varchar,
+              closed_at = CASE WHEN $2::varchar = 'CLOSED' THEN COALESCE(closed_at, $4) ELSE closed_at END,
               last_query_at = $4, query_count = query_count + 1, failure_reason = $3
         WHERE id = $1`,
       [attemptId, status, failureReason?.slice(0, 255) ?? null, queriedAt],
@@ -47,8 +47,8 @@ export class PaymentSettlementService {
     try {
       await client.query("BEGIN");
       const order = await client.query<{ readonly id: string }>(
-        `SELECT id FROM pindou_orders WHERE id = $1 AND status = 'pending' AND expires_at <= $2 FOR UPDATE`,
-        [orderId, currentTime],
+        `SELECT id FROM pindou_orders WHERE id = $1 AND status = 'pending' FOR UPDATE`,
+        [orderId],
       );
       if (!order.rows[0]) {
         await client.query("COMMIT");
@@ -81,8 +81,8 @@ export class PaymentSettlementService {
   /**
    * 由微信侧的商户单号（outTradeNo）回查我方订单号。
    *
-   * 商户单号与订单号**不是同一个值**：微信规定 outTradeNo 只能用一次，一笔订单
-   * 被反复拉起支付时每次都会换新号（见 createPayment）。因此发货推送、退款推送、
+   * 商户单号与订单号**不是同一个值**：微信规定 outTradeNo 只能用一次，每张订单
+   * 只有一个支付尝试和商户单号。因此发货推送、退款推送、
    * iOS 退款问询带回来的都是商户单号，必须先经这一步才能定位订单。
    *
    * 保留 `OR id = $1` 这一路兜底，是为了**迁移尚未执行时**存量在途订单仍能收尾：

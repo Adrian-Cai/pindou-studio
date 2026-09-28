@@ -103,15 +103,6 @@
   line-height: 40rpx;
 }
 
-.ai-generation-result-card__meta {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 16rpx;
-  color: var(--color-text-secondary, #5f6963);
-  font-size: 24rpx;
-  line-height: 36rpx;
-}
-
 @media (prefers-color-scheme: dark) {
   .ai-generation-page {
     --color-ai-text: #c2b5ff;
