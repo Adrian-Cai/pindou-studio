@@ -58,7 +58,7 @@
       <generating-preview-card
         failed="{{true}}"
         title="AI 生成失败"
-        subtitle="AI 生成服务繁忙，请稍后重试"
+        subtitle="{{stateDescription}}"
         primary-text="重新生成"
         bindretry="retry"
         bindbackhome="backHome"
