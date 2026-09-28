@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## Server 0.18.1
+
+- **恢复超时订单本地关单**：订单过期、查单确认未支付且超过 `VIRTUAL_PAY_RECONCILE_CLOSE_AFTER_MS`（默认 1 小时）后置为 `closed`，释放未完成订单名额；查询失败或状态不明仍保留待核实。微信没有主动关单接口，因此收到迟到的已支付推送时仍会查单验真并补发权益。
+- **订单页继续支付与取消**：新增 `POST /api/payments/:orderId/continue` 与 `POST /api/payments/:orderId/cancel`，按 orderId 复用原订单而不是新建订单。两者都先查微信再动作：继续支付沿用原商户单号重发参数（已关单则签发新尝试），取消时已支付不许关单、查询失败不关单。`GET /api/orders` 同时下发 `expiresAt`（支付截止时间）、`pendingCount`（未完成订单数）与 `serverTime`（校准倒计时）。
+
 ## 0.33.1
 
 - **修复 AI 生成失败提示**：失败卡片展示任务的实际错误原因，避免 `AI_RESULT_INVALID` 误显示为“AI 生成服务繁忙”。
