@@ -38,11 +38,18 @@ function parseOrderList(value: unknown): OrderListResponse {
     || !isPositiveSafeInteger(value.pageSize)
     || value.pageSize > 50
     || !Array.isArray(value.items)) throw invalidResponse()
+  const items = value.items.map(parseOrderItem)
   return {
     total: value.total,
     page: value.page,
     pageSize: value.pageSize,
-    items: value.items.map(parseOrderItem),
+    // pendingCount / serverTime / expiresAt 是新增字段：存在「新客户端 + 旧服务端」的
+    // 部署窗口，缺字段只能降级（本页兜底计数 / 不校偏差 / 无倒计时），不能让整份列表崩掉。
+    pendingCount: isNonNegativeSafeInteger(value.pendingCount)
+      ? value.pendingCount
+      : items.filter((item) => item.status === 'pending').length,
+    serverTime: isIsoDate(value.serverTime) ? value.serverTime : '',
+    items,
   }
 }
 
@@ -71,6 +78,7 @@ function parseOrderItem(value: unknown): OrderItem {
     currency: 'CNY',
     status: value.status,
     createdAt: value.createdAt,
+    expiresAt: isIsoDate(value.expiresAt) ? value.expiresAt : null,
     paidAt: value.paidAt,
   }
 }
@@ -86,6 +94,27 @@ function isOrderStatus(value: unknown): value is OrderStatus {
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value))
+}
+
+/**
+ * 用户主动取消一笔待支付订单。
+ *
+ * 服务端会先向微信核实真实支付状态：已付的会照常发货并回答「订单已支付」，
+ * 查单失败时拒绝关单（PAYMENT_STATUS_CONFIRMING）。因此调用方不能假设
+ * 本接口成功 = 订单一定被关闭，失败分支必须按错误码分别处理。
+ */
+export async function cancelPendingOrder(orderId: string): Promise<void> {
+  const cleanOrderId = orderId.trim()
+  if (!cleanOrderId || cleanOrderId.length > 64) {
+    throw new ApiError('订单参数无效，请刷新后重试', { code: 'INVALID_ARGUMENT' })
+  }
+  await apiRequest<unknown>({
+    path: `/api/payments/${encodeURIComponent(cleanOrderId)}/cancel`,
+    method: 'POST',
+    token: requireToken(),
+    // 取消要等一次微信查单，放宽到 15 秒避免高峰期误报失败
+    timeoutMs: 15_000,
+  })
 }
 
 function requireToken(): string {

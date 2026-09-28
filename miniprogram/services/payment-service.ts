@@ -111,6 +111,56 @@ export async function payForAiGenerationPackage(
 }
 
 /**
+ * 从「我的订单」继续支付一笔待支付订单。
+ *
+ * 与 payForAiGenerationPackage 的本质区别：这里**不带幂等键、不创建新订单**。
+ * 服务端按 orderId 校验归属与状态、查询微信真实支付状态后，对同一张订单
+ * 重发支付参数（微信侧未关单时沿用原商户单号）。前端不能拿本地缓存的
+ * 支付结果自行判断——能否继续支付、订单是否已付/已关，一律以该接口为准。
+ *
+ * @throws ORDER_ALREADY_PAID 订单其实已支付（此时权益已补发），调用方应跳支付结果页
+ * @throws ORDER_EXPIRED 订单已关闭，应引导重新购买而不是重试
+ * @throws PAYMENT_STATUS_CONFIRMING 微信状态查询失败，稍后刷新，绝不能引导用户重复支付
+ */
+export async function continueOrderPayment(orderId: string): Promise<CreatePaymentResponse> {
+  const cleanOrderId = orderId.trim()
+  if (!cleanOrderId || cleanOrderId.length > 64) {
+    throw new ApiError('支付参数无效，请刷新后重试', { code: 'INVALID_ARGUMENT' })
+  }
+  const response = await apiRequest<unknown>({
+    path: `/api/payments/${encodeURIComponent(cleanOrderId)}/continue`,
+    method: 'POST',
+    token: requireToken(),
+    // 服务端要先查一次微信真实状态，放宽到 15 秒
+    timeoutMs: 15_000,
+  })
+  const created = parseCreatePayment(response)
+  if (!created.virtual) {
+    throw new ApiError('支付参数已失效，请重新发起支付', { code: 'INVALID_RESPONSE' })
+  }
+  await requestVirtualPayment(created.virtual)
+  return created
+}
+
+/** 服务端拒绝下单：同用户 pending 订单已达 5 个上限（见 MAX_PENDING_ORDERS_REACHED）。 */
+export function isMaxPendingOrdersReached(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'MAX_PENDING_ORDERS_REACHED'
+}
+
+/**
+ * 待支付订单达上限时的提示文案。
+ *
+ * 优先用服务端返回的文案：上限条数是服务端的业务策略（今天可能是 5，明天可能是 3），
+ * 客户端硬编码的数字一旦与服务端不一致，用户就会看到「明明只有 4 单却说满了」。
+ * 只在拿不到服务端文案时回落到兜底。
+ */
+export function getMaxPendingOrdersMessage(error: unknown): string {
+  if (!isMaxPendingOrdersReached(error)) return ''
+  if (error instanceof ApiError && error.message) return error.message
+  return '你已有 5 个待支付订单，请到「我的订单」完成支付或取消后再购买'
+}
+
+/**
  * 生成一次购买意图的幂等键（时间戳 + 密码学随机串）。
  * 调用方应把它存在页面状态里：**同一次点击的重试必须复用同一个键**，否则服务端会当成新订单。
  *
