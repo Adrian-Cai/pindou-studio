@@ -120,6 +120,7 @@ export type TokenhubHunyuanImageConfig =
       readonly model: typeof TOKENHUB_HUNYUAN_IMAGE_MODEL;
       readonly timeoutMs: number;
       readonly maximumOutputBytes: number;
+      readonly outputHosts: readonly string[];
     };
 
 export type ToapisImageConfig =
@@ -512,6 +513,31 @@ function parseTokenhubHunyuanImageConfig(
     baseUrl = "";
   }
 
+  // 产物下载域白名单。默认放行腾讯云 COS（*.myqcloud.com）与接口域名本身，
+  // 而不是写死某个桶名 + 某个地域：上游换个桶或换个地域就是 100% 必现的生成失败，
+  // 而届时只能靠改代码 + 发版才能恢复（真实事故见 2026-09-28）。
+  const outputHosts = new Set<string>(
+    (env.TOKENHUB_HUNYUAN_IMAGE_OUTPUT_HOSTS?.trim() || "myqcloud.com")
+      .split(",")
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (baseUrl) {
+    try {
+      outputHosts.add(new URL(baseUrl).hostname.toLowerCase());
+    } catch {
+      issues.push("TOKENHUB_HUNYUAN_IMAGE_BASE_URL 不是合法 URL");
+    }
+  }
+  const allowedHosts = [...outputHosts];
+  if (allowedHosts.length === 0) issues.push("TOKENHUB_HUNYUAN_IMAGE_OUTPUT_HOSTS 至少配置一个域名");
+  for (const host of allowedHosts) {
+    if (!/^[a-z0-9.-]+$/u.test(host) || host.startsWith(".") || host.endsWith(".")) {
+      issues.push("TOKENHUB_HUNYUAN_IMAGE_OUTPUT_HOSTS 必须是逗号分隔的域名");
+      break;
+    }
+  }
+
   return {
     enabled: Boolean(apiKey),
     apiKey: apiKey ?? "",
@@ -526,6 +552,7 @@ function parseTokenhubHunyuanImageConfig(
       20 * 1_024 * 1_024,
       issues,
     ),
+    outputHosts: allowedHosts,
   };
 }
 

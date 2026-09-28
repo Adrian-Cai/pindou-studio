@@ -84,6 +84,8 @@ test("readConfig validates the TokenHub Hy-Image-3.5 configuration", () => {
     model: "hy-image-v3.5-preview",
     timeoutMs: 150_000,
     maximumOutputBytes: 10 * 1024 * 1024,
+    // 默认放行腾讯云 COS 全部域名 + 接口域名本身，而不是写死某个桶名与地域
+    outputHosts: ["myqcloud.com", "tokenhub.tencentmaas.com"],
   });
   assert.throws(
     () => readConfig({
@@ -94,6 +96,20 @@ test("readConfig validates the TokenHub Hy-Image-3.5 configuration", () => {
     (error) => error instanceof ConfigError
       && error.issues.includes("TOKENHUB_HUNYUAN_IMAGE_BASE_URL 必须是 https://tokenhub.tencentmaas.com"),
   );
+});
+
+test("readConfig lets TOKENHUB_HUNYUAN_IMAGE_OUTPUT_HOSTS widen the TokenHub output allowlist", () => {
+  const config = readConfig({
+    ...validEnvironment,
+    TOKENHUB_HUNYUAN_IMAGE_API_KEY: "test-tokenhub-api-key",
+    TOKENHUB_HUNYUAN_IMAGE_BASE_URL: "https://tokenhub.tencentmaas.com/",
+    TOKENHUB_HUNYUAN_IMAGE_OUTPUT_HOSTS: "cdn.example.com, myqcloud.com",
+  });
+  assert.deepEqual(config.tokenhubHunyuanImage.outputHosts, [
+    "cdn.example.com",
+    "myqcloud.com",
+    "tokenhub.tencentmaas.com",
+  ]);
 });
 
 test("readConfig validates the ToAPIs image configuration without exposing the key", () => {

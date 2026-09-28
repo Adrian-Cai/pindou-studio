@@ -37,19 +37,51 @@ function outputUrlFromBody(body: JsonObject): string | null {
   return string(image?.url);
 }
 
-function trustedOutputUrl(value: string): URL | null {
+/**
+ * 产物下载地址是否被信任。
+ *
+ * 这里曾经写死 `aigc-output-image-file-*.cos.ap-guangzhou.myqcloud.com` 这条正则，
+ * 于是上游换个桶名或换个地域就是 100% 必现的失败：调用早已成功（httpStatus 200、
+ * 图已经躺在对象存储里），是我们在下载前把地址拒了，9 秒的生成时间全部白等；
+ * 对外还被折叠成 AI_RESULT_INVALID（retryable），界面引导用户重试，而重试永远无效。
+ * 现在改成「域名后缀匹配 + 环境变量可配」，默认放行腾讯云 COS 与接口域名本身。
+ */
+function trustedOutputUrl(value: string, allowedHosts: readonly string[]): URL | null {
   try {
     const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
     return url.protocol === "https:"
       && !url.username
       && !url.password
       && !url.port
-      && /^aigc-output-image-file-[a-z0-9-]+\.cos\.ap-guangzhou\.myqcloud\.com$/iu.test(url.hostname)
+      && allowedHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`))
       ? url
       : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * 输出地址被白名单拒绝时留痕。
+ *
+ * 存在的意义：`AI_RESULT_INVALID` 对外只有单一码，线上无法区分「上游换了 COS 桶/地域」
+ * （表现是 100% 失败、用户重试永远无效）与「单次返回空图/坏图」（真·可重试）。
+ * 只记主机名，不记完整 URL——临时地址带签名 token，整条落日志等于把凭据写进日志。
+ */
+function logOutputUrlRejected(reason: string, value: string): void {
+  let host: string | null = null;
+  try {
+    host = new URL(value).hostname.toLowerCase() || null;
+  } catch {
+    host = null;
+  }
+  console.error(JSON.stringify({
+    event: "ai_provider_output_rejected",
+    provider: "hunyuan-tokenhub-v35",
+    reason,
+    outputHost: host,
+  }));
 }
 
 function retryAfter(value: string | null): number | undefined {
@@ -128,7 +160,8 @@ export class TokenhubHunyuanImageProvider implements AiGenerationProvider {
       }
       throw providerFailure(this.name, "UNKNOWN", code, response.status, "AI_PROVIDER_TASK_FAILED", "TokenHub 未返回生成图片");
     }
-    if (!trustedOutputUrl(outputUrl)) {
+    if (!trustedOutputUrl(outputUrl, config.outputHosts)) {
+      logOutputUrlRejected("submit_untrusted_output_url", outputUrl);
       throw providerFailure(this.name, "INVALID_OUTPUT", codeFromBody(body), response.status, "AI_PROVIDER_OUTPUT_INVALID", "TokenHub 返回了不受信任的图片地址");
     }
 
@@ -146,13 +179,15 @@ export class TokenhubHunyuanImageProvider implements AiGenerationProvider {
 
   public async downloadOutput(outputUrl: string): Promise<Buffer> {
     const config = this.requireConfig();
-    const parsed = trustedOutputUrl(outputUrl);
+    const parsed = trustedOutputUrl(outputUrl, config.outputHosts);
     if (!parsed) {
+      logOutputUrlRejected("download_untrusted_output_url", outputUrl);
       throw providerFailure(this.name, "INVALID_OUTPUT", null, null, "AI_PROVIDER_OUTPUT_INVALID", "TokenHub 输出图片地址不受信任");
     }
 
     const response = await this.fetchWithTimeout(parsed.href, { method: "GET", redirect: "error" });
-    if (response.url && !trustedOutputUrl(response.url)) {
+    if (response.url && !trustedOutputUrl(response.url, config.outputHosts)) {
+      logOutputUrlRejected("download_redirect_untrusted_output_url", response.url);
       throw providerFailure(this.name, "INVALID_OUTPUT", null, response.status, "AI_PROVIDER_OUTPUT_INVALID", "TokenHub 输出图片地址不受信任");
     }
     if (!response.ok) {

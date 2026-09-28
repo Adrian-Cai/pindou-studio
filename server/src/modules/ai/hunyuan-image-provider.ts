@@ -189,7 +189,7 @@ export class HunyuanImageProvider implements AiGenerationProvider {
       }
       chunks.push(buffer);
     }
-    if (size === 0) throw providerFailure("INVALID_OUTPUT", null, response.status, "AI 服务输出图片为空");
+    if (size === 0) throw providerFailure("INVALID_OUTPUT", null, response.status, "AI_PROVIDER_OUTPUT_INVALID", "AI 服务输出图片为空");
     return Buffer.concat(chunks);
   }
 
