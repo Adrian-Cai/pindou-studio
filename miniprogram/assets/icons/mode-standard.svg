@@ -1,9 +1,14 @@
-﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
   <rect width="48" height="48" rx="12" fill="#E6F8EF"/>
-  <circle cx="17" cy="17" r="3.5" fill="#12B466"/>
-  <circle cx="31" cy="17" r="3.5" fill="#12B466"/>
-  <circle cx="17" cy="31" r="3.5" fill="#12B466"/>
-  <circle cx="31" cy="31" r="3.5" fill="#12B466"/>
+  <rect x="10.5" y="10.5" width="27" height="27" rx="6" fill="#FFFFFF" fill-opacity="0.55" stroke="#12B466" stroke-opacity="0.35" stroke-width="1.5"/>
+  <path d="M16 17H32M16 24H32M16 31H32M17 16V32M24 16V32M31 16V32" stroke="#12B466" stroke-opacity="0.28" stroke-width="1.4" stroke-linecap="round"/>
+  <circle cx="17" cy="17" r="2.4" fill="#12B466"/>
+  <circle cx="24" cy="17" r="2.4" fill="#12B466"/>
+  <circle cx="31" cy="17" r="2.4" fill="#12B466"/>
+  <circle cx="17" cy="24" r="2.4" fill="#12B466"/>
   <circle cx="24" cy="24" r="3" fill="#12B466"/>
-  <path d="M17 20.5V27.5M31 20.5V27.5M20.5 17H27.5M20.5 31H27.5" stroke="#12B466" stroke-width="2" stroke-linecap="round" stroke-dasharray="2.5 2.5"/>
+  <circle cx="31" cy="24" r="2.4" fill="#12B466"/>
+  <circle cx="17" cy="31" r="2.4" fill="#12B466"/>
+  <circle cx="24" cy="31" r="2.4" fill="#12B466"/>
+  <circle cx="31" cy="31" r="2.4" fill="#12B466"/>
 </svg>
