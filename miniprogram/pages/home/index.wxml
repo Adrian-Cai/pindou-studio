@@ -25,6 +25,7 @@
     uploadStatus="{{uploadStatus}}"
     uploadProgress="{{uploadProgress}}"
     bind:chooseimage="chooseImage"
+    bind:removeimage="removeImage"
     bind:previewerror="handlePreviewError"
   />
 

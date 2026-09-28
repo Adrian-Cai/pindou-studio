@@ -18,6 +18,10 @@ Component({
       this.triggerEvent('chooseimage')
     },
 
+    handleRemoveImage() {
+      this.triggerEvent('removeimage')
+    },
+
     handlePreviewError() {
       this.triggerEvent('previewerror')
     },

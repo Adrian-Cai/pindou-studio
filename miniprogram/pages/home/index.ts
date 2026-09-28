@@ -215,6 +215,19 @@ Page({
     }
   },
 
+  removeImage() {
+    if (this.data.choosing || this.data.uploadStatus === 'empty') return
+    currentUploadRequestId += 1
+    this.setData({
+      sourceImagePath: '',
+      contentSecurityImagePath: '',
+      securityCheckId: '',
+      uploadStatus: 'empty',
+      uploadProgress: -1,
+      currentStep: 1,
+    })
+  },
+
   handlePreviewError() {
     currentUploadRequestId += 1
     this.setData({

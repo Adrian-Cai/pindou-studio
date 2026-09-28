@@ -16,15 +16,16 @@
 
 .upload-status-card__layout {
   display: flex;
-  align-items: center;
-  gap: 24rpx;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16rpx;
 }
 
 .upload-status-card__preview-wrap {
   position: relative;
   box-sizing: border-box;
-  width: 240rpx;
-  height: 240rpx;
+  width: 100%;
+  height: calc(100vw - 120rpx);
   flex: 0 0 auto;
   overflow: hidden;
   border-radius: 20rpx;
@@ -35,6 +36,48 @@
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.upload-status-card__remove {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  display: flex;
+  width: 88rpx;
+  height: 88rpx;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  line-height: normal;
+  transition: var(--transition-press);
+}
+
+.upload-status-card__remove::after {
+  border: 0;
+}
+
+.upload-status-card__remove:active {
+  opacity: 0.84;
+  transform: scale(0.97);
+}
+
+.upload-status-card__remove-symbol {
+  display: flex;
+  width: 56rpx;
+  height: 56rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(21, 25, 32, 0.48);
+  color: #fff;
+  font-size: 42rpx;
+  font-weight: 300;
+  line-height: 1;
 }
 
 .upload-status-card__preview-placeholder {
@@ -60,6 +103,7 @@
 
 .upload-status-card__preview-mask {
   position: absolute;
+  z-index: 1;
   top: 0;
   right: 0;
   bottom: 0;
@@ -99,24 +143,11 @@
 .upload-status-card__state-content {
   box-sizing: border-box;
   min-width: 0;
-  height: 240rpx;
-  max-height: 240rpx;
-  flex: 1;
+  width: 100%;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.upload-status-card__state-content--rejected,
-.upload-status-card__state-content--error {
   justify-content: flex-start;
-  padding: 20rpx 0;
-}
-
-.upload-status-card__state-content--success {
-  justify-content: flex-start;
-  padding: 12rpx 0;
 }
 
 .upload-status-card__upload-heading,
@@ -209,21 +240,61 @@
   line-height: 36rpx;
 }
 
-.upload-status-card__result-note {
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-  margin-top: auto;
-  margin-bottom: 16rpx;
+.upload-status-card__ticker {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 36rpx;
+  flex: 1;
+  overflow: hidden;
   color: var(--color-text-secondary);
-  font-size: 22rpx;
-  line-height: 32rpx;
+  font-size: 20rpx;
+  line-height: 36rpx;
 }
 
-.upload-status-card__result-note-line {
-  white-space: nowrap;
+.upload-status-card__status-band {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  height: 68rpx;
+  align-items: center;
+  gap: 12rpx;
+  padding: 0 16rpx;
   overflow: hidden;
+  border-radius: 14rpx;
+  background: var(--color-surface-muted);
+}
+
+.upload-status-card__status-band--success {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.upload-status-card__ticker-track {
+  animation: upload-status-ticker 8s ease-in-out infinite;
+}
+
+.upload-status-card__ticker-line {
+  box-sizing: border-box;
+  height: 36rpx;
+  overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.upload-status-card__status-band .upload-status-card__status-icon {
+  flex: 0 0 30rpx;
+  width: 30rpx;
+  height: 30rpx;
+}
+
+.upload-status-card__status-band .upload-status-card__status-icon--spinner {
+  border-width: 3rpx;
+}
+
+.upload-status-card__status-band .upload-status-card__status-icon--success::after {
+  width: 13rpx;
+  height: 8rpx;
+  border-width: 2rpx;
 }
 
 .upload-status-card__progress {
@@ -247,44 +318,6 @@
 .upload-status-card__progress-bar--indeterminate {
   width: 42%;
   animation: upload-status-progress 1s ease-in-out infinite;
-}
-
-.upload-status-card__reselect-action {
-  box-sizing: border-box;
-  display: flex;
-  width: 100%;
-  height: 64rpx;
-  align-items: center;
-  justify-content: center;
-  gap: 10rpx;
-  margin: auto 0 0;
-  padding: 0 20rpx;
-  border: 0;
-  border-radius: 16rpx;
-  background: var(--color-primary);
-  color: #fff;
-  font-size: 25rpx;
-  font-weight: 500;
-  line-height: 64rpx;
-  transition: var(--transition-press);
-}
-
-.upload-status-card__reselect-action::after {
-  border: 0;
-}
-
-.upload-status-card__reselect-icon {
-  width: 28rpx;
-  height: 28rpx;
-}
-
-.upload-status-card__reselect-action:active {
-  opacity: 0.84;
-  transform: scale(0.97);
-}
-
-.upload-status-card__state-content--success .upload-status-card__reselect-action {
-  margin: 0;
 }
 
 .upload-status-card__empty {
@@ -359,6 +392,33 @@
   }
 }
 
+@keyframes upload-status-ticker {
+  0%,
+  19% {
+    transform: translateY(0);
+  }
+
+  24%,
+  43% {
+    transform: translateY(-36rpx);
+  }
+
+  48%,
+  67% {
+    transform: translateY(-72rpx);
+  }
+
+  72%,
+  91% {
+    transform: translateY(-108rpx);
+  }
+
+  96%,
+  100% {
+    transform: translateY(-144rpx);
+  }
+}
+
 @media (max-width: 340px) {
   .upload-status-card__empty {
     width: calc(100vw - 64rpx);
@@ -366,7 +426,7 @@
   }
 
   .upload-status-card__layout {
-    gap: 16rpx;
+    gap: 12rpx;
   }
 
   .upload-status-card__title {
@@ -377,14 +437,13 @@
     font-size: 21rpx;
   }
 
-  .upload-status-card__result-note {
-    font-size: 20rpx;
-    line-height: 28rpx;
+  .upload-status-card__ticker {
+    font-size: 19rpx;
   }
 }
 
 @media (prefers-color-scheme: dark) {
-  .upload-status-card__reselect-action {
-    color: #102017;
+  .upload-status-card__status-band--success {
+    color: #58d895;
   }
 }
