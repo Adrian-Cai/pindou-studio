@@ -7,8 +7,20 @@
  * 调用方：生成页保存后 / AI 生成完成后 navigateTo 到此页（路由 /packages/editor/index）。
  * 关键点：手势与绘制共用一套 touch 回调；用 _canvasRenderVersion 版本号防止异步测量/绘制竞态
  *       （旧回调若版本对不上直接丢弃）；底部控制面板复用公共组件 editor-control-panel。
+ *
+ * setData 纪律：网格 cells 与撤销栈**绝不能**进 data。渲染层只需要尺寸/色数/计数这类小字段，
+ *       cells 走的是 canvas；一旦把整张网格（上千个 {color,colorCode}）塞进 data，
+ *       每次落笔都要往视图层序列化传一份（撤销栈还是它的 N 份快照），实测单笔 2MB，
+ *       微信直接告警「setData 数据传输长度过长」。网格一律留在实例字段里。
  */
-import { getPaletteColors, resolveGenerationMode, type GenerationMode, type PatternCell, type PatternDraft } from '../../models/pattern'
+import {
+  getPaletteColors,
+  resolveGenerationMode,
+  type GenerationMode,
+  type PatternCell,
+  type PatternDraft,
+  type PatternSettings,
+} from '../../models/pattern'
 import { appStore } from '../../store/app-store'
 import {
   cloudSummaryToWorkItem,
@@ -59,6 +71,43 @@ interface ToastState {
   message: string
 }
 
+/**
+ * 视图层需要的图纸元信息 —— 刻意不含 cells。
+ *
+ * WXML 只用到 id / settings（尺寸、色数），网格交给 canvas 画；把 cells 留在 data 里
+ * 等于每笔编辑往渲染层传一整张图纸，是「setData 数据传输过长」的主要来源之一。
+ */
+interface DraftView {
+  id: string
+  settings: PatternSettings
+  generationMode: GenerationMode
+}
+
+/**
+ * 一次编辑的增量记录：只记被改动的格子下标与改动前后的值。
+ *
+ * 早前撤销栈存的是整张网格快照，20 步 × N 格 ≈ 几十 MB 内存，且每笔都要整网格深拷贝一次。
+ * PatternCell 一律整体替换、从不原地改字段，因此 before/after 直接持有引用是安全的。
+ */
+interface EditPatch {
+  indexes: number[]
+  before: PatternCell[]
+  after: PatternCell[]
+}
+
+/** 把完整草稿裁成渲染层需要的元信息（丢掉 cells）。 */
+function toDraftView(draft: PatternDraft): DraftView {
+  return { id: draft.id, settings: draft.settings, generationMode: draft.generationMode }
+}
+
+/** 按 patch 把网格回滚（before）或重放（after）。 */
+function applyPatch(cells: PatternCell[], patch: EditPatch, side: 'before' | 'after'): void {
+  const values = side === 'before' ? patch.before : patch.after
+  patch.indexes.forEach((index, i) => {
+    cells[index] = values[i]
+  })
+}
+
 // 撤销/重做最多保留 20 步，超出丢弃最早的快照
 const EDIT_HISTORY_LIMIT = 20
 
@@ -70,13 +119,10 @@ const SCALE_DEFAULT = 1
 
 Page({
   data: {
-    draft: null as PatternDraft | null,
+    /** 渲染用元信息，不含 cells（见文件头的 setData 纪律） */
+    draft: null as DraftView | null,
     generationMode: 'standard' as GenerationMode,
-    scale: SCALE_DEFAULT,
     scalePercent: 100,
-    /** 拼豆图中心相对于 viewport 中心的平移（CSS px） */
-    translateX: 0,
-    translateY: 0,
     beadCount: 0,
     paletteColors: [] as string[],
     selectedColor: '',
@@ -84,14 +130,20 @@ Page({
     canvasReady: false,
     activeTool: 'pencil',
     saving: false,
-    undoStack: [] as PatternCell[][],
-    redoStack: [] as PatternCell[][],
+    canUndo: false,
+    canRedo: false,
     toast: {
       visible: false,
       message: '',
     } as ToastState,
   },
 
+  /** 编辑中的完整草稿（含 cells）：网格的唯一权威来源，不进 data。 */
+  _draft: null as PatternDraft | null,
+  /** 当前视图变换（缩放/平移）：只喂给 canvas 绘制与坐标换算，不进 data。 */
+  _transform: { scale: SCALE_DEFAULT, translateX: 0, translateY: 0 } as ViewTransform,
+  _undoStack: [] as EditPatch[],
+  _redoStack: [] as EditPatch[],
   _viewportRect: null as CanvasRect | null,
   _fittedImage: null as FittedImageSize | null,
   _patternCanvasNode: null as PatternCanvas | null,
@@ -141,8 +193,13 @@ Page({
     const firstColorCode = firstColor
       ? (draft.cells.find((c) => c.color === firstColor)?.colorCode ?? '')
       : ''
+    // 网格在编辑中会被原地替换格子，这里先浅拷一份数组，避免直接改到 store 里那份对象
+    this._draft = { ...draft, cells: draft.cells.slice() }
+    this._transform = { scale: SCALE_DEFAULT, translateX: 0, translateY: 0 }
+    this._undoStack = []
+    this._redoStack = []
     this.setData({
-      draft,
+      draft: toDraftView(draft),
       generationMode,
       paletteColors,
       selectedColor: firstColor,
@@ -189,15 +246,13 @@ Page({
   selectPaletteColor(event: WechatMiniprogram.CustomEvent<{ color: string }>) {
     if (!this.data.canvasReady) return
     const color = event.detail.color
-    const draft = this.data.draft
-    const colorCode = draft
-      ? (draft.cells.find((c) => c.color === color)?.colorCode ?? '')
-      : ''
+    const cells = this._draft?.cells ?? []
+    const colorCode = cells.find((c) => c.color === color)?.colorCode ?? ''
     this.setData({ selectedColor: color, selectedColorCode: colorCode })
   },
 
   measureViewport(resetView: boolean) {
-    const draft = this.data.draft
+    const draft = this._draft
     if (!draft) return
     // 递增版本号：本次测量开始前的旧异步回调若版本对不上则丢弃，避免竞态覆盖
     const renderVersion = ++this._canvasRenderVersion
@@ -222,20 +277,18 @@ Page({
           draft.settings.height,
         )
         this._fittedImage = fittedImage
-        this.setData(
-          {
-            ...(resetView
-              ? { scale: SCALE_DEFAULT, scalePercent: 100, translateX: 0, translateY: 0 }
-              : {}),
-          },
-          () => this.drawPattern(renderVersion),
-        )
+        if (resetView) {
+          this._transform = { scale: SCALE_DEFAULT, translateX: 0, translateY: 0 }
+          this.setData({ scalePercent: 100 }, () => this.drawPattern(renderVersion))
+          return
+        }
+        this.drawPattern(renderVersion)
       })
   },
 
   drawPattern(renderVersion?: number) {
     const activeRenderVersion = renderVersion ?? this._canvasRenderVersion
-    const draft = this.data.draft
+    const draft = this._draft
     const viewport = this._viewportRect
     const image = this._fittedImage
     if (!draft || !viewport || !image || activeRenderVersion !== this._canvasRenderVersion) return
@@ -251,11 +304,7 @@ Page({
         viewport.width,
         viewport.height,
         image,
-        {
-          scale: this.data.scale,
-          translateX: this.data.translateX,
-          translateY: this.data.translateY,
-        },
+        this._transform,
         draft,
       )
     }
@@ -315,22 +364,11 @@ Page({
    * 将触点屏幕坐标转换为格子坐标
    */
   async touchToGridCell(x: number, y: number): Promise<GridCell | null> {
-    const draft = this.data.draft
+    const draft = this._draft
     const image = this._fittedImage
     if (!draft || !image) return null
     const viewportRect = await this.ensureViewportRect()
-    return screenPointToGridCell(
-      x,
-      y,
-      viewportRect,
-      image,
-      {
-        scale: this.data.scale,
-        translateX: this.data.translateX,
-        translateY: this.data.translateY,
-      },
-      draft,
-    )
+    return screenPointToGridCell(x, y, viewportRect, image, this._transform, draft)
   },
 
   onWorkspaceTouchStart(event: WechatMiniprogram.TouchEvent) {
@@ -400,12 +438,8 @@ Page({
     this._singleTouchActive = false
     this._blockSingleTouchUntilRelease = true
     this._pinchStartDist = this._pinchDist(t0, t1)
-    this._pinchStartScale = this.data.scale
-    this._pinchStartTransform = {
-      scale: this.data.scale,
-      translateX: this.data.translateX,
-      translateY: this.data.translateY,
-    }
+    this._pinchStartScale = this._transform.scale
+    this._pinchStartTransform = { ...this._transform }
     this._pinchStartMidX = (t0.clientX + t1.clientX) / 2 - viewport.left
     this._pinchStartMidY = (t0.clientY + t1.clientY) / 2 - viewport.top
   },
@@ -435,12 +469,17 @@ Page({
       anchored.translateY + midY - this._pinchStartMidY,
       newScale,
     )
-    this.setData({
-      translateX: translation.x,
-      translateY: translation.y,
-      scale: newScale,
-      scalePercent: Math.round(newScale * 100),
-    }, () => this.drawPattern())
+    // 缩放/平移只影响 canvas，不进 data；只在整数百分比真的变了才同步一次（pinch 每帧都发会白烧渲染）
+    this._transform = { scale: newScale, translateX: translation.x, translateY: translation.y }
+    this.drawPattern()
+    this._syncScalePercent(newScale)
+  },
+
+  /** 缩放百分比变化时才推给渲染层（用于面板显示与缩放按钮禁用态）。 */
+  _syncScalePercent(scale: number) {
+    const scalePercent = Math.round(scale * 100)
+    if (scalePercent === this.data.scalePercent) return
+    this.setData({ scalePercent })
   },
 
   _endPinch() {
@@ -474,16 +513,16 @@ Page({
    */
   async finishSingleTouch(clientX: number, clientY: number) {
     if (!this.data.canvasReady) return
-    const draft = this.data.draft
+    const draft = this._draft
     if (!draft) return
     // 只锁参与坐标换算的量：版本号（viewport 几何）+ 网格尺寸。
-    // 不比 draft 引用 —— 每次落笔都会换新对象，比引用会把正常笔画一并拦掉。
+    // 不比 draft 引用 —— 落笔只改 cells 数组内部的元素，draft 引用不变，比引用没有意义。
     const renderVersion = this._canvasRenderVersion
     const gridKey = `${draft.id}:${draft.settings.width}x${draft.settings.height}`
     const cell = await this.touchToGridCell(clientX, clientY).catch(() => null)
     if (!this.data.canvasReady || this._isPinching || this._blockSingleTouchUntilRelease) return
     if (this._canvasRenderVersion !== renderVersion) return
-    const current = this.data.draft
+    const current = this._draft
     if (!current || `${current.id}:${current.settings.width}x${current.settings.height}` !== gridKey) return
     if (cell) this.executeToolAt(cell)
   },
@@ -495,7 +534,7 @@ Page({
       return
     }
     if (tool === 'eyedropper') {
-      const draft = this.data.draft
+      const draft = this._draft
       if (!draft) return
       const pickedCell = draft.cells[cell.index]
       if (!pickedCell || pickedCell.color === 'transparent') return
@@ -512,9 +551,11 @@ Page({
   },
 
   _applyPencilOrEraserTap(cell: GridCell) {
-    const draft = this.data.draft
+    const draft = this._draft
     if (!draft) return
-    const currentCell = draft.cells[cell.index]
+    // 网格原地替换单个格子：不再整张深拷贝，落笔从 O(N) 次对象分配降为 O(1)
+    const cells = draft.cells
+    const currentCell = cells[cell.index]
     if (!currentCell) return
     const tool = this.data.activeTool
     let nextCell: PatternCell
@@ -523,84 +564,90 @@ Page({
       if (currentCell.color === 'transparent') return
       nextCell = { color: 'transparent', colorCode: '' }
     } else {
-      const replacement = draft.cells.find((c) => c.color === this.data.selectedColor)
+      const replacement = cells.find((c) => c.color === this.data.selectedColor)
       if (!replacement || sameCell(currentCell, replacement)) return
-      nextCell = { ...replacement }
+      nextCell = replacement
     }
-    const nextCells = draft.cells.map((c) => ({ ...c }))
-    nextCells[cell.index] = nextCell
-    this.commitEdit(nextCells)
+    cells[cell.index] = nextCell
+    this.commitEdit({ indexes: [cell.index], before: [currentCell], after: [nextCell] })
   },
 
   _applyFill(cell: GridCell) {
-    const draft = this.data.draft
+    const draft = this._draft
     if (!draft) return
-    const currentCell = draft.cells[cell.index]
+    const cells = draft.cells
+    const currentCell = cells[cell.index]
     if (!currentCell) return
-    const replacement = draft.cells.find((c) => c.color === this.data.selectedColor)
+    const replacement = cells.find((c) => c.color === this.data.selectedColor)
     if (!replacement || sameCell(currentCell, replacement)) return
 
-    const nextCells = draft.cells.map((c) => ({ ...c }))
-    // 连通域填充：把与落点颜色相同且相连的区域整片替换成当前色
-    fillConnectedCells(
-      nextCells,
+    // 连通域填充：把与落点颜色相同且相连的区域整片替换成当前色；返回被改的格子与其旧值
+    const replaced = fillConnectedCells(
+      cells,
       cell.index,
       draft.settings.width,
       draft.settings.height,
       currentCell,
       replacement,
     )
-    this.commitEdit(nextCells)
+    if (replaced.length === 0) return
+    this.commitEdit({
+      indexes: replaced.map((item) => item.index),
+      before: replaced.map((item) => item.before),
+      after: replaced.map(() => replacement),
+    })
   },
 
   // ─── 撤销 / 重做 ─────────────────────────────────────────────────────────
-  // 每个栈元素是「整张网格的快照」，编辑前把旧网格压入 undo，redo 复用被覆盖的快照
+  // 栈元素是「增量 patch」而不是整张网格快照：20 步快照 × N 格既是内存黑洞，
+  // 也是当初 setData 一次传 2MB 的元凶（快照曾整份塞在 data 里）。
 
-  commitEdit(cells: PatternCell[]) {
-    const draft = this.data.draft
-    if (!draft) return
-    // 提交一次编辑：把编辑前网格压入 undo 栈（限长），清空 redo 栈
-    const undoStack = [...this.data.undoStack, draft.cells.map((cell) => ({ ...cell }))]
-      .slice(-EDIT_HISTORY_LIMIT)
-    this.applyEditedCells(cells, undoStack, [])
+  commitEdit(patch: EditPatch) {
+    if (!this._draft) return
+    // 提交一次编辑：patch 压入 undo 栈（限长），清空 redo 栈
+    this._undoStack = [...this._undoStack, patch].slice(-EDIT_HISTORY_LIMIT)
+    this._redoStack = []
+    this.syncEditToView()
   },
 
   undoEdit() {
-    const draft = this.data.draft
-    const previous = this.data.undoStack[this.data.undoStack.length - 1]
-    if (!draft || !previous) return
-    // 撤销：弹出 undo 栈顶作为当前网格，被覆盖的当前网格压入 redo 栈
-    const undoStack = this.data.undoStack.slice(0, -1)
-    const redoStack = [...this.data.redoStack, draft.cells.map((cell) => ({ ...cell }))]
-      .slice(-EDIT_HISTORY_LIMIT)
-    this.applyEditedCells(previous, undoStack, redoStack)
+    const draft = this._draft
+    const patch = this._undoStack[this._undoStack.length - 1]
+    if (!draft || !patch) return
+    // 撤销：把 patch 记录的旧值写回，patch 本身转压 redo 栈
+    applyPatch(draft.cells, patch, 'before')
+    this._undoStack = this._undoStack.slice(0, -1)
+    this._redoStack = [...this._redoStack, patch].slice(-EDIT_HISTORY_LIMIT)
+    this.syncEditToView()
   },
 
   redoEdit() {
-    const draft = this.data.draft
-    const next = this.data.redoStack[this.data.redoStack.length - 1]
-    if (!draft || !next) return
-    // 重做：弹出 redo 栈顶作为当前网格，当前网格压回 undo 栈
-    const undoStack = [...this.data.undoStack, draft.cells.map((cell) => ({ ...cell }))]
-      .slice(-EDIT_HISTORY_LIMIT)
-    const redoStack = this.data.redoStack.slice(0, -1)
-    this.applyEditedCells(next, undoStack, redoStack)
+    const draft = this._draft
+    const patch = this._redoStack[this._redoStack.length - 1]
+    if (!draft || !patch) return
+    // 重做：把 patch 记录的新值写回，patch 转压 undo 栈
+    applyPatch(draft.cells, patch, 'after')
+    this._undoStack = [...this._undoStack, patch].slice(-EDIT_HISTORY_LIMIT)
+    this._redoStack = this._redoStack.slice(0, -1)
+    this.syncEditToView()
   },
 
-  applyEditedCells(cells: PatternCell[], undoStack: PatternCell[][], redoStack: PatternCell[][]) {
-    const draft = this.data.draft
+  /**
+   * 网格变更后的统一收尾：同步 store，只把渲染真正需要的极小字段推给视图层，再重绘。
+   *
+   * 这里绝不能把 cells 或撤销栈塞进 setData —— 网格上千格、撤销栈曾是它的 N 份快照，
+   * 一笔画下去就是 MB 级跨线程传输，微信会直接告警「数据传输长度过长」。
+   */
+  syncEditToView() {
+    const draft = this._draft
     if (!draft) return
-    const updatedDraft = { ...draft, cells: cells.map((cell) => ({ ...cell })) }
-    appStore.setCurrentDraft(updatedDraft)
-    this.setData(
-      {
-        draft: updatedDraft,
-        undoStack,
-        redoStack,
-        beadCount: cells.filter((cell) => cell.color !== 'transparent').length,
-      },
-      () => this.drawPattern(),
-    )
+    appStore.setCurrentDraft(draft)
+    this.setData({
+      beadCount: draft.cells.filter((cell) => cell.color !== 'transparent').length,
+      canUndo: this._undoStack.length > 0,
+      canRedo: this._redoStack.length > 0,
+    })
+    this.drawPattern()
   },
 
   // ─── 缩放（按钮） ─────────────────────────────────────────────────────────
@@ -608,14 +655,14 @@ Page({
   zoomIn() {
     if (!this.data.canvasReady) return
     this._setScaleAtViewportCenter(
-      Math.min(SCALE_MAX, Number((this.data.scale + SCALE_STEP).toFixed(1))),
+      Math.min(SCALE_MAX, Number((this._transform.scale + SCALE_STEP).toFixed(1))),
     )
   },
 
   zoomOut() {
     if (!this.data.canvasReady) return
     this._setScaleAtViewportCenter(
-      Math.max(SCALE_MIN, Number((this.data.scale - SCALE_STEP).toFixed(1))),
+      Math.max(SCALE_MIN, Number((this._transform.scale - SCALE_STEP).toFixed(1))),
     )
   },
 
@@ -623,11 +670,7 @@ Page({
     const viewport = this._viewportRect
     if (!viewport) return
     const anchored = scaleAroundViewportPoint(
-      {
-        scale: this.data.scale,
-        translateX: this.data.translateX,
-        translateY: this.data.translateY,
-      },
+      this._transform,
       nextScale,
       viewport.width / 2,
       viewport.height / 2,
@@ -639,15 +682,9 @@ Page({
       anchored.translateY,
       nextScale,
     )
-    this.setData(
-      {
-        scale: nextScale,
-        scalePercent: Math.round(nextScale * 100),
-        translateX: translation.x,
-        translateY: translation.y,
-      },
-      () => this.drawPattern(),
-    )
+    this._transform = { scale: nextScale, translateX: translation.x, translateY: translation.y }
+    this.drawPattern()
+    this._syncScalePercent(nextScale)
   },
 
   // ─── Toast ────────────────────────────────────────────────────────────────
@@ -675,7 +712,7 @@ Page({
 
   async saveAndView() {
     if (this.data.saving || !this.data.canvasReady) return
-    const draft = this.data.draft
+    const draft = this._draft
     if (!draft) return
     this.setData({ saving: true })
     wx.showLoading({ title: '正在保存', mask: true })

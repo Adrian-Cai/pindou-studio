@@ -248,6 +248,12 @@ export function screenPointToGridCell(
   return { row, column, index: row * draft.settings.width + column }
 }
 
+/** 一次填充中被替换掉的格子：下标 + 替换前的颜色，供撤销栈做增量回滚。 */
+export interface CellReplacement {
+  index: number
+  before: PatternCell
+}
+
 /**
  * 油漆桶/连通域填充：从 startIndex 出发，把 4 邻接且与 target 同色的整片区域替换为 replacement。
  * 原地修改 cells；用 visited 集合防止回环死循环。
@@ -255,7 +261,8 @@ export function screenPointToGridCell(
  * @param startIndex 起点格子索引
  * @param width/height 网格尺寸
  * @param target 被填充的目标色（匹配条件）
- * @param replacement 替换成的新色
+ * @param replacement 替换成的新色（直接放入数组，PatternCell 一律整体替换、不原地改字段）
+ * @returns 被替换的格子（下标 + 旧值），供调用方生成撤销用的增量记录；一格都没换到时为空数组
  */
 export function fillConnectedCells(
   cells: PatternCell[],
@@ -264,7 +271,8 @@ export function fillConnectedCells(
   height: number,
   target: PatternCell,
   replacement: PatternCell,
-): void {
+): CellReplacement[] {
+  const replaced: CellReplacement[] = []
   const queue = [startIndex]
   const visited = new Set<number>()
   while (queue.length > 0) {
@@ -273,7 +281,8 @@ export function fillConnectedCells(
     visited.add(index)
     const cell = cells[index]
     if (!cell || !sameCell(cell, target)) continue
-    cells[index] = { ...replacement }
+    replaced.push({ index, before: cell })
+    cells[index] = replacement
     // 把上下左右 4 邻接格子入队，下一轮继续扩散
     const column = index % width
     const row = Math.floor(index / width)
@@ -282,6 +291,7 @@ export function fillConnectedCells(
     if (row > 0) queue.push(index - width)
     if (row + 1 < height) queue.push(index + width)
   }
+  return replaced
 }
 
 /** 判断两格是否为同一颜色（同时比 color 与 colorCode）。 */

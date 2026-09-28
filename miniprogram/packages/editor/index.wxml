@@ -39,12 +39,12 @@
       <!-- ── 底部控制面板（与 AI 生成页共用同一组件）── -->
       <editor-control-panel
         ready="{{canvasReady}}"
-        undoable="{{undoStack.length > 0}}"
-        redoable="{{redoStack.length > 0}}"
+        undoable="{{canUndo}}"
+        redoable="{{canRedo}}"
         active-tool="{{activeTool}}"
         scale-percent="{{scalePercent}}"
-        can-zoom-out="{{scale > 1}}"
-        can-zoom-in="{{scale < 3}}"
+        can-zoom-out="{{scalePercent > 100}}"
+        can-zoom-in="{{scalePercent < 300}}"
         width="{{draft.settings.width}}"
         height="{{draft.settings.height}}"
         color-limit="{{draft.settings.colorLimit}}"
