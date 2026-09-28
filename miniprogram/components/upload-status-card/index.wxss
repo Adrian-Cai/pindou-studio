@@ -46,8 +46,8 @@
   display: flex;
   width: 88rpx;
   height: 88rpx;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-end;
   margin: 0;
   padding: 0;
   border: 0;
