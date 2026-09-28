@@ -65,7 +65,7 @@
       <view
         wx:for="{{generationModes}}"
         wx:key="id"
-        class="mode-card {{generationMode === item.id ? 'mode-card--active mode-card--active-' + item.id : ''}} {{!item.enabled ? 'mode-card--disabled' : ''}}"
+        class="mode-card mode-card--{{item.id}} {{generationMode === item.id ? 'mode-card--active mode-card--active-' + item.id : ''}} {{!item.enabled ? 'mode-card--disabled' : ''}}"
         data-mode="{{item.id}}"
         bindtap="selectMode"
         role="radio"
@@ -95,7 +95,7 @@
 
         <!-- 文字 -->
         <view class="mode-card__content">
-          <view class="mode-card__title mode-card__title--{{generationMode === item.id ? item.id : ''}}">{{item.title}}</view>
+          <view class="mode-card__title mode-card__title--{{item.id}}">{{item.title}}</view>
         </view>
       </view>
     </view>

@@ -178,11 +178,11 @@ page {
 
 .generation-tips-trigger {
   position: absolute;
-  top: -30rpx;
-  left: 0;
+  top: -6rpx;
+  left: -8rpx;
   display: flex;
-  width: 88rpx;
-  height: 88rpx;
+  width: 40rpx;
+  height: 40rpx;
   flex-shrink: 0;
   align-items: center;
   justify-content: flex-start;
@@ -289,21 +289,21 @@ page {
   transition: var(--transition-press);
 }
 
-/* 标准模式 — 选中态 */
-.mode-card--active-standard {
-  background: var(--color-primary-soft);
-  box-shadow: 0 0 0 2rpx var(--color-primary), var(--shadow-card);
+/* 两种模式常驻对应浅色底，选中态只叠加同色强调 */
+.mode-card--standard {
+  background: var(--color-info-soft);
 }
 
-/* AI 模式 — 默认（未选中）浅紫边框 */
-.mode-card:not(.mode-card--active):last-child {
+.mode-card--ai {
   background: var(--color-ai-soft);
-  box-shadow: 0 0 0 2rpx var(--color-ai-border), var(--shadow-card);
+}
+
+.mode-card--active-standard {
+  box-shadow: 0 0 0 2rpx var(--color-info), var(--shadow-card);
 }
 
 /* AI 模式 — 选中态 */
 .mode-card--active-ai {
-  background: var(--color-ai-soft);
   box-shadow: 0 0 0 2rpx var(--color-ai), var(--shadow-card);
 }
 
@@ -351,7 +351,7 @@ page {
 }
 
 .mode-card__title--standard {
-  color: var(--color-primary);
+  color: var(--color-info);
 }
 
 .mode-card__title--ai {
@@ -371,18 +371,13 @@ page {
 }
 
 .mode-card__badge--ai {
-  background: var(--color-ai-soft);
-  color: var(--color-ai-text);
+  background: var(--color-ai);
+  color: #fff;
 }
 
 .mode-card__badge--disabled {
   background: var(--color-disabled);
   color: var(--color-text-secondary);
-}
-
-.mode-card--active-ai .mode-card__badge--ai {
-  background: var(--color-ai);
-  color: #fff;
 }
 
 /* 右上角选中标记 */
@@ -402,7 +397,7 @@ page {
 }
 
 .mode-card__check--standard {
-  background: var(--color-primary);
+  background: var(--color-info);
   color: #fff;
 }
 
