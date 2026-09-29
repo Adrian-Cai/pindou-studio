@@ -1,7 +1,7 @@
 import type { QueryResultRow } from "pg";
 import { AppError, notFound } from "../../shared/app-error";
 import { decryptOpenid } from "../../shared/identity";
-import type { OrderItem, OrderStatus, PaymentPackage, PendingOrderReconcileSummary } from "./payment-service";
+import type { OrderItem, OrderStatus, PaymentPackage, PendingOrderReconcileSummary } from "./payment-service-contracts";
 import type { QueriedVirtualOrder, VirtualOrderState } from "./virtual-pay-client";
 export interface PackageRow extends QueryResultRow {
   readonly id: string;

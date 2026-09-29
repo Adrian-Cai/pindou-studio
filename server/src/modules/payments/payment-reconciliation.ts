@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 import { AppError } from "../../shared/app-error";
 import { decryptOpenid } from "../../shared/identity";
-import type { PendingOrderReconcileOptions, PendingOrderReconcileSummary } from "./payment-service";
+import type { PendingOrderReconcileOptions, PendingOrderReconcileSummary } from "./payment-service-contracts";
 import {
   decryptOpenidOrEmpty,
   emptyReconcileCounter,

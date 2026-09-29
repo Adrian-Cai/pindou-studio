@@ -14,7 +14,7 @@ import type {
   RefundNotification,
   VirtualPayGateway,
 } from "./virtual-pay-client";
-import type { RefundOutcome } from "./payment-service";
+import type { RefundOutcome } from "./payment-service-contracts";
 import type { OrderRow, PaymentAttemptRow } from "./payment-service-model";
 import { decryptOpenidOrEmpty, queriedPaymentState } from "./payment-service-model";
 
