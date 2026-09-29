@@ -64,12 +64,6 @@ const AI_STYLE_OPTIONS: { id: AiGenerationStyle; label: string; icon: string; ex
   },
 ]
 
-const GENERATION_STEPS = [
-  { id: 1, label: '上传图片' },
-  { id: 2, label: '选择模式' },
-  { id: 3, label: '生成图纸' },
-]
-
 Page({
   data: {
     sourceImagePath: '',
@@ -89,8 +83,6 @@ Page({
     uploadStatus: 'empty' as UploadStatus,
     /** -1 表示上传 SDK 尚未提供真实进度 */
     uploadProgress: -1,
-    currentStep: 1,
-    generationSteps: GENERATION_STEPS,
     /** 当前选中的生成方式 */
     generationMode: 'standard' as GenerationMode,
     /** AI 风格默认使用 Q 版；任务创建后由任务快照保存。 */
@@ -114,7 +106,6 @@ Page({
     this.setData({
       generating: false,
       submitting: false,
-      currentStep: this.data.uploadStatus === 'success' ? 2 : 1,
     })
   },
 
@@ -199,7 +190,6 @@ Page({
       securityCheckId: '',
       uploadStatus: 'uploading',
       uploadProgress: -1,
-      currentStep: 1,
     })
 
     try {
@@ -222,7 +212,6 @@ Page({
       this.setData({
         uploadStatus: 'success',
         securityCheckId: securityCheck.checkId,
-        currentStep: 2,
       })
     } catch (error) {
       if (requestId !== currentUploadRequestId) return
@@ -231,7 +220,6 @@ Page({
       this.setData({
         uploadStatus: rejected ? 'rejected' : 'error',
         uploadProgress: -1,
-        currentStep: 1,
       })
     }
   },
@@ -245,7 +233,6 @@ Page({
       securityCheckId: '',
       uploadStatus: 'empty',
       uploadProgress: -1,
-      currentStep: 1,
     })
   },
 
@@ -257,7 +244,6 @@ Page({
       securityCheckId: '',
       uploadStatus: 'error',
       uploadProgress: -1,
-      currentStep: 1,
     })
   },
 
@@ -295,7 +281,7 @@ Page({
     }
 
     // 标准模式：保持独立生成，不清除后台正在运行的 AI 任务。
-    this.setData({ generating: true, currentStep: 3 })
+    this.setData({ generating: true })
     wx.showLoading({ title: '正在生成', mask: true })
 
     try {
@@ -305,7 +291,6 @@ Page({
     } catch (error) {
       console.error('生成拼豆图失败', error)
       wx.showToast({ title: '生成失败，请重试', icon: 'none' })
-      this.setData({ currentStep: 2 })
     } finally {
       wx.hideLoading()
       this.setData({ generating: false })

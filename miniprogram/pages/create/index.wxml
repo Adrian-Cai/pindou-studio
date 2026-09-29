@@ -1,20 +1,6 @@
 <page-layout title="小露拼豆" back show-main-nav selected-tab="{{0}}">
   <view class="home-page">
-    <view wx:if="{{creationSource === 'image'}}" class="hero">
-      <view class="hero-title">上传图片，生成你的拼豆图</view>
-      <view class="steps" role="list" aria-label="生成流程">
-        <block wx:for="{{generationSteps}}" wx:key="id">
-          <view class="step {{currentStep === item.id ? 'step--active' : ''}} {{currentStep > item.id ? 'step--complete' : ''}}" role="listitem">
-            <view class="step-number"><image wx:if="{{currentStep > item.id}}" src="/assets/icons/iconsax/check.svg" mode="aspectFit" /><text wx:else>{{item.id}}</text></view>
-            <text>{{item.label}}</text>
-          </view>
-          <view wx:if="{{index < generationSteps.length - 1}}" class="step-line" aria-hidden="true"></view>
-        </block>
-      </view>
-    </view>
-
     <view wx:if="{{creationSource === 'image'}}" class="home-form-section">
-      <view class="home-form-section__heading">从一张图片开始</view>
       <upload-status-card
         sourceImagePath="{{sourceImagePath}}"
         choosing="{{choosing}}"
