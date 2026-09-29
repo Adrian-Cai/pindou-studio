@@ -5,6 +5,7 @@ export type AppEnvironment = "development" | "test" | "production";
 export type DatabaseSslMode = "disable" | "require" | "verify-full";
 
 export const HUNYUAN_IMAGE_MODEL = "HY-Image-v3.0-I2I-ToB-v1.0.1" as const;
+export const HUNYUAN_TEXT_IMAGE_MODEL = "HY-Image-3.0-Plus-4090-Tob-v1.0" as const;
 export const TOKENHUB_HUNYUAN_IMAGE_MODEL = "hy-image-v3.5-preview" as const;
 
 export interface DatabaseConfig {

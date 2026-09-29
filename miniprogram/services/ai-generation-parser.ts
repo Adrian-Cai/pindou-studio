@@ -126,7 +126,7 @@ function parseStatus(value: unknown): AiGeneration['status'] | undefined {
 }
 
 function parseStyle(value: unknown): AiGeneration['style'] | undefined {
-  return value === 'natural' || value === 'cartoon' || value === 'minimal' ? value : undefined
+  return value === 'kawaii' || value === 'natural' || value === 'cartoon' || value === 'minimal' ? value : undefined
 }
 
 function parseDetailLevel(value: unknown): AiGeneration['detailLevel'] | undefined {

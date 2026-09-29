@@ -1,167 +1,30 @@
 <page-layout title="小露拼豆" home show-main-nav selected-tab="{{0}}">
-<view class="home-page">
+  <view class="home-page">
+    <image class="home-hero" src="/assets/samples/home-hero-banner.jpg" mode="widthFix" aria-label="小露拼豆：让脑海里的灵感，变成拼豆作品" />
 
-  <!-- ① Hero 主视觉 -->
-  <view class="hero">
-    <view class="hero-title">上传图片，生成你的拼豆图</view>
-    <view class="steps" role="list" aria-label="生成流程">
-      <block wx:for="{{generationSteps}}" wx:key="id">
-        <view
-          class="step {{currentStep === item.id ? 'step--active' : ''}} {{currentStep > item.id ? 'step--complete' : ''}}"
-          role="listitem"
-        >
-          <view class="step-number"><image wx:if="{{currentStep > item.id}}" src="/assets/icons/iconsax/check.svg" mode="aspectFit"/><text wx:else>{{item.id}}</text></view>
-          <text>{{item.label}}</text>
-        </view>
-        <view wx:if="{{index < generationSteps.length - 1}}" class="step-line" aria-hidden="true"></view>
-      </block>
+    <view class="home-entry-grid">
+      <view class="home-entry-card home-entry-card--image" data-source="image" bindtap="openCreation" role="button" aria-label="从图片开始，上传喜欢的图片">
+        <view class="home-entry-card__icon"><image src="/assets/icons/home-reference.svg" mode="aspectFit" aria-hidden="true" /></view>
+        <view class="home-entry-card__title">从图片开始</view>
+        <view class="home-entry-card__desc">上传喜欢的图片</view>
+        <view class="home-entry-card__arrow" aria-hidden="true"></view>
+      </view>
+      <view class="home-entry-card home-entry-card--text" data-source="text" bindtap="openCreation" role="button" aria-label="从想法开始，写下想做的画面">
+        <view class="home-entry-card__icon"><image src="/assets/icons/home-idea.svg" mode="aspectFit" aria-hidden="true" /></view>
+        <view class="home-entry-card__title">从想法开始</view>
+        <view class="home-entry-card__desc">写下想做的画面</view>
+        <view class="home-entry-card__arrow" aria-hidden="true"></view>
+      </view>
     </view>
+
+    <view class="home-process-card">
+      <view class="home-process-step"><view class="home-process-step__icon"><image src="/assets/samples/home-process-inspiration.png" mode="aspectFit" aria-hidden="true" /></view><text>灵感</text></view>
+      <image class="home-process-arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      <view class="home-process-step"><view class="home-process-step__icon"><image src="/assets/samples/home-process-reference.png" mode="aspectFit" aria-hidden="true" /></view><text>参考图</text></view>
+      <image class="home-process-arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      <view class="home-process-step"><view class="home-process-step__icon"><image src="/assets/samples/home-process-pattern.png" mode="aspectFit" aria-hidden="true" /></view><text>拼豆图</text></view>
+    </view>
+
+    <button class="button-primary home-entry-submit" data-source="image" bindtap="openCreation">开始创作 <view class="home-entry-submit__arrow" aria-hidden="true"></view></button>
   </view>
-
-  <!-- ② 统一上传状态卡 -->
-  <upload-status-card
-    sourceImagePath="{{sourceImagePath}}"
-    choosing="{{choosing}}"
-    uploadStatus="{{uploadStatus}}"
-    uploadProgress="{{uploadProgress}}"
-    bind:chooseimage="chooseImage"
-    bind:removeimage="removeImage"
-    bind:previewerror="handlePreviewError"
-  />
-
-  <!-- ③ 生成方式 -->
-  <view class="section-block">
-    <view class="section-label">
-      <text>生成方式</text>
-      <view class="generation-tips-trigger-slot">
-        <button
-          class="generation-tips-trigger {{generationTipsOpen ? 'generation-tips-trigger--open' : ''}}"
-          bindtap="toggleGenerationTips"
-          aria-label="{{generationTipsOpen ? '收起生成方式说明' : '查看生成方式说明'}}"
-          aria-expanded="{{generationTipsOpen}}"
-          aria-controls="generation-tips"
-        ><view class="generation-tips-trigger__icon">?</view></button>
-      </view>
-    </view>
-
-    <view
-      wx:if="{{generationTipsOpen}}"
-      id="generation-tips"
-      class="generation-tips"
-      role="tooltip"
-    >
-      <view
-        wx:for="{{generationModes}}"
-        wx:key="id"
-        class="generation-tip"
-      >
-        <text class="generation-tip__label generation-tip__label--{{item.id}}">{{item.tipTitle}}:</text>
-        <view class="generation-tip__content">
-          <text wx:for="{{item.tips}}" wx:key="*this" class="generation-tip__line">{{item}}</text>
-        </view>
-      </view>
-    </view>
-
-    <view class="mode-cards" role="radiogroup" aria-label="生成方式">
-      <view
-        wx:for="{{generationModes}}"
-        wx:key="id"
-        class="mode-card mode-card--{{item.id}} {{generationMode === item.id ? 'mode-card--active mode-card--active-' + item.id : ''}} {{!item.enabled ? 'mode-card--disabled' : ''}}"
-        data-mode="{{item.id}}"
-        bindtap="selectMode"
-        role="radio"
-        aria-checked="{{generationMode === item.id}}"
-        aria-disabled="{{!item.enabled}}"
-        aria-label="{{item.enabled ? item.title : item.title + '，暂未开放'}}"
-      >
-        <!-- 右上角 badge -->
-        <view
-          wx:if="{{item.badge && item.enabled}}"
-          class="mode-card__badge mode-card__badge--{{item.id}}"
-        >{{item.badge}}</view>
-
-        <view
-          wx:if="{{!item.enabled}}"
-          class="mode-card__badge mode-card__badge--disabled"
-        >暂未开放</view>
-
-        <!-- 右上角选中对勾 -->
-        <view
-          wx:if="{{generationMode === item.id}}"
-          class="mode-card__check mode-card__check--{{item.id}}"
-        ><image src="/assets/icons/iconsax/check.svg" mode="aspectFit" /></view>
-
-        <!-- 图标 -->
-        <image class="mode-card__icon" src="{{item.icon}}" mode="aspectFit" />
-
-        <!-- 文字 -->
-        <view class="mode-card__content">
-          <view class="mode-card__title mode-card__title--{{item.id}}">{{item.title}}</view>
-        </view>
-      </view>
-    </view>
-  </view>
-
-  <!-- ④ 标准模式效果 -->
-  <view class="section-block">
-    <view class="section-label">标准模式效果</view>
-    <view class="standard-example">
-      <view class="standard-example__media">
-        <image
-          class="standard-example__image"
-          src="/assets/samples/home-standard-example.jpg"
-          mode="aspectFit"
-          aria-label="女性原图转换为标准拼豆网格的前后对照"
-        />
-        <view class="standard-example__labels">
-          <text class="standard-example__label">原图</text>
-          <text class="standard-example__label">标准拼豆图</text>
-        </view>
-      </view>
-      <view class="standard-example__description">图片直接转换为拼豆网格，保留原图构图</view>
-    </view>
-  </view>
-
-  <!-- ⑤ 尺寸选择 & 颜色数量 -->
-  <view class="setting-options">
-    <view class="option-group">
-      <view class="section-label">尺寸选择</view>
-      <view class="option-row option-row--sizes">
-        <button
-          wx:for="{{sizeOptions}}"
-          wx:key="*this"
-          class="option-button {{settings.width === item ? 'option-button--active' : ''}}"
-          data-value="{{item}}"
-          bindtap="selectSize"
-        >{{item}}×{{item}}</button>
-      </view>
-    </view>
-
-    <view class="option-group option-group--colors">
-      <view class="section-label">颜色数量</view>
-      <view class="option-row">
-        <button
-          wx:for="{{colorOptions}}"
-          wx:key="*this"
-          class="option-button {{settings.colorLimit === item ? 'option-button--active' : ''}}"
-          data-value="{{item}}"
-          bindtap="selectColor"
-        >{{item}}色</button>
-      </view>
-    </view>
-  </view>
-
-  <!-- ⑥ 开始生成 -->
-  <button
-    class="button-primary home__submit"
-    style="width: 100%;"
-    bindtap="startCreating"
-    disabled="{{generating || submitting || uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'rejected' || uploadStatus === 'error'}}"
-    loading="{{generating || submitting}}"
-    aria-label="{{generating ? '正在生成' : (submitting ? '正在准备生成' : '开始生成')}}"
-  >
-    {{generating ? '正在生成' : (submitting ? '正在准备生成' : '开始生成')}}
-  </button>
-
-</view>
 </page-layout>

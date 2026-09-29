@@ -13,6 +13,7 @@
 
 /** 生成模式：standard=标准图片转图纸；ai=AI 生成。 */
 export type GenerationMode = 'standard' | 'ai'
+export type CreationSource = 'image' | 'text'
 
 /** 图纸尺寸与色数等设置。 */
 export interface PatternSettings {
@@ -49,6 +50,8 @@ export interface PatternDraft {
   contentSecurityCheckId?: string
   /** 与内容安全检查对应的已压缩输入图片路径。 */
   contentSecurityImagePath?: string
+  creationSource?: CreationSource
+  sourcePrompt?: string
   createdAt: number
   generationMode: GenerationMode
   settings: PatternSettings
@@ -153,6 +156,8 @@ export interface WorkItem {
   title: string
   coverPath: string
   generationMode: GenerationMode
+  creationSource?: CreationSource
+  sourcePrompt?: string
   updatedAt: number
   beadCount: number
   colorCount: number

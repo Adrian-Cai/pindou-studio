@@ -19,7 +19,7 @@
 | 3 | 收藏 | `PATCH /api/works/:id/favorite`、`GET /api/favorites` |
 | 4 | 额度与下载记录 | `GET /api/quota/me`、`GET /api/downloads`、`POST /api/downloads` |
 | 5 | 套餐与支付 | `GET /api/packages`、`GET /api/orders`、`POST /api/payments/create`、`POST /api/payments/notify` |
-| 6 | AI 精致生成 | `POST /api/ai/generations`、`GET /api/ai/generations/:id` |
+| 6 | AI 精致生成与文生图 | `POST /api/ai/generations`、`GET /api/ai/generations/:id`、`POST /api/ai/text-generations`、`GET /api/ai/text-generations/:id`、`GET /api/ai/text-generations?active=true` |
 | 7 | 内容安全审核 | `POST /api/content-security/text`、`POST /api/content-security/media`、`GET/POST /api/wechat/content-security/callback` |
 | 8 | 隐私设置、法律文档和注销 | `GET/PATCH /api/users/me/privacy`、`GET /api/legal-documents/:key`、`DELETE /api/users/me` |
 
@@ -827,7 +827,7 @@ Content-Type: application/json
 
 服务端固定提示词模板并调用腾讯混元 Hy-Image-3.0 接口，不接受客户端 Provider、模型、价格、额度或任意提示词。创建接口先提交 `queued` 任务并返回，Provider 调用不在数据库事务或任务行锁内执行；服务端随后在后台调用同步 Provider，客户端通过 `GET /api/ai/generations/:id` 继续轮询项目任务状态。
 
-当前服务端提示词模板版本为 `v2`。Prompt 根据 `style`、`detailLevel` 和 `backgroundMode` 由服务端组合生成，客户端不能传入任意 Prompt；AI 输出是交给 Standard Pattern Engine 的中间图，不是最终拼豆网格。
+当前服务端提示词模板版本为 `v3`。`style` 支持 `kawaii`、`natural`、`cartoon`、`minimal`；Prompt 根据 `style`、`detailLevel` 和 `backgroundMode` 由服务端组合生成，客户端不能传入任意 Prompt；AI 输出是交给 Standard Pattern Engine 的中间图，不是最终拼豆网格。
 
 任务状态：
 
@@ -843,7 +843,7 @@ Content-Type: application/json
 
 小程序端接入约束：
 
-- 默认提交 `style=natural`、`detailLevel=medium`、`backgroundMode=simplify`，不提交 Prompt、Provider、Model、价格或额度字段。
+- 图片创作默认提交 `style=kawaii`、`detailLevel=medium`、`backgroundMode=simplify`；历史客户端的 `natural` 任务继续兼容。不提交 Prompt、Provider、Model、价格或额度字段。
 - 输入图片必须先以 `type=ai_input` 上传成功，再创建 AI 任务；上传失败时不创建任务。
 - 首页已经检测过同一张图片时，`type=ai_input` 上传应携带 `securityCheckId`；服务端校验用户、有效期和图片字节一致后复用检测结果，不再次调用微信图片检测。
 - 客户端使用本地保存的 `Idempotency-Key` 重试创建请求；已有任务 ID 时只查询原任务，不重新创建。

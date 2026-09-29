@@ -17,7 +17,7 @@ import {
   type PublicErrorAction,
   type PublicErrorCategory,
 } from './http-client'
-import { ensureLoggedInSession } from './session-service'
+import { requireLoggedInSession } from './session-service'
 import { parseAiGeneration } from './ai-generation-parser'
 
 /** AI 生成任务的生命周期状态；succeeded / failed / canceled 为终态。 */
@@ -29,7 +29,7 @@ export type AiGenerationStatus =
   | 'canceled'
 
 /** 生成风格：自然 / 卡通 / 极简。 */
-export type AiGenerationStyle = 'natural' | 'cartoon' | 'minimal'
+export type AiGenerationStyle = 'kawaii' | 'natural' | 'cartoon' | 'minimal'
 /** 细节丰富程度。 */
 export type AiGenerationDetailLevel = 'low' | 'medium' | 'high'
 /** 背景处理方式：保留 / 简化 / 去除。 */
@@ -104,7 +104,7 @@ export async function uploadAiInput(
 ): Promise<AiInputFile> {
   if (!filePath.trim()) throw new ApiError('图片路径无效', { code: 'IMAGE_DECODE_ERROR' })
   try {
-    const session = await ensureLoggedInSession()
+    const session = requireLoggedInSession()
     const response = await apiUploadFile<unknown>({
       path: '/api/files/upload',
       filePath,
@@ -127,7 +127,7 @@ export async function createAiGeneration(
 ): Promise<AiGeneration> {
   assertCreateInput(input)
   try {
-    const session = await ensureLoggedInSession()
+    const session = requireLoggedInSession()
     const response = await apiRequest<unknown>({
       path: '/api/ai/generations',
       method: 'POST',
@@ -156,7 +156,7 @@ export async function createAiGeneration(
 export async function getAiGeneration(jobId: string): Promise<AiGeneration> {
   assertJobId(jobId)
   try {
-    const session = await ensureLoggedInSession()
+    const session = requireLoggedInSession()
     const response = await apiRequest<unknown>({
       path: `/api/ai/generations/${encodeURIComponent(jobId)}`,
       token: session.token,
@@ -234,6 +234,8 @@ export function aiGenerationErrorMessage(error: unknown): string {
   const rawCode = failure?.code ?? errorCode(error)
   const code = rawCode ? normalizeFailureCode(rawCode) : null
   switch (code) {
+    case 'LOGIN_REQUIRED':
+      return '请先登录后使用 AI 功能'
     case 'USER_AI_QUOTA_EXHAUSTED':
       return 'AI 生成次数不足，请购买次数'
     case 'AI_SERVICE_UNAVAILABLE':
@@ -355,7 +357,7 @@ function assertJobId(jobId: string): void {
 }
 
 function isStyle(value: unknown): value is AiGenerationStyle {
-  return value === 'natural' || value === 'cartoon' || value === 'minimal'
+  return value === 'kawaii' || value === 'natural' || value === 'cartoon' || value === 'minimal'
 }
 
 function isDetailLevel(value: unknown): value is AiGenerationDetailLevel {
@@ -464,6 +466,7 @@ function normalizeFailureCode(code: string): string {
 
 function failureDefinition(code: string): Omit<AiGenerationFailure, 'code'> | null {
   const definitions: Record<string, Omit<AiGenerationFailure, 'code'>> = {
+    LOGIN_REQUIRED: { message: '请先登录后使用 AI 功能', category: 'USER', retryable: false, action: 'USE_STANDARD_MODE' },
     // message 必须和 aiGenerationErrorMessage 里同一码的文案一致，否则同一个失败
     // 在任务卡片（走 message）和列表页（走 aiGenerationErrorMessage）上会显示两句话
     USER_AI_QUOTA_EXHAUSTED: { message: 'AI 生成次数不足，请购买次数', category: 'USER', retryable: false, action: 'VIEW_BENEFITS' },

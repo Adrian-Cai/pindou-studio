@@ -382,6 +382,7 @@ export class PostgresUserProfileService implements UserProfileService {
           WHERE user_id = $1`,
         [userId, now],
       );
+      await client.query("DELETE FROM pindou_text_image_generation_jobs WHERE user_id = $1", [userId]);
       const files = await client.query<DeletedFileAssetRow>(
         `UPDATE pindou_file_assets
             SET deleted_at = COALESCE(deleted_at, $2)

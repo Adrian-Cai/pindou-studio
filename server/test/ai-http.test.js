@@ -57,7 +57,7 @@ test("AI generation HTTP endpoints accept only server-owned options and authenti
       },
       body: JSON.stringify({
         inputFileId: "file_input",
-        style: "natural",
+        style: "kawaii",
         detailLevel: "medium",
         backgroundMode: "simplify",
       }),
@@ -69,7 +69,7 @@ test("AI generation HTTP endpoints accept only server-owned options and authenti
       userId: "usr_current",
       idempotencyKey: "ai-request-1",
       inputFileId: "file_input",
-      style: "natural",
+      style: "kawaii",
       detailLevel: "medium",
       backgroundMode: "simplify",
     });

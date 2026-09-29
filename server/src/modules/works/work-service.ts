@@ -17,6 +17,7 @@ import { validatePersistedPattern, type GenerationMode, type PersistedPattern, t
 
 /** 作品状态：草稿或已完成。 */
 export type WorkStatus = "draft" | "completed";
+export type CreationSource = "image" | "text";
 
 export interface WorkSummary {
   readonly id: string;
@@ -28,6 +29,7 @@ export interface WorkSummary {
   readonly colorCount: number;
   readonly brand: string;
   readonly generationMode: GenerationMode;
+  readonly creationSource: CreationSource;
   readonly status: WorkStatus;
   readonly isFavorite: boolean;
   readonly createdAt: string;
@@ -36,6 +38,7 @@ export interface WorkSummary {
 
 export interface WorkDetail extends WorkSummary {
   readonly pattern: PersistedPattern;
+  readonly sourcePrompt: string | null;
 }
 
 export interface CreateWorkInput {
@@ -44,6 +47,8 @@ export interface CreateWorkInput {
   readonly title: string;
   readonly coverFileId: string;
   readonly status: WorkStatus;
+  readonly creationSource?: CreationSource;
+  readonly sourcePrompt?: string | null;
   readonly validatedPattern: ValidatedPattern;
 }
 
@@ -53,6 +58,8 @@ export interface UpdateWorkInput {
   readonly title?: string;
   readonly coverFileId?: string;
   readonly status?: WorkStatus;
+  readonly creationSource?: CreationSource;
+  readonly sourcePrompt?: string | null;
   readonly validatedPattern?: ValidatedPattern;
 }
 
@@ -107,6 +114,8 @@ interface WorkRow extends QueryResultRow {
   readonly color_count: number;
   readonly brand: string;
   readonly generation_mode?: string;
+  readonly creation_source?: string;
+  readonly source_prompt?: string | null;
   readonly status: string;
   readonly created_at: Date | string;
   readonly updated_at: Date | string;
@@ -161,13 +170,13 @@ export class PostgresWorkService {
       const workInsert = await client.query<WorkRow>(
         `INSERT INTO pindou_works (
            id, user_id, title, cover_file_id, width, height, bead_count, color_count,
-           brand, generation_mode, status, created_at, updated_at, deleted_at
+           brand, generation_mode, creation_source, source_prompt, status, created_at, updated_at, deleted_at
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, NULL)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $13, $14, $11, $12, $12, NULL)
          ON CONFLICT (id) DO NOTHING
          RETURNING id, user_id, title, cover_file_id, width, height, bead_count,
-                   color_count, brand, generation_mode, status, created_at, updated_at, deleted_at`,
-        [workId, input.userId, input.title, input.coverFileId, pattern.width, pattern.height, beadCount, colorCount, pattern.settings.brand, pattern.generationMode, input.status, currentTime],
+                   color_count, brand, generation_mode, creation_source, source_prompt, status, created_at, updated_at, deleted_at`,
+        [workId, input.userId, input.title, input.coverFileId, pattern.width, pattern.height, beadCount, colorCount, pattern.settings.brand, pattern.generationMode, input.status, currentTime, input.creationSource ?? "image", input.sourcePrompt ?? null],
       );
       const inserted = workInsert.rows[0];
       if (!inserted) {
@@ -198,6 +207,7 @@ export class PostgresWorkService {
         colorCount,
         brand: pattern.settings.brand,
         generationMode: pattern.generationMode,
+        creationSource: input.creationSource ?? "image",
         status: input.status,
         isFavorite: false,
         createdAt: currentTime.toISOString(),
@@ -239,14 +249,16 @@ export class PostgresWorkService {
       const validatedPattern = input.validatedPattern;
       const pattern = validatedPattern?.pattern;
       const currentTime = this.now();
+      const creationSource = input.creationSource ?? (input.sourcePrompt ? "text" : (existing.creation_source === "text" ? "text" : "image"));
+      const sourcePrompt = input.sourcePrompt !== undefined ? input.sourcePrompt : (creationSource === "text" ? existing.source_prompt ?? null : null);
       const updated = await client.query<WorkRow>(
         `UPDATE pindou_works
             SET title = $3, cover_file_id = $4, width = $5, height = $6,
                 bead_count = $7, color_count = $8, brand = $9, generation_mode = $10,
-                status = $11, updated_at = $12
+                creation_source = $11, source_prompt = $12, status = $13, updated_at = $14
           WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
           RETURNING id, user_id, title, cover_file_id, width, height, bead_count,
-                    color_count, brand, generation_mode, status, created_at, updated_at, deleted_at`,
+                    color_count, brand, generation_mode, creation_source, source_prompt, status, created_at, updated_at, deleted_at`,
         [
           input.workId,
           input.userId,
@@ -258,6 +270,8 @@ export class PostgresWorkService {
           validatedPattern?.colorCount ?? existing.color_count,
           pattern?.settings.brand ?? existing.brand,
           pattern?.generationMode ?? generationModeFromRow(existing),
+          creationSource,
+          sourcePrompt,
           input.status ?? existing.status,
           currentTime,
         ],
@@ -319,7 +333,8 @@ export class PostgresWorkService {
     const result = await this.pool.query<WorkRow>(
       `SELECT works.id, works.user_id, works.title, works.cover_file_id,
               files.public_url AS cover_url, works.width, works.height,
-              works.bead_count, works.color_count, works.brand, works.generation_mode, works.status,
+              works.bead_count, works.color_count, works.brand, works.generation_mode,
+              works.creation_source, works.source_prompt, works.status,
               works.created_at, works.updated_at, works.deleted_at,
               EXISTS (
                 SELECT 1 FROM pindou_favorites favorites
@@ -340,7 +355,8 @@ export class PostgresWorkService {
     const result = await this.pool.query<WorkRow>(
       `SELECT works.id, works.user_id, works.title, works.cover_file_id,
               files.public_url AS cover_url, works.width, works.height,
-              works.bead_count, works.color_count, works.brand, works.generation_mode, works.status,
+              works.bead_count, works.color_count, works.brand, works.generation_mode,
+              works.creation_source, works.source_prompt, works.status,
               works.created_at, works.updated_at, works.deleted_at,
               patterns.schema_version, patterns.color_limit,
               patterns.brand AS pattern_brand, patterns.palette_json, patterns.cells_json,
@@ -467,7 +483,8 @@ async function readWorkDetail(
   const result = await client.query<WorkRow>(
     `SELECT works.id, works.user_id, works.title, works.cover_file_id,
             files.public_url AS cover_url, works.width, works.height,
-            works.bead_count, works.color_count, works.brand, works.generation_mode, works.status,
+            works.bead_count, works.color_count, works.brand, works.generation_mode,
+            works.creation_source, works.source_prompt, works.status,
             works.created_at, works.updated_at, works.deleted_at,
             EXISTS (
               SELECT 1 FROM pindou_favorites favorites
@@ -493,7 +510,8 @@ async function readWorkSummary(
   const result = await client.query<WorkRow>(
     `SELECT works.id, works.user_id, works.title, works.cover_file_id,
             files.public_url AS cover_url, works.width, works.height,
-            works.bead_count, works.color_count, works.brand, works.generation_mode, works.status,
+            works.bead_count, works.color_count, works.brand, works.generation_mode,
+            works.creation_source, works.source_prompt, works.status,
             works.created_at, works.updated_at, works.deleted_at,
             EXISTS (
               SELECT 1 FROM pindou_favorites favorites
@@ -510,7 +528,9 @@ async function readWorkSummary(
 
 // 比较已存在记录与本次请求内容是否一致（标题/封面/状态/图案全同），用于幂等判定
 function sameRequest(existing: WorkRow, input: CreateWorkInput): boolean {
-  if (existing.title !== input.title || existing.cover_file_id !== input.coverFileId || existing.status !== input.status) return false;
+  if (existing.title !== input.title || existing.cover_file_id !== input.coverFileId || existing.status !== input.status
+    || (existing.creation_source ?? "image") !== (input.creationSource ?? "image")
+    || (existing.source_prompt ?? null) !== (input.sourcePrompt ?? null)) return false;
   const existingPattern = mapPattern(existing);
   return JSON.stringify(existingPattern) === JSON.stringify(input.validatedPattern.pattern);
 }
@@ -527,6 +547,7 @@ function mapSummary(row: WorkRow): WorkSummary {
     colorCount: row.color_count,
     brand: row.brand,
     generationMode: generationModeFromRow(row),
+    creationSource: row.creation_source === "text" ? "text" : "image",
     status: row.status,
     isFavorite: row.is_favorite === true,
     createdAt: toIso(row.created_at),
@@ -535,7 +556,7 @@ function mapSummary(row: WorkRow): WorkSummary {
 }
 
 function mapDetail(row: WorkRow): WorkDetail {
-  return { ...mapSummary(row), pattern: mapPattern(row) };
+  return { ...mapSummary(row), pattern: mapPattern(row), sourcePrompt: row.source_prompt ?? null };
 }
 
 function mapFavoriteSummary(row: WorkRow): FavoriteWorkSummary {

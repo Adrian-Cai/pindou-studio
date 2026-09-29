@@ -452,7 +452,7 @@ function isPatternSettings(value: unknown): value is PatternSettings {
 }
 
 function isStyle(value: unknown): value is AiGenerationStyle {
-  return value === 'natural' || value === 'cartoon' || value === 'minimal'
+  return value === 'kawaii' || value === 'natural' || value === 'cartoon' || value === 'minimal'
 }
 
 function isDetailLevel(value: unknown): value is AiGenerationDetailLevel {

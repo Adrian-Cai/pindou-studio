@@ -8,7 +8,7 @@
  * 关键点：产物格式以「下载字节的真实魔数」判定（png/jpeg/webp），而非临时地址的
  *       content-type 头——历史上头缺失导致 JPEG 被误标成 PNG，进而整批任务失败。
  */
-import { HUNYUAN_IMAGE_MODEL, type HunyuanImageConfig } from "../../config/env";
+import { HUNYUAN_IMAGE_MODEL, HUNYUAN_TEXT_IMAGE_MODEL, type HunyuanImageConfig } from "../../config/env";
 import { AppError } from "../../shared/app-error";
 import {
   detectOutputFormat,
@@ -81,6 +81,33 @@ export class HunyuanImageProvider implements AiGenerationProvider {
 
   public get model(): string {
     return this.config.enabled ? this.config.model : HUNYUAN_IMAGE_MODEL;
+  }
+
+  public async generateTextImage(prompt: string): Promise<{ readonly requestId: string; readonly buffer: Buffer; readonly contentType: string }> {
+    this.requireConfig();
+    if (!this.imageModel) throw new AppError(503, "AI_PROVIDER_NOT_CONFIGURED", "AI 图像服务尚未完成配置");
+    let response: unknown;
+    try {
+      response = await this.imageModel.generateImage({
+        model: HUNYUAN_TEXT_IMAGE_MODEL,
+        prompt,
+        images: [],
+        size: "1024x1024",
+        revise: { value: true },
+      });
+    } catch (error: unknown) {
+      throw providerFailureFromSdk(error);
+    }
+    const body = object(response);
+    const requestId = string(body?.request_id) ?? string(body?.id);
+    const first = object(Array.isArray(body?.data) ? body.data[0] : null);
+    const fileId = string(body?.fileID) ?? string(first?.fileID);
+    if (!requestId || requestId.length > 128 || !fileId) throw providerFailure();
+    const buffer = await this.downloadCloudFile(fileId);
+    const format = detectOutputFormat(buffer);
+    const contentType = format === "jpeg" ? "image/jpeg" : format === "webp" ? "image/webp" : "image/png";
+    console.log(JSON.stringify({ event: "text_image_provider_output", provider: this.name, model: HUNYUAN_TEXT_IMAGE_MODEL, requestId }));
+    return { requestId, buffer, contentType };
   }
 
   /**
@@ -274,15 +301,15 @@ function createImageModel(config: HunyuanImageConfig): HunyuanImageModel | null 
   return {
     async generateImage(input: Record<string, unknown>): Promise<unknown> {
       const images = Array.isArray(input.images) ? input.images : [];
-      const imageDataUrl = typeof images[0] === "string" ? images[0] : "";
+      const imageDataUrl = typeof images[0] === "string" ? images[0] : null;
       const result = await app.callFunction<
-        { prompt: unknown; imageDataUrl: string; size: unknown },
+        { prompt: unknown; imageDataUrl?: string; size: unknown },
         unknown
       >({
         name: "generateImage",
         data: {
           prompt: input.prompt,
-          imageDataUrl,
+          ...(imageDataUrl ? { imageDataUrl } : {}),
           size: input.size,
         },
       });

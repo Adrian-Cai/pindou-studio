@@ -1846,7 +1846,7 @@ components:
       enum: [queued, processing, succeeded, failed, canceled]
     AiGenerationStyle:
       type: string
-      enum: [natural, cartoon, minimal]
+      enum: [kawaii, natural, cartoon, minimal]
     AiGenerationDetailLevel:
       type: string
       enum: [low, medium, high]

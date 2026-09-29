@@ -1,0 +1,103 @@
+<page-layout title="小露拼豆" back show-main-nav selected-tab="{{0}}">
+  <view class="home-page">
+    <view wx:if="{{creationSource === 'image'}}" class="hero">
+      <view class="hero-title">上传图片，生成你的拼豆图</view>
+      <view class="steps" role="list" aria-label="生成流程">
+        <block wx:for="{{generationSteps}}" wx:key="id">
+          <view class="step {{currentStep === item.id ? 'step--active' : ''}} {{currentStep > item.id ? 'step--complete' : ''}}" role="listitem">
+            <view class="step-number"><image wx:if="{{currentStep > item.id}}" src="/assets/icons/iconsax/check.svg" mode="aspectFit" /><text wx:else>{{item.id}}</text></view>
+            <text>{{item.label}}</text>
+          </view>
+          <view wx:if="{{index < generationSteps.length - 1}}" class="step-line" aria-hidden="true"></view>
+        </block>
+      </view>
+    </view>
+
+    <view wx:if="{{creationSource === 'image'}}" class="home-form-section">
+      <view class="home-form-section__heading">从一张图片开始</view>
+      <upload-status-card
+        sourceImagePath="{{sourceImagePath}}"
+        choosing="{{choosing}}"
+        uploadStatus="{{uploadStatus}}"
+        uploadProgress="{{uploadProgress}}"
+        bind:chooseimage="chooseImage"
+        bind:removeimage="removeImage"
+        bind:previewerror="handlePreviewError"
+      />
+
+      <view class="section-block">
+        <view class="section-label">
+          <text>生成方式</text>
+          <view class="generation-tips-trigger-slot">
+            <button class="generation-tips-trigger {{generationTipsOpen ? 'generation-tips-trigger--open' : ''}}" bindtap="toggleGenerationTips" aria-label="{{generationTipsOpen ? '收起生成方式说明' : '查看生成方式说明'}}" aria-expanded="{{generationTipsOpen}}" aria-controls="generation-tips"><view class="generation-tips-trigger__icon">?</view></button>
+          </view>
+        </view>
+        <view wx:if="{{generationTipsOpen}}" id="generation-tips" class="generation-tips" role="tooltip">
+          <view wx:for="{{generationModes}}" wx:key="id" class="generation-tip">
+            <text class="generation-tip__label generation-tip__label--{{item.id}}">{{item.tipTitle}}:</text>
+            <view class="generation-tip__content"><text wx:for="{{item.tips}}" wx:key="*this" class="generation-tip__line">{{item}}</text></view>
+          </view>
+        </view>
+        <view class="mode-cards" role="radiogroup" aria-label="生成方式">
+          <view wx:for="{{generationModes}}" wx:key="id" class="mode-card mode-card--{{item.id}} {{generationMode === item.id ? 'mode-card--active mode-card--active-' + item.id : ''}}" data-mode="{{item.id}}" bindtap="selectMode" role="radio" aria-checked="{{generationMode === item.id}}" aria-label="{{item.title}}">
+            <view wx:if="{{item.badge}}" class="mode-card__badge mode-card__badge--{{item.id}}">{{item.badge}}</view>
+            <view wx:if="{{generationMode === item.id}}" class="mode-card__check mode-card__check--{{item.id}}"><image src="/assets/icons/iconsax/check.svg" mode="aspectFit" /></view>
+            <image class="mode-card__icon" src="{{item.icon}}" mode="aspectFit" />
+            <view class="mode-card__content"><view class="mode-card__title mode-card__title--{{item.id}}">{{item.title}}</view></view>
+          </view>
+        </view>
+      </view>
+
+      <view class="section-block">
+        <view wx:if="{{generationMode === 'standard'}}" class="section-label">标准模式效果</view>
+        <view wx:if="{{generationMode === 'standard'}}" class="standard-example">
+          <view class="standard-example__media">
+            <image class="standard-example__image" src="/assets/samples/home-standard-example.jpg" mode="aspectFit" aria-label="原图转换为标准拼豆网格前后对照" />
+            <view class="standard-example__labels"><text class="standard-example__label">原图</text><text class="standard-example__label">标准拼豆图</text></view>
+          </view>
+          <view class="standard-example__description">图片直接转换为拼豆网格，保留原图构图</view>
+        </view>
+        <block wx:elif="{{generationMode === 'ai'}}">
+          <view class="section-label">AI 效果风格</view>
+          <view class="ai-style-cards" role="radiogroup" aria-label="AI 效果风格">
+            <view wx:for="{{aiStyles}}" wx:key="id" class="ai-style-option {{aiStyle === item.id ? 'ai-style-option--active' : ''}}" data-style="{{item.id}}" bindtap="selectAiStyle" role="radio" aria-checked="{{aiStyle === item.id}}" aria-label="{{item.label}}">
+              <image class="ai-style-option__icon" src="{{item.icon}}" mode="aspectFit" />
+              <text class="ai-style-option__label">{{item.label}}</text>
+              <view wx:if="{{aiStyle === item.id}}" class="ai-style-option__check"><image src="/assets/icons/iconsax/check.svg" mode="aspectFit" /></view>
+            </view>
+          </view>
+
+          <view class="section-label ai-example-heading">效果示例</view>
+          <view class="ai-example-card">
+            <view class="ai-example-card__item">
+              <image class="ai-example-card__image" src="/assets/samples/home-ai-source.jpg" mode="aspectFill" aria-label="AI 风格转换原图" />
+              <text class="ai-example-card__label">原图</text>
+            </view>
+            <image class="ai-example-card__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+            <view wx:for="{{aiStyles}}" wx:for-item="styleItem" wx:key="id" wx:if="{{aiStyle === styleItem.id}}" class="ai-example-card__item">
+              <image class="ai-example-card__image" src="{{styleItem.exampleImage}}" mode="aspectFill" aria-label="{{styleItem.label}}效果示例" />
+              <text class="ai-example-card__label">{{styleItem.label}}效果</text>
+            </view>
+          </view>
+        </block>
+      </view>
+
+      <view class="setting-options">
+        <view class="option-group"><view class="section-label">尺寸选择</view><view class="option-row option-row--sizes"><button wx:for="{{sizeOptions}}" wx:key="*this" class="option-button {{settings.width === item ? 'option-button--active' : ''}}" data-value="{{item}}" bindtap="selectSize">{{item}}×{{item}}</button></view></view>
+        <view class="option-group option-group--colors"><view class="section-label">颜色数量</view><view class="option-row"><button wx:for="{{colorOptions}}" wx:key="*this" class="option-button {{settings.colorLimit === item ? 'option-button--active' : ''}}" data-value="{{item}}" bindtap="selectColor">{{item}}色</button></view></view>
+      </view>
+
+      <button class="button-primary home__submit" style="width: 100%;" bindtap="startCreating" disabled="{{generating || submitting || uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'rejected' || uploadStatus === 'error'}}" loading="{{generating || submitting}}">{{generating ? '正在生成' : (submitting ? '正在准备生成' : (generationMode === 'ai' ? (aiStyle === 'kawaii' ? '生成 Q版拼豆图' : (aiStyle === 'cartoon' ? '生成卡通拼豆图' : '生成极简拼豆图')) : '生成拼豆图'))}}</button>
+    </view>
+
+    <view wx:elif="{{creationSource === 'text'}}" class="home-form-section home-form-section--text">
+      <view class="home-form-section__heading">描述你想做的画面</view>
+      <view class="text-prompt-card">
+        <textarea class="text-prompt-card__input" value="{{prompt}}" maxlength="500" placeholder="例如：一只坐在绿色草地上的橘猫，周围有小花和蝴蝶……" placeholder-class="text-prompt-card__placeholder" bindinput="changePrompt" aria-label="描述你想生成的画面" />
+        <view class="text-prompt-card__footer"><text>描述越清楚，生成的参考图越贴近你的想法</text><text>{{promptLength}} / 500</text></view>
+      </view>
+      <view class="text-prompt-safety"><image src="/assets/icons/iconsax/shield-tick.svg" mode="aspectFit" />描述会经过内容安全检查，生成成功后扣除 1 次 AI 额度</view>
+      <button class="button-primary home__submit" style="width: 100%;" bindtap="startTextGeneration" disabled="{{creatingText || !promptLength}}" loading="{{creatingText}}">{{creatingText ? '正在创建任务' : '生成参考图'}}</button>
+    </view>
+  </view>
+</page-layout>

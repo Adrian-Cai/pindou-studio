@@ -36,7 +36,7 @@ import { aiPublicFailure, type AiPublicFailure } from "./error-contract";
 import { AI_PROMPT_VERSION, buildAiPrompt } from "./prompt-template";
 
 export type AiGenerationStatus = "queued" | "processing" | "succeeded" | "failed" | "canceled";
-export type AiGenerationStyle = "natural" | "cartoon" | "minimal";
+export type AiGenerationStyle = "kawaii" | "natural" | "cartoon" | "minimal";
 export type AiGenerationDetailLevel = "low" | "medium" | "high";
 export type AiGenerationBackgroundMode = "keep" | "simplify" | "remove";
 
@@ -181,7 +181,7 @@ function mapJob(row: AiJobRow): AiGenerationResponse {
     && row.status !== "failed"
     && row.status !== "canceled"
   ) throw new Error("数据库 AI 任务状态无效");
-  if (row.style !== "natural" && row.style !== "cartoon" && row.style !== "minimal") {
+  if (row.style !== "kawaii" && row.style !== "natural" && row.style !== "cartoon" && row.style !== "minimal") {
     throw new Error("数据库 AI 任务风格无效");
   }
   if (row.detail_level !== "low" && row.detail_level !== "medium" && row.detail_level !== "high") {

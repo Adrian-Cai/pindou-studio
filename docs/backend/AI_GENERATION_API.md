@@ -17,7 +17,7 @@
 - Provider：`hunyuan`
 - 模型：`HY-Image-v3.0-I2I-ToB-v1.0.1`
 - 云函数文字标识：`小露拼豆`
-- Prompt 模板版本：`v2`
+- Prompt 模板版本：`v3`
 - 输入/输出文件默认保留：24 小时
 - 默认本地服务地址：`http://127.0.0.1:4000`
 
@@ -232,7 +232,7 @@ Content-Type: application/json
 | 字段 | 类型 | 必填 | 可选值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `inputFileId` | string | 是 | 已上传的文件 ID | 必须属于当前用户，且类型为 `ai_input` |
-| `style` | string | 是 | `natural` / `cartoon` / `minimal` | 自然写实 / 卡通 / 极简插画 |
+| `style` | string | 是 | `kawaii` / `natural` / `cartoon` / `minimal` | Q 版 / 自然写实 / 卡通 / 极简插画 |
 | `detailLevel` | string | 是 | `low` / `medium` / `high` | 低 / 中 / 高细节 |
 | `backgroundMode` | string | 是 | `keep` / `simplify` / `remove` | 保留 / 简化 / 移除背景 |
 
@@ -478,3 +478,42 @@ develop: 'http://127.0.0.1:4000',
 | 固定 Prompt 模板 | `server/src/modules/ai/prompt-template.ts` |
 | 小程序 AI 请求封装 | `miniprogram/services/ai-generation-service.ts` |
 | 后端环境变量解析 | `server/src/config/env.ts` |
+
+## 12. 文生图参考图
+
+文生图走独立的持久化任务表，复用服务端登录态、微信文本安全检查、CloudBase 混元、AI 输出文件校验和 AI 额度账本。固定模型为 `HY-Image-3.0-Plus-4090-Tob-v1.0`；小程序不直接调用 CloudBase。
+
+### 12.1 创建任务
+
+```http
+POST /api/ai/text-generations
+Authorization: Bearer <token>
+Idempotency-Key: <1-128 个可见 ASCII 字符>
+Content-Type: application/json
+
+{"prompt":"一只坐在草地上的橘猫，旁边有小花"}
+```
+
+`prompt` 必须为 1–500 个 Unicode 字符。服务端会先检查内容安全，再按当前用户和幂等键创建任务；模型、Provider、额度和系统参数不接受客户端覆盖。响应包含 `id`、`prompt`、`status`、`outputFile`、`errorCode` 和时间戳。
+
+### 12.2 查询与恢复
+
+```http
+GET /api/ai/text-generations/{id}
+GET /api/ai/text-generations?active=true
+POST /api/ai/text-generations/{id}/consume
+```
+
+查询和恢复列表均要求 Bearer Token 并校验任务归属。恢复列表包含未消费、未过期的排队中、处理中、成功和失败任务；小程序确认将成功参考图转换为本地拼豆草稿后调用 `consume`，避免列表重复展示。失败任务可使用新的幂等键提交相同描述重试。
+
+### 12.3 状态、额度与作品保存
+
+```text
+queued → processing → succeeded / failed
+```
+
+生成参考图并通过服务端格式、大小、尺寸校验后才扣 1 次 `ai_generation` 额度；失败不扣。AI 输出文件和未消费任务默认保留 24 小时。客户端随后使用现有标准拼豆引擎转换，不再发起第二次 AI 调用。保存作品时，`creationSource=text` 和 `sourcePrompt` 与封面、图案在现有作品事务中写入；作品详情返回 `sourcePrompt`，摘要返回 `creationSource`。历史作品由迁移默认标记为图片来源。
+
+### 12.4 数据库迁移
+
+部署前执行 `server/sql/019_text_image_generation.sql`，新增 `pindou_text_image_generation_jobs`，并为 `pindou_works` 增加 `creation_source`、`source_prompt`。任务提示词不进入日志；过期任务清理时连同中间输出一起删除。

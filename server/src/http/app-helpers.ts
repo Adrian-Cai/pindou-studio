@@ -10,6 +10,7 @@ import type { CoverStorage } from "../modules/files/cover-storage";
 import type { AiFileStorage } from "../modules/files/ai-file-storage";
 import type { ContentSecurityService } from "../modules/content-security/content-security-service";
 import type { PostgresAiGenerationService } from "../modules/ai/ai-generation-service";
+import type { PostgresTextImageGenerationService } from "../modules/ai/text-image-generation-service";
 import type { DownloadListOptions, PostgresQuotaDownloadService } from "../modules/downloads/quota-download-service";
 import type { OrderListOptions, PaymentService } from "../modules/payments/payment-service";
 import type {
@@ -286,6 +287,7 @@ export interface HttpApplicationDependencies {
   readonly aiFileMaximumBytes: number;
   readonly aiRateLimiter?: InMemoryRateLimiter;
   readonly aiGenerations: PostgresAiGenerationService;
+  readonly textGenerations?: PostgresTextImageGenerationService;
   /** 作品标题保存前必须经过内容安全校验；缺失时应 fail closed */
   readonly contentSecurity: ContentSecurityService;
   readonly contentSecurityMediaMaximumBytes?: number;
@@ -414,6 +416,16 @@ function aiGenerationId(pathname: string): string | null {
   return match?.[1] ?? null;
 }
 
+function textImageGenerationId(pathname: string): string | null {
+  const match = pathname.match(/^\/api\/ai\/text-generations\/([^/]+)$/u);
+  return match?.[1] ?? null;
+}
+
+function textImageGenerationConsumeId(pathname: string): string | null {
+  const match = pathname.match(/^\/api\/ai\/text-generations\/([^/]+)\/consume$/u);
+  return match?.[1] ?? null;
+}
+
 /** 订单页的支付订单操作路由：POST /api/payments/{orderId}/continue|cancel。 */
 export interface PaymentOrderActionRoute {
   readonly orderId: string;
@@ -445,4 +457,4 @@ function hasRequestBody(request: IncomingMessage): boolean {
   return request.headers["transfer-encoding"] !== undefined;
 }
 
-export { requestId, sendJson, sendRaw, parseDeliveryNotification, parseEventName, parseRefundNotification, parseIosRefundQuery, sendImage, errorPayload, sendText, requireContentSecurity, wechatPaymentHeaders, listOptions, favoriteListOptions, downloadListOptions, orderListOptions, positiveQueryInteger, workId, favoriteWorkId, aiGenerationId, paymentOrderAction, sendNoContent, hasRequestBody };
+export { requestId, sendJson, sendRaw, parseDeliveryNotification, parseEventName, parseRefundNotification, parseIosRefundQuery, sendImage, errorPayload, sendText, requireContentSecurity, wechatPaymentHeaders, listOptions, favoriteListOptions, downloadListOptions, orderListOptions, positiveQueryInteger, workId, favoriteWorkId, aiGenerationId, textImageGenerationId, textImageGenerationConsumeId, paymentOrderAction, sendNoContent, hasRequestBody };

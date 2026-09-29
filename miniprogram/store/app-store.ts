@@ -360,6 +360,8 @@ function restoreDraftCells(draft: PatternDraft): PatternDraft | null {
     sourceImagePath: packed.sourceImagePath,
     ...(packed.contentSecurityCheckId === undefined ? {} : { contentSecurityCheckId: packed.contentSecurityCheckId }),
     ...(packed.contentSecurityImagePath === undefined ? {} : { contentSecurityImagePath: packed.contentSecurityImagePath }),
+    ...(packed.creationSource === undefined ? {} : { creationSource: packed.creationSource }),
+    ...(packed.sourcePrompt === undefined ? {} : { sourcePrompt: packed.sourcePrompt }),
     createdAt: packed.createdAt,
     generationMode: packed.generationMode,
     settings: packed.settings,
@@ -419,6 +421,8 @@ function encodeDraft(draft: PatternDraft): CompactDraft {
     // 与 restoreDraftCells 对称：可选字段要么有值要么不出现，不写 undefined 占位键
     ...(draft.contentSecurityCheckId === undefined ? {} : { contentSecurityCheckId: draft.contentSecurityCheckId }),
     ...(draft.contentSecurityImagePath === undefined ? {} : { contentSecurityImagePath: draft.contentSecurityImagePath }),
+    ...(draft.creationSource === undefined ? {} : { creationSource: draft.creationSource }),
+    ...(draft.sourcePrompt === undefined ? {} : { sourcePrompt: draft.sourcePrompt }),
     createdAt: draft.createdAt,
     generationMode: draft.generationMode,
     settings: draft.settings,

@@ -367,6 +367,15 @@ test("AI idempotency key rejects a changed request", async () => {
   );
 });
 
+test("AI generation stores Q 版 and sends its distinct prompt to the provider", async () => {
+  const state = harness();
+  const created = await state.service.create({ ...REQUEST, idempotencyKey: "ai-kawaii-1", style: "kawaii" });
+  const result = await advanceUntilTerminal(state, created.id);
+
+  assert.equal(result.style, "kawaii");
+  assert.match(state.receivedPrompt, /头身比约 2–3 头身/u);
+});
+
 test("AI input ownership and type are checked before creating a job", async () => {
   for (const options of [
     { inputFileUserId: "usr_other" },

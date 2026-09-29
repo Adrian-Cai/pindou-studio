@@ -187,12 +187,20 @@ pindou_users
 | `color_count` | smallint | NOT NULL | 实际使用颜色数量，服务端重算 |
 | `brand` | varchar(40) | NOT NULL | 图案设置中的品牌 |
 | `generation_mode` | varchar(20) | NOT NULL | `standard` 或 `ai`；历史数据迁移默认 `standard` |
+| `creation_source` | varchar(20) | NOT NULL | `image` 或 `text`；历史数据迁移默认 `image` |
+| `source_prompt` | text | NULL | 文本创作时保存的原始描述，1–500 字；图片创作必须为空 |
 | `status` | varchar(20) | NOT NULL | `draft` 或 `completed` |
 | `created_at` | timestamp | NOT NULL | 服务端创建时间 |
 | `updated_at` | timestamp | NOT NULL | 服务端更新时间 |
 | `deleted_at` | timestamp | NULL | 推荐软删除，第一版 API 表现为删除成功 |
 
 不保存：前端草稿 id、前端时间戳、`sourceImagePath`、`fileUrl`、对象数组形式的 `cells`
+
+`creation_source` 表示输入来源，与 `generation_mode`（拼豆转换模式）分开。文字创作提示词随云端作品保留，作品删除后随作品记录停用。
+
+### 3.4.1 `pindou_text_image_generation_jobs`
+
+文生图任务表保存用户提示词、服务端模型快照、任务状态、短期输出文件引用及恢复时间。提示词最多 500 字；任务成功时复用 AI 输出文件资产并以幂等流水扣除一次 `ai_generation` 额度，失败不扣。未消费任务及输出默认 24 小时后清理。
 
 索引：`(user_id, updated_at DESC)`、`(user_id, status, updated_at DESC)`；标题搜索按数据库能力增加全文或前缀索引
 

@@ -1,5 +1,6 @@
 import type { AuthSession } from '../models/auth'
 import { loginWithWechat } from './auth-service'
+import { ApiError } from './http-client'
 import {
   isAuthSessionExpired,
   loadAuthSession,
@@ -26,6 +27,15 @@ export async function ensureLoggedInSession(): Promise<AuthSession> {
     throw new Error('登录失败，请检查网络后重试')
   }
   securitySession = session
+  return session
+}
+
+/** 返回用户明确登录后持久化的会话；不复用内容安全链路创建的临时会话。 */
+export function requireLoggedInSession(): AuthSession {
+  const session = loadAuthSession()
+  if (!session || isAuthSessionExpired(session)) {
+    throw new ApiError('请先登录后使用 AI 功能', { statusCode: 401, code: 'LOGIN_REQUIRED' })
+  }
   return session
 }
 

@@ -367,7 +367,7 @@ AI 任务的 `expires_at` 默认设置为创建后 24 小时。定时清理会�
 | `model` | `varchar(80)` | 否 | 模型快照 |
 | `status` | `varchar(20)` | 否 | `queued` / `processing` / `succeeded` / `failed` / `canceled` |
 | `prompt_version` | `varchar(20)` | 否 | 服务端提示词版本 |
-| `style` | `varchar(20)` | 否 | `natural` / `cartoon` / `minimal` |
+| `style` | `varchar(20)` | 否 | `kawaii` / `natural` / `cartoon` / `minimal` |
 | `detail_level` | `varchar(20)` | 否 | `low` / `medium` / `high` |
 | `background_mode` | `varchar(20)` | 否 | `keep` / `simplify` / `remove` |
 | `generation_mode` | `varchar(20)` | 否 | 固定为 `ai`；AI 任务表不允许记录标准模式任务 |

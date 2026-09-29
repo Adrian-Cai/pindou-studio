@@ -31,7 +31,7 @@
 
 | Tab | 页面 | 职责 |
 | --- | --- | --- |
-| 首页 | `pages/home/index` | 选择图片、生成模式和生成参数，开始新作品 |
+| 首页 | `pages/home/index` | 展示创作入口；从图片或想法进入创作页 |
 | 作品 | `pages/projects/index` | 查看、筛选、打开、编辑、重命名和删除作品 |
 | 我的 | `pages/profile/index` | 账号、统计、收藏、下载记录和设置入口 |
 
@@ -40,6 +40,7 @@
 ### 2.2 二级页面
 
 - `packages/editor/index`：编辑拼豆草稿
+- `pages/create/index`：选择图片或描述想法，设置生成方式与参数并开始创作
 - `packages/ai-generation/index`：AI 生成流程、任务恢复和失败重试
 - `packages/result/index`：查看作品结果并下载
 - `packages/account/favorites/index`：收藏列表
@@ -71,8 +72,10 @@
 
 ```text
 首页
-→ 选择“标准模式”
+→ 从图片开始
+→ `pages/create/index`
 → 选择图片
+→ 选择“标准模式”
 → 设置尺寸 / 颜色数
 → 开始生成
 → 生成 PatternDraft
@@ -98,7 +101,10 @@
 Ai 模式生成的是更适合拼豆化的中间图，最终网格仍由现有 Standard Pattern Engine 生成：
 
 ```text
-选择 Ai 模式
+首页
+→ 从图片开始
+→ `pages/create/index`
+→ 选择 Ai 模式
 → 选择图片
 → 图片安全检测
 → 上传 ai_input
@@ -116,6 +122,8 @@ Ai 模式生成的是更适合拼豆化的中间图，最终网格仍由现有 S
 页面可在切后台、返回首页后恢复查询；AI 完成前不能编辑、保存或把临时草稿当作作品，成功后在同一页面启用编辑面板，下载失败和本地转换失败只重试对应阶段，不重新创建 AI 任务。小程序不接触 Provider、Model、Prompt 或 API Key，也不把 AI 输出直接当作拼豆网格。
 
 AI 模式才允许检查 AI 额度、创建 AI 任务和扣减 AI 生成次数；额度不足返回 `USER_AI_QUOTA_EXHAUSTED` 并展示购买入口。标准模式不得进入这些分支。
+
+Ai 模式和文生图仅对已登录用户开放；游客必须先完成显式登录，内容安全检查使用的临时会话不代表用户已登录。
 
 ## 4. 已有作品流程
 

@@ -19,6 +19,7 @@ import {
   renameCloudWork,
 } from '../../services/work-service'
 import { appStore, LocalStorageError } from '../../store/app-store'
+import { fetchRecoverableTextGenerations, type TextGeneration } from '../../services/text-generation-service'
 import { checkTextContent } from '../../services/content-security-service'
 import {
   aiTaskManager,
@@ -59,6 +60,7 @@ Page({
     query: '',
     allWorks: [] as WorkView[],
     works: [] as WorkView[],
+    textJobs: [] as TextGeneration[],
     recentCount: 0,
     draftCount: 0,
     loading: false,
@@ -95,22 +97,26 @@ Page({
   async refreshWorks() {
     // 未登录时没有云端列表可拉，直接渲染本地缓存
     if (!hasCloudSession()) {
+      this.setData({ textJobs: [] })
       this.refreshVisibleWorks()
       return
     }
     this.setData({ loading: true })
     try {
-      let summaries
-      try {
-        summaries = (await fetchCloudWorks()).items
-      } catch (error) {
+      const [worksResult, textJobsResult] = await Promise.allSettled([
+        fetchCloudWorks(),
+        fetchRecoverableTextGenerations(),
+      ])
+      if (textJobsResult.status === 'fulfilled') this.setData({ textJobs: textJobsResult.value })
+      else console.warn('读取文生图恢复任务失败', textJobsResult.reason)
+      if (worksResult.status === 'rejected') {
         // 这里是**网络/接口**失败，本地缓存还在，按「加载失败」提示
-        console.error('读取云端作品失败', error)
+        console.error('读取云端作品失败', worksResult.reason)
         wx.showToast({ title: '云端作品加载失败，已显示本地缓存', icon: 'none' })
         return
       }
       try {
-        await appStore.replaceCloudWorks(summaries.map(cloudSummaryToWorkItem))
+        await appStore.replaceCloudWorks(worksResult.value.items.map(cloudSummaryToWorkItem))
       } catch (error) {
         // 云端已经读回来了，写不进去只可能是本机落盘（典型是 storage 写满）。
         // 列表内存态已经更新，这里如实告诉用户「没存住」，而不是谎报云端加载失败。
@@ -217,6 +223,32 @@ Page({
   openWork(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
     void this.openWorkById(id, false)
+  },
+
+  openTextTask(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    wx.navigateTo({ url: `/packages/ai-generation/text/index?taskId=${encodeURIComponent(id)}&from=projects` })
+  },
+
+  async showSourcePrompt(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    const work = this.data.allWorks.find((item) => item.id === id)
+    if (!work || work.creationSource !== 'text') return
+    let prompt = work.sourcePrompt
+    if (!prompt && work.isCloud) {
+      try {
+        prompt = (await fetchCloudWork(id)).sourcePrompt ?? ''
+      } catch (error) {
+        wx.showToast({ title: error instanceof Error ? error.message : '读取创作描述失败', icon: 'none' })
+        return
+      }
+    }
+    if (!prompt) {
+      wx.showToast({ title: '没有找到这段创作描述', icon: 'none' })
+      return
+    }
+    wx.showModal({ title: '创作描述', content: prompt, showCancel: false, confirmText: '知道了' })
   },
 
   editWork(event: WechatMiniprogram.TouchEvent) {

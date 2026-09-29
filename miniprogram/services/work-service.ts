@@ -12,6 +12,7 @@ import {
   encodePatternCells,
   isGenerationMode,
   type GenerationMode,
+  type CreationSource,
   type PatternDraft,
   type PersistedPattern,
   type WorkItem,
@@ -31,6 +32,7 @@ export interface CloudWorkSummary {
   colorCount: number
   brand: string
   generationMode: GenerationMode
+  creationSource: CreationSource
   status: 'draft' | 'completed'
   isFavorite: boolean
   createdAt: string
@@ -40,6 +42,7 @@ export interface CloudWorkSummary {
 /** 云端作品详情：在摘要基础上附带完整 PersistedPattern 图纸数据。 */
 export interface CloudWorkDetail extends CloudWorkSummary {
   pattern: PersistedPattern
+  sourcePrompt: string | null
 }
 
 /** 云端收藏项：在作品摘要基础上附带收藏时间。 */
@@ -219,6 +222,8 @@ export function cloudSummaryToWorkItem(summary: CloudWorkSummary | CloudFavorite
     beadCount: summary.beadCount,
     colorCount: summary.colorCount,
     generationMode: summary.generationMode,
+    creationSource: summary.creationSource,
+    ...(summary.creationSource === 'text' ? { sourcePrompt: undefined } : {}),
     width: summary.width,
     height: summary.height,
     status: summary.status,
@@ -242,6 +247,8 @@ export function cloudDetailToDraft(detail: CloudWorkDetail): PatternDraft {
     sourceImagePath: '',
     createdAt: Date.parse(detail.createdAt),
     generationMode: pattern.generationMode,
+    creationSource: detail.creationSource,
+    ...(detail.sourcePrompt ? { sourcePrompt: detail.sourcePrompt } : {}),
     settings: {
       width: pattern.width,
       height: pattern.height,
@@ -304,6 +311,9 @@ async function persistCloudWork(input: {
   if (isNew && !input.draft.id) {
     throw new ApiError('作品 id 缺失，无法安全创建云端作品', { code: 'INVALID_PATTERN' })
   }
+  if (input.draft.creationSource === 'text' && !input.draft.sourcePrompt?.trim()) {
+    throw new ApiError('文字创作描述缺失，无法保存作品', { code: 'INVALID_PATTERN' })
+  }
   const coverFileId = await uploadCover(token, input.coverPath)
   const response = await apiRequest<unknown>({
     path: isNew ? '/api/works' : `/api/works/${encodeURIComponent(input.workId)}`,
@@ -315,6 +325,8 @@ async function persistCloudWork(input: {
       title: input.title,
       coverFileId,
       status: 'completed',
+      creationSource: input.draft.creationSource ?? 'image',
+      sourcePrompt: input.draft.creationSource === 'text' ? input.draft.sourcePrompt : null,
       pattern: draftToPersistedPattern(input.draft),
     },
     timeoutMs: 30_000,
@@ -363,7 +375,9 @@ function parseWorkDetail(value: unknown): CloudWorkDetail {
   if (!isRecord(value) || !isRecord(value.pattern)) throw invalidResponse()
   const pattern = parsePersistedPattern(value.pattern)
   if (summary.generationMode !== pattern.generationMode) throw invalidResponse()
-  return { ...summary, pattern }
+  if ((summary.creationSource === 'text' && typeof value.sourcePrompt !== 'string')
+    || (summary.creationSource === 'image' && value.sourcePrompt !== null && value.sourcePrompt !== undefined)) throw invalidResponse()
+  return { ...summary, pattern, sourcePrompt: typeof value.sourcePrompt === 'string' ? value.sourcePrompt : null }
 }
 
 // 解析并严格校验作品摘要字段；任何字段类型不符都抛 INVALID_RESPONSE
@@ -377,6 +391,7 @@ function parseWorkSummary(value: unknown): CloudWorkSummary {
     || !isFiniteNumber(value.beadCount)
     || !isFiniteNumber(value.colorCount)
     || typeof value.brand !== 'string'
+    || (value.creationSource !== undefined && value.creationSource !== 'image' && value.creationSource !== 'text')
     || (value.status !== 'draft' && value.status !== 'completed')
     || typeof value.isFavorite !== 'boolean'
     || typeof value.createdAt !== 'string'
@@ -393,6 +408,7 @@ function parseWorkSummary(value: unknown): CloudWorkSummary {
     colorCount: value.colorCount,
     brand: value.brand,
     generationMode: isGenerationMode(value.generationMode) ? value.generationMode : 'standard',
+    creationSource: value.creationSource === 'text' ? 'text' : 'image',
     status: value.status,
     isFavorite: value.isFavorite,
     createdAt: value.createdAt,

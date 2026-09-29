@@ -24,6 +24,7 @@ import { TokenhubHunyuanImageProvider } from "./modules/ai/tokenhub-hunyuan-imag
 import { ToapisImageProvider } from "./modules/ai/toapis-image-provider";
 import type { AiGenerationProvider } from "./modules/ai/provider";
 import { PostgresAiGenerationService } from "./modules/ai/ai-generation-service";
+import { PostgresTextImageGenerationService } from "./modules/ai/text-image-generation-service";
 import { PostgresQuotaDownloadService } from "./modules/downloads/quota-download-service";
 import { PostgresPaymentService } from "./modules/payments/payment-service";
 import { createWeChatPaymentGateway } from "./modules/payments/wechat-pay-client";
@@ -99,6 +100,14 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         [toapisImage.name, toapisImage],
       ]),
     );
+    const textGenerations = new PostgresTextImageGenerationService(
+      pool,
+      hunyuanImage,
+      aiFiles,
+      config.quota,
+      () => new Date(),
+      config.aiFiles.retentionMs,
+    );
     const aiRateLimiter = new InMemoryRateLimiter(
       config.aiRateLimit.maximumRequests,
       config.aiRateLimit.windowMs,
@@ -108,6 +117,13 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       void aiGenerations.cleanupExpired().catch(() => undefined);
     }, Math.min(config.aiFiles.retentionMs, 60 * 60 * 1_000));
     aiCleanupTimer.unref();
+    void textGenerations.cleanupExpired().catch(() => undefined);
+    void textGenerations.processQueued().catch(() => undefined);
+    const textGenerationTimer = setInterval(() => {
+      void textGenerations.cleanupExpired().catch(() => undefined);
+      void textGenerations.processQueued().catch(() => undefined);
+    }, Math.min(config.aiFiles.retentionMs, 60 * 1_000));
+    textGenerationTimer.unref();
     /**
      * 虚拟支付发货补单轮询。
      *
@@ -162,6 +178,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         contentSecurityMediaMaximumBytes: config.contentSecurity.mediaMaximumBytes,
         virtualPayPush: config.virtualPayPush,
         aiGenerations,
+        textGenerations,
         capabilities: {
           wechatPay: paymentGateway.configured,
           aiGeneration: defaultAiProvider.configured,
@@ -180,6 +197,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       http,
       close: async () => {
         clearInterval(aiCleanupTimer);
+        clearInterval(textGenerationTimer);
         clearInterval(paymentReconcileTimer);
         await http.close();
         await database.close();

@@ -74,10 +74,12 @@ export function validateWorkBody(body: Record<string, unknown>): {
   readonly coverFileId: string;
   readonly status: WorkStatus;
   readonly pattern: PersistedPattern;
+  readonly creationSource: "image" | "text";
+  readonly sourcePrompt: string | null;
 } {
-  const allowed = ["title", "coverFileId", "status", "pattern"];
+  const allowed = ["title", "coverFileId", "status", "pattern", "creationSource", "sourcePrompt"];
   if (!Object.keys(body).every((key) => allowed.includes(key)) || typeof body.coverFileId !== "string" || !body.coverFileId.trim()) {
-    throw invalidArgument("作品请求只能包含 title、coverFileId、status 和 pattern");
+    throw invalidArgument("作品请求包含不支持的字段");
   }
   const title = body.title === undefined ? "未命名作品" : body.title;
   if (typeof title !== "string" || title.trim().length < 1 || Array.from(title.trim()).length > 120 || /[\u0000-\u001f\u007f]/u.test(title)) {
@@ -86,11 +88,12 @@ export function validateWorkBody(body: Record<string, unknown>): {
   const status = body.status === undefined ? "completed" : body.status;
   if (status !== "draft" && status !== "completed") throw invalidArgument("作品 status 只能是 draft 或 completed");
   const validated = validatePersistedPattern(body.pattern);
-  return { title: title.trim(), coverFileId: body.coverFileId.trim(), status, pattern: validated.pattern };
+  const creation = validateCreationSource(body.creationSource, body.sourcePrompt);
+  return { title: title.trim(), coverFileId: body.coverFileId.trim(), status, pattern: validated.pattern, ...creation };
 }
 
 export function validateWorkUpdateBody(body: Record<string, unknown>): Omit<UpdateWorkInput, "userId" | "workId"> {
-  const allowed = ["title", "coverFileId", "status", "pattern"];
+  const allowed = ["title", "coverFileId", "status", "pattern", "creationSource", "sourcePrompt"];
   const keys = Object.keys(body);
   if (keys.length < 1 || !keys.every((key) => allowed.includes(key))) {
     throw invalidArgument("作品更新只能包含 title、coverFileId、status 和 pattern，且至少包含一项");
@@ -100,6 +103,8 @@ export function validateWorkUpdateBody(body: Record<string, unknown>): Omit<Upda
     coverFileId?: string;
     status?: WorkStatus;
     validatedPattern?: ReturnType<typeof validatePersistedPattern>;
+    creationSource?: "image" | "text";
+    sourcePrompt?: string | null;
   } = {};
   if ("title" in body) {
     if (typeof body.title !== "string" || body.title.trim().length < 1 || Array.from(body.title.trim()).length > 120 || /[\u0000-\u001f\u007f]/u.test(body.title)) {
@@ -120,7 +125,29 @@ export function validateWorkUpdateBody(body: Record<string, unknown>): Omit<Upda
     result.status = body.status;
   }
   if ("pattern" in body) result.validatedPattern = validatePersistedPattern(body.pattern);
+  if ("creationSource" in body || "sourcePrompt" in body) {
+    if (!("creationSource" in body) || !("sourcePrompt" in body)) {
+      throw invalidArgument("创作来源和描述必须同时提供");
+    }
+    Object.assign(result, validateCreationSource(body.creationSource, body.sourcePrompt));
+  }
   return result;
+}
+
+function validateCreationSource(value: unknown, prompt: unknown): { readonly creationSource: "image" | "text"; readonly sourcePrompt: string | null } {
+  const creationSource = value === undefined ? "image" : value;
+  if (creationSource !== "image" && creationSource !== "text") throw invalidArgument("creationSource 只能是 image 或 text");
+  if (creationSource === "image") {
+    if (prompt !== undefined && prompt !== null) throw invalidArgument("图片创作不能包含 sourcePrompt");
+    return { creationSource, sourcePrompt: null };
+  }
+  if (typeof prompt !== "string") throw invalidArgument("文字创作必须提供 sourcePrompt");
+  const sourcePrompt = prompt.trim().normalize("NFC");
+  const length = Array.from(sourcePrompt).length;
+  if (length < 1 || length > 500 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(sourcePrompt)) {
+    throw invalidArgument("sourcePrompt 长度必须为 1 到 500 个字符，且不能包含控制字符");
+  }
+  return { creationSource, sourcePrompt };
 }
 
 export function validateFavoriteBody(body: Record<string, unknown>): boolean {
@@ -170,7 +197,7 @@ export function validateCreateAiGenerationBody(body: Record<string, unknown>): {
     || !keys.every((key) => ["inputFileId", "style", "detailLevel", "backgroundMode"].includes(key))
     || typeof body.inputFileId !== "string"
     || !body.inputFileId.trim()
-    || (body.style !== "natural" && body.style !== "cartoon" && body.style !== "minimal")
+    || (body.style !== "kawaii" && body.style !== "natural" && body.style !== "cartoon" && body.style !== "minimal")
     || (body.detailLevel !== "low" && body.detailLevel !== "medium" && body.detailLevel !== "high")
     || (body.backgroundMode !== "keep" && body.backgroundMode !== "simplify" && body.backgroundMode !== "remove")
   ) {
@@ -182,4 +209,16 @@ export function validateCreateAiGenerationBody(body: Record<string, unknown>): {
     detailLevel: body.detailLevel,
     backgroundMode: body.backgroundMode,
   };
+}
+
+export function validateCreateTextImageGenerationBody(body: Record<string, unknown>): { readonly prompt: string } {
+  if (Object.keys(body).length !== 1 || typeof body.prompt !== "string") {
+    throw invalidArgument("文生图请求体只能包含字符串字段 prompt");
+  }
+  const prompt = body.prompt.trim().normalize("NFC");
+  const length = Array.from(prompt).length;
+  if (length < 1 || length > 500 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(prompt)) {
+    throw invalidArgument("描述长度必须为 1 到 500 个字符，且不能包含控制字符");
+  }
+  return { prompt };
 }

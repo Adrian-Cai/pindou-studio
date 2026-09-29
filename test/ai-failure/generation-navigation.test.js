@@ -4,6 +4,7 @@ const test = require('node:test')
 
 const compiledRoot = path.resolve(__dirname, '../../.ai-failure-test-build/miniprogram')
 const { aiTaskManager } = require(path.join(compiledRoot, 'services/ai-generation-manager.js'))
+const aiTaskStore = require(path.join(compiledRoot, 'services/ai-task-store.js'))
 const imageService = require(path.join(compiledRoot, 'services/image-service.js'))
 const { appStore } = require(path.join(compiledRoot, 'store/app-store.js'))
 
@@ -20,9 +21,14 @@ function loadPage(relativePath) {
   }
 }
 
-function setup(t) {
+function setup(t, loggedIn = true) {
   const calls = { navigation: [], toasts: [], tasks: [], drafts: [], retries: [] }
   global.wx = {
+    getStorageSync: (key) => key === 'pindou-auth-session-v1' && loggedIn ? {
+      token: 'opaque_token_12345678901234567890',
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      user: { id: 'usr_test', nickname: null, avatarUrl: null },
+    } : '',
     navigateTo: (options) => { calls.navigation.push(options.url); options.complete?.() },
     redirectTo: (options) => { calls.navigation.push(options.url); options.complete?.() },
     switchTab: (options) => { calls.navigation.push(options.url) },
@@ -36,7 +42,7 @@ function setup(t) {
     return `task-${calls.tasks.length}`
   })
   t.mock.method(appStore, 'setCurrentDraft', async (draft) => { calls.drafts.push(draft) })
-  const home = loadPage('pages/home/index.js')
+  const home = loadPage('pages/create/index.js')
   home.setData({
     sourceImagePath: '/tmp/source.png',
     contentSecurityImagePath: '/tmp/security.jpg',
@@ -48,6 +54,45 @@ function setup(t) {
   t.after(() => { delete global.Page; delete global.wx })
   return { home, calls }
 }
+
+test('游客不能选择 AI 模式或提交文生图', async (t) => {
+  const { home, calls } = setup(t, false)
+  home.setData({ generationMode: 'standard', prompt: '一只猫', promptLength: 3 })
+
+  home.selectMode({ currentTarget: { dataset: { mode: 'ai' } } })
+  await home.startTextGeneration()
+
+  assert.equal(home.data.generationMode, 'standard')
+  assert.equal(home.data.creatingText, false)
+  home.setData({ generationMode: 'ai' })
+  await home.startCreating()
+  assert.deepEqual(calls.toasts, [
+    '请先登录后使用 AI 功能',
+    '请先登录后使用 AI 功能',
+    '请先登录后使用 AI 功能',
+  ])
+  assert.deepEqual(calls.tasks, [])
+  assert.deepEqual(calls.navigation, [])
+})
+
+test('首页图片、想法和主按钮都进入创作页，来源卡带上对应模式', (t) => {
+  const navigation = []
+  global.wx = { navigateTo: (options) => navigation.push(options.url) }
+  const home = loadPage('pages/home/index.js')
+  home.openCreation({ currentTarget: { dataset: { source: 'image' } } })
+  home.openCreation({ currentTarget: { dataset: { source: 'text' } } })
+  home.openCreation({ currentTarget: { dataset: { source: 'image' } } })
+  assert.deepEqual(navigation, [
+    '/pages/create/index?source=image',
+    '/pages/create/index?source=text',
+    '/pages/create/index?source=image',
+  ])
+
+  const creation = loadPage('pages/create/index.js')
+  creation.onLoad({ source: 'text' })
+  assert.equal(creation.data.creationSource, 'text')
+  t.after(() => { delete global.Page; delete global.wx })
+})
 
 function deferred() {
   let resolve
@@ -88,10 +133,12 @@ function setupDetail(t, from = 'home', status = 'processing') {
 
 test('AI 提交后进入本次任务生成页，保留首页图片与参数供返回重试', async (t) => {
   const { home, calls } = setup(t)
+  assert.equal(home.data.aiStyle, 'kawaii')
   const settings = structuredClone(home.data.settings)
   await home.startCreating()
   assert.deepEqual(calls.navigation, ['/packages/ai-generation/index?taskId=task-1&from=home'])
   assert.equal(calls.tasks.length, 1)
+  assert.equal(calls.tasks[0].style, 'kawaii')
   assert.equal(calls.tasks[0].securityCheckId, 'security-1')
   assert.equal(home.data.sourceImagePath, '/tmp/source.png')
   assert.equal(home.data.uploadStatus, 'success')
@@ -99,6 +146,31 @@ test('AI 提交后进入本次任务生成页，保留首页图片与参数供�
   assert.equal(home.data.submitting, false)
   assert.deepEqual(calls.toasts, [])
   assert.deepEqual(calls.drafts, [])
+})
+
+test('切换 AI 风格会提交对应风格', async (t) => {
+  const { home, calls } = setup(t)
+  home.selectAiStyle({ currentTarget: { dataset: { style: 'cartoon' } } })
+  assert.equal(home.data.aiStyle, 'cartoon')
+  await home.startCreating()
+  assert.equal(calls.tasks[0].style, 'cartoon')
+})
+
+test('Q 版风格在本地任务恢复和重试状态更新后保留', (t) => {
+  const storage = new Map()
+  global.wx = {
+    getStorageSync: (key) => storage.get(key),
+    setStorageSync: (key, value) => storage.set(key, structuredClone(value)),
+  }
+  const task = aiTaskStore.createAiTask({
+    sourceImagePath: '/tmp/source.png',
+    settings: { width: 64, height: 64, colorLimit: 32, brand: 'mard' },
+    style: 'kawaii',
+  })
+
+  assert.equal(aiTaskStore.listActiveAiTasks()[0].style, 'kawaii')
+  assert.equal(aiTaskStore.patchAiTask(task.taskId, { status: 'created', retryCount: 1 }).style, 'kawaii')
+  t.after(() => { delete global.wx })
 })
 
 test('创建任务失败后解除按钮状态，保留图片并允许再次生成', async (t) => {

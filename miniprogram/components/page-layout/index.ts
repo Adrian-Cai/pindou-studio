@@ -11,11 +11,13 @@ Component({
     showMainNav: { type: Boolean, value: false },
     selectedTab: { type: Number, value: -1 },
     compactBottomPadding: { type: Boolean, value: false },
+    scrollIntoView: { type: String, value: '' },
   },
 
   data: {
     navigationBarHeight: 0,
     scrollAreaHeight: 0,
+    contentStyle: '',
     showEmbeddedMainNav: false,
     isMainTabPage: false,
   },
@@ -46,9 +48,13 @@ Component({
   methods: {
     updateLayoutMetrics() {
       const metrics = getCustomNavigationMetrics()
+      const scrollAreaHeight = Math.max(0, metrics.windowHeight - metrics.topBarHeight)
       this.setData({
         navigationBarHeight: metrics.navigationBarHeight,
-        scrollAreaHeight: Math.max(0, metrics.windowHeight - metrics.topBarHeight),
+        scrollAreaHeight,
+        contentStyle: this.properties.home
+          ? `height: ${scrollAreaHeight}px;`
+          : '',
       })
     },
 

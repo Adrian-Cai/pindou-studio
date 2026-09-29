@@ -117,3 +117,18 @@ test('logout clears the in-memory security session', async (t) => {
   assert.equal(loginCount, 2)
   assert.match(next.token, /opaque_token_2_/)
 })
+
+test('AI operations reject the transient session used by guest security checks', async (t) => {
+  setup(t)
+  t.mock.method(authService, 'loginWithWechat', async () => session())
+
+  await sessionService.ensureLoggedInSession()
+  assert.throws(() => sessionService.requireLoggedInSession(), (error) => {
+    assert.equal(error.code, 'LOGIN_REQUIRED')
+    assert.equal(error.message, '请先登录后使用 AI 功能')
+    return true
+  })
+
+  saveAuthSession(session())
+  assert.equal(sessionService.requireLoggedInSession().token, session().token)
+})

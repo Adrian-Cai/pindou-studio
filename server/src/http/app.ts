@@ -15,6 +15,7 @@ import {
   idempotencyKey,
   validateContentSecurityTextBody,
   validateCreateAiGenerationBody,
+  validateCreateTextImageGenerationBody,
   validateCreatePaymentBody,
   validateDownloadBody,
   validateFavoriteBody,
@@ -29,6 +30,8 @@ import {
   IOS_REFUND_QUERY_EVENT,
   REFUND_EVENT,
   aiGenerationId,
+  textImageGenerationId,
+  textImageGenerationConsumeId,
   downloadListOptions,
   errorPayload,
   favoriteListOptions,
@@ -282,12 +285,15 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         const validated = validateWorkBody(await readJsonObject(request, 2 * 1024 * 1024));
         await requireContentSecurity(dependencies).checkText(currentUser.id, validated.title);
+        if (validated.sourcePrompt) await requireContentSecurity(dependencies).checkText(currentUser.id, validated.sourcePrompt);
         sendJson(response, 201, await dependencies.works.create({
           userId: currentUser.id,
           idempotencyKey: idempotencyKey(request),
           title: validated.title,
           coverFileId: validated.coverFileId,
           status: validated.status,
+          creationSource: validated.creationSource,
+          sourcePrompt: validated.sourcePrompt,
           validatedPattern: validatePersistedPattern(validated.pattern),
         }));
         return;
@@ -342,6 +348,50 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           idempotencyKey: idempotencyKey(request),
           ...body,
         }));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/ai/text-generations") {
+        if (url.searchParams.size > 0) throw invalidArgument("文生图接口不接受查询参数");
+        if (!dependencies.textGenerations) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const body = validateCreateTextImageGenerationBody(await readJsonObject(request));
+        dependencies.aiRateLimiter?.check(`${currentUser.id}:text-generation`);
+        await requireContentSecurity(dependencies).checkText(currentUser.id, body.prompt);
+        sendJson(response, 201, await dependencies.textGenerations.create({
+          userId: currentUser.id,
+          idempotencyKey: idempotencyKey(request),
+          prompt: body.prompt,
+        }));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/ai/text-generations") {
+        if (url.searchParams.size !== 1 || url.searchParams.getAll("active").length !== 1 || url.searchParams.get("active") !== "true") {
+          throw invalidArgument("文生图任务列表只支持 active=true");
+        }
+        if (!dependencies.textGenerations) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, { items: await dependencies.textGenerations.listRecoverable(currentUser.id) });
+        return;
+      }
+
+      const textGenerationConsumeId = textImageGenerationConsumeId(url.pathname);
+      if (request.method === "POST" && textGenerationConsumeId) {
+        if (url.searchParams.size > 0) throw invalidArgument("文生图任务操作不接受查询参数");
+        if (!dependencies.textGenerations) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        await dependencies.textGenerations.consume(currentUser.id, textGenerationConsumeId);
+        sendNoContent(response);
+        return;
+      }
+
+      const requestedTextGenerationId = textImageGenerationId(url.pathname);
+      if (request.method === "GET" && requestedTextGenerationId) {
+        if (url.searchParams.size > 0) throw invalidArgument("文生图任务接口不接受查询参数");
+        if (!dependencies.textGenerations) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, await dependencies.textGenerations.get(currentUser.id, requestedTextGenerationId));
         return;
       }
 
@@ -612,6 +662,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           if (update.title !== undefined) {
             await requireContentSecurity(dependencies).checkText(currentUser.id, update.title);
           }
+          if (update.sourcePrompt) await requireContentSecurity(dependencies).checkText(currentUser.id, update.sourcePrompt);
           sendJson(response, 200, await dependencies.works.update({
             userId: currentUser.id,
             workId: requestedWorkId,

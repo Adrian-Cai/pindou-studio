@@ -33,6 +33,7 @@ const FALLBACK_MESSAGE = 'AI 生成失败，请稍后重试'
 // 与 aiGenerationErrorMessage 的 switch 一一对应：每个有独立文案的码。
 // 在 switch 里加 case 时同步加到这里，让「是否有对应 failure 定义」受测试保护。
 const CODES_WITH_OWN_MESSAGE = [
+  'LOGIN_REQUIRED',
   'USER_AI_QUOTA_EXHAUSTED',
   'AI_SERVICE_UNAVAILABLE',
   'AI_SERVICE_BUSY',
@@ -112,6 +113,27 @@ test('服务端可能透出的内部码都被归一化到预期的公开码', ()
       `${internal} 归一化后没有可用文案`,
     )
   }
+})
+
+test('AI 任务响应解析接受新旧风格并拒绝未知值', () => {
+  const task = {
+    id: 'aijob_1',
+    generationMode: 'ai',
+    status: 'queued',
+    inputFileId: 'file_input',
+    outputFile: null,
+    style: 'kawaii',
+    detailLevel: 'medium',
+    backgroundMode: 'simplify',
+    failure: null,
+    createdAt: '2026-09-29T00:00:00.000Z',
+    updatedAt: '2026-09-29T00:00:00.000Z',
+    completedAt: null,
+  }
+
+  assert.equal(service.parseAiGeneration(task).style, 'kawaii')
+  assert.equal(service.parseAiGeneration({ ...task, style: 'natural' }).style, 'natural')
+  assert.throws(() => service.parseAiGeneration({ ...task, style: 'unknown' }), { code: 'INVALID_RESPONSE' })
 })
 
 test('额度耗尽与服务端不可用不再显示成「AI 生成失败，请稍后重试」', () => {
