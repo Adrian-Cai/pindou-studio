@@ -79,7 +79,7 @@ page {
   color: #747b76;
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 23rpx;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.35;
   white-space: nowrap;
 }
