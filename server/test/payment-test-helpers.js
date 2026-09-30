@@ -170,7 +170,18 @@ function existingOrderPool(orderOverrides = {}) {
   const pool = clientPool((sql, parameters) => {
     if (sql === "BEGIN" || sql === "COMMIT" || sql.includes("pg_advisory_xact_lock")) return { rows: [] };
     if (sql.includes("SELECT EXISTS")) return { rows: [{ found: false }] };
-    if (sql.includes("SELECT COUNT(*)::int AS total")) return { rows: [{ total: 0 }] };
+    if (sql.includes("SELECT COUNT(*)::int AS total")) {
+      // 支付尝试的计数必须按真实语义走：重签尝试依赖它判断触顶，
+      // 「全关才关单」依赖它只数未关闭的尝试，两者都不能恒为 0。
+      if (sql.includes("FROM pindou_payment_attempts")) {
+        const activeOnly = sql.includes("status <> 'CLOSED'");
+        const total = activeOnly
+          ? attempts.filter((item) => item.status !== "CLOSED").length
+          : attempts.length;
+        return { rows: [{ total }] };
+      }
+      return { rows: [{ total: 0 }] };
+    }
     if (sql.includes("FROM pindou_orders") && sql.includes("FOR UPDATE")) return { rows: [orderRow] };
     if (sql.includes("FROM pindou_packages")) return { rows: [packageRow()] };
     if (sql.includes("FROM pindou_payment_attempts")) return { rows: [attempts.at(-1)] };

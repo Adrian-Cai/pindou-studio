@@ -66,6 +66,15 @@ export type {
 const NEW_USER_TEST_PACKAGE_ID = "ai_generation_new_user_5";
 const PAYMENT_EXPIRY_MS = 5 * 60_000;
 const MAX_PENDING_ORDERS = 5;
+/**
+ * 同一笔订单最多保留的支付尝试数（含最初那次）。
+ *
+ * 微信的商户单号是一次性的：用户在支付面板里取消后，微信会把那张单关掉，
+ * 再用旧单号拉起必然报 -15012（ORDER_CLOSED），只能换新单号。这给了用户
+ * 「取消后还能继续付同一笔订单」的可能，但也不能无限换号——每次换号都会
+ * 在微信侧留下一张真实订单，触顶后订单就该真的结束，交给用户重新下单。
+ */
+const MAX_PAYMENT_ATTEMPTS_PER_ORDER = 5;
 
 /** 订单页传入的 orderId 只做长度与空白净化：具体存在性/归属由数据库校验。 */
 function normalizeOrderId(value: string): string {
@@ -352,7 +361,8 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
     }
     if (created) return created;
     if (!existing) throw new Error("支付订单未生成");
-    return this.resumeExistingPayment(orderId, existing);
+    // 同一幂等键的重试不是新的购买意图：微信把这张单关了，就只能是这个意图结束了。
+    return this.resumeExistingPayment(orderId, existing, { allowReissue: false });
   }
 
   /**
@@ -373,7 +383,8 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
     }
     const orderId = normalizeOrderId(input.orderId);
     const existing = await this.loadPayableOrderForUser(input.userId, orderId);
-    return this.resumeExistingPayment(orderId, existing);
+    // 用户是在订单页明说「这笔我还要付」，所以微信关掉旧单号后可以换号再来一次。
+    return this.resumeExistingPayment(orderId, existing, { allowReissue: true });
   }
 
   /**
@@ -636,9 +647,94 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
     });
   }
 
+  /**
+   * 为同一张未过期的订单签发一枚新的支付尝试（一枚全新的商户单号）。
+   *
+   * 为什么必须换号：微信的 out_trade_no 一次性，用户在支付面板里取消后微信会把
+   * 那张单置为已关闭，沿用旧号拉起只会拿到 -15012。此时钱没付、货没发，
+   * 订单还在有效期内，正确做法是把旧尝试记为 CLOSED、另起一枚新号让用户继续付，
+   * 而不是把整张订单关掉——那等于用户「取消一次付款」就被判了「订单作废」。
+   *
+   * 换号不等于无上限：每次换号都会在微信侧留下一张真实订单，触顶
+   * （MAX_PAYMENT_ATTEMPTS_PER_ORDER）后不再签发，由调用方按「订单结束」收尾。
+   *
+   * @returns 新商户单号与金额快照；订单已不是 pending 或尝试数触顶时返回 null
+   */
+  private async reissuePaymentAttempt(
+    orderId: string,
+    existing: { readonly attempt: PaymentAttemptRow },
+  ): Promise<{ readonly outTradeNo: string; readonly amountFen: number } | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        `pindou-payment:${orderId}`,
+      ]);
+      const orderResult = await client.query<{ readonly status: string }>(
+        `SELECT status
+           FROM pindou_orders
+          WHERE id = $1
+          LIMIT 1
+          FOR UPDATE`,
+        [orderId],
+      );
+      const order = orderResult.rows[0];
+      // 并发的发货/关单已经把订单推到终态：这次续签作废，交给调用方重读状态作答
+      if (!order || order.status !== "pending") {
+        await client.query("COMMIT");
+        return null;
+      }
+      const totalResult = await client.query<{ readonly total: number }>(
+        `SELECT COUNT(*)::int AS total
+           FROM pindou_payment_attempts
+          WHERE order_id = $1`,
+        [orderId],
+      );
+      if ((totalResult.rows[0]?.total ?? 0) >= MAX_PAYMENT_ATTEMPTS_PER_ORDER) {
+        await client.query("COMMIT");
+        console.warn(JSON.stringify({
+          event: "payment_attempt_limit_reached",
+          orderId,
+          attempts: totalResult.rows[0]?.total ?? 0,
+        }));
+        return null;
+      }
+      const outTradeNo = createVirtualOutTradeNo();
+      const attemptId = createEntityId("pa");
+      const amountFen = existing.attempt.amount_fen;
+      const currentTime = this.now();
+      await client.query(
+        `INSERT INTO pindou_payment_attempts (
+           id, order_id, user_id, out_trade_no, status, amount_fen, currency,
+           created_at, issued_at
+         ) VALUES ($1, $2, $3, $4, 'ISSUED', $5, 'CNY', $6, $6)`,
+        [attemptId, orderId, existing.attempt.user_id, outTradeNo, amountFen, currentTime],
+      );
+      // 订单上的当前单号必须跟着走：发货/退款/iOS 问询都按它回查订单
+      await client.query(
+        `UPDATE pindou_orders SET virtual_out_trade_no = $2, updated_at = $3 WHERE id = $1`,
+        [orderId, outTradeNo, currentTime],
+      );
+      await client.query("COMMIT");
+      console.log(JSON.stringify({
+        event: "payment_attempt_reissued",
+        orderId,
+        attemptId,
+        reason: "wechat_attempt_closed",
+      }));
+      return { outTradeNo, amountFen };
+    } catch (error: unknown) {
+      await rollbackTransaction(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   private async resumeExistingPayment(
     orderId: string,
     existing: { readonly order: OrderRow; readonly attempt: PaymentAttemptRow; readonly openid: string; readonly sessionKey: string; readonly productId: string },
+    options: { readonly allowReissue: boolean },
   ): Promise<CreatePaymentResponse> {
     let verified: QueriedVirtualOrder;
     try {
@@ -661,11 +757,35 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
       throw new AppError(409, "ORDER_ALREADY_PAID", "订单已支付", { orderId });
     }
     if (state === "CLOSED") {
-      await this.updateAttemptQuery(existing.attempt.id, "CLOSED", null);
+      await this.updateAttemptQuery(existing.attempt.id, "CLOSED", "wechat_attempt_closed");
+      const stillValid = !existing.order.expires_at
+        || currentTime.getTime() < orderCreatedAtMs(existing.order.expires_at);
+      // 微信只关掉了这一枚商户单号，钱没付、货没发，订单本身还没到期：
+      // 换一枚新单号继续付这张订单（仅「继续支付」入口，同一幂等键的重试不换号）。
+      const reissued = options.allowReissue && stillValid
+        ? await this.reissuePaymentAttempt(orderId, existing)
+        : null;
+      if (reissued) {
+        return {
+          orderId,
+          payment: null,
+          virtual: this.signVirtualPayment({
+            orderId,
+            outTradeNo: reissued.outTradeNo,
+            productId: existing.productId,
+            goodsPriceFen: reissued.amountFen,
+            sessionKey: existing.sessionKey,
+          }),
+        };
+      }
       if (!await this.closeOrderIfAttemptsClosed(orderId, currentTime)) {
         throw new AppError(409, "PAYMENT_STATUS_CONFIRMING", "支付状态确认中，请稍后重试");
       }
-      throw new AppError(409, "ORDER_EXPIRED", "订单支付已关闭，请重新下单");
+      throw new AppError(
+        409,
+        "ORDER_EXPIRED",
+        stillValid ? "订单支付已关闭，请重新下单" : "订单已过期，请重新下单",
+      );
     }
     if (state === "UNPAID") {
       if (!existing.order.expires_at || currentTime.getTime() < orderCreatedAtMs(existing.order.expires_at)) {

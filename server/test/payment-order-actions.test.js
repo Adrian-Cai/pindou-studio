@@ -3,7 +3,8 @@
  *
  * 这两个入口与 createPayment 共用 resumeExistingPayment / confirmAndGrant，
  * 这里只验证各自的入口契约：
- * - 继续支付：不创建新订单；微信未关单沿用原商户单号；已付/已关/非本人各有明确回答；
+ * - 继续支付：不创建新订单；微信未关单沿用原商户单号；微信关单且订单未过期则换一枚
+ *   新商户单号继续付这张订单（取消一次付款不等于订单作废），触顶或已过期才结束订单；
  * - 取消订单：先查微信再关单 —— 已付要发货并回答 ORDER_ALREADY_PAID，
  *   查单失败绝不关单，确认未付才本地关闭。
  */
@@ -53,18 +54,76 @@ test("continue payment keeps the same order and trade number while WeChat still 
   assert.equal(pool.updates.length, 0, "未关单分支不应改写订单");
 });
 
-test("continue payment closes the order after WeChat closed its only attempt", async () => {
-  const gateway = spyGateway({
-    queryResult: { state: "CLOSED", paid: false, mchOrderNo: null, transactionId: null, paidTimeSeconds: null, actualPriceFen: null },
-  });
+/** 微信侧已把这张支付单关掉（status=6）：旧商户单号从此不可再用。 */
+const CLOSED_QUERY = {
+  state: "CLOSED",
+  paid: false,
+  mchOrderNo: null,
+  transactionId: null,
+  paidTimeSeconds: null,
+  actualPriceFen: null,
+};
+
+test("continue payment reissues a fresh trade number for the same order after WeChat closed its attempt", async () => {
+  const gateway = spyGateway({ queryResult: CLOSED_QUERY });
   const pool = existingOrderPool();
+  const service = new PostgresPaymentService(pool, gateway, fakeLegacyGateway(), SECRET, () => NOW);
+  const result = await service.continuePayment({ userId: "usr_a", orderId: "order_existing" });
+
+  assert.equal(result.orderId, "order_existing", "继续支付必须落在原订单上");
+  const signed = JSON.parse(result.virtual.signData);
+  assert.notEqual(signed.outTradeNo, "vpay_existingtradeno00001", "微信已关单时必须换新商户单号，沿用必然 -15012");
+  assert.match(signed.outTradeNo, /^vpay_/u);
+  assert.equal(pool.attempts.length, 2, "新商户单号以新尝试的形式挂在同一张订单下");
+  assert.equal(pool.attempts[0].status, "CLOSED", "旧尝试必须落定，避免它再被当作在途支付");
+  assert.equal(pool.attempts[1].status, "ISSUED");
+  assert.equal(pool.attempts[1].out_trade_no, signed.outTradeNo);
+  const tradeNoIndex = pool.updateSql.findIndex((sql) => sql.includes("virtual_out_trade_no"));
+  assert.ok(tradeNoIndex >= 0, "订单当前商户单号必须跟着新尝试走，否则发货/退款回查不到订单");
+  assert.equal(pool.updates[tradeNoIndex][1], signed.outTradeNo);
+  assert.equal(
+    pool.updateSql.some((sql) => sql.includes("status = 'closed'")),
+    false,
+    "订单未过期且确认没付款——用户只是取消了一次付款，订单不能因此作废",
+  );
+});
+
+test("continue payment stops reissuing and closes the order once it hits the attempt limit", async () => {
+  const gateway = spyGateway({ queryResult: CLOSED_QUERY });
+  const pool = existingOrderPool();
+  for (let index = 0; index < 4; index += 1) {
+    // 追加到数组头部：假 Pool 把末位当作「最新尝试」，当前尝试必须仍是 pa_existing
+    pool.attempts.unshift({
+      id: `pa_old_${index}`,
+      order_id: "order_existing",
+      user_id: "usr_a",
+      out_trade_no: `vpay_old_${index}`,
+      status: "CLOSED",
+      wechat_transaction_id: null,
+      amount_fen: 990,
+      created_at: NOW,
+      paid_at: null,
+      closed_at: NOW,
+    });
+  }
   const service = new PostgresPaymentService(pool, gateway, fakeLegacyGateway(), SECRET, () => NOW);
   await assert.rejects(
     () => service.continuePayment({ userId: "usr_a", orderId: "order_existing" }),
     (error) => error.code === "ORDER_EXPIRED",
   );
-  assert.equal(pool.attempts.length, 1, "已关闭的支付生命周期不能在同一订单下新增尝试");
-  assert.equal(pool.attempts[0].status, "CLOSED");
+  assert.equal(pool.attempts.length, 5, "触顶后不再签发新的支付尝试，避免无限换号");
+  assert.equal(pool.updateSql.some((sql) => sql.includes("status = 'closed'")), true);
+});
+
+test("continue payment closes an expired order whose attempt WeChat already closed", async () => {
+  const gateway = spyGateway({ queryResult: CLOSED_QUERY });
+  const pool = existingOrderPool({ expires_at: new Date(NOW.getTime() - 1_000) });
+  const service = new PostgresPaymentService(pool, gateway, fakeLegacyGateway(), SECRET, () => NOW);
+  await assert.rejects(
+    () => service.continuePayment({ userId: "usr_a", orderId: "order_existing" }),
+    (error) => error.code === "ORDER_EXPIRED",
+  );
+  assert.equal(pool.attempts.length, 1, "订单已过有效期就不再换号，直接结束");
   assert.equal(pool.updateSql.some((sql) => sql.includes("status = 'closed'")), true);
 });
 
