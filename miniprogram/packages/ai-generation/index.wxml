@@ -75,7 +75,7 @@
             id="aiPatternCanvas"
             class="ai-generation-result-card__canvas"
             type="2d"
-            style="transform: scale({{scalePercent / 100}}); opacity: {{patternCanvasReady ? 1 : 0}};"
+            style="opacity: {{patternCanvasReady ? 1 : 0}};"
             aria-label="拼豆图预览"
           ></canvas>
           <view wx:if="{{patternRenderError}}" class="ai-generation-result-card__fallback">拼豆图预览失败，请重新生成</view>

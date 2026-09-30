@@ -14,6 +14,7 @@ export interface PatternCanvasContext {
   fillStyle: string
   globalAlpha: number
   scale(x: number, y: number): void
+  translate(x: number, y: number): void
   fillRect(x: number, y: number, width: number, height: number): void
   beginPath(): void
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void

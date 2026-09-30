@@ -256,7 +256,7 @@ Page({
       scalePercent: next,
       canZoomIn: next < 300,
       canZoomOut: next > 100,
-    })
+    }, () => this.renderPatternPreview())
   },
 
   zoomOut() {
@@ -265,7 +265,7 @@ Page({
       scalePercent: next,
       canZoomIn: next < 300,
       canZoomOut: next > 100,
-    })
+    }, () => this.renderPatternPreview())
   },
 
   renderPatternPreview() {
@@ -288,6 +288,9 @@ Page({
             result.node.height = Math.round(result.height * pixelRatio)
             const context = result.node.getContext('2d')
             context.scale(pixelRatio, pixelRatio)
+            const scale = this.data.scalePercent / 100
+            context.translate(result.width * (1 - scale) / 2, result.height * (1 - scale) / 2)
+            context.scale(scale, scale)
             drawPatternOnCanvas(context, result.width, result.height, draft, true)
             this.setData({ patternCanvasReady: true })
           })
