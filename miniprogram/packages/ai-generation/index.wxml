@@ -1,14 +1,8 @@
 <page-layout title="AI 生成" back show-main-nav selected-tab="{{selectedTab}}">
   <view class="ai-generation-page">
-    <view
-      class="ai-compliance-notice"
-      role="note"
-      aria-label="当前生成结果由人工智能生成"
-    >当前生成结果由人工智能生成</view>
-
     <!--
       单页面状态流转：排队 / 生成中 / 失败 / 完成都长在这一个页面里，
-      页面框架（顶部提示 + 中间主内容区 + 底部禁用态编辑面板）不变，
+      页面框架（中间主内容区 + 底部编辑面板）不变，
       只按任务状态原地替换中间主内容卡片，不跳转任何独立失败页/成功页。
     -->
 
@@ -75,7 +69,6 @@
     <!-- ④ 已完成：同页展示结果，并启用缩放、工具、色板与保存操作 -->
     <view wx:elif="{{isSucceeded}}" class="ai-generation-state">
       <view class="ai-generation-result-card">
-        <view class="ai-generation-result-card__eyebrow">AI 精致生成</view>
         <view class="ai-generation-result-card__preview">
           <canvas
             wx:if="{{draft}}"

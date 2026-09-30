@@ -2,19 +2,6 @@
   box-sizing: border-box;
   padding: 32rpx;
   --color-ai-text: #7c5cfc;
-  --color-ai-notice-bg: #fff7d6;
-  --color-ai-notice-text: #47413a;
-}
-
-.ai-compliance-notice {
-  padding: 20rpx 24rpx;
-  border-radius: 16rpx;
-  background: var(--color-ai-notice-bg, #f0ecff);
-  color: var(--color-ai-notice-text, #5d43b7);
-  font-size: 24rpx;
-  font-weight: 500;
-  line-height: 36rpx;
-  text-align: center;
 }
 
 /* 各状态共用的中间主内容区：状态切换只替换这里，页面框架不动 */
@@ -71,13 +58,6 @@
   box-shadow: var(--shadow-card, 0 4rpx 16rpx rgba(31, 38, 35, 0.08));
 }
 
-.ai-generation-result-card__eyebrow {
-  color: var(--color-ai-text, #7c5cfc);
-  font-size: 24rpx;
-  line-height: 36rpx;
-  text-align: center;
-}
-
 .ai-generation-result-card__preview {
   display: flex;
   box-sizing: border-box;
@@ -106,8 +86,6 @@
 @media (prefers-color-scheme: dark) {
   .ai-generation-page {
     --color-ai-text: #c2b5ff;
-    --color-ai-notice-bg: #3f3215;
-    --color-ai-notice-text: #f1e9d8;
   }
 
   .ai-generation-result-card__preview {
