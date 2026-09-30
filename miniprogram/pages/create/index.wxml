@@ -130,7 +130,6 @@
   <view class="text-size-sheet" catchtap="preventSheetClose" role="dialog" aria-label="选择图片尺寸">
     <view class="text-size-sheet__handle"></view>
     <view class="text-card__heading"><text>选择图片尺寸</text><button class="text-action text-action--muted" bindtap="closeTextSizes" aria-label="关闭尺寸选择">关闭</button></view>
-    <view class="text-size-sheet__label">混元支持的尺寸</view>
     <scroll-view class="text-size-sheet__scroll" scroll-y>
       <view class="text-size-options"><button wx:for="{{textSizes}}" wx:key="*this" class="text-size-option {{pendingTextSize === item ? 'text-size-option--active' : ''}}" data-size="{{item}}" bindtap="selectTextSize" role="radio" aria-checked="{{pendingTextSize === item}}">{{item}}</button></view>
     </scroll-view>
