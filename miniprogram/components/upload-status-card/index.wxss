@@ -24,8 +24,9 @@
 .upload-status-card__preview-wrap {
   position: relative;
   box-sizing: border-box;
-  width: 100%;
-  height: calc(100vw - 120rpx);
+  align-self: center;
+  width: 70%;
+  height: calc(70vw - 84rpx);
   flex: 0 0 auto;
   overflow: hidden;
   border-radius: 20rpx;
@@ -267,6 +268,31 @@
 .upload-status-card__status-band--success {
   background: var(--color-primary-soft);
   color: var(--color-primary);
+}
+
+.upload-status-card__state-content--success {
+  width: 70%;
+  margin: 0 auto;
+}
+
+.upload-status-card__status-band--success {
+  height: auto;
+  gap: 8rpx;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.upload-status-card__status-band--success .upload-status-card__status-icon--success {
+  flex-basis: 24rpx;
+  width: 24rpx;
+  height: 24rpx;
+}
+
+.upload-status-card__status-band--success .upload-status-card__ticker {
+  height: auto;
+  font-size: 18rpx;
+  line-height: 26rpx;
 }
 
 .upload-status-card__ticker-track {
