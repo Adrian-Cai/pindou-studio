@@ -6,7 +6,8 @@ import type { GenerationMode } from '../../models/pattern'
 import type { AiGenerationStyle } from '../../services/ai-generation-service'
 import { appStore } from '../../store/app-store'
 import { aiTaskManager } from '../../services/ai-generation-manager'
-import { createTextGeneration } from '../../services/text-generation-service'
+import { createTextGeneration, fetchTextGenerationOptions, fetchTextInspirations } from '../../services/text-generation-service'
+import { authStore } from '../../store/auth-store'
 import { createIdempotencyKey } from '../../services/ai-task-store'
 import { requireLoggedInSession } from '../../services/session-service'
 
@@ -71,9 +72,21 @@ Page({
     prompt: '',
     promptLength: 0,
     creatingText: false,
+    inspirations: [] as { title: string; prompt: string }[],
+    inspirationLoading: false,
+    inspirationError: '',
+    textSizes: [] as string[],
+    textSize: '',
+    pendingTextSize: '',
+    sizeSheetOpen: false,
+    textOptionsLoading: false,
+    textOptionsError: '',
+    textCost: 1,
+    aiRemaining: null as number | null,
     contentSecurityImagePath: '',
     securityCheckId: '',
     settings: { ...DEFAULT_PATTERN_SETTINGS, width: 64, height: 64, colorLimit: 32 },
+    settingsExpanded: false,
     sizeOptions: [32, 48, 64, 96, 128],
     colorOptions: [16, 32, 64, 96],
     choosing: false,
@@ -107,6 +120,7 @@ Page({
       generating: false,
       submitting: false,
     })
+    if (this.data.creationSource === 'text') void this.loadTextMode()
   },
 
   onHide() {
@@ -116,6 +130,70 @@ Page({
   onUnload() {
     this._visible = false
     currentUploadRequestId += 1
+  },
+
+  selectCreationSource(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.creatingText) return
+    const source = event.currentTarget.dataset.source as 'image' | 'text'
+    if (source === this.data.creationSource) return
+    this.setData({ creationSource: source })
+    if (source === 'text') void this.loadTextMode()
+  },
+
+  async loadTextMode() {
+    void this.refreshInspirations()
+    void authStore.refreshAiQuota().then(quota => {
+      if (this._visible) this.setData({ aiRemaining: quota?.aiGeneration.remaining ?? null })
+    }).catch(() => this.setData({ aiRemaining: null }))
+    this.setData({ textOptionsLoading: true, textOptionsError: '' })
+    try {
+      const options = await fetchTextGenerationOptions()
+      if (!this._visible) return
+      const textSize = options.sizes.includes(this.data.textSize) ? this.data.textSize : options.defaultSize
+      this.setData({ textSizes: options.sizes, textSize, textCost: options.cost })
+    } catch {
+      if (this._visible) this.setData({ textOptionsError: '尺寸配置读取失败，点击重试', textSizes: [] })
+    } finally {
+      if (this._visible) this.setData({ textOptionsLoading: false })
+    }
+  },
+
+  async refreshInspirations() {
+    if (this.data.inspirationLoading) return
+    this.setData({ inspirationLoading: true, inspirationError: '' })
+    try {
+      const inspirations = await fetchTextInspirations()
+      if (this._visible) this.setData({ inspirations })
+    } catch (error) {
+      if (this._visible) this.setData({ inspirationError: error instanceof Error ? error.message : '灵感获取失败，请点击换一换重试' })
+    } finally {
+      this.setData({ inspirationLoading: false })
+    }
+  },
+
+  useInspiration(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.creatingText) return
+    const item = this.data.inspirations[Number(event.currentTarget.dataset.index)]
+    if (item) this.setData({ prompt: item.prompt, promptLength: Array.from(item.prompt).length })
+  },
+
+  clearPrompt() {
+    if (!this.data.creatingText) this.setData({ prompt: '', promptLength: 0 })
+  },
+
+  openTextSizes() {
+    if (!this.data.textSizes.length) { void this.loadTextMode(); return }
+    if (!this.data.creatingText) this.setData({ sizeSheetOpen: true, pendingTextSize: this.data.textSize })
+  },
+
+  closeTextSizes() { this.setData({ sizeSheetOpen: false }) },
+  preventSheetClose() {},
+  selectTextSize(event: WechatMiniprogram.TouchEvent) {
+    const size = String(event.currentTarget.dataset.size)
+    if (this.data.textSizes.includes(size)) this.setData({ pendingTextSize: size })
+  },
+  confirmTextSize() {
+    this.setData({ textSize: this.data.pendingTextSize, sizeSheetOpen: false })
   },
 
   selectMode(event: WechatMiniprogram.TouchEvent) {
@@ -139,6 +217,10 @@ Page({
   async startTextGeneration() {
     if (this.data.creatingText || this.data.submitting) return
     if (!hasAiLogin()) return
+    if (!this.data.textSizes.includes(this.data.textSize) || this.data.textOptionsLoading) {
+      wx.showToast({ title: '请先加载并选择图片尺寸', icon: 'none' })
+      return
+    }
     const prompt = this.data.prompt.trim().normalize('NFC')
     const length = Array.from(prompt).length
     if (length < 1 || length > 500) {
@@ -147,8 +229,13 @@ Page({
     }
     this.setData({ creatingText: true })
     try {
-      const task = await createTextGeneration(prompt, createIdempotencyKey())
-      wx.navigateTo({ url: `/packages/ai-generation/text/index?taskId=${encodeURIComponent(task.id)}&from=home` })
+      const task = await createTextGeneration(prompt, createIdempotencyKey(), this.data.textSize)
+      if (!this._visible) return
+      await new Promise<void>(resolve => wx.navigateTo({
+        url: `/packages/ai-generation/text/index?taskId=${encodeURIComponent(task.id)}&from=home`,
+        fail: () => wx.showToast({ title: '页面打开失败，可到作品页查看任务', icon: 'none' }),
+        complete: () => resolve(),
+      }))
     } catch (error) {
       wx.showToast({ title: error instanceof Error ? error.message : '文生图任务创建失败，请重试', icon: 'none' })
     } finally {
@@ -257,6 +344,10 @@ Page({
 
   selectColor(event: WechatMiniprogram.TouchEvent) {
     this.setData({ 'settings.colorLimit': Number(event.currentTarget.dataset.value) })
+  },
+
+  toggleSettings() {
+    this.setData({ settingsExpanded: !this.data.settingsExpanded })
   },
 
   async startCreating() {

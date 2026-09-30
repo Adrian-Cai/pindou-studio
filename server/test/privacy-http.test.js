@@ -20,7 +20,7 @@ function dependencies(overrides = {}) {
     users: {
       async getCurrentUser() { return { user: {}, stats: {}, quota: {}, privacy: defaults }; },
       async updateNickname() { throw new Error("unused"); },
-      async updateProfileWithAvatar() { throw new Error("unused"); },
+      async updateAvatar() { throw new Error("unused"); },
       async getPrivacyPreferences() { return defaults; },
       async updatePrivacyPreferences(_userId, patch) {
         return {

@@ -11,6 +11,7 @@ async function waitForTerminal(service, userId, jobId) {
   let result = await service.get(userId, jobId);
   for (let attempt = 0; attempt < 10 && (result.status === "queued" || result.status === "processing"); attempt += 1) {
     await new Promise((resolve) => setImmediate(resolve));
+    await service.processQueued();
     result = await service.get(userId, jobId);
   }
   return result;

@@ -16,6 +16,7 @@ import type { CoverStorage } from "../files/cover-storage";
 import { unauthorized } from "../../shared/app-error";
 import { nextShanghaiMidnight, shanghaiDate } from "../../shared/shanghai-time";
 import { rollbackTransaction } from "../../shared/transaction";
+import { availableQuota, readQuota } from "../quota/quota-ledger";
 import type { AvatarStorage } from "./avatar-storage";
 
 interface ProfileRow extends QueryResultRow {
@@ -38,13 +39,6 @@ interface UserRow extends QueryResultRow {
   readonly nickname: string | null;
   readonly avatar_url: string | null;
   readonly created_at: Date;
-}
-
-interface QuotaRow extends QueryResultRow {
-  readonly used_today: string;
-  readonly purchased: string;
-  readonly ai_used_today: string;
-  readonly ai_purchased: string;
 }
 
 interface DeletedFileAssetRow extends QueryResultRow {
@@ -114,9 +108,8 @@ export interface UserProfileReader {
 
 export interface UserProfileWriter {
   updateNickname(userId: string, nickname: string): Promise<CurrentUser>;
-  updateProfileWithAvatar(
+  updateAvatar(
     userId: string,
-    nickname: string,
     avatarUrl: string,
   ): Promise<AvatarUpdateResult>;
   updatePrivacyPreferences(userId: string, patch: PrivacyPreferencesPatch): Promise<PrivacyPreferences>;
@@ -167,7 +160,7 @@ export class PostgresUserProfileService implements UserProfileService {
 
   public async getCurrentUser(userId: string): Promise<CurrentUserResponse> {
     const currentTime = this.now();
-    const [profileResult, quotaResult] = await Promise.all([
+    const [profileResult, quota, aiQuota] = await Promise.all([
       this.pool.query<ProfileRow>(
         `SELECT users.id,
                 users.nickname,
@@ -196,40 +189,12 @@ export class PostgresUserProfileService implements UserProfileService {
           LIMIT 1`,
         [userId],
       ),
-      this.pool.query<QuotaRow>(
-        `SELECT COALESCE(
-                  -SUM(amount) FILTER (
-                    WHERE quota_kind = 'standard_download'
-                      AND bucket = 'daily_free' AND quota_date = $2::date AND amount < 0
-                  ),
-                  0
-                )::text AS used_today,
-                  COALESCE(SUM(amount) FILTER (
-                    WHERE quota_kind = 'standard_download' AND bucket = 'purchased'
-                  ), 0)::text AS purchased,
-                  COALESCE(-SUM(amount) FILTER (
-                    WHERE quota_kind = 'ai_generation'
-                      AND bucket = 'daily_free' AND quota_date = $2::date AND amount < 0
-                  ), 0)::text AS ai_used_today,
-                  COALESCE(SUM(amount) FILTER (
-                    WHERE quota_kind = 'ai_generation' AND bucket = 'purchased'
-                  ), 0)::text AS ai_purchased
-           FROM pindou_quota_transactions
-          WHERE user_id = $1`,
-        [userId, shanghaiDate(currentTime)],
-      ),
+      readQuota(this.pool, userId, "standard_download", shanghaiDate(currentTime), this.quotaConfig.dailyStandardDownloads),
+      readQuota(this.pool, userId, "ai_generation", shanghaiDate(currentTime), this.quotaConfig.dailyAiGenerations),
     ]);
 
     const profile = profileResult.rows[0];
     if (!profile) throw unauthorized("用户不存在或已失效");
-    const quota = quotaResult.rows[0];
-    const usedToday = nonNegativeInteger(quota?.used_today ?? "0");
-    const purchased = nonNegativeInteger(quota?.purchased ?? "0");
-    const aiUsedToday = nonNegativeInteger(quota?.ai_used_today ?? "0");
-    const aiPurchased = nonNegativeInteger(quota?.ai_purchased ?? "0");
-    const dailyRemaining = Math.max(0, this.quotaConfig.dailyStandardDownloads - usedToday);
-    const aiDailyRemaining = Math.max(0, this.quotaConfig.dailyAiGenerations - aiUsedToday);
-
     return {
       user: {
         id: profile.id,
@@ -243,16 +208,16 @@ export class PostgresUserProfileService implements UserProfileService {
         downloadCount: nonNegativeInteger(profile.download_count),
       },
       quota: {
-        dailyFree: this.quotaConfig.dailyStandardDownloads,
-        usedToday,
-        purchased,
-        remaining: dailyRemaining + purchased,
+        dailyFree: quota.dailyFree,
+        usedToday: quota.usedToday,
+        purchased: quota.purchased,
+        remaining: availableQuota(quota),
         resetsAt: nextShanghaiMidnight(currentTime),
         aiGeneration: {
-          dailyFree: this.quotaConfig.dailyAiGenerations,
-          usedToday: aiUsedToday,
-          purchased: aiPurchased,
-          remaining: aiDailyRemaining + aiPurchased,
+          dailyFree: aiQuota.dailyFree,
+          usedToday: aiQuota.usedToday,
+          purchased: aiQuota.purchased,
+          remaining: availableQuota(aiQuota),
           resetsAt: nextShanghaiMidnight(currentTime),
         },
       },
@@ -453,9 +418,9 @@ export class PostgresUserProfileService implements UserProfileService {
     return mapUser(user);
   }
 
-  public async updateProfileWithAvatar(
+  /** 仅替换头像，行锁保证并发替换时旧头像清理指向正确文件。 */
+  public async updateAvatar(
     userId: string,
-    nickname: string,
     avatarUrl: string,
   ): Promise<AvatarUpdateResult> {
     const result = await this.pool.query<UserRow & { readonly previous_avatar_url: string | null }>(
@@ -464,15 +429,14 @@ export class PostgresUserProfileService implements UserProfileService {
            FROM pindou_users
           WHERE id = $1 AND deleted_at IS NULL
           FOR UPDATE
-       ), updated AS (
-         UPDATE pindou_users
-            SET nickname = $2, avatar_url = $3, updated_at = $4
-          WHERE id = $1 AND deleted_at IS NULL
-      RETURNING id, nickname, avatar_url, created_at
        )
-       SELECT updated.*, previous.avatar_url AS previous_avatar_url
-         FROM updated, previous`,
-      [userId, nickname, avatarUrl, this.now()],
+       UPDATE pindou_users
+          SET avatar_url = $2, updated_at = $3
+         FROM previous
+        WHERE pindou_users.id = $1 AND deleted_at IS NULL
+       RETURNING pindou_users.id, nickname, pindou_users.avatar_url, created_at,
+                 previous.avatar_url AS previous_avatar_url`,
+      [userId, avatarUrl, this.now()],
     );
     const user = result.rows[0];
     if (!user) throw unauthorized("用户不存在或已失效");

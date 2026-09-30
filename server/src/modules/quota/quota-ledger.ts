@@ -75,6 +75,7 @@ export async function ensureDailyGrant(
 
 /**
  * 聚合某用户某类额度的当前状态。
+ * 未落账时只读预览配置中的每日额度；已发放则以流水为准，消费仍先发放再读取。
  * 注意：purchased（购买所得）不受 quota_date 限制，只有 daily_free 才按天统计并跨天重置。
  */
 export async function readQuota(
@@ -82,6 +83,7 @@ export async function readQuota(
   userId: string,
   quotaKind: QuotaKind,
   quotaDate: string,
+  defaultDailyFree = 0,
 ): Promise<QuotaValues> {
   const result = await client.query<QuotaRow>(
     `SELECT COALESCE(
@@ -90,7 +92,7 @@ export async function readQuota(
                   AND quota_date = $3::date
                   AND type = 'daily_grant'
               ),
-              0
+              $4::int
             )::text AS daily_free,
             COALESCE(
               -SUM(amount) FILTER (
@@ -105,11 +107,13 @@ export async function readQuota(
                 WHERE bucket = 'daily_free' AND quota_date = $3::date
               ),
               0
-            )::text AS daily_remaining,
+            ) + CASE WHEN COUNT(*) FILTER (
+                WHERE bucket = 'daily_free' AND quota_date = $3::date AND type = 'daily_grant'
+              ) = 0 THEN $4::int ELSE 0 END AS daily_remaining,
             COALESCE(SUM(amount) FILTER (WHERE bucket = 'purchased'), 0)::text AS purchased
        FROM pindou_quota_transactions
       WHERE user_id = $1 AND quota_kind = $2`,
-    [userId, quotaKind, quotaDate],
+    [userId, quotaKind, quotaDate, defaultDailyFree],
   );
   const row = result.rows[0];
   return {

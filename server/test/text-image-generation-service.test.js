@@ -15,7 +15,7 @@ function fixture(providerFails = false) {
     const text = sql.toLowerCase()
     if (text.includes('insert into pindou_text_image_generation_jobs')) {
       db.job = {
-        id: args[0], user_id: args[1], prompt: args[2], provider: args[3], model: args[4],
+        id: args[0], user_id: args[1], prompt: args[2], provider: args[3], model: args[4], image_size: args[8],
         status: 'queued', output_file_id: null, output_public_url: null, output_content_type: null,
         output_byte_size: null, provider_request_id: null, idempotency_key: args[5], error_code: null,
         created_at: now, updated_at: now, started_at: null, completed_at: null, expires_at: args[7],
@@ -46,7 +46,8 @@ function fixture(providerFails = false) {
   const provider = {
     name: 'hunyuan',
     configured: true,
-    async generateTextImage() {
+    async generateTextImage(prompt, size) {
+      db.providerInput = { prompt, size }
       if (providerFails) throw new Error('provider failed')
       return { requestId: 'provider_req_1', buffer: Buffer.from('image'), contentType: 'image/png' }
     },
@@ -82,4 +83,23 @@ test('文生图 Provider 失败时不扣额度', async () => {
   await service.create({ userId: 'usr_test', idempotencyKey: 'request-2', prompt: '一朵黄色小花' })
   await waitFor(() => db.job?.status === 'failed')
   assert.equal(db.debitCount, 0)
+})
+
+test('文生图尺寸校验、持久化与 Provider 传递使用同一白名单', async () => {
+  const { validateCreateTextImageGenerationBody } = require('../dist/http/request-validation')
+  const { TEXT_IMAGE_SIZES } = require('../dist/modules/ai/text-image-options')
+  const cloudSource = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../cloudfunctions/generateImage/index.js'), 'utf8')
+  assert.deepEqual(TEXT_IMAGE_SIZES, cloudSource.match(/const ALLOWED_SIZES = \[(.+)\]/)[1].match(/'([^']+)'/g).map(size => size.slice(1, -1)))
+  assert.throws(() => validateCreateTextImageGenerationBody({ prompt: '猫', size: '1920x1080' }))
+  assert.throws(() => validateCreateTextImageGenerationBody({ prompt: '猫', size: null }))
+  assert.equal(validateCreateTextImageGenerationBody({ prompt: '猫' }).size, '1024x1024')
+  for (const size of TEXT_IMAGE_SIZES) {
+    const { db, service } = fixture()
+    const body = validateCreateTextImageGenerationBody({ prompt: '一只猫', size })
+    const task = await service.create({ userId: 'usr_test', idempotencyKey: size, ...body })
+    await waitFor(() => db.job?.status === 'succeeded')
+    assert.equal(task.size, size)
+    assert.equal(db.job.image_size, size)
+    assert.deepEqual(db.providerInput, { prompt: '一只猫', size })
+  }
 })

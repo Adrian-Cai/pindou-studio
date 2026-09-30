@@ -1,4 +1,5 @@
 import type { IncomingMessage } from "node:http";
+import { TEXT_IMAGE_SIZES, type TextImageSize } from '../modules/ai/text-image-options';
 import type {
   AiGenerationBackgroundMode,
   AiGenerationDetailLevel,
@@ -211,14 +212,16 @@ export function validateCreateAiGenerationBody(body: Record<string, unknown>): {
   };
 }
 
-export function validateCreateTextImageGenerationBody(body: Record<string, unknown>): { readonly prompt: string } {
-  if (Object.keys(body).length !== 1 || typeof body.prompt !== "string") {
-    throw invalidArgument("文生图请求体只能包含字符串字段 prompt");
+export function validateCreateTextImageGenerationBody(body: Record<string, unknown>): { readonly prompt: string; readonly size: TextImageSize } {
+  if (!Object.keys(body).every(key => key === 'prompt' || key === 'size') || typeof body.prompt !== "string") {
+    throw invalidArgument("文生图请求体只能包含 prompt 和 size");
   }
   const prompt = body.prompt.trim().normalize("NFC");
   const length = Array.from(prompt).length;
   if (length < 1 || length > 500 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(prompt)) {
     throw invalidArgument("描述长度必须为 1 到 500 个字符，且不能包含控制字符");
   }
-  return { prompt };
+  const size = body.size === undefined ? '1024x1024' : body.size;
+  if (!TEXT_IMAGE_SIZES.includes(size as TextImageSize)) throw invalidArgument('图片尺寸不受支持');
+  return { prompt, size: size as TextImageSize };
 }

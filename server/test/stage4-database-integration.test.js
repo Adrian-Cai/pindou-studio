@@ -86,7 +86,7 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
       "SELECT COUNT(*)::int AS count FROM pindou_quota_transactions WHERE user_id = $1 AND quota_kind = 'standard_download' AND type = 'daily_grant' AND quota_date = '2026-09-01'",
       [userA],
     );
-    assert.equal(grantCount.rows[0].count, 1);
+    assert.equal(grantCount.rows[0].count, 0);
 
     const successful = [];
     for (let index = 1; index <= 4; index += 1) {
@@ -107,6 +107,13 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
       [userA],
     );
     assert.deepEqual(firstBuckets.rows.map((row) => row.bucket).sort(), ["daily_free", "daily_free", "daily_free", "purchased"].sort());
+
+    const changedConfig = new PostgresQuotaDownloadService(pool,
+      { dailyStandardDownloads: 10, dailyAiGenerations: 1 }, () => now);
+    const persistedQuota = await changedConfig.getQuota(userA);
+    assert.equal(persistedQuota.dailyFree, 3, "已发放额度以流水为准，不随配置变化重发");
+    assert.equal(persistedQuota.remaining, 1);
+    assert.equal(persistedQuota.aiGeneration.dailyFree, 1, "未发放 AI 额度只读预览新配置");
 
     const duplicate = await service.createDownload({
       userId: userA,

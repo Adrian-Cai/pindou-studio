@@ -28,10 +28,11 @@ exports.main = async (event) => {
   if (!payload) {
     return { error: '请求参数格式无效', code: 'INVALID_BODY' }
   }
+  if (payload.action === 'inspirations') return generateInspirations()
 
   const prompt = typeof payload.prompt === 'string' ? payload.prompt.trim() : ''
   if (!prompt) return { error: '请输入提示词', code: 'INVALID_PROMPT' }
-  if (prompt.length > MAX_PROMPT_LENGTH) {
+  if (Array.from(prompt).length > MAX_PROMPT_LENGTH) {
     return { error: `提示词最多 ${MAX_PROMPT_LENGTH} 字`, code: 'INVALID_PROMPT' }
   }
 
@@ -95,6 +96,26 @@ exports.main = async (event) => {
       code: 'IMAGE_GENERATION_FAILED',
       ...(serialized.statusCode ? { statusCode: serialized.statusCode } : {}),
     }
+  }
+}
+
+/** 复用现有云端 AI 鉴权；hy3 已在当前环境 cloudbase 组启用。 */
+async function generateInspirations() {
+  try {
+    const response = await cloud.ai().createModel('cloudbase').generateText({
+      model: 'hy3',
+      messages: [{ role: 'user', content: '请提供3个不同主题的中文文生图创意，画面简洁、主体鲜明，适合后续制作拼豆。仅输出JSON数组，每项包含title（2到8字）和prompt（30到100字，描述主体、场景、风格和配色）。不包含真实人物、商标、暴力、色情或违法内容。每次给出新的创意。' }],
+    })
+    if (response.error) throw new Error('AI 灵感生成失败')
+    const items = JSON.parse(response.text.trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))
+    if (!Array.isArray(items) || items.length !== 3 || items.some(item =>
+      !item || typeof item.title !== 'string' || !item.title.trim() || Array.from(item.title).length > 12
+      || typeof item.prompt !== 'string' || !item.prompt.trim() || Array.from(item.prompt).length > 500)) {
+      throw new Error('AI 灵感格式异常')
+    }
+    return { items: items.map(item => ({ title: item.title.trim(), prompt: item.prompt.trim() })) }
+  } catch {
+    return { error: 'AI 灵感暂时不可用，请稍后换一换', code: 'AI_INSPIRATION_UNAVAILABLE' }
   }
 }
 

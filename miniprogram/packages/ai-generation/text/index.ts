@@ -94,7 +94,7 @@ Page({
     if (!task || this.data.loading) return
     this.setData({ loading: true, errorMessage: '' })
     try {
-      const next = await createTextGeneration(task.prompt, createIdempotencyKey())
+      const next = await createTextGeneration(task.prompt, createIdempotencyKey(), task.size)
       this._taskId = next.id
       this.setData({ taskId: next.id, task: next, referenceImagePath: '' })
       await this.refreshTask()

@@ -3,18 +3,18 @@
     <image class="home-hero" src="/assets/samples/home-hero-banner.jpg" mode="widthFix" aria-label="小露拼豆：让脑海里的灵感，变成拼豆作品" />
 
     <view class="home-entry-grid">
-      <view class="home-entry-card home-entry-card--image" data-source="image" bindtap="openCreation" role="button" aria-label="从图片开始，上传喜欢的图片">
+      <navigator class="home-entry-card home-entry-card--image" url="/pages/create/index?source=image" hover-class="none" aria-label="从图片开始，上传喜欢的图片">
         <view class="home-entry-card__icon"><image src="/assets/icons/home-reference.svg" mode="aspectFit" aria-hidden="true" /></view>
         <view class="home-entry-card__title">从图片开始</view>
         <view class="home-entry-card__desc">上传喜欢的图片</view>
         <view class="home-entry-card__arrow" aria-hidden="true"></view>
-      </view>
-      <view class="home-entry-card home-entry-card--text" data-source="text" bindtap="openCreation" role="button" aria-label="从想法开始，写下想做的画面">
+      </navigator>
+      <navigator class="home-entry-card home-entry-card--text" url="/pages/create/index?source=text" hover-class="none" aria-label="从想法开始，写下想做的画面">
         <view class="home-entry-card__icon"><image src="/assets/icons/home-idea.svg" mode="aspectFit" aria-hidden="true" /></view>
         <view class="home-entry-card__title">从想法开始</view>
         <view class="home-entry-card__desc">写下想做的画面</view>
         <view class="home-entry-card__arrow" aria-hidden="true"></view>
-      </view>
+      </navigator>
     </view>
 
     <view class="home-process-card">
@@ -25,6 +25,6 @@
       <view class="home-process-step"><view class="home-process-step__icon"><image src="/assets/samples/home-process-pattern.png" mode="aspectFit" aria-hidden="true" /></view><text>拼豆图</text></view>
     </view>
 
-    <button class="button-primary home-entry-submit" data-source="image" bindtap="openCreation">开始创作 <view class="home-entry-submit__arrow" aria-hidden="true"></view></button>
+    <navigator class="button-primary home-entry-submit" url="/pages/create/index?source=image" hover-class="none">开始创作 <view class="home-entry-submit__arrow" aria-hidden="true"></view></navigator>
   </view>
 </page-layout>

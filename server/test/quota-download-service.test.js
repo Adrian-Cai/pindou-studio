@@ -36,11 +36,9 @@ function quotaRow(dailyFree, usedToday, dailyRemaining, purchased) {
   };
 }
 
-test("GET quota lazily grants and summarizes the Asia/Shanghai natural day", async () => {
+test("GET quota only reads and summarizes the Asia/Shanghai natural day", async () => {
   const { pool, calls } = clientPool((sql) => {
-    if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
     if (sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
-    if (sql.includes("INSERT INTO pindou_quota_transactions")) return { rows: [] };
     if (sql.includes("AS daily_free")) return { rows: [quotaRow(3, 1, 2, 4)] };
     throw new Error(`unexpected SQL: ${sql}`);
   });
@@ -62,13 +60,10 @@ test("GET quota lazily grants and summarizes the Asia/Shanghai natural day", asy
       resetsAt: "2026-09-02T00:00:00+08:00",
     },
   });
-  const grant = calls.find((call) => call.sql.includes("'daily_grant'"));
-  assert.equal(grant.parameters[1], "usr_a");
-  assert.equal(grant.parameters[2], "standard_download");
-  assert.equal(grant.parameters[3], 3);
-  assert.equal(grant.parameters[4], "2026-09-01");
+  assert.ok(calls.every((call) => call.sql.trim().startsWith("SELECT")));
   const summary = calls.find((call) => call.sql.includes("AS daily_free"));
-  assert.deepEqual(summary.parameters, ["usr_a", "standard_download", "2026-09-01"]);
+  assert.deepEqual(summary.parameters, ["usr_a", "standard_download", "2026-09-01", 3]);
+
 });
 
 async function assertDebitBucket({ before, after, expectedBucket, expectedQuotaDate }) {
@@ -236,4 +231,19 @@ test("palette download records are accepted and mapped as quota-consuming downlo
   const result = await service.listDownloads({ userId: "usr_a", fileType: "palette", page: 1, pageSize: 20 });
   assert.equal(result.items[0].fileType, "palette");
   assert.equal(result.items[0].consumedQuota, true);
+});
+
+
+test("quota preview passes each configured daily allowance to read-only ledger queries", async () => {
+  const { pool, calls } = clientPool((sql, parameters) => {
+    if (sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
+    assert.ok(sql.trim().startsWith("SELECT"));
+    assert.equal(parameters[3], parameters[1] === "ai_generation" ? 2 : 5);
+    return { rows: [quotaRow(parameters[3], 0, parameters[3], 0)] };
+  });
+  const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 5, dailyAiGenerations: 2 }, () => NOW);
+  const quota = await service.getQuota("usr_a");
+  assert.equal(quota.remaining, 5);
+  assert.equal(quota.aiGeneration.remaining, 2);
+  assert.equal(calls.length, 3);
 });

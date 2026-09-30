@@ -1,4 +1,6 @@
 .page-layout {
+  display: flex;
+  flex-direction: column;
   height: 100vh;
   overflow: hidden;
   background: var(--color-bg, #f8f9fb);
@@ -6,6 +8,8 @@
 
 .page-layout__scroll {
   width: 100%;
+  min-height: 0;
+  flex: 1;
 }
 
 .page-layout__content {
@@ -28,5 +32,6 @@
 
 .page-layout__content--fill-viewport {
   display: flex;
+  height: 100%;
   flex-direction: column;
 }

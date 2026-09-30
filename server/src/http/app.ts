@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { TEXT_IMAGE_SIZES } from '../modules/ai/text-image-options';
 import {
   decryptPushBody,
   extractPushCiphertext,
@@ -26,6 +27,7 @@ import {
   validateWorkUpdateBody,
 } from "./request-validation";
 import {
+  uploadCurrentUserAvatar,
   DELIVERY_EVENT,
   IOS_REFUND_QUERY_EVENT,
   REFUND_EVENT,
@@ -351,6 +353,23 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         return;
       }
 
+      if (request.method === 'GET' && url.pathname === '/api/ai/text-generation-options') {
+        if (url.searchParams.size > 0) throw invalidArgument('尺寸配置不接受查询参数');
+        sendJson(response, 200, { sizes: TEXT_IMAGE_SIZES, defaultSize: '1024x1024', cost: 1 });
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/ai/text-inspirations') {
+        if (url.searchParams.size > 0) throw invalidArgument('灵感接口不接受查询参数');
+        if (!dependencies.textGenerations) throw new AppError(503, 'AI_SERVICE_UNAVAILABLE', 'AI 灵感暂未开放');
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        dependencies.aiRateLimiter?.check(`${currentUser.id}:text-inspiration`);
+        const items = await dependencies.textGenerations.inspirations();
+        for (const item of items) await requireContentSecurity(dependencies).checkText(currentUser.id, `${item.title} ${item.prompt}`);
+        sendJson(response, 200, { items });
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/ai/text-generations") {
         if (url.searchParams.size > 0) throw invalidArgument("文生图接口不接受查询参数");
         if (!dependencies.textGenerations) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图服务暂未开放");
@@ -362,6 +381,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           userId: currentUser.id,
           idempotencyKey: idempotencyKey(request),
           prompt: body.prompt,
+          size: body.size,
         }));
         return;
       }
@@ -399,7 +419,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       if (requestedAiGenerationId && request.method === "GET") {
         if (url.searchParams.size > 0) throw invalidArgument("AI 生成任务接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
-        sendJson(response, 200, await dependencies.aiGenerations.get(currentUser.id, requestedAiGenerationId, id));
+        sendJson(response, 200, await dependencies.aiGenerations.get(currentUser.id, requestedAiGenerationId));
         return;
       }
 
@@ -725,31 +745,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       }
 
       if (request.method === "POST" && url.pathname === "/api/users/me/avatar") {
-        if (url.searchParams.size > 0) throw invalidArgument("头像上传接口不接受查询参数");
-        const currentUser = await dependencies.authenticator.authenticate(
-          request.headers.authorization,
-        );
-        const upload = await readSingleUploadedFile(
-          request,
-          "file",
-          dependencies.avatarMaximumBytes,
-          ["nickname"],
-          "头像文件",
-        );
-        const nickname = validateNicknameBody({ nickname: upload.fields.nickname });
-        const avatar = await dependencies.avatars.save(upload.buffer, upload.declaredContentType);
-        try {
-          const updated = await dependencies.users.updateProfileWithAvatar(
-            currentUser.id,
-            nickname,
-            avatar.publicPath,
-          );
-          await dependencies.avatars.remove(updated.previousAvatarUrl);
-          sendJson(response, 200, { user: updated.user });
-        } catch (error: unknown) {
-          await dependencies.avatars.remove(avatar.publicPath);
-          throw error;
-        }
+        await uploadCurrentUserAvatar(request, response, url, dependencies);
         return;
       }
 

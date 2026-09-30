@@ -112,6 +112,14 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.aiRateLimit.maximumRequests,
       config.aiRateLimit.windowMs,
     );
+    const processAiGenerations = (): void => {
+      void aiGenerations.processQueued().catch((error: unknown) => {
+        console.error(JSON.stringify({ event: "ai_generation_scan_failed", message: error instanceof Error ? error.message : String(error) }));
+      });
+    };
+    processAiGenerations();
+    const aiGenerationTimer = setInterval(processAiGenerations, 5_000);
+    aiGenerationTimer.unref();
     void aiGenerations.cleanupExpired().catch(() => undefined);
     const aiCleanupTimer = setInterval(() => {
       void aiGenerations.cleanupExpired().catch(() => undefined);
@@ -196,6 +204,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       inspection,
       http,
       close: async () => {
+        clearInterval(aiGenerationTimer);
         clearInterval(aiCleanupTimer);
         clearInterval(textGenerationTimer);
         clearInterval(paymentReconcileTimer);

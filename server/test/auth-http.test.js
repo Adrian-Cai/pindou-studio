@@ -328,8 +328,8 @@ test("POST /api/users/me/avatar authenticates, uploads one file and replaces the
         async read() { return null; },
         async remove(path) { calls.push({ action: "remove", path }); },
       },
-      users: { async updateProfileWithAvatar(userId, nickname, avatarUrl) {
-        calls.push({ action: "update", userId, nickname, avatarUrl });
+      users: { async updateAvatar(userId, avatarUrl) {
+        calls.push({ action: "update", userId, avatarUrl });
         return {
           user: { id: userId, nickname: "拼豆玩家", avatarUrl, createdAt: "2026-08-26T09:00:00.000Z" },
           previousAvatarUrl: "/api/media/avatars/avatar_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
@@ -339,7 +339,7 @@ test("POST /api/users/me/avatar authenticates, uploads one file and replaces the
     async (baseUrl) => {
       const form = new FormData();
       form.append("file", new Blob([Buffer.from("png-data")], { type: "image/png" }), "avatar.png");
-      form.append("nickname", "拼豆玩家");
+      form.append("nickname", "不得覆盖原昵称");
       const response = await fetch(`${baseUrl}/api/users/me/avatar`, {
         method: "POST",
         headers: { authorization: "Bearer opaque_token_12345678901234567890" },
@@ -353,7 +353,6 @@ test("POST /api/users/me/avatar authenticates, uploads one file and replaces the
         {
           action: "update",
           userId: "usr_test",
-          nickname: "拼豆玩家",
           avatarUrl: "/api/media/avatars/avatar_0123456789abcdef0123456789abcdef.png",
         },
         { action: "remove", path: "/api/media/avatars/avatar_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg" },
@@ -382,4 +381,44 @@ test("GET /api/media/avatars serves immutable image bytes", async () => {
       assert.deepEqual(Buffer.from(await response.arrayBuffer()), Buffer.from([1, 2, 3]));
     },
   );
+});
+
+
+test("avatar upload accepts a file alone and preserves it if old-file cleanup fails", async () => {
+  const removed = [];
+  await withApplication(baseDependencies({
+    authenticator: { async authenticate() { return { id: "usr_test" }; } },
+    users: { async updateAvatar(userId, avatarUrl) {
+      return { user: { id: userId, nickname: "原昵称", avatarUrl }, previousAvatarUrl: "old.png" };
+    } },
+    avatars: {
+      async save() { return { publicPath: "new.png" }; },
+      async remove(path) { removed.push(path); throw new Error("storage unavailable"); },
+    },
+  }), async (baseUrl) => {
+    const form = new FormData();
+    form.append("file", new Blob([Buffer.from("png-data")], { type: "image/png" }), "avatar.png");
+    const response = await fetch(`${baseUrl}/api/users/me/avatar`, { method: "POST", body: form });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).user.nickname, "原昵称");
+    assert.deepEqual(removed, ["old.png"]);
+  });
+});
+
+test("avatar update failure removes the uncommitted uploaded file", async () => {
+  const removed = [];
+  await withApplication(baseDependencies({
+    authenticator: { async authenticate() { return { id: "usr_test" }; } },
+    users: { async updateAvatar() { throw new AppError(401, "UNAUTHORIZED", "账号失效"); } },
+    avatars: {
+      async save() { return { publicPath: "new.png" }; },
+      async remove(path) { removed.push(path); },
+    },
+  }), async (baseUrl) => {
+    const form = new FormData();
+    form.append("file", new Blob([Buffer.from("png-data")], { type: "image/png" }), "avatar.png");
+    const response = await fetch(`${baseUrl}/api/users/me/avatar`, { method: "POST", body: form });
+    assert.equal(response.status, 401);
+    assert.deepEqual(removed, ["new.png"]);
+  });
 });

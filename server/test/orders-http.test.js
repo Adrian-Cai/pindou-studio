@@ -142,14 +142,14 @@ test("order list uses only the current user, sorts by creation time, returns sna
     ],
   });
   assert.equal(calls[0].parameters[0], "usr_current");
+  assert.match(calls[1].sql, /status = 'pending'/);
   assert.equal(calls[1].parameters[0], "usr_current");
-  assert.match(calls[2].sql, /status = 'pending'/);
   assert.equal(calls[2].parameters[0], "usr_current");
-  assert.equal(calls[3].parameters[0], "usr_current");
-  assert.equal(calls[3].parameters[1], 20);
-  assert.equal(calls[3].parameters[2], 0);
-  assert.match(calls[3].sql, /quota_kind_snapshot = 'ai_generation'/);
-  assert.match(calls[3].sql, /ORDER BY created_at DESC, id DESC/);
+  assert.equal(calls[2].parameters[1], 20);
+  assert.equal(calls[2].parameters[2], 0);
+  assert.match(calls[2].sql, /quota_kind_snapshot = 'ai_generation'/);
+  assert.match(calls[2].sql, /ORDER BY created_at DESC, id DESC/);
+  assert.ok(calls.every((call) => call.sql.trim().startsWith("SELECT")));
   assert.equal(response.items[0].wx_prepay_id, undefined);
   assert.equal(response.items[0].wx_transaction_id, undefined);
 });
@@ -159,7 +159,7 @@ test("empty order list is returned without loading package configuration", async
   const response = await service.listOrders({ userId: "usr_empty", page: 3, pageSize: 5 });
   assert.match(response.serverTime, /^\d{4}-\d{2}-\d{2}T/u);
   assert.deepEqual({ ...response, serverTime: null }, { total: 0, page: 3, pageSize: 5, pendingCount: 0, serverTime: null, items: [] });
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 3);
   assert.equal(calls.some((call) => call.sql.includes("pindou_packages")), false);
 });
 
@@ -168,4 +168,14 @@ test("all supported order statuses remain explicit in the API response", async (
   const { service } = serviceWithRows(statuses.map((status, index) => orderRow({ id: `order_${index}`, status })));
   const response = await service.listOrders({ userId: "usr_status", page: 1, pageSize: 20 });
   assert.deepEqual(response.items.map((item) => item.status), statuses);
+});
+
+
+test("reading expired orders never calls payment reconciliation or the gateway", async () => {
+  const { service, calls } = serviceWithRows([orderRow({ status: "pending", expires_at: new Date(0) })]);
+  service.reconcilePendingOrders = () => { throw new Error("GET must not reconcile"); };
+  const result = await service.listOrders({ userId: "usr_current", page: 1, pageSize: 20 });
+  assert.equal(result.items[0].status, "pending");
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(({ sql }) => sql.trim().startsWith("SELECT")));
 });

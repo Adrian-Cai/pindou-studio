@@ -15,9 +15,8 @@
     enhanced
     scroll-into-view="{{scrollIntoView}}"
     show-scrollbar="{{false}}"
-    style="height: {{scrollAreaHeight}}px;"
   >
-    <view class="page-layout__content {{showMainNav ? (isMainTabPage ? 'page-layout__content--main-tab' : 'page-layout__content--with-nav') : ''}} {{compactBottomPadding ? 'page-layout__content--compact-bottom' : ''}} {{home ? 'page-layout__content--fill-viewport' : ''}}" style="{{contentStyle}}">
+    <view class="page-layout__content {{showMainNav ? (isMainTabPage ? 'page-layout__content--main-tab' : 'page-layout__content--with-nav') : ''}} {{compactBottomPadding ? 'page-layout__content--compact-bottom' : ''}} {{home || fillViewport ? 'page-layout__content--fill-viewport' : ''}}">
       <slot />
     </view>
   </scroll-view>

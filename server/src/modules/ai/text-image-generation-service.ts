@@ -1,4 +1,5 @@
 import type { Pool, PoolClient, QueryResultRow } from "pg";
+import { TEXT_IMAGE_SIZES, type TextImageSize } from './text-image-options';
 import { HUNYUAN_TEXT_IMAGE_MODEL } from "../../config/env";
 import { aiQuotaInsufficient, AppError, idempotencyConflict, notFound } from "../../shared/app-error";
 import { createEntityId } from "../../shared/identity";
@@ -21,12 +22,14 @@ const MAX_OUTPUT_SIZE = 50;
 export interface TextImageProvider {
   readonly name: string;
   readonly configured: boolean;
-  generateTextImage(prompt: string): Promise<{ readonly requestId: string; readonly buffer: Buffer; readonly contentType: string }>;
+  generateTextImage(prompt: string, size?: TextImageSize): Promise<{ readonly requestId: string; readonly buffer: Buffer; readonly contentType: string }>;
+  generateInspirations?(): Promise<readonly { title: string; prompt: string }[]>;
 }
 
 export type TextImageGenerationStatus = "queued" | "processing" | "succeeded" | "failed";
 
 export interface TextImageGenerationResponse {
+  readonly size: TextImageSize;
   readonly id: string;
   readonly prompt: string;
   readonly status: TextImageGenerationStatus;
@@ -38,6 +41,7 @@ export interface TextImageGenerationResponse {
 }
 
 interface TextJobRow extends QueryResultRow {
+  readonly image_size?: TextImageSize;
   readonly id: string;
   readonly user_id: string;
   readonly prompt: string;
@@ -61,6 +65,7 @@ interface TextJobRow extends QueryResultRow {
 }
 
 export interface CreateTextImageGenerationInput {
+  readonly size?: TextImageSize;
   readonly userId: string;
   readonly idempotencyKey: string;
   readonly prompt: string;
@@ -79,6 +84,7 @@ export class PostgresTextImageGenerationService {
   ) {}
 
   public async create(input: CreateTextImageGenerationInput): Promise<TextImageGenerationResponse> {
+    if (!TEXT_IMAGE_SIZES.includes(input.size ?? '1024x1024')) throw new AppError(400, 'INVALID_ARGUMENT', '图片尺寸不受支持');
     if (!this.provider.configured) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "AI 生成暂时不可用");
     const currentTime = this.now();
     const client = await this.pool.connect();
@@ -95,7 +101,7 @@ export class PostgresTextImageGenerationService {
       );
       const existing = existingResult.rows[0];
       if (existing) {
-        if (existing.prompt !== input.prompt) throw idempotencyConflict("文生图幂等键已用于另一份描述");
+        if (existing.prompt !== input.prompt || (existing.image_size ?? '1024x1024') !== (input.size ?? '1024x1024')) throw idempotencyConflict("文生图幂等键已用于另一份描述或尺寸");
         job = existing.status === "failed" && new Date(existing.expires_at).getTime() > currentTime.getTime()
           ? await this.requeueFailed(client, existing, currentTime)
           : existing;
@@ -107,11 +113,11 @@ export class PostgresTextImageGenerationService {
           `INSERT INTO pindou_text_image_generation_jobs (
              id, user_id, prompt, provider, model, status, output_file_id, provider_request_id,
              idempotency_key, error_code, created_at, updated_at, started_at, completed_at,
-             expires_at, consumed_at
-           ) VALUES ($1, $2, $3, $4, $5, 'queued', NULL, NULL, $6, NULL, $7, $7, NULL, NULL, $8, NULL)
+             expires_at, consumed_at, image_size
+           ) VALUES ($1, $2, $3, $4, $5, 'queued', NULL, NULL, $6, NULL, $7, $7, NULL, NULL, $8, NULL, $9)
            RETURNING *, NULL::text AS output_public_url, NULL::text AS output_content_type,
                      NULL::bigint AS output_byte_size`,
-          [id, input.userId, input.prompt, this.provider.name, HUNYUAN_TEXT_IMAGE_MODEL, input.idempotencyKey, currentTime, expiresAt],
+          [id, input.userId, input.prompt, this.provider.name, HUNYUAN_TEXT_IMAGE_MODEL, input.idempotencyKey, currentTime, expiresAt, input.size ?? '1024x1024'],
         );
         job = inserted.rows[0]!;
       }
@@ -136,6 +142,12 @@ export class PostgresTextImageGenerationService {
     const job = result.rows[0];
     if (!job) throw notFound("文生图任务不存在");
     return mapTextJob(job);
+  }
+
+  /** 不创建生图任务，不扣用户 AI 生图次数。 */
+  public async inspirations(): Promise<readonly { title: string; prompt: string }[]> {
+    if (!this.provider.generateInspirations) throw new AppError(503, 'AI_INSPIRATION_UNAVAILABLE', 'AI 灵感暂未开放');
+    return this.provider.generateInspirations();
   }
 
   public async listRecoverable(userId: string): Promise<readonly TextImageGenerationResponse[]> {
@@ -253,7 +265,7 @@ export class PostgresTextImageGenerationService {
     if (!job) return;
     let stored: StoredAiFile | null = null;
     try {
-      const generated = await this.provider.generateTextImage(job.prompt);
+      const generated = await this.provider.generateTextImage(job.prompt, job.image_size ?? '1024x1024');
       stored = await this.storage.save("ai_output", generated.buffer, "text-generated.png", generated.contentType);
       await this.complete(job, generated.requestId, stored);
       stored = null;
@@ -344,6 +356,7 @@ function mapTextJob(job: TextJobRow): TextImageGenerationResponse {
   }
   const hasOutput = job.status === "succeeded" && job.output_file_id && job.output_public_url;
   return {
+    size: job.image_size ?? '1024x1024',
     id: job.id,
     prompt: job.prompt,
     status: job.status,

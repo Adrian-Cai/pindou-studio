@@ -104,7 +104,6 @@ export class PostgresPaymentService extends PaymentReconciliationService impleme
   }
 
   public async listOrders(options: OrderListOptions): Promise<OrderListResponse> {
-    await this.reconcileExpiredOrders(options.userId);
     const countResult = await this.pool.query<{ total: number }>(
       `SELECT COUNT(*)::int AS total
          FROM pindou_orders

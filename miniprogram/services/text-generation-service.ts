@@ -5,6 +5,7 @@ import { createIdempotencyKey } from './ai-task-store'
 export type TextGenerationStatus = 'queued' | 'processing' | 'succeeded' | 'failed'
 
 export interface TextGeneration {
+  size: string
   id: string
   prompt: string
   status: TextGenerationStatus
@@ -15,7 +16,7 @@ export interface TextGeneration {
   completedAt: string | null
 }
 
-export async function createTextGeneration(prompt: string, idempotencyKey = createIdempotencyKey()): Promise<TextGeneration> {
+export async function createTextGeneration(prompt: string, idempotencyKey = createIdempotencyKey(), size = '1024x1024'): Promise<TextGeneration> {
   const cleanPrompt = prompt.trim().normalize('NFC')
   if (!cleanPrompt || Array.from(cleanPrompt).length > 500) {
     throw new ApiError('描述需要填写 1 到 500 个字', { code: 'INVALID_ARGUMENT' })
@@ -26,7 +27,7 @@ export async function createTextGeneration(prompt: string, idempotencyKey = crea
     method: 'POST',
     token: session.token,
     headers: { 'Idempotency-Key': idempotencyKey },
-    data: { prompt: cleanPrompt },
+    data: { prompt: cleanPrompt, size },
     timeoutMs: 15_000,
   })
   return parseTextGeneration(result)
@@ -86,6 +87,7 @@ function parseTextGeneration(value: unknown): TextGeneration {
   }
   if (value.status === 'succeeded' && !outputFile) throw invalidResponse()
   return {
+    size: typeof value.size === 'string' ? value.size : '1024x1024',
     id: value.id,
     prompt: value.prompt,
     status: value.status,
@@ -95,6 +97,28 @@ function parseTextGeneration(value: unknown): TextGeneration {
     updatedAt: value.updatedAt,
     completedAt: value.completedAt as string | null,
   }
+}
+
+/** 服务端提供当前生图尺寸和扣费规则，页面不自建白名单。 */
+export async function fetchTextGenerationOptions(): Promise<{ sizes: string[]; defaultSize: string; cost: number }> {
+  const result = await apiRequest<unknown>({ path: '/api/ai/text-generation-options' })
+  if (!isRecord(result) || !Array.isArray(result.sizes) || !result.sizes.length
+    || !result.sizes.every(size => typeof size === 'string' && /^\d+x\d+$/.test(size))
+    || typeof result.defaultSize !== 'string' || !result.sizes.includes(result.defaultSize)
+    || typeof result.cost !== 'number' || !Number.isInteger(result.cost) || result.cost < 0) throw invalidResponse()
+  return { sizes: result.sizes as string[], defaultSize: result.defaultSize, cost: result.cost }
+}
+
+/** 每次进入或换一换均请求真实 AI，不提供静态替代结果。 */
+export async function fetchTextInspirations(): Promise<{ title: string; prompt: string }[]> {
+  const session = requireLoggedInSession()
+  const result = await apiRequest<unknown>({ path: '/api/ai/text-inspirations', token: session.token, timeoutMs: 35_000 })
+  if (!isRecord(result) || !Array.isArray(result.items) || result.items.length !== 3) throw invalidResponse()
+  return result.items.map(value => {
+    if (!isRecord(value) || typeof value.title !== 'string' || !value.title.trim()
+      || typeof value.prompt !== 'string' || !value.prompt.trim() || Array.from(value.prompt).length > 500) throw invalidResponse()
+    return { title: value.title, prompt: value.prompt }
+  })
 }
 
 function assertJobId(jobId: string): void {

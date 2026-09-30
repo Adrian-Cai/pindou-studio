@@ -14,6 +14,7 @@ import {
   idempotencyConflict,
   notFound,
   quotaInsufficient,
+  unauthorized,
 } from "../../shared/app-error";
 import { createEntityId } from "../../shared/identity";
 import { nextShanghaiMidnight, shanghaiDate } from "../../shared/shanghai-time";
@@ -184,24 +185,13 @@ export class PostgresQuotaDownloadService {
   public async getQuota(userId: string): Promise<QuotaResponse> {
     const currentTime = this.now();
     const quotaDate = shanghaiDate(currentTime);
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      await lockQuotaUser(client, userId);
-      await ensureDailyGrant(client, userId, "standard_download", quotaDate, this.quotaConfig.dailyStandardDownloads, currentTime);
-      await ensureDailyGrant(client, userId, "ai_generation", quotaDate, this.quotaConfig.dailyAiGenerations, currentTime);
-      const [quota, aiQuota] = await Promise.all([
-        readQuota(client, userId, "standard_download", quotaDate),
-        readQuota(client, userId, "ai_generation", quotaDate),
-      ]);
-      await client.query("COMMIT");
-      return quotaResponse(quota, aiQuota, currentTime);
-    } catch (error: unknown) {
-      await rollbackTransaction(client);
-      throw error;
-    } finally {
-      client.release();
-    }
+    const user = await this.pool.query("SELECT id FROM pindou_users WHERE id = $1 AND deleted_at IS NULL", [userId]);
+    if (!user.rows[0]) throw unauthorized("用户不存在或已失效");
+    const [quota, aiQuota] = await Promise.all([
+      readQuota(this.pool, userId, "standard_download", quotaDate, this.quotaConfig.dailyStandardDownloads),
+      readQuota(this.pool, userId, "ai_generation", quotaDate, this.quotaConfig.dailyAiGenerations),
+    ]);
+    return quotaResponse(quota, aiQuota, currentTime);
   }
 
   /**

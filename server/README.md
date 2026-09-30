@@ -82,7 +82,7 @@ Content-Type: application/json
 {"nickname":"拼豆玩家"}
 ```
 
-选择新头像时使用 `wx.uploadFile`，头像和昵称在同一次请求中更新：
+选择新头像时使用 `wx.uploadFile`，只更新头像；昵称使用独立的 `PUT /api/users/me`：
 
 ```http
 POST /api/users/me/avatar
@@ -90,7 +90,6 @@ Authorization: Bearer <token>
 Content-Type: multipart/form-data
 
 file=<JPG、PNG 或 WEBP，最大 2 MB>
-nickname=拼豆玩家
 ```
 
 头像保存在 `AVATAR_STORAGE_DIR`，公开读取地址为 `/api/media/avatars/<随机文件名>`生产环境应把该目录挂载到持久化磁盘，或将 `AvatarStorage` 替换为对象存储实现
@@ -114,7 +113,7 @@ type=cover
 
 收藏接口包括 `PATCH /api/works/:id/favorite` 和 `GET /api/favorites`，只允许操作当前登录用户自己的可用作品。收藏关系使用软删除；重复收藏或取消不会刷新时间，重新收藏会更新 `favoritedAt`，收藏列表按该字段倒序返回。
 
-`GET /api/quota/me` 从额度流水汇总当前用户额度，并按 `Asia/Shanghai` 自然日懒创建每日免费额度流水；数据库中的 `created_at` 仍使用 UTC 时间`GET /api/downloads` 只返回下载记录和作品标题快照，不返回文件 URL
+`GET /api/quota/me` 只读汇总当前用户额度，未发放时预览当日免费额度；实际操作在事务内按 `Asia/Shanghai` 自然日懒创建免费额度流水，已发放的金额以流水为准；数据库中的 `created_at` 仍使用 UTC 时间`GET /api/downloads` 只返回下载记录和作品标题快照，不返回文件 URL
 
 标准下载每日免费 9 次；AI 精致生成每日免费 3 次两者分别使用 `standard_download` 和 `ai_generation`，不会互相消耗
 
@@ -161,7 +160,7 @@ Content-Type: application/json
 
 完整的字段定义、响应示例、状态流转、TokenHub 上游请求结构和本地联调步骤见 [`../docs/backend/AI_GENERATION_API.md`](../docs/backend/AI_GENERATION_API.md)。
 
-上传 AI 输入图片时复用 `POST /api/files/upload` 并设置 `type=ai_input`随后使用 `Idempotency-Key` 调用 `POST /api/ai/generations`，请求体只包含 `inputFileId`、`style`、`detailLevel` 和 `backgroundMode`；用 `GET /api/ai/generations/:id` 轮询状态
+上传 AI 输入图片时复用 `POST /api/files/upload` 并设置 `type=ai_input`随后使用 `Idempotency-Key` 调用 `POST /api/ai/generations`，请求体只包含 `inputFileId`、`style`、`detailLevel` 和 `backgroundMode`；用 `GET /api/ai/generations/:id` 只读查询状态，任务由启动扫描及每 5 秒后台扫描独立推进
 
 新任务由服务端通过 CloudBase `generateImage` 云函数调用混元 `HY-Image-v3.0-I2I-ToB-v1.0.1`，云函数设置品牌标识文案“小露拼豆”。服务端持久化 Provider 请求 ID 和 CloudBase 文件引用，并在下载、格式校验和文件资产落库成功后才扣除一笔 `ai_generation`。切换前已创建的 TokenHub 与 CloudBase 混元任务按原 Provider 快照收尾；ToAPIs 凭据配置已移除，历史 ToAPIs 任务推进时会失败关闭。
 
@@ -176,3 +175,6 @@ Content-Type: application/json
 项目暂未引入独立 lint 工具，以避免增加无必要依赖；`typecheck` 负责当前静态检查
 
 小程序 AppID、AppSecret、HTTPS API 地址和微信 request 合法域名配置见 `../docs/backend/operations/WECHAT_LOGIN_SETUP.md`
+
+
+查询与动作边界：`GET /api/orders` 只返回持久化订单状态，对账由已有支付回调及后台定时器执行；创建、继续支付和取消仍执行必要的微信核实。头像上传兼容旧请求中的 `nickname` 字段，但忽略它；旧头像清理失败不影响已提交的新头像。

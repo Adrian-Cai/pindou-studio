@@ -37,6 +37,7 @@ export type {
   SupportedOutputFormat,
 } from "./provider";
 import cloudbase = require("@cloudbase/node-sdk");
+import type { TextImageSize } from './text-image-options';
 
 type JsonObject = Record<string, unknown>;
 
@@ -83,7 +84,23 @@ export class HunyuanImageProvider implements AiGenerationProvider {
     return this.config.enabled ? this.config.model : HUNYUAN_IMAGE_MODEL;
   }
 
-  public async generateTextImage(prompt: string): Promise<{ readonly requestId: string; readonly buffer: Buffer; readonly contentType: string }> {
+  /** 灵感通过现有云函数请求真实文本模型，密钥仅留在服务端。 */
+  public async generateInspirations(): Promise<readonly { title: string; prompt: string }[]> {
+    const config = this.requireConfig();
+    const app = cloudbase.init({ env: config.environmentId, accessKey: config.apiKey, timeout: 30_000 });
+    const response = await app.callFunction({ name: 'generateImage', data: { action: 'inspirations' } });
+    const body = object(response.result);
+    if (!Array.isArray(body?.items) || body.items.length !== 3) throw new AppError(503, 'AI_INSPIRATION_UNAVAILABLE', 'AI 灵感暂时不可用，请稍后换一换');
+    return body.items.map(value => {
+      const item = object(value);
+      const title = string(item?.title);
+      const prompt = string(item?.prompt);
+      if (!title || !prompt || Array.from(title).length > 12 || Array.from(prompt).length > 500) throw new AppError(502, 'AI_INSPIRATION_INVALID', 'AI 灵感返回异常，请重试');
+      return { title, prompt };
+    });
+  }
+
+  public async generateTextImage(prompt: string, size: TextImageSize = '1024x1024'): Promise<{ readonly requestId: string; readonly buffer: Buffer; readonly contentType: string }> {
     this.requireConfig();
     if (!this.imageModel) throw new AppError(503, "AI_PROVIDER_NOT_CONFIGURED", "AI 图像服务尚未完成配置");
     let response: unknown;
@@ -92,7 +109,7 @@ export class HunyuanImageProvider implements AiGenerationProvider {
         model: HUNYUAN_TEXT_IMAGE_MODEL,
         prompt,
         images: [],
-        size: "1024x1024",
+        size,
         revise: { value: true },
       });
     } catch (error: unknown) {

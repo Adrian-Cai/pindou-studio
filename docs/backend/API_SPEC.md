@@ -345,16 +345,16 @@ Authorization: Bearer <token>
 
 ### POST `/api/users/me/avatar`
 
-用途：上传并替换当前用户头像，同时保存昵称
+用途：仅上传并替换当前用户头像；昵称由 `PUT/PATCH /api/users/me` 更新
 
 鉴权：需要请求使用 `multipart/form-data`：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `file` | binary | 真实格式必须为 JPG、PNG 或 WEBP，最大 2 MB |
-| `nickname` | string | 1～80 个字符 |
+| `nickname` | string | 仅兼容接收旧请求，忽略该字段，不更新昵称 |
 
-服务端生成随机文件名，不信任客户端文件名，并在资料更新成功后安全清理旧头像响应中的 `avatarUrl` 为 `/api/media/avatars/...` 稳定地址，小程序请求层会基于当前环境 API Origin 转换为完整 URL
+仅 `file` 必填。服务端生成随机文件名，不信任客户端文件名，并在资料更新成功后安全清理旧头像；旧文件清理失败只记录日志，不删除新头像或回滚已提交的资料。响应中的 `avatarUrl` 为 `/api/media/avatars/...` 稳定地址，小程序请求层会基于当前环境 API Origin 转换为完整 URL
 
 ### GET `/api/media/avatars/:filename`
 
@@ -533,6 +533,8 @@ Authorization: Bearer <token>
 
 用途：获取当前用户可用下载额度
 
+只读约束：不发放每日额度，不写账本或锁定用户。当日未发放时预览配置中的免费额度；真实业务操作在事务内懒发放。已发放时以流水中的金额和余额为准，与 `GET /api/users/me` 共用账本计算。
+
 鉴权：需要
 
 响应 `200`：
@@ -670,6 +672,8 @@ Authorization: Bearer <token>
 ### GET `/api/orders`
 
 用途：获取当前用户的 AI 精致生成订单列表
+
+只读约束：列表不调用微信查单、不关单、不发货。状态由已有支付回调与后台对账更新，查询可暂时返回尚待后台核实的 `pending`。
 
 鉴权：需要
 
@@ -836,6 +840,8 @@ Content-Type: application/json
 - `succeeded`：输出图片已校验、持久化为 `ai_output`，并已完成一次 AI 额度扣减。
 - `failed`：Provider、输入文件、输出文件或任务处理失败；失败不扣额度，公开响应只返回标准 `failure` 对象。
 - `canceled`：预留状态，当前不提供取消接口。
+
+`GET /api/ai/generations/:id` 只读：不提交或轮询 Provider、不下载输出、不写任务或扣次。服务端启动时及每 5 秒扫描一批待推进任务，复用任务状态机与成功扣次事务；客户端停止轮询不影响服务端推进。重启后继续处理已保存的队列、Provider 请求 ID 或输出地址；提交结果未知且超时的任务失败收口，不自动重复付费提交。
 
 任务成功时响应包含 `outputFile`。混元返回的临时图片地址只在服务端内部使用，服务端必须立即下载并持久化；输出文件校验、资产写入、任务成功更新和一笔 `usage_debit` 在受控流程中完成，相同任务不重复扣减。
 

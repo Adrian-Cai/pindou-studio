@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
 
@@ -6,6 +7,7 @@ const compiledRoot = path.resolve(__dirname, '../../.ai-failure-test-build/minip
 const { aiTaskManager } = require(path.join(compiledRoot, 'services/ai-generation-manager.js'))
 const aiTaskStore = require(path.join(compiledRoot, 'services/ai-task-store.js'))
 const imageService = require(path.join(compiledRoot, 'services/image-service.js'))
+const textService = require(path.join(compiledRoot, 'services/text-generation-service.js'))
 const { appStore } = require(path.join(compiledRoot, 'store/app-store.js'))
 
 function loadPage(relativePath) {
@@ -75,22 +77,22 @@ test('游客不能选择 AI 模式或提交文生图', async (t) => {
   assert.deepEqual(calls.navigation, [])
 })
 
-test('首页图片、想法和主按钮都进入创作页，来源卡带上对应模式', (t) => {
-  const navigation = []
-  global.wx = { navigateTo: (options) => navigation.push(options.url) }
-  const home = loadPage('pages/home/index.js')
-  home.openCreation({ currentTarget: { dataset: { source: 'image' } } })
-  home.openCreation({ currentTarget: { dataset: { source: 'text' } } })
-  home.openCreation({ currentTarget: { dataset: { source: 'image' } } })
-  assert.deepEqual(navigation, [
-    '/pages/create/index?source=image',
-    '/pages/create/index?source=text',
-    '/pages/create/index?source=image',
-  ])
+test('首页入口进入创作页并选中对应 Tab', (t) => {
+  const homeTemplate = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/home/index.wxml'), 'utf8')
+  assert.equal((homeTemplate.match(/url="\/pages\/create\/index\?source=image"/g) || []).length, 2)
+  assert.match(homeTemplate, /url="\/pages\/create\/index\?source=text"/)
 
   const creation = loadPage('pages/create/index.js')
+  creation.onLoad({ source: 'image' })
+  assert.equal(creation.data.creationSource, 'image')
   creation.onLoad({ source: 'text' })
   assert.equal(creation.data.creationSource, 'text')
+
+  creation.setData({ prompt: '一只草地上的猫', sourceImagePath: '/tmp/source.png' })
+  creation.selectCreationSource({ currentTarget: { dataset: { source: 'image' } } })
+  assert.equal(creation.data.creationSource, 'image')
+  assert.equal(creation.data.prompt, '一只草地上的猫')
+  assert.equal(creation.data.sourceImagePath, '/tmp/source.png')
   t.after(() => { delete global.Page; delete global.wx })
 })
 
@@ -99,6 +101,28 @@ function deferred() {
   const promise = new Promise((done) => { resolve = done })
   return { promise, resolve }
 }
+
+test('文生图防重复提交，传递尺寸，创建失败保留描述', async t => {
+  const { home, calls } = setup(t)
+  const pending = deferred()
+  const submissions = []
+  t.mock.method(textService, 'createTextGeneration', async (...args) => {
+    submissions.push(args)
+    await pending.promise
+    throw new Error('服务繁忙，请稍后重试')
+  })
+  home.setData({ prompt: '  雨夜的小书店  ', promptLength: 9, textSizes: ['1280x720'], textSize: '1280x720' })
+  const first = home.startTextGeneration()
+  await home.startTextGeneration()
+  assert.equal(submissions.length, 1)
+  assert.equal(submissions[0][0], '雨夜的小书店')
+  assert.equal(submissions[0][2], '1280x720')
+  pending.resolve()
+  await first
+  assert.equal(home.data.creatingText, false)
+  assert.equal(home.data.prompt, '  雨夜的小书店  ')
+  assert.deepEqual(calls.toasts, ['服务繁忙，请稍后重试'])
+})
 
 function setupDetail(t, from = 'home', status = 'processing') {
   const context = setup(t)

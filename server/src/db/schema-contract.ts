@@ -206,6 +206,7 @@ export const EXPECTED_SCHEMA = {
     expires_at: column("timestamptz"),
   },
   pindou_text_image_generation_jobs: {
+    image_size: column("text", false),
     id: column("varchar", false, 32),
     user_id: column("varchar", false, 32),
     prompt: column("varchar", false, 500),
@@ -278,6 +279,7 @@ export const REQUIRED_INDEXES: readonly RequiredDatabaseObject[] = [
   { table: "pindou_text_image_generation_jobs", label: "文生图任务幂等唯一索引", includes: ["unique index", "(user_id, idempotency_key)"] },
   { table: "pindou_text_image_generation_jobs", label: "文生图任务列表索引", includes: ["(user_id, created_at desc)"] },
   { table: "pindou_text_image_generation_jobs", label: "文生图任务队列索引", includes: ["(status, updated_at)", "queued", "processing", "where"] },
+  { table: "pindou_text_image_generation_jobs", label: "文生图任务过期清理索引", includes: ["(expires_at)"] },
   { table: "pindou_content_security_checks", label: "微信审核 trace 唯一索引", includes: ["unique index", "(trace_id)"] },
   { table: "pindou_content_security_checks", label: "审核过期清理索引", includes: ["(status, expires_at)"] },
   { table: "pindou_content_security_checks", label: "用户审核记录索引", includes: ["(user_id, created_at"] },

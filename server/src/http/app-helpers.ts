@@ -1,3 +1,4 @@
+import { readSingleUploadedFile } from "./request-body";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseHealthProvider } from "../db/database-runtime";
@@ -458,3 +459,40 @@ function hasRequestBody(request: IncomingMessage): boolean {
 }
 
 export { requestId, sendJson, sendRaw, parseDeliveryNotification, parseEventName, parseRefundNotification, parseIosRefundQuery, sendImage, errorPayload, sendText, requireContentSecurity, wechatPaymentHeaders, listOptions, favoriteListOptions, downloadListOptions, orderListOptions, positiveQueryInteger, workId, favoriteWorkId, aiGenerationId, textImageGenerationId, textImageGenerationConsumeId, paymentOrderAction, sendNoContent, hasRequestBody };
+
+/** 上传头像；旧 nickname 字段仅兼容接收，昵称通过独立资料接口更新。 */
+export async function uploadCurrentUserAvatar(
+  request: IncomingMessage,
+  response: ServerResponse,
+  url: URL,
+  dependencies: HttpApplicationDependencies,
+): Promise<void> {
+  if (url.searchParams.size > 0) throw invalidArgument("头像上传接口不接受查询参数");
+  const currentUser = await dependencies.authenticator.authenticate(
+    request.headers.authorization,
+  );
+  const upload = await readSingleUploadedFile(
+    request,
+    "file",
+    dependencies.avatarMaximumBytes,
+    ["nickname"],
+    "头像文件",
+  );
+  // 兼容旧客户端携带 nickname，但头像接口不再更新昵称。
+  const avatar = await dependencies.avatars.save(upload.buffer, upload.declaredContentType);
+  let updated: Awaited<ReturnType<HttpApplicationDependencies["users"]["updateAvatar"]>>;
+  try {
+    updated = await dependencies.users.updateAvatar(currentUser.id, avatar.publicPath);
+  } catch (error: unknown) {
+    await dependencies.avatars.remove(avatar.publicPath);
+    throw error;
+  }
+  // 资料已经提交，旧文件清理失败不能删除当前头像或把更新报告为失败。
+  try {
+    await dependencies.avatars.remove(updated.previousAvatarUrl);
+  } catch (error: unknown) {
+    console.error(JSON.stringify({ event: "previous_avatar_cleanup_failed", userId: currentUser.id,
+      message: error instanceof Error ? error.message : String(error) }));
+  }
+  sendJson(response, 200, { user: updated.user });
+}

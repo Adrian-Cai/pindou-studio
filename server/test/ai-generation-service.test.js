@@ -49,6 +49,14 @@ function harness({
       // 失败任务被同一幂等键重新排队（清错误码、延长保留期）。
       // 必须排在「FROM pindou_file_assets」分支之前：这条 UPDATE 的 RETURNING 带子查询，会误命中它。
       if (sql.includes("SET status = 'queued'") && sql.includes("error_code = NULL")) {
+        if (sql.includes("AND user_id = $3")) {
+          job.status = "queued";
+          job.provider_request_id = null;
+          job.provider_output_url = null;
+          job.provider_next_poll_at = null;
+          job.updated_at = parameters[1];
+          return { rows: [{ ...job }] };
+        }
         job.status = "queued";
         job.error_code = null;
         job.provider_request_id = null;
@@ -61,6 +69,7 @@ function harness({
       if (sql.includes("FROM pindou_file_assets") && !sql.includes("JOIN pindou_file_assets")) {
         return { rows: [{ user_id: inputFileUserId, file_type: inputFileType, object_key: "ai/ai_input_test.png", content_type: "image/png", deleted_at: null }] };
       }
+      if (sql.includes("ORDER BY jobs.updated_at ASC")) return { rows: job && ["queued", "processing"].includes(job.status) ? [{ ...job }] : [] };
       if (sql.includes("AS daily_free")) {
         return { rows: [{ daily_free: String(available), used_today: "0", daily_remaining: String(available), purchased: "0" }] };
       }
@@ -101,7 +110,7 @@ function harness({
       if (sql.includes("WHERE jobs.id = $1") && sql.includes("FOR UPDATE OF jobs")) return { rows: [{ ...job }] };
       if (sql.includes("SET status = 'processing'")) {
         job.status = "processing";
-        job.started_at = parameters[1];
+        job.started_at ??= parameters[1];
         job.updated_at = parameters[1];
         return { rows: [{ ...job }] };
       }
@@ -197,6 +206,7 @@ function harness({
     service,
     calls,
     events,
+    pool, provider, storage,
     get job() { return job; },
     get outputFile() { return outputFile; },
     get receivedPrompt() { return receivedPrompt; },
@@ -217,11 +227,16 @@ const REQUEST = {
   backgroundMode: "simplify",
 };
 
+async function advanceJob(state, jobId) {
+  await state.service.processQueued();
+  return state.service.get(REQUEST.userId, jobId);
+}
+
 async function advanceUntilTerminal(state, jobId) {
-  let result = await state.service.get(REQUEST.userId, jobId);
+  let result = await advanceJob(state, jobId);
   for (let attempt = 0; attempt < 5 && (result.status === "queued" || result.status === "processing"); attempt += 1) {
     await new Promise((resolve) => setImmediate(resolve));
-    result = await state.service.get(REQUEST.userId, jobId);
+    result = await advanceJob(state, jobId);
   }
   return result;
 }
@@ -437,7 +452,7 @@ test("provider rate limit parks the job in queued until the cooldown passes", as
   });
   const created = await state.service.create(REQUEST);
   await new Promise((resolve) => setImmediate(resolve));
-  const parked = await state.service.get(REQUEST.userId, created.id);
+  const parked = await advanceJob(state, created.id);
 
   // 限流属于「等一下就好」：任务不该被判死，而是停在 queued 等冷却。
   assert.equal(parked.status, "queued");
@@ -445,12 +460,12 @@ test("provider rate limit parks the job in queued until the cooldown passes", as
 
   // 冷却期内继续推进：绝不重复调 provider。限流是账号维度的，
   // 每个轮询请求各撞一次只会把限流窗口越拖越长（旧实现正是这样把整批任务一起拖死的）。
-  const duringCooldown = await state.service.get(REQUEST.userId, created.id);
+  const duringCooldown = await advanceJob(state, created.id);
   assert.equal(duringCooldown.status, "queued");
   assert.equal(state.createCount, 1);
 
   current = new Date(NOW.getTime() + 30_000);
-  const result = await state.service.get(REQUEST.userId, created.id);
+  const result = await advanceJob(state, created.id);
   assert.equal(result.status, "succeeded");
   assert.equal(state.createCount, 2);
   assert.equal(state.debitCount, 1);
@@ -470,10 +485,10 @@ test("provider rate limit still fails the task after the attempts are exhausted"
   const created = await state.service.create(REQUEST);
   await new Promise((resolve) => setImmediate(resolve));
   // 每次推进 61s：大于冷却上限，保证每一轮都能真的重试一次；一直限流时最终仍要给用户一个终态。
-  let result = await state.service.get(REQUEST.userId, created.id);
+  let result = await advanceJob(state, created.id);
   for (let attempt = 0; attempt < 10 && result.status !== "failed"; attempt += 1) {
     current = new Date(current.getTime() + 61_000);
-    result = await state.service.get(REQUEST.userId, created.id);
+    result = await advanceJob(state, created.id);
   }
 
   assert.equal(result.status, "failed");
@@ -497,10 +512,10 @@ test("provider rate limit cooldown grows exponentially with each hit", async (t)
   t.mock.method(console, "error", (message) => { logged.push(String(message)); });
   const created = await state.service.create(REQUEST);
   await new Promise((resolve) => setImmediate(resolve));
-  let result = await state.service.get(REQUEST.userId, created.id);
+  let result = await advanceJob(state, created.id);
   for (let attempt = 0; attempt < 10 && result.status !== "failed"; attempt += 1) {
     current = new Date(current.getTime() + 61_000);
-    result = await state.service.get(REQUEST.userId, created.id);
+    result = await advanceJob(state, created.id);
   }
 
   const cooldowns = logged
@@ -717,4 +732,62 @@ test("cleanupExpired expires each job once instead of restamping the whole backl
   assert.equal(countUpdateStatements(state.statements), 0, "second sweep must not issue any UPDATE");
   assert.deepEqual(state.removals, removalsAfterFirst, "second sweep must not remove objects again");
   assert.deepEqual(cleanupSnapshot(state.jobs), afterFirst, "second sweep must not modify any row");
+});
+
+
+test("GET AI task is read-only even when output is ready to complete", async () => {
+  const state = harness({ providerName: "toapis", providerPollIntervalMs: 0 });
+  const created = await state.service.create(REQUEST);
+  await new Promise((resolve) => setImmediate(resolve));
+  state.job.provider_output_url = "https://files.toapis.com/output.png";
+  const before = state.calls.length;
+  const result = await state.service.get(REQUEST.userId, created.id);
+  assert.equal(result.status, "processing");
+  assert.equal(state.debitCount, 0);
+  assert.equal(state.saveCount, 0);
+  assert.ok(state.calls.slice(before).every(({ sql }) => sql.trim().startsWith("SELECT")));
+  await state.service.processQueued();
+  assert.equal((await state.service.get(REQUEST.userId, created.id)).status, "succeeded");
+  assert.equal(state.debitCount, 1);
+});
+
+test("background scan resumes persisted tasks after restart without client polling", async () => {
+  const state = harness({ providerName: "toapis", providerPollIntervalMs: 0 });
+  await state.service.create(REQUEST);
+  await new Promise((resolve) => setImmediate(resolve));
+  const restarted = new PostgresAiGenerationService(state.pool, state.provider, state.storage,
+    { dailyStandardDownloads: 9, dailyAiGenerations: 3 }, () => NOW);
+  await Promise.all([restarted.processQueued(), restarted.processQueued()]);
+  assert.equal(state.job.status, "succeeded");
+  assert.equal(state.createCount, 1);
+  assert.equal(state.saveCount, 1);
+  assert.equal(state.debitCount, 1);
+});
+
+test("background scan expires queued tasks without submitting or charging", async () => {
+  const state = harness({ providerName: "toapis" });
+  await state.service.create(REQUEST);
+  await new Promise((resolve) => setImmediate(resolve));
+  state.job.status = "queued";
+  state.job.expires_at = new Date(NOW.getTime() - 1);
+  await state.service.processQueued();
+  assert.equal(state.job.status, "failed");
+  assert.equal(state.job.error_code, "AI_TASK_EXPIRED");
+  assert.equal(state.createCount, 1);
+  assert.equal(state.debitCount, 0);
+});
+
+
+test("background recovery does not resubmit a task with unknown submission outcome", async () => {
+  const state = harness({ providerName: "toapis" });
+  await state.service.create(REQUEST);
+  await new Promise((resolve) => setImmediate(resolve));
+  state.job.provider_request_id = null;
+  state.job.provider_output_url = null;
+  state.job.started_at = new Date(NOW.getTime() - 15 * 60_000);
+  await state.service.processQueued();
+  assert.equal(state.job.status, "failed");
+  assert.equal(state.job.error_code, "AI_SUBMISSION_TIMEOUT");
+  assert.equal(state.createCount, 1);
+  assert.equal(state.debitCount, 0);
 });
