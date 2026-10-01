@@ -80,24 +80,38 @@
       <view class="setting-options">
         <view class="setting-options__header">
           <view class="section-label">图纸参数</view>
-          <button class="setting-options__toggle" bindtap="toggleSettings" aria-expanded="{{settingsExpanded}}" aria-label="{{settingsExpanded ? '收起图纸参数' : '展开图纸参数'}}">
-            <text>{{settings.width}}×{{settings.height}} · {{settings.colorLimit}}色</text>
-            <view class="setting-options__chevron {{settingsExpanded ? 'setting-options__chevron--expanded' : ''}}" aria-hidden="true"></view>
-          </button>
+          <text class="setting-options__current">{{settings.width}}×{{settings.height}} · {{settings.colorLimit}}色</text>
         </view>
-        <view wx:if="{{settingsExpanded}}" class="setting-options__body">
-          <view class="option-group">
-            <view class="option-group__label">尺寸</view>
-            <view class="option-row option-row--sizes"><button wx:for="{{sizeOptions}}" wx:key="*this" class="option-button {{settings.width === item ? 'option-button--active' : ''}}" data-value="{{item}}" bindtap="selectSize">{{item}}×{{item}}</button></view>
+        <view class="option-group">
+          <view class="option-group__heading">
+            <image class="option-group__icon" src="/assets/icons/iconsax/element.svg" mode="aspectFit" aria-hidden="true" />
+            <text class="option-group__label">尺寸</text>
+            <text class="option-group__hint">拼豆图的宽高尺寸</text>
           </view>
-          <view class="option-group option-group--colors">
-            <view class="option-group__label">颜色数量</view>
-            <view class="option-row"><button wx:for="{{colorOptions}}" wx:key="*this" class="option-button {{settings.colorLimit === item ? 'option-button--active' : ''}}" data-value="{{item}}" bindtap="selectColor">{{item}}色</button></view>
+          <view class="option-row" role="radiogroup" aria-label="尺寸">
+            <button wx:for="{{sizeOptions}}" wx:key="*this" class="option-button {{settings.width === item ? 'option-button--active' : ''}}" data-value="{{item}}" bindtap="selectSize" role="radio" aria-checked="{{settings.width === item}}">
+              <text>{{item}}×{{item}}</text>
+              <view wx:if="{{settings.width === item}}" class="option-button__check" aria-hidden="true"><image src="/assets/icons/iconsax/check.svg" mode="aspectFit" /></view>
+            </button>
+          </view>
+        </view>
+        <view class="setting-options__divider" aria-hidden="true"></view>
+        <view class="option-group">
+          <view class="option-group__heading">
+            <image class="option-group__icon" src="/assets/icons/palette-grid.svg" mode="aspectFit" aria-hidden="true" />
+            <text class="option-group__label">颜色数量</text>
+            <text class="option-group__hint">使用的拼豆颜色总数</text>
+          </view>
+          <view class="option-row" role="radiogroup" aria-label="颜色数量">
+            <button wx:for="{{colorOptions}}" wx:key="*this" class="option-button option-button--color {{settings.colorLimit === item ? 'option-button--active' : ''}}" data-value="{{item}}" bindtap="selectColor" role="radio" aria-checked="{{settings.colorLimit === item}}">
+              <text>{{item}}色</text>
+              <view wx:if="{{settings.colorLimit === item}}" class="option-button__check" aria-hidden="true"><image src="/assets/icons/iconsax/check.svg" mode="aspectFit" /></view>
+            </button>
           </view>
         </view>
       </view>
 
-      <button class="button-primary home__submit" style="width: 100%;" bindtap="startCreating" disabled="{{generating || submitting || uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'rejected' || uploadStatus === 'error'}}" loading="{{generating || submitting}}">{{generating ? '正在生成' : (submitting ? '正在准备生成' : (generationMode === 'ai' ? (aiStyle === 'kawaii' ? '生成 Q版拼豆图' : (aiStyle === 'cartoon' ? '生成卡通拼豆图' : '生成极简拼豆图')) : '生成拼豆图'))}}</button>
+      <button class="button-primary home__submit home__submit--standard" style="width: 100%;" bindtap="startCreating" disabled="{{generating || submitting || uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'rejected' || uploadStatus === 'error'}}" loading="{{generating || submitting}}">{{generating ? '正在生成' : (submitting ? '正在准备生成' : (generationMode === 'ai' ? (aiStyle === 'kawaii' ? '生成 Q版拼豆图' : (aiStyle === 'cartoon' ? '生成卡通拼豆图' : '生成极简拼豆图')) : '生成拼豆图'))}}</button>
     </view>
 
     <view wx:elif="{{creationSource === 'text'}}" class="home-form-section home-form-section--text">

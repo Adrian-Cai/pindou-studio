@@ -86,7 +86,6 @@ Page({
     contentSecurityImagePath: '',
     securityCheckId: '',
     settings: { ...DEFAULT_PATTERN_SETTINGS, width: 64, height: 64, colorLimit: 32 },
-    settingsExpanded: false,
     sizeOptions: [32, 48, 64, 96, 128],
     colorOptions: [16, 32, 64, 96],
     choosing: false,
@@ -344,10 +343,6 @@ Page({
 
   selectColor(event: WechatMiniprogram.TouchEvent) {
     this.setData({ 'settings.colorLimit': Number(event.currentTarget.dataset.value) })
-  },
-
-  toggleSettings() {
-    this.setData({ settingsExpanded: !this.data.settingsExpanded })
   },
 
   async startCreating() {
