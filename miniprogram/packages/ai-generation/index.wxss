@@ -51,6 +51,20 @@
 }
 
 /* 成功态仍属于本页：结果预览在状态卡片位置原地出现，编辑面板紧随其后启用。 */
+.ai-generation-disclosure {
+  display: flex;
+  min-height: 64rpx;
+  margin-bottom: 16rpx;
+  padding: 0 20rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  background: #fff3cc;
+  color: #73580d;
+  font-size: 24rpx;
+  line-height: 32rpx;
+}
+
 .ai-generation-result-card {
   padding: 20rpx 20rpx 24rpx;
   border-radius: 20rpx;
@@ -61,12 +75,12 @@
 .ai-generation-result-card__preview {
   display: flex;
   box-sizing: border-box;
-  height: 430rpx;
   margin-top: 16rpx;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   border-radius: 16rpx;
+  aspect-ratio: 1;
   background: #f7f7f7;
 }
 

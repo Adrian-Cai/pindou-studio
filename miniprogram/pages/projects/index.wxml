@@ -46,7 +46,7 @@
       >{{item.label}}</view>
     </view>
 
-    <view wx:if="{{works.length}}" class="project-list">
+    <view wx:if="{{works.length || visibleFailedTextJobs.length}}" class="project-list">
       <view
         class="project-card ui-card"
         wx:for="{{works}}"
@@ -117,13 +117,39 @@
           </view>
         </view>
       </view>
+
+      <view
+        wx:for="{{visibleFailedTextJobs}}"
+        wx:key="id"
+        class="project-card ui-card"
+        data-id="{{item.id}}"
+        bindtap="openTextTask"
+        aria-role="button"
+        aria-label="继续文生图创作"
+      >
+        <view class="project-card__cover-wrap">
+          <image class="project-card__cover" src="{{item.coverPath}}" mode="aspectFit" aria-hidden="true" />
+        </view>
+        <view class="project-card__body">
+          <view class="project-card__header">
+            <view class="project-card__info">
+              <view class="project-card__title">文生图创作</view>
+              <view class="project-card__date">{{item.updatedText}}</view>
+            </view>
+            <text class="status-pill status-pill--draft">待重试</text>
+          </view>
+          <view class="project-card__taskline project-card__text-task-action" catchtap="stopPropagation">
+            <text class="project-card__taskline-link" data-id="{{item.id}}" catchtap="openTextTask">重新生成</text>
+          </view>
+        </view>
+      </view>
     </view>
 
     <view wx:else class="empty-state">
       <image class="empty-state__icon" src="/assets/icons/project-empty.svg" mode="aspectFit" />
-      <view class="empty-state__title">{{loading ? '正在读取作品' : (allWorks.length ? '没有匹配的作品' : '还没有作品')}}</view>
-      <view class="empty-state__desc">{{loading ? '正在同步云端数据，请稍候' : (allWorks.length ? '换个关键词或筛选条件试试' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸')}}</view>
-      <button wx:if="{{!loading && !allWorks.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
+      <view class="empty-state__title">{{loading ? '正在读取作品' : (allWorks.length || failedTextJobs.length ? '没有匹配的作品' : '还没有作品')}}</view>
+      <view class="empty-state__desc">{{loading ? '正在同步云端数据，请稍候' : (allWorks.length || failedTextJobs.length ? '换个关键词或筛选条件试试' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸')}}</view>
+      <button wx:if="{{!loading && !allWorks.length && !failedTextJobs.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
     </view>
   </view>
 

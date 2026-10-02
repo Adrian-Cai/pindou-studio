@@ -1,6 +1,8 @@
 import { ApiError, apiRequest } from './http-client'
 import { requireLoggedInSession } from './session-service'
 import { createIdempotencyKey } from './ai-task-store'
+import { downloadAiOutput } from './ai-generation-service'
+import { persistImage } from './image-service'
 
 export type TextGenerationStatus = 'queued' | 'processing' | 'succeeded' | 'failed'
 
@@ -123,6 +125,31 @@ export async function fetchTextInspirations(): Promise<{ title: string; prompt: 
 
 function assertJobId(jobId: string): void {
   if (!/^txtjob_[A-Za-z0-9_-]{20}$/u.test(jobId)) throw new ApiError('文生图任务编号无效', { code: 'INVALID_ARGUMENT' })
+}
+
+/**
+ * 下载并永久化文生图产物，返回可直接渲染的本地路径。
+ * 下载/写入都失败时抛错，由调用方提示「重新读取」——不会重复扣 AI 额度。
+ */
+export async function loadTextGenerationImage(task: TextGeneration): Promise<string> {
+  if (!task.outputFile) throw new ApiError('灵感图还没有生成完成', { code: 'AI_OUTPUT_INVALID' })
+  return persistImage(await downloadAiOutput(task.outputFile.url))
+}
+
+/** 文生图失败原因统一在服务层翻译，创作页与任务页共用同一套文案。 */
+export function textGenerationFailureMessage(errorCode: string | null): string {
+  switch (errorCode) {
+    case 'AI_QUOTA_UNAVAILABLE_AT_COMPLETION':
+      return '图片生成后暂时无法保存，请稍后重试。此次没有扣除 AI 额度。'
+    case 'AI_PROVIDER_NOT_CONFIGURED':
+    case 'AI_SERVICE_UNAVAILABLE':
+      return '图片生成服务暂时不可用，请稍后再试。此次没有扣除 AI 额度。'
+    case 'IMAGE_GENERATION_FAILED':
+    case 'AI_TEXT_GENERATION_FAILED':
+      return '这次没有生成成功，AI 额度不会扣除。可以调整描述后重试，或稍后再试。'
+    default:
+      return '图片暂时没有生成成功，AI 额度不会扣除。可以重新尝试或调整描述。'
+  }
 }
 
 function invalidResponse(): ApiError {

@@ -133,8 +133,41 @@
         <text class="text-size-trigger__select">选择</text><image class="text-action__icon" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" />
       </button>
       <view class="text-generation-footer">
+        <view class="text-result">
+          <view wx:if="{{textTaskPhase === 'idle'}}" class="text-result__placeholder">
+            <image class="text-result__placeholder-icon" src="/assets/icons/iconsax/gallery.svg" mode="aspectFit" aria-hidden="true" />
+            <view class="text-result__placeholder-text">生成的灵感图会显示在这里</view>
+          </view>
+
+          <view wx:elif="{{textTaskPhase === 'pending'}}" class="text-result__state" aria-role="status">
+            <view class="text-result__spinner"></view>
+            <view class="text-result__state-title">{{textTaskStatusText}}</view>
+            <view class="text-result__state-desc">可以离开页面，结果会保留在这里和作品页</view>
+          </view>
+
+          <view wx:elif="{{textTaskPhase === 'failed'}}" class="text-result__state" aria-role="alert">
+            <view class="text-result__state-title">这次没有生成成功</view>
+            <view class="text-result__state-desc">{{textTaskError}}</view>
+            <button class="button-secondary text-result__action text-result__retry" bindtap="retryTextGeneration" disabled="{{creatingText}}" aria-label="重新生成灵感图">重新生成</button>
+          </view>
+
+          <block wx:else>
+            <image wx:if="{{textTaskImagePath}}" class="text-result__image" src="{{textTaskImagePath}}" mode="aspectFit" bindtap="previewTextGeneration" aria-label="AI 生成的灵感图，点击放大" />
+            <view wx:else class="text-result__state">
+              <view wx:if="{{textTaskImageLoading}}" class="text-result__spinner"></view>
+              <view class="text-result__state-title">{{textTaskImageLoading ? '正在加载灵感图' : '灵感图暂时打不开'}}</view>
+              <view class="text-result__state-desc">{{textTaskError || '正在下载生成结果，请稍候'}}</view>
+              <button wx:if="{{!textTaskImageLoading}}" class="button-secondary text-result__action text-result__retry" bindtap="refreshTextTask" aria-label="重新读取灵感图">重新读取</button>
+            </view>
+            <view class="text-result__meta">{{textTaskSize}} · 确认后会使用标准拼豆转换</view>
+            <view class="text-result__actions">
+              <button class="button-secondary text-result__action" bindtap="retryTextGeneration" disabled="{{textTaskConverting}}" aria-label="重新生成灵感图">重新生成</button>
+              <button class="button-primary text-result__action" bindtap="createPatternFromTextTask" loading="{{textTaskConverting}}" disabled="{{textTaskConverting || !textTaskImagePath}}" aria-label="生成拼豆图">生成拼豆图</button>
+            </view>
+          </block>
+        </view>
         <view class="text-cost">生成成功消耗 {{textCost}} 次 AI 额度 · {{aiRemaining === null ? '余额暂未读取' : '剩余 ' + aiRemaining + ' 次'}}<text>失败不扣费，描述会经过安全检查</text></view>
-        <button class="button-primary home__submit text-submit" style="width: 100%; background: {{creatingText || !promptLength || !textSizes.length || textOptionsLoading ? '#d8dae2' : '#12b466'}}; color: #fff; border-radius: 48rpx;" bindtap="startTextGeneration" disabled="{{creatingText || !promptLength || !textSizes.length || textOptionsLoading}}" loading="{{creatingText}}">{{creatingText ? '正在创建任务' : '生成灵感图'}}</button>
+        <button class="button-primary home__submit text-submit" style="width: 100%; background: {{creatingText || !promptLength || !textSizes.length || textOptionsLoading || textTaskPhase === 'pending' ? '#d8dae2' : '#12b466'}}; color: #fff; border-radius: 48rpx;" bindtap="startTextGeneration" disabled="{{creatingText || !promptLength || !textSizes.length || textOptionsLoading || textTaskPhase === 'pending'}}" loading="{{creatingText}}">{{creatingText ? '正在创建任务' : (textTaskPhase === 'pending' ? '正在生成灵感图' : '生成灵感图')}}</button>
         <view class="text-save-hint">生成结果可在作品中继续查看和制作</view>
       </view>
     </view>
@@ -145,7 +178,7 @@
     <view class="text-size-sheet__handle"></view>
     <view class="text-card__heading"><text>选择图片尺寸</text><button class="text-action text-action--muted" bindtap="closeTextSizes" aria-label="关闭尺寸选择">关闭</button></view>
     <scroll-view class="text-size-sheet__scroll" scroll-y>
-      <view class="text-size-options"><button wx:for="{{textSizes}}" wx:key="*this" class="text-size-option {{pendingTextSize === item ? 'text-size-option--active' : ''}}" data-size="{{item}}" bindtap="selectTextSize" role="radio" aria-checked="{{pendingTextSize === item}}">{{item}}</button></view>
+      <view class="text-size-options"><button wx:for="{{textSizeOptions}}" wx:key="value" class="text-size-option {{pendingTextSize === item.value ? 'text-size-option--active' : ''}}" data-size="{{item.value}}" bindtap="selectTextSize" role="radio" aria-checked="{{pendingTextSize === item.value}}"><view class="text-size-option__preview" aria-hidden="true"><view class="text-size-option__canvas" style="width: {{item.previewWidth}}rpx; height: {{item.previewHeight}}rpx;"></view></view><text class="text-size-option__label">{{item.value}}</text></button></view>
     </scroll-view>
     <button class="button-primary home__submit text-submit" style="width: 100%; background: #12b466; color: #fff; border-radius: 48rpx;" bindtap="confirmTextSize">使用此尺寸</button>
   </view>

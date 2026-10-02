@@ -17,7 +17,8 @@
       "name": "ai-generation",
       "root": "packages/ai-generation",
       "pages": [
-        "index"
+        "index",
+        "text/index"
       ]
     },
     {

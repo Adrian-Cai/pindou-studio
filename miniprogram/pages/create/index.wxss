@@ -681,9 +681,30 @@ page {
 .text-size-sheet__handle { width: 80rpx; height: 8rpx; margin: 0 auto 24rpx; border-radius: 8rpx; background: var(--color-border); }
 .text-size-sheet__scroll { max-height: 42vh; }
 .text-size-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16rpx; }
-.text-size-option { width: 100%; margin: 0; padding: 16rpx 8rpx; border: 2rpx solid transparent; border-radius: 16rpx; background: var(--color-surface-muted); color: var(--color-text); font-size: 26rpx; line-height: 44rpx; }
+.text-size-option { display: flex; width: 100%; min-height: 144rpx; flex-direction: column; align-items: center; justify-content: center; gap: 12rpx; margin: 0; padding: 14rpx 8rpx; border: 2rpx solid transparent; border-radius: 16rpx; background: var(--color-surface-muted); color: var(--color-text); font-size: 24rpx; line-height: 32rpx; }
+.text-size-option__preview { display: flex; width: 72rpx; height: 64rpx; align-items: center; justify-content: center; }
+.text-size-option__canvas { box-sizing: border-box; border: 2rpx solid var(--color-text-secondary); border-radius: 3rpx; background: rgba(255,255,255,.55); }
+.text-size-option__label { line-height: 32rpx; }
 .text-size-option--active { border-color: var(--color-primary); background: var(--color-primary-soft); color: var(--color-primary-pressed); }
 .text-action:active, .text-inspiration:active, .text-size-trigger:active, .text-size-option:active { transform: scale(.97); opacity: .85; transition: 150ms; }
+/* 文生图结果：页面内预留展示位，生成完成后原地渲染，不再跳转到独立结果页。 */
+.text-result { margin-bottom: 20rpx; }
+.text-result__placeholder { display: flex; box-sizing: border-box; min-height: 180rpx; flex-direction: column; align-items: center; justify-content: center; gap: 10rpx; border: 2rpx dashed var(--color-border); border-radius: 20rpx; background: var(--color-surface-muted); color: var(--color-text-secondary); }
+.text-result__placeholder-icon { width: 44rpx; height: 44rpx; opacity: .45; }
+.text-result__placeholder-text { font-size: 24rpx; line-height: 1.4; }
+.text-result__state { display: flex; min-height: 240rpx; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.text-result__spinner { width: 56rpx; height: 56rpx; margin-bottom: 20rpx; border: 6rpx solid var(--color-primary-soft); border-top-color: var(--color-primary); border-radius: 50%; animation: text-result-spin 1s linear infinite; }
+.text-result__state-title { color: var(--color-text); font-size: 28rpx; font-weight: 600; line-height: 40rpx; }
+.text-result__state-desc { max-width: 540rpx; margin-top: 8rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 1.5; }
+.text-result__image { width: 100%; height: 480rpx; border-radius: 20rpx; background: var(--color-surface-muted); }
+.text-result__meta { margin-top: 12rpx; color: var(--color-text-secondary); font-size: 22rpx; line-height: 1.5; text-align: center; }
+.text-result__actions { display: flex; gap: 16rpx; margin-top: 16rpx; }
+/* 原生 button 放进 flex 行会吃掉整行剩余宽度，两个动作按钮必须显式等分。 */
+.text-result__action { box-sizing: border-box; flex: 1 1 0; width: auto; min-width: 0; height: 80rpx; margin: 0; border-radius: 40rpx; font-size: 28rpx; font-weight: 600; }
+/* 单独出现的重试按钮不参与等分，避免在纵向状态卡里被 flex 拉伸/压扁。 */
+.text-result__retry { flex: 0 0 auto; width: 100%; margin: 20rpx 0 0; }
+.text-result__action::after { border: 0; }
+@keyframes text-result-spin { to { transform: rotate(360deg); } }
 
 .home-page--text .creation-source-tab--active { background: #12b466; color: #fff; }
 .home-page--text .creation-source-tab--active .creation-source-tab__icon { filter: brightness(0) invert(1); }

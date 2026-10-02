@@ -514,6 +514,22 @@ queued → processing → succeeded / failed
 
 生成参考图并通过服务端格式、大小、尺寸校验后才扣 1 次 `ai_generation` 额度；失败不扣。AI 输出文件和未消费任务默认保留 24 小时。客户端随后使用现有标准拼豆引擎转换，不再发起第二次 AI 调用。保存作品时，`creationSource=text` 和 `sourcePrompt` 与封面、图案在现有作品事务中写入；作品详情返回 `sourcePrompt`，摘要返回 `creationSource`。历史作品由迁移默认标记为图片来源。
 
-### 12.4 数据库迁移
+### 12.4 尺寸配置与 AI 灵感
+
+```http
+GET /api/ai/text-generation-options   # 返回 { sizes, defaultSize, cost }
+GET /api/ai/text-inspirations         # 返回 { items: [{ title, prompt } x3] }
+```
+
+`text-generation-options` 只返回服务端白名单尺寸与单次扣费次数，客户端不自建尺寸白名单。`text-inspirations` 复用登录态、`aiRateLimiter`（默认 5 次 / 10 分钟，key `{userId}:text-inspiration`）和文本内容安全检查，**不扣用户 AI 额度**。
+
+灵感由 `generateImage` 云函数走 CloudBase `cloudbase/hy3` 文本模型生成（服务端持有密钥，客户端不接触）。这是全链路唯一「不扣用户额度、却真实消耗 token」的调用，成本口径：
+
+- 单次调用：输入约 90–120 token（固定提示词 + 3 条输出的格式约束），输出约 240–360 token（3 组 title + 30–100 字 prompt 的 JSON），合计约 330–480 token。
+- 按 Hy3 定价（输入 1 元 / 百万 token、输出 4 元 / 百万 token），单次约 ¥0.001–0.0015；1 万次约 ¥10–15。
+- 真正的成本风险来自**调用频次**而非单价，因此小程序侧按用户缓存灵感结果 6 小时并只在点「换一换」时强制刷新，`/api/ai/text-inspirations` 的连点由 3 秒冷却 + 服务端限流兜底。
+- 云函数每次调用输出一条 `[generateImage] inspirations usage` 日志（`inputTokens` / `outputTokens` / `totalTokens`），可直接在云开发日志里按次核对真实用量；字段缺失时记 `null` 而不是 0。
+
+### 12.5 数据库迁移
 
 部署前执行 `server/sql/019_text_image_generation.sql`，新增 `pindou_text_image_generation_jobs`，并为 `pindou_works` 增加 `creation_source`、`source_prompt`。任务提示词不进入日志；过期任务清理时连同中间输出一起删除。

@@ -41,6 +41,7 @@
 .project-card__taskline-text { flex-shrink: 0; color: var(--color-text-tertiary); }
 .project-card__taskline-link { flex-shrink: 0; color: var(--color-primary); }
 .project-card__taskline-link--danger { color: var(--color-danger); }
+.project-card__text-task-action { margin-top: auto; padding-top: 8rpx; }
 .project-card__taskline-link:active { opacity: 0.6; }
 .project-card__continue { display: flex; box-sizing: border-box; height: 88rpx; align-items: center; align-self: flex-end; justify-content: center; gap: var(--space-1); margin-top: var(--space-2); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-card-small); background: transparent; box-shadow: var(--shadow-ghost); color: var(--color-primary); font-size: 24rpx; line-height: 1; transition: var(--transition-press); }
 .project-card__continue-icon { width: 28rpx; height: 28rpx; }

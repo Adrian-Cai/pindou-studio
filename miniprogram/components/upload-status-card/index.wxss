@@ -241,88 +241,6 @@
   line-height: 36rpx;
 }
 
-.upload-status-card__ticker {
-  box-sizing: border-box;
-  min-width: 0;
-  height: 36rpx;
-  flex: 1;
-  overflow: hidden;
-  color: var(--color-text-secondary);
-  font-size: 20rpx;
-  line-height: 36rpx;
-}
-
-.upload-status-card__status-band {
-  box-sizing: border-box;
-  display: flex;
-  width: 100%;
-  height: 68rpx;
-  align-items: center;
-  gap: 12rpx;
-  padding: 0 16rpx;
-  overflow: hidden;
-  border-radius: 14rpx;
-  background: var(--color-surface-muted);
-}
-
-.upload-status-card__status-band--success {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-}
-
-.upload-status-card__state-content--success {
-  width: 70%;
-  margin: 0 auto;
-}
-
-.upload-status-card__status-band--success {
-  height: auto;
-  gap: 8rpx;
-  padding: 0;
-  overflow: visible;
-  background: transparent;
-}
-
-.upload-status-card__status-band--success .upload-status-card__status-icon--success {
-  flex-basis: 24rpx;
-  width: 24rpx;
-  height: 24rpx;
-}
-
-.upload-status-card__status-band--success .upload-status-card__ticker {
-  height: auto;
-  font-size: 18rpx;
-  line-height: 26rpx;
-}
-
-.upload-status-card__ticker-track {
-  animation: upload-status-ticker 8s ease-in-out infinite;
-}
-
-.upload-status-card__ticker-line {
-  box-sizing: border-box;
-  height: 36rpx;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.upload-status-card__status-band .upload-status-card__status-icon {
-  flex: 0 0 30rpx;
-  width: 30rpx;
-  height: 30rpx;
-}
-
-.upload-status-card__status-band .upload-status-card__status-icon--spinner {
-  border-width: 3rpx;
-}
-
-.upload-status-card__status-band .upload-status-card__status-icon--success::after {
-  width: 13rpx;
-  height: 8rpx;
-  border-width: 2rpx;
-}
-
 .upload-status-card__progress {
   box-sizing: border-box;
   width: 100%;
@@ -418,33 +336,6 @@
   }
 }
 
-@keyframes upload-status-ticker {
-  0%,
-  19% {
-    transform: translateY(0);
-  }
-
-  24%,
-  43% {
-    transform: translateY(-36rpx);
-  }
-
-  48%,
-  67% {
-    transform: translateY(-72rpx);
-  }
-
-  72%,
-  91% {
-    transform: translateY(-108rpx);
-  }
-
-  96%,
-  100% {
-    transform: translateY(-144rpx);
-  }
-}
-
 @media (max-width: 340px) {
   .upload-status-card__empty {
     width: calc(100vw - 64rpx);
@@ -468,8 +359,255 @@
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  .upload-status-card__status-band--success {
-    color: #58d895;
+/* 上传、检测和成功状态共用横向单图卡片。 */
+.upload-status-card--horizontal {
+  padding: 24rpx;
+}
+
+.upload-status-card--horizontal .upload-status-card__layout {
+  flex-direction: row;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.upload-status-card--horizontal .upload-status-card__preview-wrap {
+  align-self: auto;
+  width: 220rpx;
+  height: 220rpx;
+  border-radius: 20rpx;
+}
+
+.upload-status-card--horizontal .upload-status-card__remove-symbol {
+  width: 48rpx;
+  height: 48rpx;
+  font-size: 36rpx;
+}
+
+.upload-status-card--horizontal .upload-status-card__state-content {
+  box-sizing: border-box;
+  width: 0;
+  min-width: 0;
+  flex: 1 1 0;
+  margin: 0;
+}
+
+.upload-status-card__result-content {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+  align-items: stretch;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8rpx;
+}
+
+.upload-status-card__uploading-content {
+  display: flex;
+  min-height: 132rpx;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.upload-status-card__message-carousel {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  padding: 8rpx 12rpx;
+  overflow: hidden;
+  border-radius: 16rpx;
+  background: var(--color-primary-soft);
+}
+
+.upload-status-card__message-carousel,
+.upload-status-card__replace {
+  height: 100rpx;
+  min-height: 100rpx;
+  flex: 0 0 100rpx;
+}
+
+.upload-status-card__message {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 12rpx;
+  overflow: hidden;
+  animation: upload-message-fade 240ms ease both;
+}
+
+.upload-status-card__message-icon {
+  display: flex;
+  width: 40rpx;
+  height: 40rpx;
+  flex: 0 0 40rpx;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-status-card__message-check {
+  position: relative;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+
+.upload-status-card__message-check::after {
+  position: absolute;
+  top: 9rpx;
+  left: 10rpx;
+  width: 13rpx;
+  height: 7rpx;
+  border-bottom: 4rpx solid #fff;
+  border-left: 4rpx solid #fff;
+  content: '';
+  transform: rotate(-45deg);
+}
+
+.upload-status-card__message-icon image {
+  width: 36rpx;
+  height: 36rpx;
+}
+
+.upload-status-card__message-copy {
+  display: flex;
+  box-sizing: border-box;
+  width: 0;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.upload-status-card__message-title,
+.upload-status-card__message-description {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+}
+
+.upload-status-card__message-title {
+  color: var(--color-text);
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 32rpx;
+  -webkit-line-clamp: 2;
+}
+
+.upload-status-card__message-description {
+  color: var(--color-text-secondary);
+  font-size: 21rpx;
+  line-height: 28rpx;
+  -webkit-line-clamp: 2;
+}
+
+.upload-status-card__replace {
+  display: flex;
+  box-sizing: border-box;
+  align-self: stretch;
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  margin: 0;
+  padding: 0 8rpx;
+  border: 0;
+  border-radius: 16rpx;
+  background: var(--color-info-soft, var(--color-primary-soft));
+  color: var(--color-info, var(--color-primary));
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 36rpx;
+  transition: var(--transition-press);
+}
+
+.upload-status-card__replace::after {
+  border: 0;
+}
+
+.upload-status-card__replace:active {
+  opacity: 0.84;
+  transform: scale(0.97);
+}
+
+.upload-status-card__replace[disabled] {
+  opacity: 0.6;
+}
+
+.upload-status-card__replace-icon {
+  width: 32rpx;
+  height: 32rpx;
+  flex: 0 0 32rpx;
+}
+
+@keyframes upload-message-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 340px) {
+  .upload-status-card--horizontal {
+    padding: 20rpx;
+  }
+
+  .upload-status-card--horizontal .upload-status-card__layout {
+    gap: 16rpx;
+  }
+
+  .upload-status-card--horizontal .upload-status-card__preview-wrap {
+    width: 260rpx;
+    height: 260rpx;
+  }
+
+  .upload-status-card--horizontal .upload-status-card__remove {
+    width: 104rpx;
+    height: 104rpx;
+  }
+
+  .upload-status-card--horizontal .upload-status-card__remove-symbol {
+    width: 56rpx;
+    height: 56rpx;
+  }
+
+  .upload-status-card__message {
+    gap: 8rpx;
+  }
+
+  .upload-status-card__message-icon {
+    width: 32rpx;
+    flex-basis: 32rpx;
+  }
+
+  .upload-status-card__message-icon .upload-status-card__status-icon--spinner {
+    width: 28rpx;
+    height: 28rpx;
+    flex-basis: 28rpx;
+    border-width: 3rpx;
+  }
+
+  .upload-status-card__message-title {
+    font-size: 22rpx;
+  }
+
+  .upload-status-card__message-description {
+    font-size: 20rpx;
+  }
+
+  .upload-status-card__replace {
+    gap: 6rpx;
+    font-size: 22rpx;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .upload-status-card__message {
+    animation: none;
   }
 }

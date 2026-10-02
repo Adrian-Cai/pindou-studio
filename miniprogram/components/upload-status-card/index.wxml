@@ -1,4 +1,4 @@
-<view class="upload-status-card upload-status-card--{{uploadStatus}} {{uploadStatus === 'empty' ? 'upload-status-card--empty' : 'upload-status-card--has-image'}}">
+<view class="upload-status-card upload-status-card--{{uploadStatus}} {{uploadStatus === 'empty' ? 'upload-status-card--empty' : 'upload-status-card--has-image'}} {{uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'success' ? 'upload-status-card--horizontal' : ''}}">
   <view wx:if="{{uploadStatus !== 'empty'}}" class="upload-status-card__layout">
     <view
       class="upload-status-card__preview-wrap {{uploadStatus === 'rejected' ? 'upload-status-card__preview-wrap--blocked' : ''}}"
@@ -7,7 +7,7 @@
         wx:if="{{sourceImagePath}}"
         class="upload-status-card__preview"
         src="{{sourceImagePath}}"
-        mode="aspectFill"
+        mode="aspectFit"
         binderror="handlePreviewError"
       />
       <view wx:else class="upload-status-card__preview-placeholder" aria-label="图片占位">
@@ -28,37 +28,40 @@
     </view>
 
     <view class="upload-status-card__state-content upload-status-card__state-content--{{uploadStatus}}" aria-live="polite">
-      <block wx:if="{{uploadStatus === 'uploading'}}">
-        <view class="upload-status-card__upload-heading">
-          <view class="upload-status-card__title">正在上传图片</view>
-          <view wx:if="{{uploadProgress >= 0}}" class="upload-status-card__progress-value">{{uploadProgress}}%</view>
-        </view>
-        <view class="upload-status-card__progress" aria-label="图片上传进度">
-          <view wx:if="{{uploadProgress >= 0}}" class="upload-status-card__progress-bar" style="width: {{uploadProgress}}%;"></view>
-          <view wx:else class="upload-status-card__progress-bar upload-status-card__progress-bar--indeterminate"></view>
-        </view>
-        <view class="upload-status-card__description">请稍候，不要关闭页面</view>
-      </block>
-
-      <block wx:elif="{{uploadStatus === 'checking'}}">
-        <view class="upload-status-card__status-band" aria-label="安全检测中，提示依次轮播：正在确认图片内容是否规范、马上就好请稍等一下、安全检测通过后即可继续、检测完成即可生成拼豆图纸">
-          <view class="upload-status-card__status-icon upload-status-card__status-icon--spinner" aria-hidden="true"></view>
-          <view class="upload-status-card__ticker">
-            <view class="upload-status-card__ticker-track" aria-hidden="true">
-              <view class="upload-status-card__ticker-line">正在确认图片内容是否规范</view>
-              <view class="upload-status-card__ticker-line">马上就好，请稍等一下</view>
-              <view class="upload-status-card__ticker-line">安全检测通过后即可继续</view>
-              <view class="upload-status-card__ticker-line">检测完成即可生成拼豆图纸</view>
-              <view class="upload-status-card__ticker-line">正在确认图片内容是否规范</view>
+      <block wx:if="{{uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'success'}}">
+        <view class="upload-status-card__result-content">
+          <view wx:if="{{uploadStatus === 'uploading'}}" class="upload-status-card__uploading-content">
+            <view class="upload-status-card__upload-heading">
+              <view class="upload-status-card__title">正在上传图片</view>
+              <view wx:if="{{uploadProgress >= 0}}" class="upload-status-card__progress-value">{{uploadProgress}}%</view>
             </view>
+            <view class="upload-status-card__progress" aria-label="图片上传进度">
+              <view wx:if="{{uploadProgress >= 0}}" class="upload-status-card__progress-bar" style="width: {{uploadProgress}}%;"></view>
+              <view wx:else class="upload-status-card__progress-bar upload-status-card__progress-bar--indeterminate"></view>
+            </view>
+            <view class="upload-status-card__description">请稍候，不要关闭页面</view>
           </view>
-        </view>
-      </block>
 
-      <block wx:elif="{{uploadStatus === 'success'}}">
-        <view class="upload-status-card__status-band upload-status-card__status-band--success">
-          <view class="upload-status-card__status-icon upload-status-card__status-icon--success" aria-hidden="true"></view>
-          <view class="upload-status-card__ticker">图片符合要求，可继续使用</view>
+          <view wx:else class="upload-status-card__message-carousel" aria-live="polite" aria-atomic="true">
+            <block wx:for="{{carouselMessages}}" wx:key="title">
+              <view wx:if="{{messageIndex === index}}" class="upload-status-card__message">
+                <view class="upload-status-card__message-icon" aria-hidden="true">
+                  <view wx:if="{{uploadStatus === 'checking'}}" class="upload-status-card__status-icon upload-status-card__status-icon--spinner"></view>
+                  <view wx:elif="{{index === 0}}" class="upload-status-card__message-check"></view>
+                  <image wx:else src="{{item.icon}}" mode="aspectFit" />
+                </view>
+                <view class="upload-status-card__message-copy">
+                  <view class="upload-status-card__message-title">{{item.title}}</view>
+                  <view class="upload-status-card__message-description">{{item.description}}</view>
+                </view>
+              </view>
+            </block>
+          </view>
+
+          <button class="upload-status-card__replace" bindtap="handleChooseImage" disabled="{{choosing || uploadStatus === 'uploading' || uploadStatus === 'checking'}}">
+            <image class="upload-status-card__replace-icon" src="/assets/icons/iconsax/refresh.svg" mode="aspectFit" aria-hidden="true" />
+            <text>更换图片</text>
+          </button>
         </view>
       </block>
 

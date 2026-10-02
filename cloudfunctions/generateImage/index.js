@@ -9,7 +9,7 @@ cloud.init({
 
 const IMAGE_MODEL = 'HY-Image-v3.0-I2I-ToB-v1.0.1'
 const TEXT_IMAGE_MODEL = 'HY-Image-3.0-Plus-4090-Tob-v1.0'
-const ALLOWED_SIZES = ['1024x1024', '1280x720', '720x1280', '1280x1280']
+const ALLOWED_SIZES = ['1024x1024', '1280x720', '720x1280']
 const MAX_PROMPT_LENGTH = 500
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 /**
@@ -106,6 +106,8 @@ async function generateInspirations() {
       model: 'hy3',
       messages: [{ role: 'user', content: '请提供3个不同主题的中文文生图创意，画面简洁、主体鲜明，适合后续制作拼豆。仅输出JSON数组，每项包含title（2到8字）和prompt（30到100字，描述主体、场景、风格和配色）。不包含真实人物、商标、暴力、色情或违法内容。每次给出新的创意。' }],
     })
+    // 灵感是唯一「不扣用户额度、但真实消耗 token」的调用：按次记录用量，便于成本对账。
+    console.log('[generateImage] inspirations usage', describeTokenUsage(response))
     if (response.error) throw new Error('AI 灵感生成失败')
     const items = JSON.parse(response.text.trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))
     if (!Array.isArray(items) || items.length !== 3 || items.some(item =>
@@ -117,6 +119,29 @@ async function generateInspirations() {
   } catch {
     return { error: 'AI 灵感暂时不可用，请稍后换一换', code: 'AI_INSPIRATION_UNAVAILABLE' }
   }
+}
+
+/**
+ * 文本模型用量对账用：上游字段名不稳定，缺失一律记 null（不写 0，避免把「没读到」当「没消耗」）。
+ * 顺带记录回包字段名，便于确认当前 SDK 版本真实的用量字段。
+ */
+function describeTokenUsage(response) {
+  const body = response && typeof response === 'object' ? response : {}
+  const usage = body.usage && typeof body.usage === 'object' ? body.usage : null
+  const inputTokens = numberOrNull(usage?.prompt_tokens) ?? numberOrNull(usage?.input_tokens)
+  const outputTokens = numberOrNull(usage?.completion_tokens) ?? numberOrNull(usage?.output_tokens)
+  const totalTokens = numberOrNull(usage?.total_tokens) ?? (inputTokens !== null && outputTokens !== null ? inputTokens + outputTokens : null)
+  return {
+    model: 'hy3',
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    ...(usage ? {} : { usageUnavailable: true, responseKeys: Object.keys(body).join(',') }),
+  }
+}
+
+function numberOrNull(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function parsePayload(event) {

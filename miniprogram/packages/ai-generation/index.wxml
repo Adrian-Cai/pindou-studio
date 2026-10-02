@@ -68,6 +68,7 @@
 
     <!-- ④ 已完成：同页展示结果，并启用缩放、工具、色板与保存操作 -->
     <view wx:elif="{{isSucceeded}}" class="ai-generation-state">
+      <view class="ai-generation-disclosure">当前结果由 AI 生成</view>
       <view class="ai-generation-result-card">
         <view class="ai-generation-result-card__preview">
           <canvas

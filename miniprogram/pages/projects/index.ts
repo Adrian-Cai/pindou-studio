@@ -4,9 +4,8 @@
  * 职责：聚合 appStore 中的作品与云端作品（登录时拉取并写入本地），按 tab/搜索过滤渲染；
  *       打开云端作品时取详情还原草稿并跳转编辑器/结果页；不负责图纸生成与绘制。
  * 调用方：tabBar 第 2 项（路由 /pages/projects/index）。
- * 关键点：AI 生成任务是 appStore.works 里的**真实作品记录**（taskId === workId），
- *       生成中/失败只是它的 status；因此重命名、删除、筛选无需任何特判。
- *       封面加载失败回退到占位图（COVER_FALLBACK_PATH）。
+ * 关键点：AI 生成任务是 appStore.works 里的真实作品记录；未完成的文生图失败任务只在列表展示占位卡，
+ *       不伪装成已保存作品。封面加载失败回退到占位图（COVER_FALLBACK_PATH）。
  */
 import { isAiTaskWork, isWorkDraft, type WorkItem } from '../../models/pattern'
 import {
@@ -44,6 +43,10 @@ type WorkView = WorkItem & {
   canRetry: boolean
   retryLabel: string
 }
+type FailedTextTaskView = Pick<TextGeneration, 'id' | 'prompt' | 'updatedAt'> & {
+  coverPath: string
+  updatedText: string
+}
 const tabs = [
   { id: 'all', label: '全部' },
   { id: 'recent', label: '最近' },
@@ -61,6 +64,8 @@ Page({
     allWorks: [] as WorkView[],
     works: [] as WorkView[],
     textJobs: [] as TextGeneration[],
+    failedTextJobs: [] as FailedTextTaskView[],
+    visibleFailedTextJobs: [] as FailedTextTaskView[],
     recentCount: 0,
     draftCount: 0,
     loading: false,
@@ -97,7 +102,7 @@ Page({
   async refreshWorks() {
     // 未登录时没有云端列表可拉，直接渲染本地缓存
     if (!hasCloudSession()) {
-      this.setData({ textJobs: [] })
+      this.setData({ textJobs: [], failedTextJobs: [], visibleFailedTextJobs: [] })
       this.refreshVisibleWorks()
       return
     }
@@ -107,8 +112,19 @@ Page({
         fetchCloudWorks(),
         fetchRecoverableTextGenerations(),
       ])
-      if (textJobsResult.status === 'fulfilled') this.setData({ textJobs: textJobsResult.value })
-      else console.warn('读取文生图恢复任务失败', textJobsResult.reason)
+      if (textJobsResult.status === 'fulfilled') {
+        const failedTextJobs = textJobsResult.value
+          .filter((task) => task.status === 'failed')
+          .map((task) => ({
+            ...task,
+            coverPath: COVER_FALLBACK_PATH,
+            updatedText: formatDateTime(Date.parse(task.updatedAt)),
+          }))
+        this.setData({
+          textJobs: textJobsResult.value.filter((task) => task.status !== 'failed'),
+          failedTextJobs,
+        })
+      } else console.warn('读取文生图恢复任务失败', textJobsResult.reason)
       if (worksResult.status === 'rejected') {
         // 这里是**网络/接口**失败，本地缓存还在，按「加载失败」提示
         console.error('读取云端作品失败', worksResult.reason)
@@ -202,7 +218,12 @@ Page({
       if (activeTab === 'completed') return !work.isDraft
       return true
     })
-    this.setData({ works })
+    const failedTextJobs = this.data.failedTextJobs.filter((task) => {
+      if (activeTab === 'draft' || activeTab === 'completed') return false
+      if (query && !task.prompt.toLowerCase().includes(query) && !'文生图创作'.includes(query)) return false
+      return activeTab !== 'recent' || isRecent(Date.parse(task.updatedAt))
+    })
+    this.setData({ works, visibleFailedTextJobs: failedTextJobs })
   },
 
   showFilter() {

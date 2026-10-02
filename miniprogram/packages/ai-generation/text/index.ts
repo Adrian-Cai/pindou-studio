@@ -1,13 +1,15 @@
 import { DEFAULT_PATTERN_SETTINGS } from '../../../config/product'
 import type { PatternDraft } from '../../../models/pattern'
 import { appStore } from '../../../store/app-store'
-import { createDraft, persistImage } from '../../../services/image-service'
-import { downloadAiOutput } from '../../../services/ai-generation-service'
+import { createDraft } from '../../../services/image-service'
 import { createIdempotencyKey } from '../../../services/ai-task-store'
 import {
   consumeTextGeneration,
   createTextGeneration,
+  fetchTextGenerationOptions,
   getTextGeneration,
+  loadTextGenerationImage,
+  textGenerationFailureMessage,
   type TextGeneration,
 } from '../../../services/text-generation-service'
 
@@ -63,13 +65,21 @@ Page({
     try {
       const task = await getTextGeneration(this._taskId)
       if (!this._visible) return
-      this.setData({ task, loading: false })
+      this.setData({
+        task,
+        loading: false,
+        errorMessage: task.status === 'failed' ? textGenerationFailureMessage(task.errorCode) : '',
+      })
       if (task.status === 'queued' || task.status === 'processing') {
         this.schedulePolling()
       } else if (task.status === 'succeeded' && task.outputFile && !this.data.referenceImagePath) {
-        const path = await downloadAiOutput(task.outputFile.url)
-        if (!this._visible) return
-        this.setData({ referenceImagePath: await persistImage(path) })
+        try {
+          const path = await loadTextGenerationImage(task)
+          if (!this._visible) return
+          this.setData({ referenceImagePath: path, errorMessage: '' })
+        } catch {
+          if (this._visible) this.setData({ errorMessage: '参考图已经生成，但暂时加载失败。请检查网络后重新读取，不会重复扣除额度。' })
+        }
       }
     } catch (error) {
       if (!this._visible) return
@@ -94,7 +104,9 @@ Page({
     if (!task || this.data.loading) return
     this.setData({ loading: true, errorMessage: '' })
     try {
-      const next = await createTextGeneration(task.prompt, createIdempotencyKey(), task.size)
+      const options = await fetchTextGenerationOptions()
+      const size = options.sizes.includes(task.size) ? task.size : options.defaultSize
+      const next = await createTextGeneration(task.prompt, createIdempotencyKey(), size)
       this._taskId = next.id
       this.setData({ taskId: next.id, task: next, referenceImagePath: '' })
       await this.refreshTask()
