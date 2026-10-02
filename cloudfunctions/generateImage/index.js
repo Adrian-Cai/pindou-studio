@@ -9,7 +9,7 @@ cloud.init({
 
 const IMAGE_MODEL = 'HY-Image-v3.0-I2I-ToB-v1.0.1'
 const TEXT_IMAGE_MODEL = 'HY-Image-3.0-Plus-4090-Tob-v1.0'
-const ALLOWED_SIZES = ['1024x1024', '1280x720', '720x1280']
+const ALLOWED_SIZES = ['1024x1024', '1280x1280', '1280x720', '720x1280']
 const MAX_PROMPT_LENGTH = 500
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 /**

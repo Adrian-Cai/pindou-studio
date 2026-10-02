@@ -9,9 +9,9 @@
     <view wx:if="{{task}}" class="text-generation-card">
       <view class="text-generation-card__prompt-label">你的描述</view>
       <view class="text-generation-card__prompt">{{task.prompt}}</view>
+      <image wx:if="{{referenceImagePath}}" class="text-generation-card__image" src="{{referenceImagePath}}" data-src="{{referenceImagePath}}" mode="aspectFit" binderror="handleReferenceImageError" aria-label="生成的参考图" />
 
-      <view wx:if="{{loading && !referenceImagePath}}" class="text-generation-card__state">
-        <view class="text-generation-card__spinner"></view>
+      <view wx:if="{{loading && !referenceImagePath}}" class="text-generation-card__state text-generation-card__state--loading">
         <view class="text-generation-card__state-title">{{task.status === 'queued' ? '正在排队' : '正在生成参考图'}}</view>
         <view class="text-generation-card__state-desc">可以离开页面，之后从“作品”继续</view>
       </view>
@@ -23,7 +23,6 @@
       </view>
 
       <view wx:elif="{{referenceImagePath}}" class="text-generation-card__result">
-        <image class="text-generation-card__image" src="{{referenceImagePath}}" mode="aspectFit" aria-label="生成的参考图" />
         <view class="text-generation-card__result-note">参考图已生成，确认后会使用标准拼豆转换</view>
         <button class="button-primary text-generation-card__button" loading="{{converting}}" disabled="{{converting}}" bindtap="createPattern">生成拼豆图</button>
       </view>

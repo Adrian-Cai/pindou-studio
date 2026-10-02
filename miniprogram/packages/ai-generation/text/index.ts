@@ -65,20 +65,22 @@ Page({
     try {
       const task = await getTextGeneration(this._taskId)
       if (!this._visible) return
+      const isPending = task.status === 'queued' || task.status === 'processing'
+      const isLoadingImage = task.status === 'succeeded' && !!task.outputFile && !this.data.referenceImagePath
       this.setData({
         task,
-        loading: false,
+        loading: isPending || isLoadingImage,
         errorMessage: task.status === 'failed' ? textGenerationFailureMessage(task.errorCode) : '',
       })
-      if (task.status === 'queued' || task.status === 'processing') {
+      if (isPending) {
         this.schedulePolling()
       } else if (task.status === 'succeeded' && task.outputFile && !this.data.referenceImagePath) {
         try {
           const path = await loadTextGenerationImage(task)
           if (!this._visible) return
-          this.setData({ referenceImagePath: path, errorMessage: '' })
+          this.setData({ referenceImagePath: path, loading: false, errorMessage: '' })
         } catch {
-          if (this._visible) this.setData({ errorMessage: '参考图已经生成，但暂时加载失败。请检查网络后重新读取，不会重复扣除额度。' })
+          if (this._visible) this.setData({ loading: false, errorMessage: '参考图已经生成，但暂时加载失败。请检查网络后重新读取，不会重复扣除额度。' })
         }
       }
     } catch (error) {
@@ -146,5 +148,13 @@ Page({
 
   goBack() {
     wx.navigateBack({ fail: () => wx.switchTab({ url: this.data.selectedTab === 1 ? '/pages/projects/index' : '/pages/home/index' }) })
+  },
+
+  handleReferenceImageError(event: WechatMiniprogram.TouchEvent) {
+    if (event.currentTarget.dataset.src !== this.data.referenceImagePath) return
+    this.setData({
+      referenceImagePath: '',
+      errorMessage: '参考图已经生成，但暂时无法显示。请重新读取，不会重复扣除额度。',
+    })
   },
 })

@@ -9,6 +9,7 @@ const aiTaskStore = require(path.join(compiledRoot, 'services/ai-task-store.js')
 const imageService = require(path.join(compiledRoot, 'services/image-service.js'))
 const textService = require(path.join(compiledRoot, 'services/text-generation-service.js'))
 const { appStore } = require(path.join(compiledRoot, 'store/app-store.js'))
+const { authStore } = require(path.join(compiledRoot, 'store/auth-store.js'))
 
 function loadPage(relativePath) {
   const filename = path.join(compiledRoot, relativePath)
@@ -124,24 +125,37 @@ test('文生图防重复提交，传递尺寸，创建失败保留描述', async
   assert.deepEqual(calls.toasts, ['服务繁忙，请稍后重试'])
 })
 
-test('文生图尺寸预设可展开收起，点选后立即生效', (t) => {
-  const home = loadPage('pages/create/index.js')
-  home.setData({ textSizes: ['1024x1024', '1280x720'], textSize: '1024x1024' })
+test('文生图尺寸按参考顺序展示比例与分辨率，点选后立即生效', async (t) => {
+  const { home } = setup(t)
+  t.mock.method(textService, 'fetchTextGenerationOptions', async () => ({
+    sizes: ['1024x1024', '1280x720', '720x1280', '1280x1280'],
+    defaultSize: '1024x1024',
+    cost: 1,
+  }))
+  t.mock.method(authStore, 'refreshAiQuota', async () => ({ aiGeneration: { remaining: 12 } }))
+  home.applyCachedInspirations = () => true
+  home.restoreTextTask = async () => {}
+  home._visible = true
+  await home.loadTextMode()
 
-  home.toggleTextSizes()
-  assert.equal(home.data.textSizesExpanded, true)
-  home.toggleTextSizes()
-  assert.equal(home.data.textSizesExpanded, false)
-  home.toggleTextSizes()
+  assert.deepEqual(home.data.textSizes, ['1024x1024', '1280x1280', '1280x720', '720x1280'])
+  assert.deepEqual(home.data.textSizeOptions.map(({ value, ratio, resolution }) => [value, ratio, resolution]), [
+    ['1024x1024', '1:1', '1024²'],
+    ['1280x1280', '1:1', '1280²'],
+    ['1280x720', '16:9', '1280×720'],
+    ['720x1280', '9:16', '720×1280'],
+  ])
+
   home.selectTextSize({ currentTarget: { dataset: { size: '1280x720' } } })
   assert.equal(home.data.textSize, '1280x720')
-  assert.equal(home.data.textSizesExpanded, false)
-
-  home.setData({ textSizesExpanded: true })
   home.selectTextSize({ currentTarget: { dataset: { size: '16x16' } } })
   assert.equal(home.data.textSize, '1280x720')
-  assert.equal(home.data.textSizesExpanded, true)
-  t.after(() => { delete global.Page })
+
+  const markup = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/create/index.wxml'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/create/index.wxss'), 'utf8')
+  assert.match(markup, /item\.ratio/)
+  assert.match(markup, /item\.resolution/)
+  assert.match(styles, /\.text-size-options\s*\{[^}]*flex-wrap:\s*nowrap/)
 })
 
 function setupDetail(t, from = 'home', status = 'processing') {

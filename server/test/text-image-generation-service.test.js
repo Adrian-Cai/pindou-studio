@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { PostgresTextImageGenerationService } = require('../dist/modules/ai/text-image-generation-service')
 
-function fixture(providerFails = false) {
+function fixture(providerFails = false, contentType = 'image/png') {
   const now = new Date('2026-09-29T04:00:00.000Z')
   const db = { job: null, debitCount: 0 }
   const pool = {
@@ -49,11 +49,15 @@ function fixture(providerFails = false) {
     async generateTextImage(prompt, size) {
       db.providerInput = { prompt, size }
       if (providerFails) throw new Error('provider failed')
-      return { requestId: 'provider_req_1', buffer: Buffer.from('image'), contentType: 'image/png' }
+      return { requestId: 'provider_req_1', buffer: Buffer.from('image'), contentType }
     },
   }
   const storage = {
-    async save() { return { objectKey: 'ai/ai_output_test.png', publicUrl: 'https://example.test/ai.png', contentType: 'image/png', byteSize: 5, width: 1, height: 1 } },
+    async save(_kind, _buffer, filename, declaredContentType) {
+      db.savedFilename = filename
+      db.savedContentType = declaredContentType
+      return { objectKey: 'ai/ai_output_test.png', publicUrl: 'https://example.test/ai.png', contentType: declaredContentType, byteSize: 5, width: 1, height: 1 }
+    },
     async remove() {},
   }
   return {
@@ -83,6 +87,16 @@ test('文生图 Provider 失败时不扣额度', async () => {
   await service.create({ userId: 'usr_test', idempotencyKey: 'request-2', prompt: '一朵黄色小花' })
   await waitFor(() => db.job?.status === 'failed')
   assert.equal(db.debitCount, 0)
+})
+
+test('文生图落盘扩展名与模型返回的真实格式一致', async () => {
+  for (const [contentType, extension] of [['image/png', 'png'], ['image/jpeg', 'jpg'], ['image/webp', 'webp']]) {
+    const { db, service } = fixture(false, contentType)
+    await service.create({ userId: 'usr_test', idempotencyKey: contentType, prompt: '一只猫' })
+    await waitFor(() => db.job?.status === 'succeeded')
+    assert.equal(db.savedFilename, `text-generated.${extension}`)
+    assert.equal(db.savedContentType, contentType)
+  }
 })
 
 test('文生图尺寸校验、持久化与 Provider 传递使用同一白名单', async () => {

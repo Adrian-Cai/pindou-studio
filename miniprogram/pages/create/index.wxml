@@ -126,45 +126,42 @@
         <view wx:elif="{{inspirationError}}" class="text-status" aria-role="alert">{{inspirationError}}</view>
         <view wx:else class="text-inspirations"><button wx:for="{{inspirations}}" wx:key="prompt" class="text-inspiration" data-index="{{index}}" bindtap="useInspiration" disabled="{{creatingText}}">{{item.title}}</button></view>
       </view>
-      <view class="text-size-selector">
-        <button class="text-card text-size-trigger" style="width: 100%;" bindtap="toggleTextSizes" disabled="{{creatingText || textOptionsLoading}}" aria-label="{{textSizesExpanded ? '收起图片尺寸选择' : '选择图片尺寸'}}" aria-expanded="{{textSizesExpanded}}" aria-controls="text-size-panel">
-          <image class="text-card__icon" src="/assets/icons/iconsax/gallery.svg" mode="aspectFit" />
-          <view class="text-size-trigger__content"><text class="text-card__title">图片尺寸</text><text class="text-size-trigger__value">{{textOptionsLoading ? '正在读取尺寸…' : (textOptionsError || textSize)}}</text></view>
-          <text class="text-size-trigger__select">{{textSizesExpanded ? '收起' : '选择'}}</text><image class="text-size-trigger__chevron" src="{{textSizesExpanded ? '/assets/icons/iconsax/chevron-up.svg' : '/assets/icons/iconsax/chevron-down.svg'}}" mode="aspectFit" />
-        </button>
-        <view wx:if="{{textSizesExpanded}}" id="text-size-panel" class="text-size-panel" role="group" aria-label="预设图片尺寸">
-          <view class="text-size-panel__heading"><text class="text-size-panel__title">预设尺寸</text><text class="text-size-panel__hint">选择生成画幅</text></view>
-          <view class="text-size-options" role="radiogroup" aria-label="图片尺寸">
-            <button wx:for="{{textSizeOptions}}" wx:key="value" class="text-size-option {{textSize === item.value ? 'text-size-option--active' : ''}}" data-size="{{item.value}}" bindtap="selectTextSize" disabled="{{creatingText}}" role="radio" aria-checked="{{textSize === item.value}}">
-              <view class="text-size-option__preview" aria-hidden="true"><view class="text-size-option__canvas" style="width: {{item.previewWidth}}rpx; height: {{item.previewHeight}}rpx;"></view></view>
-              <text class="text-size-option__label">{{item.value}}</text>
-            </button>
-          </view>
+      <view class="text-card text-size-selector" role="group" aria-label="图片尺寸">
+        <view class="text-card__heading">
+          <view class="text-card__title"><image class="text-card__icon" src="/assets/icons/iconsax/gallery.svg" mode="aspectFit" /><text>图片尺寸</text></view>
+        </view>
+        <view wx:if="{{textOptionsLoading}}" class="text-size-status" aria-role="status">正在读取尺寸…</view>
+        <button wx:elif="{{textOptionsError}}" class="text-size-status text-size-status--retry" bindtap="loadTextMode" disabled="{{creatingText}}" aria-label="重试加载图片尺寸">{{textOptionsError}}</button>
+        <view wx:else class="text-size-options" role="radiogroup" aria-label="图片尺寸">
+          <button wx:for="{{textSizeOptions}}" wx:key="value" class="text-size-option {{textSize === item.value ? 'text-size-option--active' : ''}}" data-size="{{item.value}}" bindtap="selectTextSize" disabled="{{creatingText}}" role="radio" aria-checked="{{textSize === item.value}}">
+            <view class="text-size-option__preview" aria-hidden="true"><view class="text-size-option__canvas" style="width: {{item.previewWidth}}rpx; height: {{item.previewHeight}}rpx;"></view></view>
+            <text class="text-size-option__label">{{item.ratio}}</text>
+            <text class="text-size-option__resolution">{{item.resolution}}</text>
+            <view wx:if="{{textSize === item.value}}" class="text-size-option__check" aria-hidden="true"><image src="/assets/icons/iconsax/check.svg" mode="aspectFit" /></view>
+          </button>
         </view>
       </view>
       <view class="text-generation-footer">
         <view class="text-result">
+          <image wx:if="{{textTaskImagePath}}" class="text-result__image" src="{{textTaskImagePath}}" data-src="{{textTaskImagePath}}" mode="aspectFit" bindtap="previewTextGeneration" binderror="handleTextTaskImageError" aria-label="AI 生成的灵感图，点击放大" />
           <view wx:if="{{textTaskPhase === 'idle'}}" class="text-result__placeholder">
             <image class="text-result__placeholder-icon" src="/assets/icons/iconsax/gallery.svg" mode="aspectFit" aria-hidden="true" />
             <view class="text-result__placeholder-text">生成的灵感图会显示在这里</view>
           </view>
 
-          <view wx:elif="{{textTaskPhase === 'pending'}}" class="text-result__state" aria-role="status">
-            <view class="text-result__spinner"></view>
+          <view wx:elif="{{textTaskPhase === 'pending'}}" class="text-result__state text-result__state--pending" aria-role="status">
             <view class="text-result__state-title">{{textTaskStatusText}}</view>
             <view class="text-result__state-desc">可以离开页面，结果会保留在这里和作品页</view>
           </view>
 
-          <view wx:elif="{{textTaskPhase === 'failed'}}" class="text-result__state" aria-role="alert">
+          <view wx:elif="{{textTaskPhase === 'failed'}}" class="text-result__state text-result__state--failed" aria-role="alert">
             <view class="text-result__state-title">这次没有生成成功</view>
-            <view class="text-result__state-desc">{{textTaskError}}</view>
+            <view class="text-result__state-desc">图片生成失败，额度未扣除。可调整描述后重试。</view>
             <button class="button-secondary text-result__action text-result__retry" bindtap="retryTextGeneration" disabled="{{creatingText}}" aria-label="重新生成灵感图">重新生成</button>
           </view>
 
           <block wx:else>
-            <image wx:if="{{textTaskImagePath}}" class="text-result__image" src="{{textTaskImagePath}}" mode="aspectFit" bindtap="previewTextGeneration" aria-label="AI 生成的灵感图，点击放大" />
-            <view wx:else class="text-result__state">
-              <view wx:if="{{textTaskImageLoading}}" class="text-result__spinner"></view>
+            <view wx:if="{{!textTaskImagePath}}" class="text-result__state text-result__state--failed">
               <view class="text-result__state-title">{{textTaskImageLoading ? '正在加载灵感图' : '灵感图暂时打不开'}}</view>
               <view class="text-result__state-desc">{{textTaskError || '正在下载生成结果，请稍候'}}</view>
               <button wx:if="{{!textTaskImageLoading}}" class="button-secondary text-result__action text-result__retry" bindtap="refreshTextTask" aria-label="重新读取灵感图">重新读取</button>
@@ -176,9 +173,9 @@
             </view>
           </block>
         </view>
-        <view class="text-cost">生成成功消耗 {{textCost}} 次 AI 额度 · {{aiRemaining === null ? '余额暂未读取' : '剩余 ' + aiRemaining + ' 次'}}<text>失败不扣费，描述会经过安全检查</text></view>
+        <view class="text-cost">成功扣 {{textCost}} 次 · 失败不扣费 · {{aiRemaining === null ? '额度读取中' : '剩余 ' + aiRemaining + ' 次'}}</view>
         <button class="button-primary home__submit text-submit" style="width: 100%; background: {{creatingText || !promptLength || !textSizes.length || textOptionsLoading || textTaskPhase === 'pending' ? '#d8dae2' : '#12b466'}}; color: #fff; border-radius: 48rpx;" bindtap="startTextGeneration" disabled="{{creatingText || !promptLength || !textSizes.length || textOptionsLoading || textTaskPhase === 'pending'}}" loading="{{creatingText}}">{{creatingText ? '正在创建任务' : (textTaskPhase === 'pending' ? '正在生成灵感图' : '生成灵感图')}}</button>
-        <view class="text-save-hint">生成结果可在作品中继续查看和制作</view>
+        <view class="text-save-hint">生成结果会保存在作品中</view>
       </view>
     </view>
   </view>

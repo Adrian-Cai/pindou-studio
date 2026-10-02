@@ -266,7 +266,8 @@ export class PostgresTextImageGenerationService {
     let stored: StoredAiFile | null = null;
     try {
       const generated = await this.provider.generateTextImage(job.prompt, job.image_size ?? '1024x1024');
-      stored = await this.storage.save("ai_output", generated.buffer, "text-generated.png", generated.contentType);
+      const extension = generated.contentType === "image/jpeg" ? "jpg" : generated.contentType === "image/webp" ? "webp" : "png";
+      stored = await this.storage.save("ai_output", generated.buffer, `text-generated.${extension}`, generated.contentType);
       await this.complete(job, generated.requestId, stored);
       stored = null;
     } catch (error: unknown) {

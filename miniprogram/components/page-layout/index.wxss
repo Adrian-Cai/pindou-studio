@@ -32,6 +32,5 @@
 
 .page-layout__content--fill-viewport {
   display: flex;
-  height: 100%;
   flex-direction: column;
 }

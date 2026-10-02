@@ -6,17 +6,16 @@
 .text-generation-card { padding: 32rpx; border: 1rpx solid #e7f1eb; border-radius: 28rpx; background: #fff; box-shadow: 0 12rpx 36rpx rgba(28, 83, 57, .06); }
 .text-generation-card__prompt-label { color: #7f8b84; font-size: 23rpx; }
 .text-generation-card__prompt { margin-top: 10rpx; color: #202923; font-size: 28rpx; line-height: 1.65; word-break: break-all; }
+.text-generation-card__image { display: block; width: 100%; height: 680rpx; margin-top: 28rpx; border-radius: 20rpx; background: #f6f8f6; }
 .text-generation-card__state { display: flex; min-height: 380rpx; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.text-generation-card__spinner { width: 64rpx; height: 64rpx; margin-bottom: 24rpx; border: 6rpx solid #e6f4eb; border-top-color: #12b466; border-radius: 50%; animation: text-spin 1s linear infinite; }
+.text-generation-card__state--loading { min-height: 0; }
 .text-generation-card__state-title { color: #1d2922; font-size: 32rpx; font-weight: 600; line-height: 44rpx; }
 .text-generation-card__state-desc { max-width: 520rpx; margin-top: 12rpx; color: #7b8780; font-size: 25rpx; line-height: 1.6; }
 .text-generation-card__state--failed { min-height: 280rpx; }
 .text-generation-card__result { display: flex; flex-direction: column; align-items: center; padding-top: 28rpx; }
-.text-generation-card__image { width: 100%; height: 680rpx; border-radius: 20rpx; background: #f6f8f6; }
 .text-generation-card__result-note { margin-top: 20rpx; color: #6f7e75; font-size: 24rpx; line-height: 1.5; text-align: center; }
 .text-generation-card__button { width: 100%; margin-top: 28rpx; }
 .text-generation-card__button::after { border: 0; }
 .text-generation-card__error { margin-top: 22rpx; color: #c64c48; font-size: 24rpx; line-height: 1.5; }
 .text-generation-card__retry { display: inline-block; margin-left: 14rpx; color: #11a86a; }
 .text-generation-card--empty { text-align: center; }
-@keyframes text-spin { to { transform: rotate(360deg); } }

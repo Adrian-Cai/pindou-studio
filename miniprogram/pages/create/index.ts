@@ -36,7 +36,7 @@ type TextTaskPhase = 'idle' | 'pending' | 'succeeded' | 'failed'
 const TEXT_TASK_POLL_INTERVAL_MS = 2_000
 /** 「换一换」连点冷却：灵感单次都要真实调用文本模型，防止误触重复消耗 token。 */
 const INSPIRATION_COOLDOWN_MS = 3_000
-
+const TEXT_IMAGE_SIZE_ORDER = ['1024x1024', '1280x1280', '1280x720', '720x1280']
 let currentUploadRequestId = 0
 
 interface GenerationModeOption {
@@ -110,9 +110,8 @@ Page({
     textTaskImageLoading: false,
     textTaskConverting: false,
     textSizes: [] as string[],
-    textSizeOptions: [] as { value: string; previewWidth: number; previewHeight: number }[],
+    textSizeOptions: [] as { value: string; ratio: string; resolution: string; previewWidth: number; previewHeight: number }[],
     textSize: '',
-    textSizesExpanded: false,
     textOptionsLoading: false,
     textOptionsError: '',
     textCost: 1,
@@ -193,18 +192,21 @@ Page({
     try {
       const options = await fetchTextGenerationOptions()
       if (!this._visible) return
-      const textSize = options.sizes.includes(this.data.textSize) ? this.data.textSize : options.defaultSize
-      const textSizeOptions = options.sizes.map(value => {
+      const textSizes = options.sizes.slice().sort((left, right) => TEXT_IMAGE_SIZE_ORDER.indexOf(left) - TEXT_IMAGE_SIZE_ORDER.indexOf(right))
+      const textSize = textSizes.includes(this.data.textSize) ? this.data.textSize : options.defaultSize
+      const textSizeOptions = textSizes.map(value => {
         const [width, height] = value.split('x').map(Number)
         const maxSide = Math.max(width, height)
-        const scale = width > 0 && height > 0 ? 52 / maxSide : 0
+        const scale = width > 0 && height > 0 ? 38 / maxSide : 0
         return {
           value,
+          ratio: width === height ? '1:1' : width > height ? '16:9' : '9:16',
+          resolution: width === height ? `${width}²` : `${width}×${height}`,
           previewWidth: scale ? Math.round(width * scale) : 36,
           previewHeight: scale ? Math.round(height * scale) : 36,
         }
       })
-      this.setData({ textSizes: options.sizes, textSizeOptions, textSize, textCost: options.cost })
+      this.setData({ textSizes, textSizeOptions, textSize, textCost: options.cost })
     } catch {
       if (this._visible) this.setData({ textOptionsError: '尺寸配置读取失败，点击重试', textSizes: [], textSizeOptions: [] })
     } finally {
@@ -251,15 +253,10 @@ Page({
     if (!this.data.creatingText) this.setData({ prompt: '', promptLength: 0 })
   },
 
-  toggleTextSizes() {
-    if (!this.data.textSizes.length) { void this.loadTextMode(); return }
-    if (!this.data.creatingText) this.setData({ textSizesExpanded: !this.data.textSizesExpanded })
-  },
-
   selectTextSize(event: WechatMiniprogram.TouchEvent) {
     const size = String(event.currentTarget.dataset.size)
     if (this.data.textSizes.includes(size) && !this.data.creatingText) {
-      this.setData({ textSize: size, textSizesExpanded: false })
+      this.setData({ textSize: size })
     }
   },
 
@@ -412,7 +409,7 @@ Page({
   async loadTextTaskImage(task: TextGeneration) {
     if (this.data.textTaskImagePath || !task.outputFile) return
     const jobId = task.id
-    this.setData({ textTaskImageLoading: true })
+    this.setData({ textTaskImageLoading: true, textTaskError: '' })
     try {
       const path = await loadTextGenerationImage(task)
       if (this._textTaskId !== jobId) return
@@ -486,6 +483,15 @@ Page({
   previewTextGeneration() {
     const path = this.data.textTaskImagePath
     if (path) wx.previewImage({ urls: [path] })
+  },
+
+  handleTextTaskImageError(event: WechatMiniprogram.TouchEvent) {
+    if (event.currentTarget.dataset.src !== this.data.textTaskImagePath) return
+    this.setData({
+      textTaskImagePath: '',
+      textTaskImageLoading: false,
+      textTaskError: '灵感图已经生成，但图片无法显示。点「重新读取」再试，不会重复扣额度。',
+    })
   },
 
   toggleGenerationTips() {
