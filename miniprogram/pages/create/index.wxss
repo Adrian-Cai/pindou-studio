@@ -668,6 +668,7 @@ page {
 .text-inspirations { display: flex; flex-wrap: wrap; gap: 12rpx; }
 .text-inspiration { flex: 1; min-width: 120rpx; margin: 0; padding: 12rpx 16rpx; border-radius: 40rpx; background: var(--color-primary-soft); color: var(--color-primary-pressed); font-size: 24rpx; line-height: 40rpx; }
 .text-status { padding: 8rpx 0; color: var(--color-text-secondary); font-size: 24rpx; line-height: 1.5; }
+.text-size-selector { width: 100%; }
 .text-size-trigger { display: flex; align-items: center; gap: 16rpx; min-height: 120rpx; line-height: 1.5; }
 .text-size-trigger__content { display: flex; flex: 1; flex-direction: column; gap: 4rpx; }
 .text-size-trigger__value, .text-size-trigger__select { color: var(--color-text-secondary); font-size: 24rpx; }
@@ -676,15 +677,16 @@ page {
 .text-cost text { display: block; }
 .text-submit { height: 88rpx; margin-top: 16rpx; border-radius: 48rpx; font-size: 30rpx; font-weight: 600; }
 .text-save-hint { margin-top: 12rpx; color: var(--color-text-secondary); font-size: 22rpx; text-align: center; }
-.text-size-mask { position: fixed; z-index: 2000; inset: 0; display: flex; align-items: flex-end; background: rgba(0,0,0,.45); }
-.text-size-sheet { box-sizing: border-box; width: 100%; max-height: 80vh; padding: 16rpx 28rpx calc(28rpx + env(safe-area-inset-bottom)); border-radius: 36rpx 36rpx 0 0; background: var(--color-surface); }
-.text-size-sheet__handle { width: 80rpx; height: 8rpx; margin: 0 auto 24rpx; border-radius: 8rpx; background: var(--color-border); }
-.text-size-sheet__scroll { max-height: 42vh; }
-.text-size-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16rpx; }
-.text-size-option { display: flex; width: 100%; min-height: 144rpx; flex-direction: column; align-items: center; justify-content: center; gap: 12rpx; margin: 0; padding: 14rpx 8rpx; border: 2rpx solid transparent; border-radius: 16rpx; background: var(--color-surface-muted); color: var(--color-text); font-size: 24rpx; line-height: 32rpx; }
-.text-size-option__preview { display: flex; width: 72rpx; height: 64rpx; align-items: center; justify-content: center; }
+.text-size-trigger__chevron { width: 28rpx; height: 28rpx; flex: 0 0 28rpx; }
+.text-size-panel { margin-top: 12rpx; padding: 20rpx; border-radius: 24rpx; background: var(--color-surface); box-shadow: 0 6rpx 24rpx rgba(30,60,44,.06); }
+.text-size-panel__heading { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-bottom: 16rpx; }
+.text-size-panel__title { color: var(--color-text); font-size: 24rpx; font-weight: 600; }
+.text-size-panel__hint { color: var(--color-text-secondary); font-size: 22rpx; }
+.text-size-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12rpx; }
+.text-size-option { display: flex; width: 100%; min-height: 116rpx; flex-direction: column; align-items: center; justify-content: center; gap: 8rpx; margin: 0; padding: 8rpx 4rpx; border: 2rpx solid transparent; border-radius: 16rpx; background: var(--color-surface-muted); color: var(--color-text); font-size: 22rpx; line-height: 28rpx; }
+.text-size-option__preview { display: flex; width: 56rpx; height: 56rpx; align-items: center; justify-content: center; }
 .text-size-option__canvas { box-sizing: border-box; border: 2rpx solid var(--color-text-secondary); border-radius: 3rpx; background: rgba(255,255,255,.55); }
-.text-size-option__label { line-height: 32rpx; }
+.text-size-option__label { line-height: 28rpx; }
 .text-size-option--active { border-color: var(--color-primary); background: var(--color-primary-soft); color: var(--color-primary-pressed); }
 .text-action:active, .text-inspiration:active, .text-size-trigger:active, .text-size-option:active { transform: scale(.97); opacity: .85; transition: 150ms; }
 /* 文生图结果：页面内预留展示位，生成完成后原地渲染，不再跳转到独立结果页。 */

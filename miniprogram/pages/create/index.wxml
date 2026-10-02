@@ -117,8 +117,7 @@
     <view wx:elif="{{creationSource === 'text'}}" class="home-form-section home-form-section--text">
       <view class="text-card">
         <view class="text-card__heading"><text>描述你想生成的画面</text><button class="text-action text-action--muted" bindtap="clearPrompt" disabled="{{creatingText}}" aria-label="清空描述">清空<image class="text-action__icon" src="/assets/icons/iconsax/close-circle.svg" mode="aspectFit" /></button></view>
-        <textarea wx:if="{{!sizeSheetOpen}}" class="text-prompt-card__input" value="{{prompt}}" maxlength="500" disabled="{{creatingText}}" placeholder="描述主体、场景、风格和颜色…" placeholder-class="text-prompt-card__placeholder" bindinput="changePrompt" aria-label="描述你想生成的画面" />
-        <view wx:else class="text-prompt-card__input text-prompt-card__placeholder">{{prompt || '描述主体、场景、风格和颜色…'}}</view>
+        <textarea class="text-prompt-card__input" value="{{prompt}}" maxlength="500" disabled="{{creatingText}}" placeholder="描述主体、场景、风格和颜色…" placeholder-class="text-prompt-card__placeholder" bindinput="changePrompt" aria-label="描述你想生成的画面" />
         <view class="text-prompt-card__footer"><text>最多 500 字</text><text>{{promptLength}} / 500</text></view>
       </view>
       <view class="text-card">
@@ -127,11 +126,22 @@
         <view wx:elif="{{inspirationError}}" class="text-status" aria-role="alert">{{inspirationError}}</view>
         <view wx:else class="text-inspirations"><button wx:for="{{inspirations}}" wx:key="prompt" class="text-inspiration" data-index="{{index}}" bindtap="useInspiration" disabled="{{creatingText}}">{{item.title}}</button></view>
       </view>
-      <button class="text-card text-size-trigger" style="width: 100%;" bindtap="openTextSizes" disabled="{{creatingText || textOptionsLoading}}" aria-label="选择图片尺寸">
-        <image class="text-card__icon" src="/assets/icons/iconsax/gallery.svg" mode="aspectFit" />
-        <view class="text-size-trigger__content"><text class="text-card__title">图片尺寸</text><text class="text-size-trigger__value">{{textOptionsLoading ? '正在读取尺寸…' : (textOptionsError || textSize)}}</text></view>
-        <text class="text-size-trigger__select">选择</text><image class="text-action__icon" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" />
-      </button>
+      <view class="text-size-selector">
+        <button class="text-card text-size-trigger" style="width: 100%;" bindtap="toggleTextSizes" disabled="{{creatingText || textOptionsLoading}}" aria-label="{{textSizesExpanded ? '收起图片尺寸选择' : '选择图片尺寸'}}" aria-expanded="{{textSizesExpanded}}" aria-controls="text-size-panel">
+          <image class="text-card__icon" src="/assets/icons/iconsax/gallery.svg" mode="aspectFit" />
+          <view class="text-size-trigger__content"><text class="text-card__title">图片尺寸</text><text class="text-size-trigger__value">{{textOptionsLoading ? '正在读取尺寸…' : (textOptionsError || textSize)}}</text></view>
+          <text class="text-size-trigger__select">{{textSizesExpanded ? '收起' : '选择'}}</text><image class="text-size-trigger__chevron" src="{{textSizesExpanded ? '/assets/icons/iconsax/chevron-up.svg' : '/assets/icons/iconsax/chevron-down.svg'}}" mode="aspectFit" />
+        </button>
+        <view wx:if="{{textSizesExpanded}}" id="text-size-panel" class="text-size-panel" role="group" aria-label="预设图片尺寸">
+          <view class="text-size-panel__heading"><text class="text-size-panel__title">预设尺寸</text><text class="text-size-panel__hint">选择生成画幅</text></view>
+          <view class="text-size-options" role="radiogroup" aria-label="图片尺寸">
+            <button wx:for="{{textSizeOptions}}" wx:key="value" class="text-size-option {{textSize === item.value ? 'text-size-option--active' : ''}}" data-size="{{item.value}}" bindtap="selectTextSize" disabled="{{creatingText}}" role="radio" aria-checked="{{textSize === item.value}}">
+              <view class="text-size-option__preview" aria-hidden="true"><view class="text-size-option__canvas" style="width: {{item.previewWidth}}rpx; height: {{item.previewHeight}}rpx;"></view></view>
+              <text class="text-size-option__label">{{item.value}}</text>
+            </button>
+          </view>
+        </view>
+      </view>
       <view class="text-generation-footer">
         <view class="text-result">
           <view wx:if="{{textTaskPhase === 'idle'}}" class="text-result__placeholder">
@@ -173,13 +183,3 @@
     </view>
   </view>
 </page-layout>
-<view wx:if="{{sizeSheetOpen}}" class="text-size-mask" catchtap="closeTextSizes" catchtouchmove="preventSheetClose">
-  <view class="text-size-sheet" catchtap="preventSheetClose" role="dialog" aria-label="选择图片尺寸">
-    <view class="text-size-sheet__handle"></view>
-    <view class="text-card__heading"><text>选择图片尺寸</text><button class="text-action text-action--muted" bindtap="closeTextSizes" aria-label="关闭尺寸选择">关闭</button></view>
-    <scroll-view class="text-size-sheet__scroll" scroll-y>
-      <view class="text-size-options"><button wx:for="{{textSizeOptions}}" wx:key="value" class="text-size-option {{pendingTextSize === item.value ? 'text-size-option--active' : ''}}" data-size="{{item.value}}" bindtap="selectTextSize" role="radio" aria-checked="{{pendingTextSize === item.value}}"><view class="text-size-option__preview" aria-hidden="true"><view class="text-size-option__canvas" style="width: {{item.previewWidth}}rpx; height: {{item.previewHeight}}rpx;"></view></view><text class="text-size-option__label">{{item.value}}</text></button></view>
-    </scroll-view>
-    <button class="button-primary home__submit text-submit" style="width: 100%; background: #12b466; color: #fff; border-radius: 48rpx;" bindtap="confirmTextSize">使用此尺寸</button>
-  </view>
-</view>

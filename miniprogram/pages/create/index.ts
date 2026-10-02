@@ -112,8 +112,7 @@ Page({
     textSizes: [] as string[],
     textSizeOptions: [] as { value: string; previewWidth: number; previewHeight: number }[],
     textSize: '',
-    pendingTextSize: '',
-    sizeSheetOpen: false,
+    textSizesExpanded: false,
     textOptionsLoading: false,
     textOptionsError: '',
     textCost: 1,
@@ -252,19 +251,16 @@ Page({
     if (!this.data.creatingText) this.setData({ prompt: '', promptLength: 0 })
   },
 
-  openTextSizes() {
+  toggleTextSizes() {
     if (!this.data.textSizes.length) { void this.loadTextMode(); return }
-    if (!this.data.creatingText) this.setData({ sizeSheetOpen: true, pendingTextSize: this.data.textSize })
+    if (!this.data.creatingText) this.setData({ textSizesExpanded: !this.data.textSizesExpanded })
   },
 
-  closeTextSizes() { this.setData({ sizeSheetOpen: false }) },
-  preventSheetClose() {},
   selectTextSize(event: WechatMiniprogram.TouchEvent) {
     const size = String(event.currentTarget.dataset.size)
-    if (this.data.textSizes.includes(size)) this.setData({ pendingTextSize: size })
-  },
-  confirmTextSize() {
-    this.setData({ textSize: this.data.pendingTextSize, sizeSheetOpen: false })
+    if (this.data.textSizes.includes(size) && !this.data.creatingText) {
+      this.setData({ textSize: size, textSizesExpanded: false })
+    }
   },
 
   selectMode(event: WechatMiniprogram.TouchEvent) {

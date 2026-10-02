@@ -124,6 +124,26 @@ test('文生图防重复提交，传递尺寸，创建失败保留描述', async
   assert.deepEqual(calls.toasts, ['服务繁忙，请稍后重试'])
 })
 
+test('文生图尺寸预设可展开收起，点选后立即生效', (t) => {
+  const home = loadPage('pages/create/index.js')
+  home.setData({ textSizes: ['1024x1024', '1280x720'], textSize: '1024x1024' })
+
+  home.toggleTextSizes()
+  assert.equal(home.data.textSizesExpanded, true)
+  home.toggleTextSizes()
+  assert.equal(home.data.textSizesExpanded, false)
+  home.toggleTextSizes()
+  home.selectTextSize({ currentTarget: { dataset: { size: '1280x720' } } })
+  assert.equal(home.data.textSize, '1280x720')
+  assert.equal(home.data.textSizesExpanded, false)
+
+  home.setData({ textSizesExpanded: true })
+  home.selectTextSize({ currentTarget: { dataset: { size: '16x16' } } })
+  assert.equal(home.data.textSize, '1280x720')
+  assert.equal(home.data.textSizesExpanded, true)
+  t.after(() => { delete global.Page })
+})
+
 function setupDetail(t, from = 'home', status = 'processing') {
   const context = setup(t)
   let listener
