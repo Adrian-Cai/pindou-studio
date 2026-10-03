@@ -180,7 +180,7 @@ Page({
         canRetry: isAiFailed && canRetryTask(work.failureCode),
         retryLabel: retryActionLabel(work.failureCode),
       }
-    })
+    }).sort((left, right) => right.updatedAt - left.updatedAt)
 
     this.setData({
       allWorks,

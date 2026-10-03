@@ -36,16 +36,34 @@ function loadPatternRenderer(): Promise<PatternRendererModule> {
 
 type TaskFrom = 'home' | 'projects'
 
-interface PatternPreviewCanvas {
+interface PatternPreviewQueryResult {
   width: number
   height: number
-  getContext(type: '2d'): PatternCanvasContext
 }
 
-interface PatternPreviewQueryResult {
-  node: PatternPreviewCanvas
-  width: number
-  height: number
+interface CoordinateTick {
+  coordinate: number
+  position: string
+  label: string
+  major: boolean
+  start: boolean
+  end: boolean
+}
+
+function buildCoordinateTicks(size: number): CoordinateTick[] {
+  const count = Math.max(1, Math.floor(size))
+  return Array.from({ length: count }, (_, index) => {
+    const coordinate = index + 1
+    const label = coordinate === 1 || coordinate % 10 === 0 || coordinate === count
+    return {
+      coordinate,
+      position: `${count === 1 ? 50 : (index / (count - 1)) * 100}%`,
+      label: label ? String(coordinate) : '',
+      major: label,
+      start: index === 0,
+      end: index === count - 1,
+    }
+  })
 }
 
 const GENERATING_STATUSES: ReadonlySet<AiTaskStatus> = new Set<AiTaskStatus>([
@@ -74,8 +92,11 @@ Page({
     /** 成功态在当前页面直接展示结果，编辑面板随草稿就绪切换为可用。 */
     draft: null as PatternDraft | null,
     editorReady: false,
-    patternCanvasReady: false,
+    patternPreviewPath: '',
+    patternPreviewReady: false,
     patternRenderError: false,
+    rulerColumns: [] as CoordinateTick[],
+    rulerRows: [] as CoordinateTick[],
     activeTool: 'pencil',
     scalePercent: 100,
     canZoomOut: false,
@@ -94,6 +115,7 @@ Page({
   _from: 'home' as TaskFrom,
   _unsubscribe: null as (() => void) | null,
   _visible: false,
+  _previewRenderId: 0,
 
   onLoad(query?: Record<string, string | undefined>) {
     const from: TaskFrom = query?.from === 'projects' ? 'projects' : 'home'
@@ -127,6 +149,7 @@ Page({
 
   onUnload() {
     this._visible = false
+    this._previewRenderId += 1
     this.unsubscribe()
   },
 
@@ -162,6 +185,7 @@ Page({
     const isFailed = view.isFailed
     const isSucceeded = view.isSucceeded
     const isQueued = !isGenerating && !isFailed && !isSucceeded
+    if (!isSucceeded) this._previewRenderId += 1
     this.setData({
       isQueued,
       isGenerating,
@@ -182,7 +206,8 @@ Page({
         draft: null,
         paletteColors: [],
         selectedColor: '',
-        patternCanvasReady: false,
+        patternPreviewPath: '',
+        patternPreviewReady: false,
         patternRenderError: false,
       }),
     })
@@ -198,11 +223,15 @@ Page({
       ? this.data.selectedColor
       : (paletteColors[0] ?? '')
     const draftChanged = this.data.draft?.id !== draft.id
+    this._previewRenderId += 1
     this.setData({
       draft,
       editorReady: true,
-      patternCanvasReady: false,
+      patternPreviewPath: '',
+      patternPreviewReady: false,
       patternRenderError: false,
+      rulerColumns: buildCoordinateTicks(draft.settings.width),
+      rulerRows: buildCoordinateTicks(draft.settings.height),
       paletteColors,
       selectedColor,
     }, () => this.renderPatternPreview())
@@ -271,30 +300,50 @@ Page({
   renderPatternPreview() {
     const draft = this.data.draft
     if (!draft) return
+    const renderId = ++this._previewRenderId
     wx.createSelectorQuery()
       .in(this)
-      .select('#aiPatternCanvas')
-      .fields({ node: true, size: true })
+      .select('.ai-generation-result-card__board')
+      .fields({ size: true })
       .exec((results) => {
         const result = results[0] as PatternPreviewQueryResult | undefined
-        if (!result?.node || !result.width || !result.height) {
-          this.setData({ patternRenderError: true })
+        if (!result?.width || !result.height) {
+          if (renderId === this._previewRenderId) this.setData({ patternRenderError: true })
           return
         }
         const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
         loadPatternRenderer()
           .then(({ drawPatternOnCanvas }) => {
-            result.node.width = Math.round(result.width * pixelRatio)
-            result.node.height = Math.round(result.height * pixelRatio)
-            const context = result.node.getContext('2d')
-            context.scale(pixelRatio, pixelRatio)
+            if (renderId !== this._previewRenderId) return
+            const width = Math.round(result.width * pixelRatio)
+            const height = Math.round(result.height * pixelRatio)
+            const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })
+            const context = canvas.getContext('2d') as PatternCanvasContext
             const scale = this.data.scalePercent / 100
+            context.scale(pixelRatio, pixelRatio)
             context.translate(result.width * (1 - scale) / 2, result.height * (1 - scale) / 2)
             context.scale(scale, scale)
             drawPatternOnCanvas(context, result.width, result.height, draft, true)
-            this.setData({ patternCanvasReady: true })
+            wx.canvasToTempFilePath({
+              canvas: canvas as unknown as WechatMiniprogram.IAnyObject,
+              fileType: 'png',
+              width,
+              height,
+              destWidth: width,
+              destHeight: height,
+              success: ({ tempFilePath }) => {
+                if (renderId !== this._previewRenderId) return
+                this.setData({ patternPreviewPath: tempFilePath, patternPreviewReady: true, patternRenderError: false })
+              },
+              fail: (error) => {
+                if (renderId !== this._previewRenderId) return
+                console.error('AI 拼豆图预览导出失败', error)
+                this.setData({ patternRenderError: true })
+              },
+            })
           })
           .catch((error) => {
+            if (renderId !== this._previewRenderId) return
             console.error('AI 拼豆图预览绘制失败', error)
             this.setData({ patternRenderError: true })
           })
