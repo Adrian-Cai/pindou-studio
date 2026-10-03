@@ -1,6 +1,6 @@
 {
   "name": "@pindou-studio/server",
-  "version": "0.22.4",
+  "version": "0.22.5",
   "private": true,
   "description": "拼豆工作室后端服务",
   "main": "dist/index.js",
@@ -13,7 +13,8 @@
     "db:inspect": "node dist/db/inspect-cli.js",
     "start": "node dist/index.js",
     "test": "npm run build && node --test test/*.test.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:static": "node --test test/cloudfunction-dependency-lock.test.js test/dependency-tslib-license.test.js"
   },
   "dependencies": {
     "@cloudbase/node-sdk": "3.18.3",
