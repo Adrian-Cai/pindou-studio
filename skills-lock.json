@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "skills": {
+    "apifox-branch": {
+      "source": "apifox.com",
+      "sourceUrl": "https://apifox.com",
+      "sourceType": "well-known",
+      "computedHash": "bf710c61026112f0db732e80026e79b87bf318b961029c4a5a5b6c818c637d36",
+      "wellKnownDigest": "sha256:bc7c1ba5673a37459c7eea4e678448b5036267a02a0c620262a993273ad48ccc"
+    },
+    "apifox-cli": {
+      "source": "apifox.com",
+      "sourceUrl": "https://apifox.com",
+      "sourceType": "well-known",
+      "computedHash": "c629fb4be587c378d03243053a6893dc872cd31b566ceefbaf3964ddce1466ab",
+      "wellKnownDigest": "sha256:a3518a5ea5dc111285babd17623615b3b18bb5fc73bc91ff369d35424114e56b"
+    },
+    "apifox-cli-checkup": {
+      "source": "apifox.com",
+      "sourceUrl": "https://apifox.com",
+      "sourceType": "well-known",
+      "computedHash": "aa6e277242a115b85c5c8d5c1b1a8d705c2636765f336ec0275feb3596882fbb",
+      "wellKnownDigest": "sha256:0bad50d3ee9d520d0480cb11c83c90a94854506b82b68efcf3caa9226cfa4ebf"
+    },
+    "apifox-import-export": {
+      "source": "apifox.com",
+      "sourceUrl": "https://apifox.com",
+      "sourceType": "well-known",
+      "computedHash": "1cc42f2956cc627c50377af9d922da2402851bbe99fe23fbc3d8ecdc09b7b3ad",
+      "wellKnownDigest": "sha256:6312615ede2a444c7036a190579622fec956ab9e37f141ff005b27f5cc3c27f0"
+    },
+    "apifox-test-automation": {
+      "source": "apifox.com",
+      "sourceUrl": "https://apifox.com",
+      "sourceType": "well-known",
+      "computedHash": "07c25d11106cfd8ef68f7ebb9c2ff5ae0ca0a31bab1f8f0dee05075737147321",
+      "wellKnownDigest": "sha256:d18bf7a0f531876f0dfb884872fe00be98238d8165bb1c4bc8e8d4f935cddadc"
+    },
+    "apifox-test-case": {
+      "source": "apifox.com",
+      "sourceUrl": "https://apifox.com",
+      "sourceType": "well-known",
+      "computedHash": "c5eeda971420479873724f542c3da6c7ad936fb13292bcdf394a5389179e89d9",
+      "wellKnownDigest": "sha256:72e298c397d6128186e35f47f9c7d00056a107becfa696571b40c428642c909d"
+    },
+    "apifox-test-scenario": {
+      "source": "apifox.com",
+      "sourceUrl": "https://apifox.com",
+      "sourceType": "well-known",
+      "computedHash": "815e779e046994ef74afabf99adcf09a9780a75938ac2db6270277d46aeef3e1",
+      "wellKnownDigest": "sha256:d61bbdafe6d819af8100f5b114fbc401c22c3fb235182db1a005c4b97a3ed259"
+    },
+    "apifox-workflow-api-lifecycle": {
+      "source": "apifox.com",
+      "sourceUrl": "https://apifox.com",
+      "sourceType": "well-known",
+      "computedHash": "5d8d6f4bf15fd3cb330baf84c7176bffd6a79e9207fa93be5e7ac91ef745e374",
+      "wellKnownDigest": "sha256:8945ac63673ec0e5ea04621d513db2e2ff3b3c75368bc57ddcc3989d682503ac"
+    }
+  }
+}

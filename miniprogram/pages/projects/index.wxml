@@ -2,27 +2,38 @@
   <view class="subpage projects-page">
     <view class="project-summary ui-card">
       <view class="project-summary__item">
-        <image class="project-summary__icon" src="/assets/icons/project-summary-gallery.svg" mode="aspectFit" />
+        <image class="project-summary__icon" src="/assets/icons/iconsax/gallery.svg" mode="aspectFit" aria-hidden="true" />
         <view class="project-summary__content"><view class="project-summary__label">全部作品</view><view class="project-summary__value project-summary__value--green">{{allWorks.length}}</view></view>
       </view>
       <view class="project-summary__line"></view>
       <view class="project-summary__item">
-        <image class="project-summary__icon" src="/assets/icons/project-summary-clock.svg" mode="aspectFit" />
+        <image class="project-summary__icon" src="/assets/icons/iconsax/clock.svg" mode="aspectFit" aria-hidden="true" />
         <view class="project-summary__content"><view class="project-summary__label">最近更新</view><view class="project-summary__value">{{recentCount}}</view></view>
       </view>
       <view class="project-summary__line"></view>
       <view class="project-summary__item">
-        <image class="project-summary__icon" src="/assets/icons/project-summary-document.svg" mode="aspectFit" />
+        <image class="project-summary__icon" src="/assets/icons/iconsax/document-text.svg" mode="aspectFit" aria-hidden="true" />
         <view class="project-summary__content"><view class="project-summary__label">草稿</view><view class="project-summary__value">{{draftCount}}</view></view>
+      </view>
+    </view>
+
+    <view wx:if="{{textJobs.length}}" class="text-task-list">
+      <view class="text-task-list__title">灵感生成任务</view>
+      <view wx:for="{{textJobs}}" wx:key="id" class="text-task-card" data-id="{{item.id}}" bindtap="openTextTask">
+        <view class="text-task-card__copy">
+          <view class="text-task-card__status">{{item.status === 'queued' ? '等待生成' : (item.status === 'processing' ? '正在生成参考图' : (item.status === 'succeeded' ? '参考图已就绪' : '生成失败'))}}</view>
+          <view class="text-task-card__prompt">{{item.prompt}}</view>
+        </view>
+        <text class="text-task-card__action">{{item.status === 'succeeded' ? '继续' : (item.status === 'failed' ? '重试' : '查看')}}</text>
       </view>
     </view>
 
     <view class="search-row">
       <view class="search-box">
-        <view class="search-box__icon"></view>
+        <image class="search-box__icon" src="/assets/icons/iconsax/search.svg" mode="aspectFit" aria-hidden="true" />
         <input class="search-box__input" placeholder-class="search-box__placeholder" placeholder="搜索作品名称" value="{{query}}" bindinput="changeSearch" />
       </view>
-      <view class="filter-button" bindtap="showFilter"><text class="filter-button__symbol">▽</text><text>筛选</text></view>
+      <view class="filter-button" bindtap="showFilter"><image class="filter-button__symbol" src="/assets/icons/iconsax/filter.svg" mode="aspectFit" aria-hidden="true" /><text>筛选</text></view>
     </view>
 
     <view class="segmented">
@@ -35,7 +46,7 @@
       >{{item.label}}</view>
     </view>
 
-    <view wx:if="{{works.length}}" class="project-list">
+    <view wx:if="{{works.length || visibleFailedTextJobs.length}}" class="project-list">
       <view
         class="project-card ui-card"
         wx:for="{{works}}"
@@ -45,71 +56,102 @@
         aria-role="button"
         aria-label="查看作品 {{item.title}}"
       >
-        <image class="project-card__cover" src="{{item.coverPath}}" mode="aspectFill" />
-        <view class="project-card__body">
-          <view class="project-card__top">
-            <text class="status-pill {{item.isDraft ? 'status-pill--draft' : ''}}">{{item.statusLabel}}</text>
-            <view
-              class="project-card__more"
-              data-id="{{item.id}}"
-              catchtap="openWorkMenu"
-              aria-role="button"
-              aria-label="打开 {{item.title}} 的更多操作"
-            ><text>•••</text></view>
+        <view class="project-card__cover-wrap">
+          <image class="project-card__cover" src="{{item.coverPath}}" data-id="{{item.id}}" mode="aspectFill" binderror="handleCoverError" />
+          <!-- AI 态封面叠加层：原图缩略图上层加半透明遮罩，不动封面本体 -->
+          <view wx:if="{{item.isAiGenerating}}" class="project-card__overlay">
+            <text class="project-card__overlay-text">{{item.aiProgress}}%</text>
           </view>
-          <view class="project-card__title">{{item.title}}</view>
-          <view class="project-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>
-          <view class="project-card__date">{{item.updatedText}}</view>
+          <view wx:elif="{{item.isAiFailed}}" class="project-card__overlay project-card__overlay--failed">
+            <text class="project-card__overlay-text">生成失败</text>
+          </view>
+        </view>
+        <view class="project-card__body">
+          <view class="project-card__header">
+            <view class="project-card__info">
+              <view class="project-card__title">{{item.title}}</view>
+              <view class="project-card__meta">{{item.dimensions}} · {{item.colorCount}}色</view>
+              <view wx:if="{{item.creationSource === 'text'}}" class="project-card__source-row" catchtap="stopPropagation">
+                <text class="project-card__source-label">文字生成</text>
+                <text class="project-card__source-link" data-id="{{item.id}}" catchtap="showSourcePrompt">查看描述</text>
+              </view>
+              <view class="project-card__date">{{item.updatedText}}</view>
+              <!-- 失败原因：紧跟在时间行下面，避免用户必须点进去才知道为什么失败 -->
+              <view wx:if="{{item.isAiFailed}}" class="project-card__failure">{{item.failureMessage}}</view>
+              <!-- AI 态操作：收成一行文字链接，卡片高度与完成态保持一致 -->
+              <view wx:if="{{item.isAiTask}}" class="project-card__taskline" catchtap="stopPropagation">
+                <text wx:if="{{item.isAiGenerating}}" class="project-card__taskline-text">约 {{item.aiProgress}}%</text>
+                <text class="project-card__taskline-link" data-id="{{item.id}}" catchtap="openWork">查看进度</text>
+                <text wx:if="{{item.isAiFailed && item.canRetry}}" class="project-card__taskline-link" data-id="{{item.id}}" catchtap="retryAiTask">{{item.retryLabel}}</text>
+                <text class="project-card__taskline-link project-card__taskline-link--danger" data-id="{{item.id}}" catchtap="cancelAiTask">{{item.isAiGenerating ? '取消任务' : '删除'}}</text>
+              </view>
+            </view>
+            <text class="status-pill {{item.isAiFailed ? 'status-pill--danger' : (item.isDraft && !item.isAiTask ? 'status-pill--draft' : '')}}">{{item.statusLabel}}</text>
+            <text wx:if="{{item.syncLabel}}" class="status-pill status-pill--draft">{{item.syncLabel}}</text>
+          </view>
+          <!-- 完成态保持原有的图标操作行 + 底部「继续编辑」，AI 态不渲染 -->
+          <view wx:if="{{!item.isAiTask}}" class="project-card__actions-inline" catchtap="stopPropagation" aria-label="{{item.title}} 的操作">
+            <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="startRename" aria-role="button" aria-label="重命名作品 {{item.title}}">
+              <image class="project-card__action-icon" src="/assets/icons/iconsax/edit-2.svg" mode="aspectFit" aria-hidden="true" />
+              <text>重命名</text>
+            </view>
+            <view class="project-card__action-inline" data-id="{{item.id}}" catchtap="downloadWork" aria-role="button" aria-label="下载作品 {{item.title}}">
+              <image class="project-card__action-icon" src="/assets/icons/iconsax/download.svg" mode="aspectFit" aria-hidden="true" />
+              <text>下载</text>
+            </view>
+            <view class="project-card__action-inline project-card__action-inline--danger" data-id="{{item.id}}" catchtap="deleteWork" aria-role="button" aria-label="删除作品 {{item.title}}">
+              <image class="project-card__action-icon" src="/assets/icons/iconsax/trash.svg" mode="aspectFit" aria-hidden="true" />
+              <text>删除</text>
+            </view>
+          </view>
           <view
-            wx:if="{{item.isDraft}}"
+            wx:if="{{item.isDraft && !item.isAiTask}}"
             class="project-card__continue"
             data-id="{{item.id}}"
             catchtap="editWork"
             aria-role="button"
             aria-label="继续编辑 {{item.title}}"
           >
-            <image class="project-card__continue-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
+            <image class="project-card__continue-icon" src="/assets/icons/iconsax/edit-2.svg" mode="aspectFit" aria-hidden="true" />
             <text>继续编辑</text>
+          </view>
+        </view>
+      </view>
+
+      <view
+        wx:for="{{visibleFailedTextJobs}}"
+        wx:key="id"
+        class="project-card ui-card"
+        data-id="{{item.id}}"
+        bindtap="openTextTask"
+        aria-role="button"
+        aria-label="继续文生图创作"
+      >
+        <view class="project-card__cover-wrap">
+          <image class="project-card__cover" src="{{item.coverPath}}" mode="aspectFit" aria-hidden="true" />
+        </view>
+        <view class="project-card__body">
+          <view class="project-card__header">
+            <view class="project-card__info">
+              <view class="project-card__title">文生图创作</view>
+              <view class="project-card__date">{{item.updatedText}}</view>
+            </view>
+            <text class="status-pill status-pill--draft">待重试</text>
+          </view>
+          <view class="project-card__taskline project-card__text-task-action" catchtap="stopPropagation">
+            <text class="project-card__taskline-link" data-id="{{item.id}}" catchtap="openTextTask">重新生成</text>
           </view>
         </view>
       </view>
     </view>
 
     <view wx:else class="empty-state">
-      <view class="empty-state__icon">▧</view>
-      <view class="empty-state__title">{{loading ? '正在读取作品' : (allWorks.length ? '没有匹配的作品' : '还没有作品')}}</view>
-      <view class="empty-state__desc">{{loading ? '正在同步云端数据，请稍候。' : (allWorks.length ? '换个关键词或筛选条件试试。' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸。')}}</view>
-      <button wx:if="{{!loading && !allWorks.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
+      <image class="empty-state__icon" src="/assets/icons/project-empty.svg" mode="aspectFit" />
+      <view class="empty-state__title">{{loading ? '正在读取作品' : (allWorks.length || failedTextJobs.length ? '没有匹配的作品' : '还没有作品')}}</view>
+      <view class="empty-state__desc">{{loading ? '正在同步云端数据，请稍候' : (allWorks.length || failedTextJobs.length ? '换个关键词或筛选条件试试' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸')}}</view>
+      <button wx:if="{{!loading && !allWorks.length && !failedTextJobs.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
     </view>
   </view>
-
-<view wx:if="{{activeWork}}" class="work-sheet-mask" catchtap="closeWorkMenu" catchtouchmove="stopPropagation">
-  <view class="work-sheet" catchtap="stopPropagation">
-    <view class="work-sheet__handle"></view>
-    <view class="work-sheet__header">
-      <image class="work-sheet__cover" src="{{activeWork.coverPath}}" mode="aspectFill" />
-      <view class="work-sheet__info">
-        <view class="work-sheet__title">{{activeWork.title}}</view>
-        <view class="work-sheet__meta">{{activeWork.dimensions}} · {{activeWork.colorCount}}色</view>
-      </view>
-    </view>
-    <view class="work-sheet__actions">
-      <view class="work-sheet__action" catchtap="startRename" aria-role="button" aria-label="重命名作品">
-        <image class="work-sheet__action-icon" src="/assets/icons/work-edit.svg" mode="aspectFit" />
-        <text>重命名</text>
-      </view>
-      <view class="work-sheet__action" catchtap="downloadWork" aria-role="button" aria-label="下载作品">
-        <image class="work-sheet__action-icon" src="/assets/icons/profile-menu-download.svg" mode="aspectFit" />
-        <text>下载作品</text>
-      </view>
-      <view class="work-sheet__divider"></view>
-      <view class="work-sheet__action work-sheet__action--danger" catchtap="deleteWork" aria-role="button" aria-label="删除作品">
-        <image class="work-sheet__action-icon" src="/assets/icons/work-delete.svg" mode="aspectFit" />
-        <text>删除作品</text>
-      </view>
-    </view>
-  </view>
-</view>
 
 <view wx:if="{{renameWorkId}}" class="rename-dialog-mask" catchtap="closeRenameDialog" catchtouchmove="stopPropagation">
   <view class="rename-dialog" catchtap="stopPropagation" aria-role="dialog" aria-label="重命名作品">

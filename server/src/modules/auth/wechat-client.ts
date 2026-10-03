@@ -11,6 +11,12 @@ interface WeChatResponse {
 
 export interface WeChatSession {
   readonly openid: string;
+  /**
+   * 登录态密钥。虚拟支付的用户态签名 signature = HMAC-SHA256(sessionKey, signData)
+   * 必须用它计算，因此这里要一并返回给上层落库。**严禁打进日志或返回给客户端**，
+   * 泄露意味着他人可以伪造该用户的支付签名。
+   */
+  readonly sessionKey: string;
 }
 
 export interface WeChatLoginClient {
@@ -68,6 +74,7 @@ export class OfficialWeChatLoginClient implements WeChatLoginClient {
     if (typeof payload.openid !== "string" || typeof payload.session_key !== "string") {
       throw new AppError(502, "WECHAT_INVALID_RESPONSE", "微信登录服务返回异常");
     }
-    return { openid: payload.openid };
+    // session_key 由调用方负责加密落库，这里不打印、不透传
+    return { openid: payload.openid, sessionKey: payload.session_key };
   }
 }

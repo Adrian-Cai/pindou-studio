@@ -1,9 +1,23 @@
+/**
+ * 服务端作品持久化与所有权：用 Postgres 存储/读取/收藏/删除作品，全程校验归属。
+ *
+ * 职责：PostgresWorkService 封装作品的 create/update/list/get/delete/setFavorite/listFavorites，
+ *       写入时校验封面文件归属、用事务保证 works 与 patterns 两张表一致、用幂等键防重复提交；
+ *       读路径统一经 assertWorkOwner 鉴权。不负责图纸内容的算法（那是小程序端）。
+ * 调用方：works 模块的路由层（HTTP 接口）。
+ * 关键点：作品软删除（deleted_at）；收藏用 pindou_favorites 表；pattern 以 JSONB 存 palette/cells；
+ *       create 用 idempotency key 生成确定性 workId，重复提交返回首次结果而非报错。
+ */
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { createIdempotentWorkId } from "../../shared/identity";
 import { AppError, forbidden, idempotencyConflict, notFound } from "../../shared/app-error";
-import { validatePersistedPattern, type PersistedPattern, type ValidatedPattern } from "./pattern";
+import { toIso } from "../../shared/date-time";
+import { rollbackTransaction } from "../../shared/transaction";
+import { validatePersistedPattern, type GenerationMode, type PersistedPattern, type ValidatedPattern } from "./pattern";
 
+/** 作品状态：草稿或已完成。 */
 export type WorkStatus = "draft" | "completed";
+export type CreationSource = "image" | "text";
 
 export interface WorkSummary {
   readonly id: string;
@@ -14,6 +28,8 @@ export interface WorkSummary {
   readonly beadCount: number;
   readonly colorCount: number;
   readonly brand: string;
+  readonly generationMode: GenerationMode;
+  readonly creationSource: CreationSource;
   readonly status: WorkStatus;
   readonly isFavorite: boolean;
   readonly createdAt: string;
@@ -22,6 +38,7 @@ export interface WorkSummary {
 
 export interface WorkDetail extends WorkSummary {
   readonly pattern: PersistedPattern;
+  readonly sourcePrompt: string | null;
 }
 
 export interface CreateWorkInput {
@@ -30,6 +47,8 @@ export interface CreateWorkInput {
   readonly title: string;
   readonly coverFileId: string;
   readonly status: WorkStatus;
+  readonly creationSource?: CreationSource;
+  readonly sourcePrompt?: string | null;
   readonly validatedPattern: ValidatedPattern;
 }
 
@@ -39,6 +58,8 @@ export interface UpdateWorkInput {
   readonly title?: string;
   readonly coverFileId?: string;
   readonly status?: WorkStatus;
+  readonly creationSource?: CreationSource;
+  readonly sourcePrompt?: string | null;
   readonly validatedPattern?: ValidatedPattern;
 }
 
@@ -55,6 +76,17 @@ export interface WorkListResponse {
   readonly page: number;
   readonly pageSize: number;
   readonly items: readonly WorkSummary[];
+}
+
+export interface FavoriteWorkSummary extends WorkSummary {
+  readonly favoritedAt: string;
+}
+
+export interface FavoriteListResponse {
+  readonly total: number;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly items: readonly FavoriteWorkSummary[];
 }
 
 export interface FavoriteListOptions {
@@ -81,10 +113,14 @@ interface WorkRow extends QueryResultRow {
   readonly bead_count: number;
   readonly color_count: number;
   readonly brand: string;
+  readonly generation_mode?: string;
+  readonly creation_source?: string;
+  readonly source_prompt?: string | null;
   readonly status: string;
   readonly created_at: Date | string;
   readonly updated_at: Date | string;
   readonly deleted_at: Date | null;
+  readonly favorited_at?: Date | string;
   readonly is_favorite?: boolean;
   readonly schema_version?: number;
   readonly color_limit?: number;
@@ -99,20 +135,15 @@ interface OwnershipRow extends QueryResultRow {
   readonly deleted_at: Date | null;
 }
 
-export interface WorkService {
-  create(input: CreateWorkInput): Promise<WorkSummary>;
-  update(input: UpdateWorkInput): Promise<WorkSummary>;
-  list(options: WorkListOptions): Promise<WorkListResponse>;
-  get(userId: string, workId: string): Promise<WorkDetail>;
-  delete(userId: string, workId: string): Promise<void>;
-  setFavorite(userId: string, workId: string, favorite: boolean): Promise<FavoriteUpdateResponse>;
-  listFavorites(options: FavoriteListOptions): Promise<WorkListResponse>;
-}
-
-export class PostgresWorkService implements WorkService {
+export class PostgresWorkService {
   public constructor(private readonly pool: Pool, private readonly now: () => Date = () => new Date()) {}
 
+  /**
+   * 使用“用户 + 幂等键”生成稳定作品 ID。客户端重试同一次创建请求时返回原作品；
+   * 若相同幂等键携带了不同内容，则拒绝请求，避免静默覆盖已有作品。
+   */
   public async create(input: CreateWorkInput): Promise<WorkSummary> {
+    // 由 userId + 幂等键生成确定性 workId：同一键重复提交会得到同一 id，便于去重
     const workId = createIdempotentWorkId(input.userId, input.idempotencyKey);
     const currentTime = this.now();
     const client = await this.pool.connect();
@@ -120,6 +151,7 @@ export class PostgresWorkService implements WorkService {
       await client.query("BEGIN");
       const existing = await readWorkDetail(client, workId);
       if (existing) {
+        // 已存在且归属相同、请求内容一致 → 直接返回首次结果（幂等），否则判定冲突
         if (existing.user_id !== input.userId || existing.deleted_at) throw idempotencyConflict();
         if (!sameRequest(existing, input)) throw idempotencyConflict();
         await client.query("COMMIT");
@@ -139,19 +171,21 @@ export class PostgresWorkService implements WorkService {
       if (coverRow.file_type !== "cover" || coverRow.deleted_at) throw notFound("封面文件不可用");
 
       const { pattern, beadCount, colorCount } = input.validatedPattern;
+      // 作品摘要与图纸详情必须在同一事务中落库，避免出现“有作品、无图纸”的半成品数据。
       const workInsert = await client.query<WorkRow>(
         `INSERT INTO pindou_works (
            id, user_id, title, cover_file_id, width, height, bead_count, color_count,
-           brand, status, created_at, updated_at, deleted_at
+           brand, generation_mode, creation_source, source_prompt, status, created_at, updated_at, deleted_at
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, NULL)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $13, $14, $11, $12, $12, NULL)
          ON CONFLICT (id) DO NOTHING
          RETURNING id, user_id, title, cover_file_id, width, height, bead_count,
-                   color_count, brand, status, created_at, updated_at, deleted_at`,
-        [workId, input.userId, input.title, input.coverFileId, pattern.width, pattern.height, beadCount, colorCount, pattern.settings.brand, input.status, currentTime],
+                   color_count, brand, generation_mode, creation_source, source_prompt, status, created_at, updated_at, deleted_at`,
+        [workId, input.userId, input.title, input.coverFileId, pattern.width, pattern.height, beadCount, colorCount, pattern.settings.brand, pattern.generationMode, input.status, currentTime, input.creationSource ?? "image", input.sourcePrompt ?? null],
       );
       const inserted = workInsert.rows[0];
       if (!inserted) {
+        // ON CONFLICT 也可能来自并发重试；重新读取并校验原请求，只有内容完全一致才视为成功。
         const concurrent = await readWorkDetail(client, workId);
         if (!concurrent || concurrent.user_id !== input.userId || concurrent.deleted_at || !sameRequest(concurrent, input)) {
           throw idempotencyConflict();
@@ -178,13 +212,15 @@ export class PostgresWorkService implements WorkService {
         beadCount,
         colorCount,
         brand: pattern.settings.brand,
+        generationMode: pattern.generationMode,
+        creationSource: input.creationSource ?? "image",
         status: input.status,
         isFavorite: false,
         createdAt: currentTime.toISOString(),
         updatedAt: currentTime.toISOString(),
       };
     } catch (error: unknown) {
-      await rollback(client);
+      await rollbackTransaction(client);
       throw error;
     } finally {
       client.release();
@@ -195,7 +231,8 @@ export class PostgresWorkService implements WorkService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const existing = await readWorkDetail(client, input.workId, true);
+      // 加行锁读现有作品，并校验未被删除且归属当前用户
+      const existing = await readWorkSummary(client, input.workId, true);
       if (!existing || existing.deleted_at) throw notFound("作品不存在");
       if (existing.user_id !== input.userId) throw forbidden("作品不属于当前用户");
 
@@ -215,27 +252,32 @@ export class PostgresWorkService implements WorkService {
         coverUrl = coverRow.public_url;
       }
 
-      const validatedPattern = input.validatedPattern ?? validatePersistedPattern(mapPattern(existing));
-      const { pattern, beadCount, colorCount } = validatedPattern;
+      const validatedPattern = input.validatedPattern;
+      const pattern = validatedPattern?.pattern;
       const currentTime = this.now();
+      const creationSource = input.creationSource ?? (input.sourcePrompt ? "text" : (existing.creation_source === "text" ? "text" : "image"));
+      const sourcePrompt = input.sourcePrompt !== undefined ? input.sourcePrompt : (creationSource === "text" ? existing.source_prompt ?? null : null);
       const updated = await client.query<WorkRow>(
         `UPDATE pindou_works
             SET title = $3, cover_file_id = $4, width = $5, height = $6,
-                bead_count = $7, color_count = $8, brand = $9, status = $10,
-                updated_at = $11
+                bead_count = $7, color_count = $8, brand = $9, generation_mode = $10,
+                creation_source = $11, source_prompt = $12, status = $13, updated_at = $14
           WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
           RETURNING id, user_id, title, cover_file_id, width, height, bead_count,
-                    color_count, brand, status, created_at, updated_at, deleted_at`,
+                    color_count, brand, generation_mode, creation_source, source_prompt, status, created_at, updated_at, deleted_at`,
         [
           input.workId,
           input.userId,
           input.title ?? existing.title,
           input.coverFileId ?? existing.cover_file_id,
-          pattern.width,
-          pattern.height,
-          beadCount,
-          colorCount,
-          pattern.settings.brand,
+          pattern?.width ?? existing.width,
+          pattern?.height ?? existing.height,
+          validatedPattern?.beadCount ?? existing.bead_count,
+          validatedPattern?.colorCount ?? existing.color_count,
+          pattern?.settings.brand ?? existing.brand,
+          pattern?.generationMode ?? generationModeFromRow(existing),
+          creationSource,
+          sourcePrompt,
           input.status ?? existing.status,
           currentTime,
         ],
@@ -243,7 +285,8 @@ export class PostgresWorkService implements WorkService {
       const updatedRow = updated.rows[0];
       if (!updatedRow) throw notFound("作品不存在");
 
-      if (input.validatedPattern !== undefined) {
+      if (validatedPattern !== undefined) {
+        const { pattern } = validatedPattern;
         await client.query(
           `UPDATE pindou_work_patterns
               SET schema_version = $2, width = $3, height = $4, color_limit = $5,
@@ -265,9 +308,9 @@ export class PostgresWorkService implements WorkService {
       }
 
       await client.query("COMMIT");
-      return mapSummary({ ...updatedRow, cover_url: coverUrl });
+      return mapSummary({ ...updatedRow, cover_url: coverUrl, is_favorite: existing.is_favorite === true });
     } catch (error: unknown) {
-      await rollback(client);
+      await rollbackTransaction(client);
       throw error;
     } finally {
       client.release();
@@ -296,11 +339,13 @@ export class PostgresWorkService implements WorkService {
     const result = await this.pool.query<WorkRow>(
       `SELECT works.id, works.user_id, works.title, works.cover_file_id,
               files.public_url AS cover_url, works.width, works.height,
-              works.bead_count, works.color_count, works.brand, works.status,
+              works.bead_count, works.color_count, works.brand, works.generation_mode,
+              works.creation_source, works.source_prompt, works.status,
               works.created_at, works.updated_at, works.deleted_at,
               EXISTS (
                 SELECT 1 FROM pindou_favorites favorites
                  WHERE favorites.user_id = $1 AND favorites.work_id = works.id
+                   AND favorites.deleted_at IS NULL
               ) AS is_favorite
          FROM pindou_works works
          LEFT JOIN pindou_file_assets files ON files.id = works.cover_file_id AND files.deleted_at IS NULL
@@ -309,21 +354,22 @@ export class PostgresWorkService implements WorkService {
         LIMIT $${parameters.length - 1} OFFSET $${parameters.length}`,
       parameters,
     );
-    const total = Number(countResult.rows[0]?.total_count ?? 0);
-    return { total: Number.isSafeInteger(total) ? total : 0, page: options.page, pageSize: options.pageSize, items: result.rows.map(mapSummary) };
+    return mapListResponse(options, countResult.rows[0]?.total_count, result.rows, mapSummary);
   }
 
   public async get(userId: string, workId: string): Promise<WorkDetail> {
     const result = await this.pool.query<WorkRow>(
       `SELECT works.id, works.user_id, works.title, works.cover_file_id,
               files.public_url AS cover_url, works.width, works.height,
-              works.bead_count, works.color_count, works.brand, works.status,
+              works.bead_count, works.color_count, works.brand, works.generation_mode,
+              works.creation_source, works.source_prompt, works.status,
               works.created_at, works.updated_at, works.deleted_at,
               patterns.schema_version, patterns.color_limit,
               patterns.brand AS pattern_brand, patterns.palette_json, patterns.cells_json,
               EXISTS (
                 SELECT 1 FROM pindou_favorites favorites
                  WHERE favorites.user_id = $1 AND favorites.work_id = works.id
+                   AND favorites.deleted_at IS NULL
               ) AS is_favorite
          FROM pindou_works works
          JOIN pindou_work_patterns patterns ON patterns.work_id = works.id
@@ -333,11 +379,14 @@ export class PostgresWorkService implements WorkService {
       [userId, workId],
     );
     const row = result.rows[0];
-    if (!row) await throwOwnershipAwareNotFound(this.pool, workId, userId);
+    // 查不到时先走 assertWorkOwner：区分「不存在」与「不属于当前用户」两种 404/403
+    if (!row) await assertWorkOwner(this.pool, workId, userId);
     return mapDetail(row as WorkRow);
   }
 
+  /** 作品删除采用软删除，保留历史记录及关联数据，所有查询统一过滤 deleted_at。 */
   public async delete(userId: string, workId: string): Promise<void> {
+    // 软删除：置 deleted_at，确认归属后执行
     await assertWorkOwner(this.pool, workId, userId);
     await this.pool.query(
       `UPDATE pindou_works SET deleted_at = $3, updated_at = $3
@@ -346,32 +395,64 @@ export class PostgresWorkService implements WorkService {
     );
   }
 
+  /**
+   * 收藏关系永不物理删除：取消收藏写入 deleted_at，再次收藏时恢复同一条关系并刷新 favorited_at。
+   * 这样既能审计历史，也能由唯一键保证同一用户与作品只有一条收藏记录。
+   */
   public async setFavorite(userId: string, workId: string, favorite: boolean): Promise<FavoriteUpdateResponse> {
     await assertWorkOwner(this.pool, workId, userId);
     if (!favorite) {
       await this.pool.query(
-        `DELETE FROM pindou_favorites
-          WHERE user_id = $1 AND work_id = $2`,
-        [userId, workId],
+        `UPDATE pindou_favorites
+            SET deleted_at = $3
+          WHERE user_id = $1 AND work_id = $2 AND deleted_at IS NULL`,
+        [userId, workId, this.now()],
       );
       return { workId, isFavorite: false, favoritedAt: null };
     }
 
-    const result = await this.pool.query<{ readonly created_at: Date | string }>(
-      `INSERT INTO pindou_favorites (user_id, work_id, created_at)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (user_id, work_id) DO UPDATE
-       SET created_at = pindou_favorites.created_at
-       RETURNING created_at`,
+    const result = await this.pool.query<{ readonly favorited_at: Date | string }>(
+      // CTE 同时覆盖首次收藏、恢复软删除记录和“本来已收藏”的幂等调用。
+      `WITH changed AS (
+         INSERT INTO pindou_favorites (user_id, work_id, created_at, favorited_at, deleted_at)
+         SELECT $1::varchar, $2::varchar, $3::timestamptz, $3::timestamptz, NULL::timestamptz
+            FROM pindou_works
+           WHERE id = $2::varchar AND user_id = $1::varchar AND deleted_at IS NULL
+         ON CONFLICT (user_id, work_id) DO UPDATE
+         SET favorited_at = EXCLUDED.favorited_at,
+             deleted_at = NULL
+         WHERE pindou_favorites.deleted_at IS NOT NULL
+         RETURNING favorited_at
+       )
+       SELECT favorited_at FROM changed
+       UNION ALL
+       SELECT favorited_at
+         FROM pindou_favorites
+         WHERE user_id = $1::varchar AND work_id = $2::varchar AND deleted_at IS NULL
+       LIMIT 1`,
       [userId, workId, this.now()],
     );
-    const createdAt = result.rows[0]?.created_at;
-    if (!createdAt) throw new AppError(500, "INTERNAL_ERROR", "收藏关系写入失败");
-    return { workId, isFavorite: true, favoritedAt: toIso(createdAt) };
+    let favoritedAt = result.rows[0]?.favorited_at;
+    if (!favoritedAt) {
+      const current = await this.pool.query<{ readonly favorited_at: Date | string }>(
+        `SELECT favorites.favorited_at
+           FROM pindou_favorites favorites
+           JOIN pindou_works works
+             ON works.id = favorites.work_id AND works.user_id = favorites.user_id
+          WHERE favorites.user_id = $1 AND favorites.work_id = $2
+            AND favorites.deleted_at IS NULL AND works.deleted_at IS NULL
+          LIMIT 1`,
+        [userId, workId],
+      );
+      favoritedAt = current.rows[0]?.favorited_at;
+    }
+    if (!favoritedAt) await assertWorkOwner(this.pool, workId, userId);
+    if (!favoritedAt) throw new AppError(500, "INTERNAL_ERROR", "收藏关系写入失败");
+    return { workId, isFavorite: true, favoritedAt: toIso(favoritedAt) };
   }
 
-  public async listFavorites(options: FavoriteListOptions): Promise<WorkListResponse> {
-    const conditions = ["favorites.user_id = $1", "works.deleted_at IS NULL"];
+  public async listFavorites(options: FavoriteListOptions): Promise<FavoriteListResponse> {
+    const conditions = ["favorites.user_id = $1", "favorites.deleted_at IS NULL", "works.deleted_at IS NULL"];
     const parameters: unknown[] = [options.userId];
     if (options.query) {
       parameters.push(`%${options.query}%`);
@@ -389,25 +470,21 @@ export class PostgresWorkService implements WorkService {
     const result = await this.pool.query<WorkRow>(
       `SELECT works.id, works.user_id, works.title, works.cover_file_id,
               files.public_url AS cover_url, works.width, works.height,
-              works.bead_count, works.color_count, works.brand, works.status,
+              works.bead_count, works.color_count, works.brand, works.generation_mode, works.status,
               works.created_at, works.updated_at, works.deleted_at,
+              favorites.favorited_at,
               TRUE AS is_favorite
          FROM pindou_favorites favorites
          JOIN pindou_works works
            ON works.id = favorites.work_id AND works.user_id = favorites.user_id
          LEFT JOIN pindou_file_assets files ON files.id = works.cover_file_id AND files.deleted_at IS NULL
         WHERE ${conditions.join(" AND ")}
-        ORDER BY favorites.created_at DESC, works.id DESC
+        -- 收藏列表按收藏动作时间排序；作品自身的 updated_at 仍单独返回给客户端展示作品更新时间。
+        ORDER BY favorites.favorited_at DESC, works.id DESC
         LIMIT $${parameters.length - 1} OFFSET $${parameters.length}`,
       parameters,
     );
-    const total = Number(countResult.rows[0]?.total_count ?? 0);
-    return {
-      total: Number.isSafeInteger(total) ? total : 0,
-      page: options.page,
-      pageSize: options.pageSize,
-      items: result.rows.map(mapSummary),
-    };
+    return mapListResponse(options, countResult.rows[0]?.total_count, result.rows, mapFavoriteSummary);
   }
 }
 
@@ -419,8 +496,14 @@ async function readWorkDetail(
   const result = await client.query<WorkRow>(
     `SELECT works.id, works.user_id, works.title, works.cover_file_id,
             files.public_url AS cover_url, works.width, works.height,
-            works.bead_count, works.color_count, works.brand, works.status,
+            works.bead_count, works.color_count, works.brand, works.generation_mode,
+            works.creation_source, works.source_prompt, works.status,
             works.created_at, works.updated_at, works.deleted_at,
+            EXISTS (
+              SELECT 1 FROM pindou_favorites favorites
+               WHERE favorites.user_id = works.user_id AND favorites.work_id = works.id
+                 AND favorites.deleted_at IS NULL
+            ) AS is_favorite,
             patterns.schema_version, patterns.color_limit,
             patterns.brand AS pattern_brand, patterns.palette_json, patterns.cells_json
        FROM pindou_works works
@@ -432,8 +515,35 @@ async function readWorkDetail(
   return result.rows[0] ?? null;
 }
 
+async function readWorkSummary(
+  client: PoolClient,
+  workId: string,
+  lock = false,
+): Promise<WorkRow | null> {
+  const result = await client.query<WorkRow>(
+    `SELECT works.id, works.user_id, works.title, works.cover_file_id,
+            files.public_url AS cover_url, works.width, works.height,
+            works.bead_count, works.color_count, works.brand, works.generation_mode,
+            works.creation_source, works.source_prompt, works.status,
+            works.created_at, works.updated_at, works.deleted_at,
+            EXISTS (
+              SELECT 1 FROM pindou_favorites favorites
+               WHERE favorites.user_id = works.user_id AND favorites.work_id = works.id
+                 AND favorites.deleted_at IS NULL
+            ) AS is_favorite
+       FROM pindou_works works
+       LEFT JOIN pindou_file_assets files ON files.id = works.cover_file_id AND files.deleted_at IS NULL
+      WHERE works.id = $1 LIMIT 1${lock ? " FOR UPDATE OF works" : ""}`,
+    [workId],
+  );
+  return result.rows[0] ?? null;
+}
+
+// 比较已存在记录与本次请求内容是否一致（标题/封面/状态/图案全同），用于幂等判定
 function sameRequest(existing: WorkRow, input: CreateWorkInput): boolean {
-  if (existing.title !== input.title || existing.cover_file_id !== input.coverFileId || existing.status !== input.status) return false;
+  if (existing.title !== input.title || existing.cover_file_id !== input.coverFileId || existing.status !== input.status
+    || (existing.creation_source ?? "image") !== (input.creationSource ?? "image")
+    || (existing.source_prompt ?? null) !== (input.sourcePrompt ?? null)) return false;
   const existingPattern = mapPattern(existing);
   return JSON.stringify(existingPattern) === JSON.stringify(input.validatedPattern.pattern);
 }
@@ -449,6 +559,8 @@ function mapSummary(row: WorkRow): WorkSummary {
     beadCount: row.bead_count,
     colorCount: row.color_count,
     brand: row.brand,
+    generationMode: generationModeFromRow(row),
+    creationSource: row.creation_source === "text" ? "text" : "image",
     status: row.status,
     isFavorite: row.is_favorite === true,
     createdAt: toIso(row.created_at),
@@ -457,12 +569,19 @@ function mapSummary(row: WorkRow): WorkSummary {
 }
 
 function mapDetail(row: WorkRow): WorkDetail {
-  return { ...mapSummary(row), pattern: mapPattern(row) };
+  return { ...mapSummary(row), pattern: mapPattern(row), sourcePrompt: row.source_prompt ?? null };
 }
 
+function mapFavoriteSummary(row: WorkRow): FavoriteWorkSummary {
+  if (!row.favorited_at) throw new AppError(500, "INTERNAL_ERROR", "收藏时间缺失");
+  return { ...mapSummary(row), favoritedAt: toIso(row.favorited_at) };
+}
+
+// 由数据库行拼出 PersistedPattern，并把 JSONB 字段交给 validatePersistedPattern 校验
 function mapPattern(row: WorkRow): PersistedPattern {
   const pattern = {
     schemaVersion: row.schema_version,
+    generationMode: generationModeFromRow(row),
     width: row.width,
     height: row.height,
     settings: { colorLimit: row.color_limit, brand: row.pattern_brand },
@@ -472,6 +591,12 @@ function mapPattern(row: WorkRow): PersistedPattern {
   return validatePersistedPattern(pattern).pattern;
 }
 
+function generationModeFromRow(row: Pick<WorkRow, "generation_mode">): GenerationMode {
+  if (row.generation_mode === "ai") return "ai";
+  return "standard";
+}
+
+// 把 JSONB 字段（可能为字符串）解析为对象；解析失败视为图案损坏
 function parseJson(value: unknown): unknown {
   if (typeof value !== "string") return value;
   try {
@@ -481,13 +606,7 @@ function parseJson(value: unknown): unknown {
   }
 }
 
-async function throwOwnershipAwareNotFound(pool: Pool, workId: string, userId: string): Promise<never> {
-  const result = await pool.query<OwnershipRow>("SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1", [workId]);
-  const row = result.rows[0];
-  if (row && !row.deleted_at && row.user_id !== userId) throw forbidden("作品不属于当前用户");
-  throw notFound("作品不存在");
-}
-
+// 鉴权：确认作品存在且未被删除且归属当前用户，否则抛 notFound/forbidden
 async function assertWorkOwner(pool: Pool, workId: string, userId: string): Promise<void> {
   const result = await pool.query<OwnershipRow>(
     "SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1",
@@ -498,10 +617,17 @@ async function assertWorkOwner(pool: Pool, workId: string, userId: string): Prom
   if (row.user_id !== userId) throw forbidden("作品不属于当前用户");
 }
 
-async function rollback(client: PoolClient): Promise<void> {
-  try { await client.query("ROLLBACK"); } catch { /* 保留原始异常。 */ }
-}
-
-function toIso(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+function mapListResponse<T>(
+  options: Pick<WorkListOptions, "page" | "pageSize">,
+  totalCount: string | number | undefined,
+  rows: readonly WorkRow[],
+  mapRow: (row: WorkRow) => T,
+): { readonly total: number; readonly page: number; readonly pageSize: number; readonly items: readonly T[] } {
+  const total = Number(totalCount ?? 0);
+  return {
+    total: Number.isSafeInteger(total) ? total : 0,
+    page: options.page,
+    pageSize: options.pageSize,
+    items: rows.map(mapRow),
+  };
 }

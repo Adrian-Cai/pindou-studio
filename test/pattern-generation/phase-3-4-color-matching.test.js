@@ -23,7 +23,7 @@ const {
   oklabDistanceSquared,
   rgbToOklab,
 } = require(path.join(patternGenerationDirectory, 'color-space.js'))
-const { findNearestColor } = require(
+const { pickNearest } = require(
   path.join(patternGenerationDirectory, 'color-utils.js'),
 )
 const { createMedianCutCandidates } = require(
@@ -129,7 +129,14 @@ test('OKLab matcher selects the perceptual nearest color when RGB disagrees', ()
   const oklabNearest = { r: 118, g: 127, b: 244 }
   const palette = [rgbNearest, oklabNearest]
 
-  assert.equal(findNearestColor(pixel, palette), rgbNearest)
+  // RGB 欧氏距离：pickNearest 返回的是「距离最小」的候选本身
+  const rgbDistance = (color) => {
+    const red = pixel.r - color.r
+    const green = pixel.g - color.g
+    const blue = pixel.b - color.b
+    return red * red + green * green + blue * blue
+  }
+  assert.equal(pickNearest(palette, rgbDistance), rgbNearest)
   assert.equal(
     findNearestColorOklab(pixel, prepareOklabPalette(palette)),
     oklabNearest,

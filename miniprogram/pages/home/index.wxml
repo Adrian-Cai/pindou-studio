@@ -1,136 +1,30 @@
-<page-layout title="一起拼豆吧" home show-main-nav compact-bottom-padding selected-tab="{{0}}">
-<view class="page">
+<page-layout title="小露拼豆" home show-main-nav selected-tab="{{0}}">
+  <view class="home-page">
+    <image class="home-hero" src="/assets/samples/home-hero-banner.jpg" mode="widthFix" aria-label="小露拼豆：让脑海里的灵感，变成拼豆作品" />
 
-  <!-- ① 主标题 -->
-  <view class="hero">
-    <text class="hero__title">把图片变成拼豆图</text>
-    <text class="hero__subtitle">上传图片，自动生成拼豆图案</text>
-  </view>
-
-  <!-- ② 上传图片 -->
-  <view class="upload {{sourceImagePath ? 'upload--selected' : ''}}">
-    <view
-      wx:if="{{sourceImagePath}}"
-      class="upload__preview-wrap"
-      style="width:{{previewWidth}}rpx;height:{{previewHeight}}rpx;"
-      bindtap="chooseImage"
-    >
-      <image class="upload__preview" src="{{sourceImagePath}}" mode="aspectFit" bindload="handlePreviewLoad" binderror="handlePreviewError" />
-      <view
-        class="upload__remove"
-        catchtap="clearImage"
-        role="button"
-        aria-label="移除图片"
-      >×</view>
-    </view>
-    <button
-      wx:else
-      class="upload__empty"
-      bindtap="chooseImage"
-      disabled="{{choosing}}"
-      aria-label="选择一张图片"
-    >
-      <image class="upload__icon" src="/assets/icons/upload-cloud.svg" mode="aspectFit" />
-      <view class="upload__title">上传图片</view>
-      <view class="upload__hint">支持 JPG / PNG / WEBP 格式</view>
-      <view class="upload__description">建议图片清晰，效果更佳</view>
-    </button>
-  </view>
-
-  <!-- ③ 生成方式 -->
-  <view class="section-block">
-    <view class="section-label">生成方式</view>
-    <view class="mode-cards" role="radiogroup" aria-label="生成方式">
-      <view
-        wx:for="{{generationModes}}"
-        wx:key="id"
-        class="mode-card {{generationMode === item.id ? 'mode-card--active mode-card--active-' + item.id : ''}}"
-        data-mode="{{item.id}}"
-        bindtap="selectMode"
-        role="radio"
-        aria-checked="{{generationMode === item.id}}"
-        aria-label="{{item.title}}，{{item.description}}"
-      >
-        <!-- 右上角 badge -->
-        <view
-          wx:if="{{item.badge}}"
-          class="mode-card__badge mode-card__badge--{{item.id}}"
-        >{{item.badge}}</view>
-
-        <!-- 右上角选中对勾 -->
-        <view
-          wx:if="{{generationMode === item.id}}"
-          class="mode-card__check mode-card__check--{{item.id}}"
-        >✓</view>
-
-        <!-- 图标 -->
-        <image class="mode-card__icon" src="{{item.icon}}" mode="aspectFit" />
-
-        <!-- 文字 -->
-        <view class="mode-card__content">
-          <view class="mode-card__title mode-card__title--{{generationMode === item.id ? item.id : ''}}">{{item.title}}</view>
-          <view class="mode-card__desc mode-card__desc--{{generationMode === item.id ? item.id : ''}}">{{item.description}}</view>
-        </view>
-      </view>
+    <view class="home-entry-grid">
+      <navigator class="home-entry-card home-entry-card--image" url="/pages/create/index?source=image" hover-class="none" aria-label="从图片开始，上传喜欢的图片">
+        <view class="home-entry-card__icon"><image src="/assets/icons/home-reference.svg" mode="aspectFit" aria-hidden="true" /></view>
+        <view class="home-entry-card__title">从图片开始</view>
+        <view class="home-entry-card__desc">上传喜欢的图片</view>
+        <view class="home-entry-card__arrow" aria-hidden="true"></view>
+      </navigator>
+      <navigator class="home-entry-card home-entry-card--text" url="/pages/create/index?source=text" hover-class="none" aria-label="从想法开始，写下想做的画面">
+        <view class="home-entry-card__icon"><image src="/assets/icons/home-idea.svg" mode="aspectFit" aria-hidden="true" /></view>
+        <view class="home-entry-card__title">从想法开始</view>
+        <view class="home-entry-card__desc">写下想做的画面</view>
+        <view class="home-entry-card__arrow" aria-hidden="true"></view>
+      </navigator>
     </view>
 
-  </view>
-
-  <!-- ⑤ 示例图片 -->
-  <view class="section-block">
-    <view class="section-label">示例图片</view>
-    <view class="samples__grid">
-      <view
-        wx:for="{{sampleImages}}"
-        wx:key="src"
-        class="sample-card"
-      >
-        <view class="sample-card__media">
-          <image
-            class="sample-card__image"
-            src="{{item.src}}"
-            mode="aspectFill"
-            aria-label="{{item.alt}}"
-          />
-        </view>
-        <view class="sample-card__label sample-card__label--{{item.mode}}">{{item.label}}</view>
-      </view>
-    </view>
-  </view>
-
-  <!-- ⑥ 尺寸选择 & 颜色数量 -->
-  <view class="setting-options">
-    <view class="option-group">
-      <view class="section-label">尺寸选择</view>
-      <view class="option-row option-row--sizes">
-        <button
-          wx:for="{{sizeOptions}}"
-          wx:key="*this"
-          class="option-button {{settings.width === item ? 'option-button--active' : ''}}"
-          data-value="{{item}}"
-          bindtap="selectSize"
-        >{{item}}×{{item}}</button>
-      </view>
+    <view class="home-process-card">
+      <view class="home-process-step"><view class="home-process-step__icon"><image src="/assets/samples/home-process-inspiration.png" mode="aspectFit" aria-hidden="true" /></view><text>灵感</text></view>
+      <image class="home-process-arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      <view class="home-process-step"><view class="home-process-step__icon"><image src="/assets/samples/home-process-reference.png" mode="aspectFit" aria-hidden="true" /></view><text>参考图</text></view>
+      <image class="home-process-arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      <view class="home-process-step"><view class="home-process-step__icon"><image src="/assets/samples/home-process-pattern.png" mode="aspectFit" aria-hidden="true" /></view><text>拼豆图</text></view>
     </view>
 
-    <view class="option-group option-group--colors">
-      <view class="section-label">颜色数量</view>
-      <view class="option-row">
-        <button
-          wx:for="{{colorOptions}}"
-          wx:key="*this"
-          class="option-button {{settings.colorLimit === item ? 'option-button--active' : ''}}"
-          data-value="{{item}}"
-          bindtap="selectColor"
-        >{{item}}色</button>
-      </view>
-    </view>
+    <navigator class="button-primary home-entry-submit" url="/pages/create/index?source=image" hover-class="none">开始创作 <view class="home-entry-submit__arrow" aria-hidden="true"></view></navigator>
   </view>
-
-  <!-- ⑦ 开始生成 -->
-  <view class="button-primary home__submit" role="button" bindtap="startCreating">
-    开始生成
-  </view>
-
-</view>
 </page-layout>

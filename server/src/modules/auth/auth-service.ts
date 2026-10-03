@@ -4,6 +4,7 @@ import {
   createEntityId,
   createOpaqueToken,
   encryptOpenid,
+  encryptSessionKey,
   hashOpenid,
   hashToken,
 } from "../../shared/identity";
@@ -15,6 +16,10 @@ const MAX_CODE_LENGTH = 256;
 
 export interface AuthLoginService {
   login(code: string): Promise<LoginResult>;
+  /** 接受 token 原文并由服务端完成哈希后吊销。 */
+  revokeSession(token: string): Promise<void>;
+  /** 吊销指定用户的全部会话。 */
+  revokeUserSessions(userId: string): Promise<void>;
 }
 
 export class AuthService implements AuthLoginService {
@@ -40,6 +45,12 @@ export class AuthService implements AuthLoginService {
     const user = await this.repository.createLogin({
       openidHash: hashOpenid(wechatSession.openid, this.config.openidHashSecret),
       openidCiphertext: encryptOpenid(wechatSession.openid, this.config.openidHashSecret),
+      // 每次登录都刷新 session_key：它有时效且是虚拟支付 signature 的签名密钥，
+      // 留旧值会让用户在下次支付时报 -15007。为 null 表示本次未取到，支付时再引导重登。
+      sessionKeyCiphertext: encryptSessionKey(
+        wechatSession.sessionKey,
+        this.config.openidHashSecret,
+      ),
       proposedUserId: createEntityId("usr"),
       sessionId: createEntityId("ses"),
       tokenHash: hashToken(token),
@@ -53,5 +64,14 @@ export class AuthService implements AuthLoginService {
       expiresAt: expiresAt.toISOString(),
       user: { id: user.id, nickname: user.nickname, avatarUrl: user.avatarUrl },
     };
+  }
+
+  /** 接受 token 原文并在服务端计算哈希后吊销。 */
+  public async revokeSession(token: string): Promise<void> {
+    await this.repository.revokeSession(hashToken(token), this.now());
+  }
+
+  public async revokeUserSessions(userId: string): Promise<void> {
+    await this.repository.revokeUserSessions(userId, this.now());
   }
 }

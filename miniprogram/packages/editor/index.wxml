@@ -1,0 +1,76 @@
+<view class="editor">
+  <top-bar title="编辑拼豆图" back back-inset-rpx="{{32}}" />
+
+  <view wx:if="{{draft}}" class="editor__body">
+    <view class="editor__content">
+
+      <!-- ── 工作区：接收所有手势 ── -->
+      <view
+        class="workspace"
+        bindtouchstart="onWorkspaceTouchStart"
+        bindtouchend="onWorkspaceTouchEnd"
+        bindtouchcancel="onWorkspaceTouchCancel"
+        catchtouchmove="onWorkspaceTouchMove"
+      >
+        <view class="canvas-stage {{canvasReady ? 'canvas-stage--ready' : ''}}">
+          <canvas
+            id="patternCanvas"
+            class="pattern-canvas"
+            type="2d"
+          ></canvas>
+        </view>
+
+        <view
+          wx:if="{{!canvasReady}}"
+          class="canvas-loading-state"
+          role="status"
+          aria-label="正在准备图纸，请稍候"
+          catchtouchstart="stopWorkspaceTouch"
+          catchtouchmove="stopWorkspaceTouch"
+          catchtouchend="stopWorkspaceTouch"
+        >
+          <view class="canvas-loading-state__spinner" aria-hidden="true"></view>
+          <text class="canvas-loading-state__title">正在准备图纸</text>
+          <text class="canvas-loading-state__description">马上就好，可以开始编辑</text>
+        </view>
+
+      </view>
+
+      <!-- ── 底部控制面板（与 AI 生成页共用同一组件）── -->
+      <editor-control-panel
+        ready="{{canvasReady}}"
+        undoable="{{canUndo}}"
+        redoable="{{canRedo}}"
+        active-tool="{{activeTool}}"
+        scale-percent="{{scalePercent}}"
+        can-zoom-out="{{scalePercent > 100}}"
+        can-zoom-in="{{scalePercent < 300}}"
+        width="{{draft.settings.width}}"
+        height="{{draft.settings.height}}"
+        color-limit="{{draft.settings.colorLimit}}"
+        bead-count="{{beadCount}}"
+        palette-colors="{{paletteColors}}"
+        selected-color="{{selectedColor}}"
+        saving="{{saving}}"
+        bind:zoomout="zoomOut"
+        bind:zoomin="zoomIn"
+        bind:toolselect="selectTool"
+        bind:colorselect="selectPaletteColor"
+        bind:regenerate="regenerate"
+        bind:save="saveAndView"
+      />
+
+    </view>
+  </view>
+
+  <canvas
+    wx:if="{{draft}}"
+    id="exportPatternCanvas"
+    class="export-pattern-canvas"
+    type="2d"
+    style="width: {{draft.settings.width >= draft.settings.height ? 640 : 640 * draft.settings.width / draft.settings.height}}px; height: {{draft.settings.height >= draft.settings.width ? 640 : 640 * draft.settings.height / draft.settings.width}}px;"
+  ></canvas>
+
+  <!-- 取色成功 Toast -->
+  <view class="editor-toast {{toast.visible ? 'editor-toast--visible' : ''}}">{{toast.message}}</view>
+</view>

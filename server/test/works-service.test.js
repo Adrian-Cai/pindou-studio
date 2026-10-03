@@ -44,15 +44,49 @@ test("save writes work and pattern in one transaction and derives counts", async
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
 
+test("save persists the selected generation mode on the work", async () => {
+  let workInsertParameters;
+  const client = {
+    async query(sql, parameters) {
+      if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.includes("FROM pindou_works works")) return { rows: [] };
+      if (sql.includes("FROM pindou_file_assets")) return { rows: [{ user_id: "usr_current", deleted_at: null, file_type: "cover", object_key: "covers/x.png", public_url: "https://cdn/cover.png" }] };
+      if (sql.includes("INSERT INTO pindou_works")) {
+        workInsertParameters = parameters;
+        return { rows: [{ ...row("work_ai"), generation_mode: "ai" }] };
+      }
+      if (sql.includes("INSERT INTO pindou_work_patterns")) return { rows: [] };
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    release() {},
+  };
+  const service = new PostgresWorkService({ async connect() { return client; } });
+  const result = await service.create({
+    userId: "usr_current",
+    idempotencyKey: "save-ai",
+    title: "AI 作品",
+    coverFileId: "file_cover",
+    status: "completed",
+    validatedPattern: validatePersistedPattern({ ...pattern(), generationMode: "ai" }),
+  });
+  assert.equal(result.generationMode, "ai");
+  assert.equal(workInsertParameters[9], "ai");
+});
+
 test("list query does not load cells and detail query maps the persisted pattern", async () => {
   const listRow = row("work_list");
   const detailRow = row("work_detail");
   let listSql = "";
+  let detailSql = "";
   const pool = {
     async query(sql) {
       if (sql.includes("COUNT(*)")) return { rows: [{ total_count: "1" }] };
-      if (sql.includes("FROM pindou_works works") && sql.includes("is_favorite")) { listSql = sql; return { rows: [{ ...listRow, is_favorite: true }] }; }
-      return { rows: [detailRow] };
+      if (sql.includes("is_favorite") && !sql.includes("patterns.schema_version")) {
+        listSql = sql;
+        return { rows: [{ ...listRow, is_favorite: true }] };
+      }
+      detailSql = sql;
+      return { rows: [{ ...detailRow, is_favorite: true }] };
     },
   };
   const service = new PostgresWorkService(pool);
@@ -62,14 +96,16 @@ test("list query does not load cells and detail query maps the persisted pattern
   assert.equal(list.items[0].pattern, undefined);
   assert.equal(listSql.includes("cells_json"), false);
   assert.equal(listSql.includes("pindou_work_patterns"), false);
+  assert.match(listSql, /favorites\.deleted_at IS NULL/u);
   const detail = await service.get("usr_current", "work_detail");
   assert.equal(detail.pattern.cells.length, 1024);
   assert.equal(detail.pattern.cells[1], 1);
+  assert.match(detailSql, /favorites\.deleted_at IS NULL/u);
 });
 
 test("update replaces edited pattern and derived summary in one transaction", async () => {
   const calls = [];
-  const existing = row("work_edit");
+  const existing = { ...row("work_edit"), is_favorite: true };
   const edited = pattern();
   edited.cells[0] = -1;
   edited.cells[1] = 0;
@@ -97,7 +133,30 @@ test("update replaces edited pattern and derived summary in one transaction", as
   assert.equal(result.title, "编辑后的作品");
   assert.equal(result.coverUrl, "https://cdn/edited.png");
   assert.equal(result.beadCount, 1);
+  assert.equal(result.isFavorite, true);
   assert.ok(calls.some((call) => call.sql.includes("UPDATE pindou_work_patterns")));
+  assert.equal(calls.at(-1).sql, "COMMIT");
+});
+
+test("update without pattern preserves derived summary without loading the pattern", async () => {
+  const calls = [];
+  const existing = row("work_title_only");
+  const client = {
+    async query(sql, parameters) {
+      calls.push({ sql, parameters });
+      if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.includes("FOR UPDATE")) return { rows: [existing] };
+      if (sql.includes("UPDATE pindou_works")) return { rows: [{ ...existing, title: "只改标题" }] };
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    release() {},
+  };
+  const service = new PostgresWorkService({ async connect() { return client; } }, () => new Date("2026-08-27T02:00:00.000Z"));
+  const result = await service.update({ userId: "usr_current", workId: "work_title_only", title: "只改标题" });
+  assert.equal(result.title, "只改标题");
+  assert.equal(result.beadCount, existing.bead_count);
+  assert.equal(result.colorCount, existing.color_count);
+  assert.equal(calls.some((call) => call.sql.includes("pindou_work_patterns")), false);
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
 

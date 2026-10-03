@@ -1,3 +1,13 @@
+/**
+ * 微信支付 API v3 客户端：JSAPI 下单、前端支付参数签名、回调验签与解密。
+ *
+ * 职责：只封装与微信支付的通信与密码学操作，不涉及订单表、额度到账（那些在 payment-service）。
+ * 调用方：payments/payment-service（下单与处理回调），由 http 层注入配置后创建。
+ * 关键点：v3 接口要求用商户私钥对「方法+路径+时间戳+随机串+报文体」做 RSA-SHA256 签名；
+ *         回调必须先验签再解密，密文是 AES-256-GCM，末 16 字节是 auth tag；
+ *         回调带时间戳新鲜度校验（callbackToleranceSeconds），防止重放；
+ *         验签失败与平台证书序列号不匹配都直接抛 401，绝不放行未验证的回调。
+ */
 import {
   createDecipheriv,
   randomBytes,
@@ -24,6 +34,7 @@ export interface CreateWeChatPaymentInput {
   readonly payerOpenid: string;
 }
 
+/** 已完成验签与解密的回调内容；paidAt 为 null 表示本次回调尚未到支付成功时间。 */
 export interface VerifiedPaymentNotification {
   readonly eventType: string;
   readonly merchantId: string;
@@ -42,6 +53,7 @@ export interface PaymentNotificationInput {
   readonly headers: Readonly<Record<string, string | undefined>>;
 }
 
+/** 支付网关抽象：未配置时由 UnavailableWeChatPaymentGateway 顶上，避免启动期就崩。 */
 export interface WeChatPaymentGateway {
   readonly configured: boolean;
   readonly appId: string;
@@ -119,6 +131,7 @@ function parseJsonObject(rawBody: string, errorCode: string): Record<string, unk
   }
 }
 
+/** 真实对接微信支付的网关实现。 */
 export class OfficialWeChatPaymentGateway implements WeChatPaymentGateway {
   public readonly configured = true;
   public readonly appId: string;
@@ -175,6 +188,7 @@ export class OfficialWeChatPaymentGateway implements WeChatPaymentGateway {
     if (!valid) throw new AppError(401, "PAYMENT_NOTIFY_SIGNATURE_INVALID", "微信支付签名校验失败");
   }
 
+  /** 用 prepay_id 生成前端拉起支付所需的参数（签名串为 appId\n时间戳\n随机串\npackage\n）。 */
   public paymentParameters(prepayId: string): PaymentParameters {
     const timeStamp = Math.floor(this.now().getTime() / 1_000).toString();
     const nonceStr = randomBytes(16).toString("hex");
@@ -253,6 +267,10 @@ export class OfficialWeChatPaymentGateway implements WeChatPaymentGateway {
     return { prepayId, payment: this.paymentParameters(prepayId) };
   }
 
+  /**
+   * 处理支付回调：先验签 → 再 AES-256-GCM 解密 resource → 取出订单字段。
+   * 只认 AEAD_AES_256_GCM 算法；解密失败或字段缺失都抛 400，交由上层记失败而不是静默成功。
+   */
   public verifyNotification(input: PaymentNotificationInput): VerifiedPaymentNotification {
     const timestamp = input.headers["wechatpay-timestamp"];
     const nonce = input.headers["wechatpay-nonce"];

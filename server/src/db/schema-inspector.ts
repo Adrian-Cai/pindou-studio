@@ -1,4 +1,5 @@
 import type { Pool, PoolClient, QueryResultRow } from "pg";
+import { rollbackTransaction } from "../shared/transaction";
 import {
   EXPECTED_SCHEMA,
   EXPECTED_TABLES,
@@ -39,6 +40,9 @@ interface ConstraintRow extends QueryResultRow {
   readonly definition: string;
 }
 
+// 迁移记录是部署元数据，不属于 API 的业务 Schema Contract。
+const IGNORED_TABLES = new Set(["pindou_schema_migrations"]);
+
 export interface DatabaseInspection {
   readonly product: "PostgreSQL";
   readonly version: string;
@@ -58,7 +62,7 @@ export class SchemaMismatchError extends Error {
   public readonly inspection: DatabaseInspection;
 
   public constructor(inspection: DatabaseInspection) {
-    super(`数据库结构与 docs/DATABASE_DESIGN.md 不一致（${inspection.differences.length} 项差异）`);
+    super(`数据库结构与 docs/backend/database/DATABASE_DESIGN.md 不一致（${inspection.differences.length} 项差异）`);
     this.name = "SchemaMismatchError";
     this.inspection = inspection;
   }
@@ -176,10 +180,10 @@ async function readMetadata(client: PoolClient, schema: string): Promise<{
 
   return {
     version,
-    tables: tables.rows,
-    columns: columns.rows,
-    indexes: indexes.rows,
-    constraints: constraints.rows,
+    tables: tables.rows.filter((item) => !IGNORED_TABLES.has(item.table_name)),
+    columns: columns.rows.filter((item) => !IGNORED_TABLES.has(item.table_name)),
+    indexes: indexes.rows.filter((item) => !IGNORED_TABLES.has(item.table_name)),
+    constraints: constraints.rows.filter((item) => !IGNORED_TABLES.has(item.table_name)),
   };
 }
 
@@ -237,9 +241,9 @@ export async function inspectDatabaseSchema(pool: Pool, schema: string): Promise
     return report;
   } catch (error: unknown) {
     try {
-      await client.query("ROLLBACK");
+      await rollbackTransaction(client);
     } catch {
-      // 原始错误更有诊断价值；连接关闭时回滚失败不覆盖它。
+      // 原始错误更有诊断价值；连接关闭时回滚失败不覆盖它
     }
     throw error;
   } finally {

@@ -13,12 +13,12 @@
     class="page-layout__scroll"
     scroll-y
     enhanced
+    scroll-into-view="{{scrollIntoView}}"
     show-scrollbar="{{false}}"
-    style="height: {{scrollAreaHeight}}px;"
   >
-    <view class="page-layout__content {{showMainNav ? 'page-layout__content--with-nav' : ''}} {{compactBottomPadding ? 'page-layout__content--compact-bottom' : ''}}">
+    <view class="page-layout__content {{showMainNav ? (isMainTabPage ? 'page-layout__content--main-tab' : 'page-layout__content--with-nav') : ''}} {{compactBottomPadding ? 'page-layout__content--compact-bottom' : ''}} {{home || fillViewport ? 'page-layout__content--fill-viewport' : ''}}">
       <slot />
     </view>
   </scroll-view>
-  <main-tab-bar wx:if="{{showMainNav}}" selected="{{selectedTab}}" />
+  <main-tab-bar wx:if="{{showEmbeddedMainNav}}" selected="{{selectedTab}}" />
 </view>

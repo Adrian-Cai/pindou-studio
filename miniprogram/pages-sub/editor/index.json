@@ -1,6 +1,0 @@
-{
-  "usingComponents": {
-    "top-bar": "/components/top-bar/index"
-  },
-  "disableScroll": true
-}

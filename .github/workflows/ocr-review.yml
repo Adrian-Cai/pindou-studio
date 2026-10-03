@@ -1,0 +1,162 @@
+# OpenCodeReview — PR 自动代码评审
+#
+# 在每次 Pull Request 上进行 AI 评审：
+#   - PR 事件（opened / synchronize / reopened）自动触发；草稿 PR 跳过以节省 token。
+#   - PR 评论以 /open-code-review 或 @open-code-review 开头时按需重跑，
+#     仅限 MEMBER / OWNER / COLLABORATOR 触发，避免外部贡献者消耗 LLM 额度。
+#
+# 版本同时固定两处：action 的 commit SHA 与 OCR CLI 的 npm 版本。只固定 SHA
+# 仍可能在运行时装到新的 CLI；只固定 npm 版本则会让 action 脚本发生漂移。
+# 详见 docs/development/OCR_CODE_REVIEW.md。
+#
+# 必需配置（Settings → Secrets and variables → Actions）：
+#   secret    OCR_LLM_URL           LLM API 端点
+#   secret    OCR_LLM_AUTH_TOKEN    LLM API token
+#   variable  OCR_LLM_MODEL         模型名（无默认值，必须显式设置）
+#   variable  OCR_LLM_USE_ANTHROPIC 使用 Anthropic 协议时设为 'true'，默认 OpenAI 兼容
+#
+# GITHUB_TOKEN 由 Actions 自动注入，无需手动配置。
+
+name: OpenCodeReview
+
+# 条件式并发组。
+#
+# GitHub Actions 在求值 job 级 if 之前就先求值 concurrency。若用扁平的
+# ocr-<pr_number> 组，PR 上任何一条评论——哪怕是一条随后会被跳过的普通回复——
+# 都会进入同一个组；由于 cancel-in-progress 为 true，它会取消正在进行的评审。
+# 结果就是「一条普通评论杀死一次运行中的评审」。
+#
+# 解法：命中的事件（非草稿 PR 事件 + 触发词评论）共享按 PR 分组的并发组，
+# 新评审会取消同一 PR 上过期的那一次；未命中的评论落进唯一的 noop-<run_id> 组，
+# 该组永远不可能与真实评审碰撞，因此会被立刻跳过而不干扰任何东西。
+concurrency:
+  group: >-
+    ${{
+      (
+        (
+          github.event_name == 'pull_request_target'
+          && github.event.pull_request.draft == false
+        )
+        || (
+          github.event_name == 'issue_comment'
+          && github.event.issue.pull_request
+          && github.event.comment.user.type != 'Bot'
+          && (
+            github.event.comment.author_association == 'MEMBER'
+            || github.event.comment.author_association == 'OWNER'
+            || github.event.comment.author_association == 'COLLABORATOR'
+          )
+          && (
+            startsWith(github.event.comment.body, '/open-code-review')
+            || startsWith(github.event.comment.body, '@open-code-review')
+          )
+        )
+      )
+      && format('ocr-{0}', github.event.pull_request.number || github.event.issue.number)
+      || format('noop-{0}', github.run_id)
+    }}
+  cancel-in-progress: true
+
+on:
+  # 用 pull_request_target 而非 pull_request，使 fork 提交的 PR 也能读到 secret。
+  # 这是安全的：上游 Action 只 checkout 可信的 base 分支，再单独抓取 PR head 的
+  # Git 对象来取 diff，不会执行 PR 分支里的任何代码。
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  code-review:
+    name: OCR Review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # PR 事件直接放行（草稿除外）；只对人工发出的触发词评论放行。
+    # 排除 Bot 评论是双保险：GITHUB_TOKEN 本身已抑制 bot 评论触发事件，
+    # 但换成 PAT / App token 后这层保护就没了。
+    # issue_comment 额外校验 author_association，避免外部评论者消耗 LLM 额度。
+    if: |
+      (
+        github.event_name == 'pull_request_target'
+        && github.event.pull_request.draft == false
+      )
+      || (
+        github.event_name == 'issue_comment'
+        && github.event.issue.pull_request
+        && github.event.comment.user.type != 'Bot'
+        && (
+          github.event.comment.author_association == 'MEMBER'
+          || github.event.comment.author_association == 'OWNER'
+          || github.event.comment.author_association == 'COLLABORATOR'
+        )
+        && (
+          startsWith(github.event.comment.body, '/open-code-review')
+          || startsWith(github.event.comment.body, '@open-code-review')
+        )
+      )
+
+    steps:
+      # issue_comment 事件没有顶层的 pull_request 字段，需要先解析出 base / head，
+      # 供 Action 定位正确的 diff。
+      - name: Resolve PR refs
+        id: pr-context
+        if: github.event_name == 'issue_comment'
+        # v7 是 node20 运行时，随 CI 一起升到 v9；本脚本只用 github.rest / core.setOutput，
+        # 不涉及 v9 的两处破坏性变更（require('@actions/github')、注入的 getOctokit）。
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const prNumber = context.issue.number;
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            core.setOutput('base_ref', pullRequest.base.ref);
+            core.setOutput('head_sha', pullRequest.head.sha);
+
+      - name: Run OpenCodeReview
+        # 固定到 commit SHA：供应链安全考虑，不跟随上游 main 漂移。
+        uses: alibaba/open-code-review@5f8e5ab328e1449ba4d5f14d2a7542117543d753
+        with:
+          llm_url: ${{ secrets.OCR_LLM_URL }}
+          llm_auth_token: ${{ secrets.OCR_LLM_AUTH_TOKEN }}
+          llm_model: ${{ vars.OCR_LLM_MODEL }}
+          # 必须兜底：该 input 传空字符串会被判为「选中 Anthropic 协议」，
+          # 用 'false' 显式走 OpenAI 兼容协议。
+          llm_use_anthropic: ${{ vars.OCR_LLM_USE_ANTHROPIC || 'false' }}
+          # 评论触发时需要显式给出 refs；PR 事件下 Action 会自行解析。
+          base_ref: ${{ steps.pr-context.outputs.base_ref }}
+          head_sha: ${{ steps.pr-context.outputs.head_sha }}
+
+          ocr_version: '1.12.9'
+          language: Chinese
+
+          # 业务背景：告诉模型这是个什么项目、哪些地方最容易出事。
+          # 保持静态而不拼接 PR 标题——PR 标题一改就会让 checkpoint 判定为
+          # config_changed，进而退化成每次全量重评审。
+          background: >-
+            拼豆工作室：微信小程序（原生 TS）+ Node/Express 后端 + 微信云函数的拼豆图纸工具。
+            审查时重点关注：分包边界（主包禁止引用 packages/ 下的分包模块，否则小程序
+            启动即崩）、AI 生成任务的状态机与配额扣减、微信支付回调的幂等与签名校验、
+            用户作品在云端与本地之间的同步冲突、以及把「数据损坏」降级成空数组/空字符串
+            这类合法值的写法——它会导致下游把脏数据当正常数据继续处理。
+            宁可少报高置信度的问题，不要批量输出风格类 nit。
+
+          effort: medium
+          # 单次运行的总 token 上限（输入+输出），超出后保留已完成的结果并正常退出，
+          # 防止异常 diff 把额度烧穿。
+          max_tokens_budget: '2000000'
+
+          # 评论发布策略：摘要评论原地更新 + 内联评论去重 + 跨 push 增量评审，
+          # 三者共同避免长生命周期 PR 每次推送都重复刷评论。
+          sticky_summary: 'true'
+          incremental: 'true'
+          checkpoint_range: 'true'
+
+          # 把 [ocr] 实时进度写进工作流日志，便于观察与排查。
+          stream_progress: 'true'

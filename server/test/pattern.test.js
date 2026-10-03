@@ -17,7 +17,14 @@ test("pattern validation derives bead and used-color counts", () => {
   const result = validatePersistedPattern(pattern([0, 0, -1, 1]));
   assert.equal(result.beadCount, 3);
   assert.equal(result.colorCount, 2);
+  assert.equal(result.pattern.generationMode, "standard");
   assert.equal(result.pattern.palette[0].color, "#f4d7bf");
+});
+
+test("pattern validation preserves the selected generation mode", () => {
+  const result = validatePersistedPattern({ ...pattern(), generationMode: "ai" });
+  assert.equal(result.pattern.generationMode, "ai");
+  assert.throws(() => validatePersistedPattern({ ...pattern(), generationMode: "unknown" }), /schemaVersion/u);
 });
 
 test("pattern validation rejects mismatched shape and indexes", () => {

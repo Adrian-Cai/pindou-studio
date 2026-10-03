@@ -37,3 +37,7 @@ export function idempotencyConflict(message = "幂等键已用于另一份请求
 export function quotaInsufficient(message = "下载额度不足"): AppError {
   return new AppError(402, "QUOTA_INSUFFICIENT", message);
 }
+
+export function aiQuotaInsufficient(message = "AI 生成额度不足"): AppError {
+  return new AppError(402, "USER_AI_QUOTA_EXHAUSTED", message);
+}

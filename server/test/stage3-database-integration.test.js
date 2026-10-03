@@ -53,21 +53,24 @@ test("stage 3 real database flow: idempotency, cancellation, ownership and favor
       [workCatOld, workOther, workCatNew, foreignWork, userA, userB, fileA, fileB, createdAt],
     );
 
-    const favoriteTimes = [
-      new Date("2026-08-29T01:00:00.000Z"),
-      new Date("2026-08-29T01:01:00.000Z"),
-      new Date("2026-08-29T01:02:00.000Z"),
-      new Date("2026-08-29T01:03:00.000Z"),
-    ];
-    const service = new PostgresWorkService(pool, () => favoriteTimes.shift() ?? new Date("2026-08-29T02:00:00.000Z"));
+    let favoriteClock = 0;
+    const service = new PostgresWorkService(
+      pool,
+      () => new Date(Date.UTC(2026, 7, 29, 1, favoriteClock++)),
+    );
     const first = await service.setFavorite(userA, workCatOld, true);
     const repeated = await service.setFavorite(userA, workCatOld, true);
     assert.equal(repeated.favoritedAt, first.favoritedAt);
-    const duplicateCount = await pool.query(
-      "SELECT COUNT(*)::int AS count FROM pindou_favorites WHERE user_id = $1 AND work_id = $2",
+    const firstRelation = await pool.query(
+      `SELECT COUNT(*)::int AS count, MIN(created_at) AS created_at,
+              MIN(favorited_at) AS favorited_at, MIN(deleted_at) AS deleted_at
+         FROM pindou_favorites WHERE user_id = $1 AND work_id = $2`,
       [userA, workCatOld],
     );
-    assert.equal(duplicateCount.rows[0].count, 1);
+    assert.equal(firstRelation.rows[0].count, 1);
+    assert.equal(firstRelation.rows[0].created_at.toISOString(), first.favoritedAt);
+    assert.equal(firstRelation.rows[0].favorited_at.toISOString(), first.favoritedAt);
+    assert.equal(firstRelation.rows[0].deleted_at, null);
 
     await service.setFavorite(userA, workOther, true);
     await service.setFavorite(userA, workCatNew, true);
@@ -82,12 +85,45 @@ test("stage 3 real database flow: idempotency, cancellation, ownership and favor
     await assert.rejects(() => service.setFavorite(userA, foreignWork, false), (error) => error.code === "FORBIDDEN");
 
     await service.setFavorite(userA, workCatOld, false);
-    await service.setFavorite(userA, workCatOld, false);
-    const cancelledCount = await pool.query(
-      "SELECT COUNT(*)::int AS count FROM pindou_favorites WHERE user_id = $1 AND work_id = $2",
+    const cancelledRelation = await pool.query(
+      `SELECT created_at, favorited_at, deleted_at
+         FROM pindou_favorites WHERE user_id = $1 AND work_id = $2`,
       [userA, workCatOld],
     );
-    assert.equal(cancelledCount.rows[0].count, 0);
+    await service.setFavorite(userA, workCatOld, false);
+    const repeatedCancellation = await pool.query(
+      `SELECT COUNT(*)::int AS count, MIN(created_at) AS created_at,
+              MIN(favorited_at) AS favorited_at, MIN(deleted_at) AS deleted_at
+         FROM pindou_favorites WHERE user_id = $1 AND work_id = $2`,
+      [userA, workCatOld],
+    );
+    assert.equal(repeatedCancellation.rows[0].count, 1);
+    assert.equal(repeatedCancellation.rows[0].created_at.toISOString(), first.favoritedAt);
+    assert.equal(repeatedCancellation.rows[0].favorited_at.toISOString(), first.favoritedAt);
+    assert.equal(
+      repeatedCancellation.rows[0].deleted_at.toISOString(),
+      cancelledRelation.rows[0].deleted_at.toISOString(),
+    );
+    assert.equal((await service.listFavorites({ userId: userA, page: 1, pageSize: 20 })).items.some((item) => item.id === workCatOld), false);
+    assert.equal((await service.list({ userId: userA, page: 1, pageSize: 20 })).items.find((item) => item.id === workCatOld).isFavorite, false);
+
+    const restored = await service.setFavorite(userA, workCatOld, true);
+    const restoredRelation = await pool.query(
+      `SELECT COUNT(*)::int AS count, MIN(created_at) AS created_at,
+              MIN(favorited_at) AS favorited_at, MIN(deleted_at) AS deleted_at
+         FROM pindou_favorites WHERE user_id = $1 AND work_id = $2`,
+      [userA, workCatOld],
+    );
+    assert.equal(restoredRelation.rows[0].count, 1);
+    assert.equal(restoredRelation.rows[0].created_at.toISOString(), first.favoritedAt);
+    assert.equal(restoredRelation.rows[0].favorited_at.toISOString(), restored.favoritedAt);
+    assert.equal(restoredRelation.rows[0].deleted_at, null);
+
+    const unchangedWork = await pool.query(
+      "SELECT updated_at FROM pindou_works WHERE id = $1",
+      [workCatOld],
+    );
+    assert.equal(unchangedWork.rows[0].updated_at.toISOString(), createdAt.toISOString());
   } finally {
     await pool.query("DELETE FROM pindou_favorites WHERE user_id = ANY($1::varchar[])", [userIds]);
     await pool.query("DELETE FROM pindou_works WHERE user_id = ANY($1::varchar[])", [userIds]);

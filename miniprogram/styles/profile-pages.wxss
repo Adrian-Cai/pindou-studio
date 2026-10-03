@@ -5,10 +5,10 @@
 
 .ui-card {
   box-sizing: border-box;
-  border: 1rpx solid var(--color-border);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-  box-shadow: 0 8rpx 32rpx rgba(42, 35, 78, 0.06);
+  border: 0;
+  border-radius: var(--radius-card-large);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 .search-row {
@@ -35,26 +35,10 @@
 }
 
 .search-box__icon {
-  position: relative;
-  box-sizing: border-box;
   width: 32rpx;
   height: 32rpx;
   flex-shrink: 0;
   margin-right: 18rpx;
-  border: 4rpx solid var(--color-text-secondary);
-  border-radius: 50%;
-}
-
-.search-box__icon::after {
-  position: absolute;
-  right: -12rpx;
-  bottom: -8rpx;
-  width: 16rpx;
-  height: 4rpx;
-  border-radius: 2rpx;
-  background: var(--color-text-secondary);
-  content: "";
-  transform: rotate(45deg);
 }
 
 .search-box__input {
@@ -74,13 +58,22 @@
   justify-content: center;
   gap: 12rpx;
   padding: 0 22rpx;
+  border: 0;
+  background: transparent;
+  box-shadow: var(--shadow-ghost);
   color: var(--color-text);
   font-size: 28rpx;
+  transition: var(--transition-press);
+}
+
+.filter-button:active {
+  background: var(--strong-overlay);
+  transform: scale(0.97);
 }
 
 .filter-button__symbol {
-  color: var(--color-text-secondary);
-  font-size: 28rpx;
+  width: 32rpx;
+  height: 32rpx;
 }
 
 .segmented {

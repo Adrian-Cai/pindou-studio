@@ -30,7 +30,16 @@ test("GET /api/quota/me authenticates and returns the transaction summary", asyn
   await withApplication({
     async getQuota(value) {
       userId = value;
-      return { dailyFree: 3, usedToday: 1, purchased: 2, remaining: 4, membershipType: null, membershipExpiresAt: null, resetsAt: "2026-09-01T00:00:00+08:00" };
+    return {
+      dailyFree: 3,
+      usedToday: 1,
+      purchased: 2,
+      remaining: 4,
+      membershipType: null,
+      membershipExpiresAt: null,
+      resetsAt: "2026-09-01T00:00:00+08:00",
+      aiGeneration: { dailyFree: 3, usedToday: 0, purchased: 0, remaining: 3, resetsAt: "2026-09-01T00:00:00+08:00" },
+    };
     },
   }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/quota/me`, { headers: { authorization: "Bearer token" } });
@@ -56,10 +65,10 @@ test("GET /api/downloads validates filters and returns records without fileUrl",
       };
     },
   }, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/downloads?fileType=chart&query=%E7%8C%AB&page=2&pageSize=5`, { headers: { authorization: "Bearer token" } });
+    const response = await fetch(`${baseUrl}/api/downloads?fileType=palette&query=%E7%8C%AB&page=2&pageSize=5`, { headers: { authorization: "Bearer token" } });
     const body = await response.json();
     assert.equal(response.status, 200, JSON.stringify(body));
-    assert.deepEqual(received, { userId: "usr_current", fileType: "chart", query: "猫", page: 2, pageSize: 5 });
+    assert.deepEqual(received, { userId: "usr_current", fileType: "palette", query: "猫", page: 2, pageSize: 5 });
     assert.equal(body.items[0].fileUrl, undefined);
 
     const invalid = await fetch(`${baseUrl}/api/downloads?fileType=zip`, { headers: { authorization: "Bearer token" } });
@@ -82,11 +91,11 @@ test("POST /api/downloads requires idempotency and passes only authenticated own
     const response = await fetch(`${baseUrl}/api/downloads`, {
       method: "POST",
       headers: { authorization: "Bearer token", "content-type": "application/json", "Idempotency-Key": "export-1" },
-      body: JSON.stringify({ workId: "work_a", fileType: "preview" }),
+      body: JSON.stringify({ workId: "work_a", fileType: "palette" }),
     });
     const body = await response.json();
     assert.equal(response.status, 201, JSON.stringify(body));
-    assert.deepEqual(received, { userId: "usr_current", idempotencyKey: "export-1", workId: "work_a", fileType: "preview" });
+    assert.deepEqual(received, { userId: "usr_current", idempotencyKey: "export-1", workId: "work_a", fileType: "palette" });
     assert.equal(body.downloadRecord.fileUrl, undefined);
 
     const missingKey = await fetch(`${baseUrl}/api/downloads`, {

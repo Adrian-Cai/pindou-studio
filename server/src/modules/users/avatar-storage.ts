@@ -32,7 +32,7 @@ export class FileSystemAvatarStorage implements AvatarStorage {
     }
 
     await mkdir(this.directory, { recursive: true });
-    const filename = `avatar_${randomUUID().replaceAll("-", "")}.${format.extension}`;
+    const filename = `avatar_${randomUUID().replace(/-/g, "")}.${format.extension}`;
     await writeFile(join(this.directory, filename), buffer, { flag: "wx" });
     return { publicPath: `${AVATAR_ROUTE_PREFIX}${filename}`, contentType: format.contentType };
   }
@@ -61,7 +61,7 @@ export class FileSystemAvatarStorage implements AvatarStorage {
       await unlink(join(this.directory, file.filename));
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        // 资料已经更新成功，旧头像清理失败不应回滚用户操作。
+        // 资料已经更新成功，旧头像清理失败不应回滚用户操作
       }
     }
   }

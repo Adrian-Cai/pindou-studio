@@ -1,0 +1,7 @@
+{
+  "usingComponents": {
+    "top-bar": "/components/top-bar/index",
+    "editor-control-panel": "/components/editor-control-panel/index"
+  },
+  "disableScroll": true
+}

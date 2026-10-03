@@ -1,0 +1,54 @@
+<view class="generating-card {{failed ? 'generating-card--failed' : ''}}">
+  <image
+    class="generating-card__decor"
+    src="/components/generating-preview-card/assets/bead-decoration.png"
+    mode="scaleToFill"
+    aria-hidden="true"
+  />
+
+  <view class="generating-card__center">
+    <image
+      class="generating-card__icon"
+      src="/components/generating-preview-card/assets/bead-mascot.png"
+      mode="aspectFit"
+      aria-hidden="true"
+    />
+    <view class="generating-card__title">{{title}}</view>
+    <view class="generating-card__subtitle">{{subtitle}}</view>
+
+    <view class="generating-card__progress-wrap" wx:if="{{!failed}}">
+      <view class="generating-card__beads">
+        <image
+          wx:for="{{progressBeads}}"
+          wx:key="id"
+          class="generating-card__bead {{item.threshold <= progress ? 'generating-card__bead--active' : (item.threshold <= progress + 5 ? 'generating-card__bead--current' : 'generating-card__bead--inactive')}}"
+          src="/components/generating-preview-card/assets/progress-bead.png"
+          mode="aspectFit"
+          aria-hidden="true"
+        />
+      </view>
+      <text class="generating-card__progress-text">约 {{progress}}%</text>
+    </view>
+  </view>
+
+  <view class="generating-card__foot">
+    <view class="generating-card__tip-capsule" wx:if="{{!failed && showTip && tipText}}">
+      <view class="generating-card__tip-icon" aria-hidden="true"></view>
+      <text class="generating-card__tip-text">{{tipText}}</text>
+    </view>
+
+    <view class="generating-card__actions" wx:if="{{showActions || failed}}">
+      <button
+        wx:if="{{!failed || primaryText}}"
+        class="generating-card__action {{failed ? 'generating-card__action--soft' : 'generating-card__action--ghost'}}"
+        bindtap="handlePrimary"
+        aria-label="{{failed ? primaryText : cancelText}}"
+      >{{failed ? primaryText : cancelText}}</button>
+      <button
+        class="generating-card__action {{failed ? 'generating-card__action--ghost' : 'generating-card__action--soft'}}"
+        bindtap="handleHome"
+        aria-label="{{homeText}}"
+      >{{homeText}}</button>
+    </view>
+  </view>
+</view>

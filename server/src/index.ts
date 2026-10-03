@@ -9,6 +9,7 @@ import {
 } from "./db/schema-inspector";
 import { createHttpApplication } from "./http/app";
 import { startHttpServer, type RunningHttpServer } from "./http/server";
+import { InMemoryRateLimiter } from "./http/rate-limit";
 import { PostgresAuthRepository } from "./modules/auth/auth-repository";
 import { AuthService } from "./modules/auth/auth-service";
 import { BearerTokenAuthenticator } from "./modules/auth/authenticator";
@@ -17,10 +18,21 @@ import { FileSystemAvatarStorage } from "./modules/users/avatar-storage";
 import { PostgresUserProfileService } from "./modules/users/user-profile-service";
 import { FileSystemCoverStorage } from "./modules/files/cover-storage";
 import { PostgresFileAssetService } from "./modules/files/file-asset-service";
+import { FileSystemAiFileStorage } from "./modules/files/ai-file-storage";
+import { HunyuanImageProvider } from "./modules/ai/hunyuan-image-provider";
+import { TokenhubHunyuanImageProvider } from "./modules/ai/tokenhub-hunyuan-image-provider";
+import { ToapisImageProvider } from "./modules/ai/toapis-image-provider";
+import type { AiGenerationProvider } from "./modules/ai/provider";
+import { PostgresAiGenerationService } from "./modules/ai/ai-generation-service";
+import { PostgresTextImageGenerationService } from "./modules/ai/text-image-generation-service";
 import { PostgresQuotaDownloadService } from "./modules/downloads/quota-download-service";
 import { PostgresPaymentService } from "./modules/payments/payment-service";
 import { createWeChatPaymentGateway } from "./modules/payments/wechat-pay-client";
+import { createVirtualPayGateway } from "./modules/payments/virtual-pay-client";
 import { PostgresWorkService } from "./modules/works/work-service";
+import { FileSystemContentSecurityMediaStorage } from "./modules/content-security/media-storage";
+import { OfficialWeChatContentSecurityClient } from "./modules/content-security/wechat-client";
+import { PostgresContentSecurityService } from "./modules/content-security/content-security-service";
 
 export interface RunningApplication {
   readonly inspection: DatabaseInspection;
@@ -41,6 +53,114 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       config.covers.publicBaseUrl,
     );
     const paymentGateway = await createWeChatPaymentGateway(config.wechatPay);
+    const virtualPayGateway = createVirtualPayGateway(config.virtualPay, config.wechat.appSecret);
+    const aiFiles = new FileSystemAiFileStorage(
+      config.aiFiles.storageDirectory,
+      config.aiFiles.publicBaseUrl,
+      config.aiFiles,
+    );
+    const users = new PostgresUserProfileService(pool, config.quota, () => new Date(), {
+      avatars,
+      covers,
+      aiFiles,
+    });
+    const contentSecurity = new PostgresContentSecurityService(
+      pool,
+      new OfficialWeChatContentSecurityClient(
+        config.wechat.appId,
+        config.wechat.appSecret,
+        config.wechat.timeoutMs,
+      ),
+      new FileSystemContentSecurityMediaStorage(
+        config.contentSecurity.mediaStorageDirectory,
+        config.contentSecurity.mediaPublicBaseUrl,
+      ),
+      config.wechat.appId,
+      config.contentSecurity.messageToken,
+      config.auth.openidHashSecret,
+      () => new Date(),
+      config.contentSecurity.asyncMediaCheckEnabled,
+    );
+    const hunyuanImage = new HunyuanImageProvider(config.hunyuanImage);
+    const tokenhubHunyuanImage = new TokenhubHunyuanImageProvider(config.tokenhubHunyuanImage);
+    // 保留旧任务快照的 Provider 映射，但生产不再提供 ToAPIs 凭据，旧任务会失败关闭。
+    const toapisImage = new ToapisImageProvider({ enabled: false });
+    const defaultAiProvider = hunyuanImage;
+    const aiGenerations = new PostgresAiGenerationService(
+      pool,
+      defaultAiProvider,
+      aiFiles,
+      config.quota,
+      () => new Date(),
+      config.aiFiles.retentionMs,
+      undefined,
+      new Map<string, AiGenerationProvider>([
+        [hunyuanImage.name, hunyuanImage],
+        [tokenhubHunyuanImage.name, tokenhubHunyuanImage],
+        [toapisImage.name, toapisImage],
+      ]),
+    );
+    const textGenerations = new PostgresTextImageGenerationService(
+      pool,
+      hunyuanImage,
+      aiFiles,
+      config.quota,
+      () => new Date(),
+      config.aiFiles.retentionMs,
+    );
+    const aiRateLimiter = new InMemoryRateLimiter(
+      config.aiRateLimit.maximumRequests,
+      config.aiRateLimit.windowMs,
+    );
+    const processAiGenerations = (): void => {
+      void aiGenerations.processQueued().catch((error: unknown) => {
+        console.error(JSON.stringify({ event: "ai_generation_scan_failed", message: error instanceof Error ? error.message : String(error) }));
+      });
+    };
+    processAiGenerations();
+    const aiGenerationTimer = setInterval(processAiGenerations, 5_000);
+    aiGenerationTimer.unref();
+    void aiGenerations.cleanupExpired().catch(() => undefined);
+    const aiCleanupTimer = setInterval(() => {
+      void aiGenerations.cleanupExpired().catch(() => undefined);
+    }, Math.min(config.aiFiles.retentionMs, 60 * 60 * 1_000));
+    aiCleanupTimer.unref();
+    void textGenerations.cleanupExpired().catch(() => undefined);
+    void textGenerations.processQueued().catch(() => undefined);
+    const textGenerationTimer = setInterval(() => {
+      void textGenerations.cleanupExpired().catch(() => undefined);
+      void textGenerations.processQueued().catch(() => undefined);
+    }, Math.min(config.aiFiles.retentionMs, 60 * 1_000));
+    textGenerationTimer.unref();
+    /**
+     * 虚拟支付发货补单轮询。
+     *
+     * 官方把「发货推送」与「发货轮询」并列为两条必选支路：推送会丢、success 回调会丢，
+     * 少了轮询就等于默许「用户扣了款、次数没到账」且系统毫无告警。
+     * 启动先跑一次是为了重启期间丢掉的推送能被立刻捞回来，而不是白等一个间隔。
+     *
+     * 单笔异常由 reconcilePendingOrders 记录后继续；批次级异常在这里记录，避免静默停摆。
+     */
+    const payments = new PostgresPaymentService(
+      pool,
+      virtualPayGateway,
+      paymentGateway,
+      config.auth.openidHashSecret,
+      () => new Date(),
+      config.virtualPayReconcile,
+      config.newUserPackageGateEnabled,
+    );
+    const reconcilePayments = (): void => {
+      void payments.reconcilePendingOrders().catch((error: unknown) => {
+        console.error(JSON.stringify({
+          event: "virtual_payment_reconcile_failed",
+          message: error instanceof Error ? error.message : String(error),
+        }));
+      });
+    };
+    reconcilePayments();
+    const paymentReconcileTimer = setInterval(reconcilePayments, config.virtualPayReconcile.intervalMs);
+    paymentReconcileTimer.unref();
     const http = await startHttpServer(
       createHttpApplication({
         database,
@@ -50,19 +170,32 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
           config.auth,
         ),
         authenticator: new BearerTokenAuthenticator(authRepository),
-        users: new PostgresUserProfileService(pool, config.quota),
+        users,
         avatars,
         avatarMaximumBytes: config.avatars.maximumBytes,
-        files: new PostgresFileAssetService(pool, covers),
+        files: new PostgresFileAssetService(pool, covers, () => new Date(), aiFiles),
         covers,
+        aiFiles,
         works: new PostgresWorkService(pool),
         quotaDownloads: new PostgresQuotaDownloadService(pool, config.quota),
-        payments: new PostgresPaymentService(
-          pool,
-          paymentGateway,
-          config.auth.openidHashSecret,
-        ),
+        payments,
         coverMaximumBytes: config.covers.maximumBytes,
+        aiFileMaximumBytes: config.aiFiles.maximumBytes,
+        aiRateLimiter,
+        contentSecurity,
+        contentSecurityMediaMaximumBytes: config.contentSecurity.mediaMaximumBytes,
+        virtualPayPush: config.virtualPayPush,
+        aiGenerations,
+        textGenerations,
+        capabilities: {
+          wechatPay: paymentGateway.configured,
+          aiGeneration: defaultAiProvider.configured,
+          persistentStorage: config.deployment.persistentStorageMounted,
+          httpsPublicUrls: config.covers.publicBaseUrl.startsWith("https://")
+            && config.aiFiles.publicBaseUrl.startsWith("https://"),
+          monitoringAlerts: config.deployment.monitoringAlertsConfigured,
+          contentSecurity: Boolean(config.contentSecurity.messageToken),
+        },
       }),
       config.host,
       config.port,
@@ -71,6 +204,10 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
       inspection,
       http,
       close: async () => {
+        clearInterval(aiGenerationTimer);
+        clearInterval(aiCleanupTimer);
+        clearInterval(textGenerationTimer);
+        clearInterval(paymentReconcileTimer);
         await http.close();
         await database.close();
       },

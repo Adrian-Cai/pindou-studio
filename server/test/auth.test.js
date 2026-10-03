@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { AppError } = require("../dist/shared/app-error.js");
-const { decryptOpenid, hashToken } = require("../dist/shared/identity.js");
+const { decryptOpenid, hashOpenid, hashToken } = require("../dist/shared/identity.js");
 const { AuthService } = require("../dist/modules/auth/auth-service.js");
 const { BearerTokenAuthenticator } = require("../dist/modules/auth/authenticator.js");
 
@@ -36,6 +36,23 @@ class InMemoryAuthRepository {
       userDeletedAt: null,
     };
   }
+
+  async revokeSession(tokenHash, now) {
+    const session = this.sessions.find((item) => item.tokenHash === tokenHash);
+    if (session) session.revokedAt ??= now;
+  }
+
+  async revokeUserSessions(userId, now) {
+    for (const session of this.sessions) {
+      if (session.userId === userId) session.revokedAt ??= now;
+    }
+  }
+
+  deleteAccount(openidHash) {
+    const user = this.usersByOpenidHash.get(openidHash);
+    if (user) user.deletedAt = new Date();
+    this.usersByOpenidHash.delete(openidHash);
+  }
 }
 
 const authConfig = {
@@ -48,7 +65,7 @@ test("same WeChat openid reuses the user and creates independent opaque sessions
   const repository = new InMemoryAuthRepository();
   const service = new AuthService(
     repository,
-    { async exchangeCode() { return { openid: "private-openid" }; } },
+    { async exchangeCode() { return { openid: "private-openid", sessionKey: "test-session-key" }; } },
     authConfig,
     () => fixedNow,
   );
@@ -69,11 +86,28 @@ test("same WeChat openid reuses the user and creates independent opaque sessions
   assert.equal(first.expiresAt, "2026-09-25T09:00:00.000Z");
 });
 
+test("a deleted WeChat account registers as a fresh user", async () => {
+  const repository = new InMemoryAuthRepository();
+  const service = new AuthService(
+    repository,
+    { async exchangeCode() { return { openid: "private-openid", sessionKey: "test-session-key" }; } },
+    authConfig,
+    () => fixedNow,
+  );
+
+  const first = await service.login("wx-code-1");
+  repository.deleteAccount(hashOpenid("private-openid", authConfig.openidHashSecret));
+  const second = await service.login("wx-code-2");
+
+  assert.notEqual(first.user.id, second.user.id);
+  assert.notEqual(repository.sessions[0].userId, repository.sessions[1].userId);
+});
+
 test("invalid login code is rejected before calling WeChat", async () => {
   let called = false;
   const service = new AuthService(
     new InMemoryAuthRepository(),
-    { async exchangeCode() { called = true; return { openid: "unused" }; } },
+    { async exchangeCode() { called = true; return { openid: "unused", sessionKey: "unused" }; } },
     authConfig,
   );
   await assert.rejects(() => service.login("   "), (error) => {
@@ -141,4 +175,34 @@ test("missing or malformed Bearer token is unauthorized", async () => {
   });
   await assert.rejects(() => authenticator.authenticate(undefined), (error) => error.code === "UNAUTHORIZED");
   await assert.rejects(() => authenticator.authenticate("Bearer short"), (error) => error.code === "UNAUTHORIZED");
+});
+
+test("AuthService hashes session tokens before repository revocation and repeats the request", async () => {
+  const received = [];
+  const repository = {
+    async revokeSession(...args) { received.push(args); },
+    async revokeUserSessions() {},
+  };
+  const service = new AuthService(repository, {}, authConfig, () => fixedNow);
+  const token = "opaque_token_12345678901234567890";
+
+  await service.revokeSession(token);
+  await service.revokeSession(token);
+
+  assert.deepEqual(received, [
+    [hashToken(token), fixedNow],
+    [hashToken(token), fixedNow],
+  ]);
+});
+
+test("AuthService forwards user IDs when revoking all sessions", async () => {
+  let received;
+  const service = new AuthService({
+    async revokeSession() {},
+    async revokeUserSessions(...args) { received = args; },
+  }, {}, authConfig, () => fixedNow);
+
+  await service.revokeUserSessions("usr_test");
+
+  assert.deepEqual(received, ["usr_test", fixedNow]);
 });

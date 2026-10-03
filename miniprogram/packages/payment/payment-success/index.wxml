@@ -1,0 +1,21 @@
+<page-layout title="支付结果" showMainNav selectedTab="2">
+  <view class="payment-success">
+    <view class="success-mark {{paymentState === 'failed' ? 'success-mark--failed' : paymentState === 'pending' ? 'success-mark--pending' : ''}}"><view><image src="{{paymentState === 'failed' ? '/assets/icons/iconsax/close.svg' : '/assets/icons/iconsax/check.svg'}}" mode="aspectFit" /></view></view>
+    <view wx:if="{{paymentState === 'paid'}}" class="payment-success__title">已成功购买 AI 生成次数</view>
+    <view wx:elif="{{paymentState === 'pending'}}" class="payment-success__title">支付结果确认中</view>
+    <view wx:elif="{{paymentState === 'failed'}}" class="payment-success__title">支付结果待确认</view>
+    <view wx:else class="payment-success__title">正在确认支付结果</view>
+    <view wx:if="{{paymentMessage}}" class="payment-success__message">{{paymentMessage}}</view>
+
+    <view class="payment-detail ui-card">
+      <view><text>购买内容：</text><text class="payment-detail__green">{{packageLabel}}</text></view>
+      <view><text>支付金额：</text><text>¥ {{amount}}</text></view>
+      <view><text>当前可用 AI 生成次数：</text><text class="payment-detail__quota">{{quota}} <text>次</text></text></view>
+    </view>
+
+    <view class="success-actions">
+      <view class="success-actions__secondary" bindtap="returnProfile">返回我的</view>
+      <button class="button-primary" style="width: 100%;" bindtap="returnHome">返回首页</button>
+    </view>
+  </view>
+</page-layout>

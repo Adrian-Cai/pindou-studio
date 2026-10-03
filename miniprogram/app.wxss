@@ -1,4 +1,39 @@
 page {
+  /* ── 语义设计 token：后续页面样式只引用这些语义值 ── */
+  --font-heading: "Inter Tight", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --text: #15151a;
+  --muted: #626573;
+  --strong: #12b466;
+  --track: #e9eaf0;
+  --background: #f8f9fb;
+  --surface: #ffffff;
+  --color-primary-surface: #f4fcf8;
+  --color-info-soft: #edf4ff;
+  --color-warning-soft: #fff8e8;
+  --color-purple-soft: #f4efff;
+  --color-purple: #7651d6;
+
+  --font-size-h1: 44rpx;
+  --line-height-h1: 56rpx;
+  --letter-spacing-h1: -1.4rpx;
+  --font-size-h2: 38rpx;
+  --line-height-h2: 48rpx;
+  --letter-spacing-h2: 1.2rpx;
+  --font-size-body: 29rpx;
+  --line-height-body: 36rpx;
+  --letter-spacing-body: 0.6rpx;
+
+  --radius-card-small: 24rpx;
+  --radius-card-large: 36rpx;
+  --shadow-card: 0 8rpx 24rpx rgba(0, 0, 0, 0.05), 0 2rpx 4rpx rgba(0, 0, 0, 0.1);
+  --shadow-ghost: inset 0 6rpx 12rpx rgba(255, 255, 255, 0.6), var(--shadow-card);
+  --shadow-primary: 0 14rpx 32rpx rgba(18, 180, 102, 0.2);
+  --shadow-success: 0 4rpx 16rpx rgba(18, 180, 102, 0.35);
+  --shadow-sheet: 0 -8rpx 32rpx rgba(0, 0, 0, 0.08);
+  --strong-overlay: rgba(18, 180, 102, 0.05);
+  --transition-press: transform 150ms ease, opacity 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+
   --color-primary: #12b466;
   --color-primary-hover: #10a95f;
   --color-primary-pressed: #0f9f5b;
@@ -6,17 +41,19 @@ page {
   --color-primary-gradient-end: #14b668;
   --color-danger: #e5484d;
   --color-danger-soft: #fff1f1;
-  --color-bg: #f8f9fb;
-  --color-surface: #ffffff;
+  --color-bg: var(--background);
   --color-surface-muted: #f5f6f8;
   --color-preview-bg: #f4fcf8;
-  --color-text: #15151a;
-  --color-text-secondary: #626573;
+  /* 兼容别名：页面迁移完成后再删除旧命名 */
+  --color-text: var(--text);
+  --color-text-secondary: var(--muted);
   --color-text-tertiary: #9699a8;
-  --color-border: #e9eaf0;
+  --color-border: var(--track);
   --color-disabled: #d8dae2;
-  --color-muted: var(--color-text-secondary);
-  --color-line: var(--color-border);
+  --color-muted: var(--muted);
+  --color-line: var(--track);
+  --color-background: var(--background);
+  --color-surface: var(--surface);
   --color-brand: #12b466;
   --color-brand-soft: #ecfaf3;
   --color-success: #12b466;
@@ -34,22 +71,27 @@ page {
   --space-2: 16rpx;
   --space-3: 24rpx;
   --space-4: 32rpx;
-  --space-5: 40rpx;
-  --space-6: 48rpx;
-  --space-8: 64rpx;
+  --space-5: 48rpx;
+  --space-6: 64rpx;
+  --space-7: 96rpx;
+  --space-8: 128rpx;
   --page-padding: 40rpx;
   --page-padding-compact: 32rpx;
   --card-padding: 32rpx;
   --card-padding-compact: 24rpx;
   --safe-bottom: 32rpx;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-size: 28rpx;
+  background: var(--background);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--font-size-body);
+  font-weight: 400;
+  line-height: var(--line-height-body);
+  letter-spacing: var(--letter-spacing-body);
 }
 
 button {
   margin: 0;
+  font-family: var(--font-heading);
 }
 
 button::after {
@@ -58,8 +100,8 @@ button::after {
 
 .page {
   box-sizing: border-box;
-  min-height: 100vh;
-  padding: 0 32rpx calc(156rpx + env(safe-area-inset-bottom));
+  min-height: auto;
+  padding: 0 32rpx;
 }
 
 .page--stack {
@@ -69,10 +111,10 @@ button::after {
 .card {
   box-sizing: border-box;
   padding: 32rpx;
-  border: 1rpx solid var(--color-line);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  box-shadow: 0 8rpx 32rpx rgba(42, 35, 78, 0.06);
+  border: 0;
+  border-radius: var(--radius-card-large);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 .button-primary,
@@ -84,20 +126,22 @@ button::after {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-control);
+  font-family: var(--font-heading);
   font-size: 30rpx;
   font-weight: 600;
   line-height: 1;
+  transition: var(--transition-press);
 }
 
 .button-primary {
   background: linear-gradient(90deg, var(--color-primary), var(--color-primary-gradient-end));
   color: #fff;
-  box-shadow: 0 14rpx 32rpx rgba(18, 180, 102, 0.2);
+  box-shadow: var(--shadow-primary);
 }
 
 .button-primary:active {
   background: var(--color-primary-pressed);
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 .button-primary[disabled] {
@@ -107,22 +151,74 @@ button::after {
 }
 
 .button-secondary {
-  border: 1rpx solid var(--color-line);
-  background: #fff;
+  border: 0;
+  background: transparent;
   color: var(--color-text);
+  box-shadow: var(--shadow-ghost);
 }
 
 .button-secondary:active {
-  background: var(--color-primary-soft);
+  background: var(--strong-overlay);
+  transform: scale(0.97);
 }
 
 .section-title {
-  font-size: 30rpx;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-h2);
   font-weight: 650;
+  line-height: var(--line-height-h2);
+  letter-spacing: var(--letter-spacing-h2);
 }
 
 .muted {
   color: var(--color-muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  page {
+    --text: #f3f6fa;
+    --muted: #b4bfcc;
+    --strong: #39d98a;
+    --track: #35414d;
+    --background: #101419;
+    --surface: #1a2028;
+    --color-primary: #39d98a;
+    --color-primary-hover: #57e49d;
+    --color-primary-pressed: #25bc73;
+    --color-primary-soft: #153827;
+    --color-primary-gradient-end: #45df98;
+    --color-primary-surface: #173b2a;
+    --color-danger: #ff8589;
+    --color-danger-soft: #3a2025;
+    --color-bg: var(--background);
+    --color-surface-muted: #232b35;
+    --color-preview-bg: #142e21;
+    --color-text: var(--text);
+    --color-text-secondary: var(--muted);
+    --color-text-tertiary: #91a0ae;
+    --color-border: var(--track);
+    --color-disabled: #465361;
+    --color-muted: var(--muted);
+    --color-line: var(--track);
+    --color-background: var(--background);
+    --color-surface: var(--surface);
+    --color-brand: var(--strong);
+    --color-brand-soft: var(--color-primary-soft);
+    --color-success: var(--strong);
+    --color-success-soft: #153827;
+    --color-info: #82b9ff;
+    --color-info-soft: #172d48;
+    --color-warning: #ffd166;
+    --color-warning-soft: #3c3015;
+    --color-purple-soft: #2d2450;
+    --color-purple: #c0b5ff;
+    --shadow-card: 0 8rpx 24rpx rgba(0, 0, 0, 0.14), 0 2rpx 4rpx rgba(0, 0, 0, 0.24);
+    --shadow-ghost: inset 0 6rpx 12rpx rgba(255, 255, 255, 0.04), var(--shadow-card);
+    --shadow-primary: 0 14rpx 32rpx rgba(57, 217, 138, 0.12);
+    --shadow-success: 0 4rpx 16rpx rgba(57, 217, 138, 0.2);
+    --shadow-sheet: 0 -8rpx 32rpx rgba(0, 0, 0, 0.24);
+    --strong-overlay: rgba(57, 217, 138, 0.05);
+  }
 }
 
 @media (max-width: 340px) {

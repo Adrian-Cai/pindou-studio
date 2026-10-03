@@ -1,0 +1,16 @@
+{
+  "name": "generate-image",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "axios": "1.20.0",
+    "wx-server-sdk": "4.0.2"
+  },
+  "overrides": {
+    "axios": "1.20.0",
+    "lodash.set": "file:./vendor/lodash.set-safe",
+    "lodash.unset": "4.18.0",
+    "tslib": "2.8.1"
+  }
+}

@@ -45,6 +45,7 @@ function dependencies(overrides = {}) {
     coverMaximumBytes: 10 * 1024 * 1024,
     covers: { async read() { return null; }, async save() { throw new Error("unused"); }, async remove() {} },
     files: { async upload() { return { id: "file_test", type: "cover", url: "https://cdn.example/cover.png", contentType: "image/png", size: PNG.length, createdAt: "2026-08-27T01:00:00.000Z" }; } },
+    contentSecurity: { async checkText() {} },
     works: {
       async create() { return summary(); },
       async update() { return summary(); },
@@ -85,6 +86,39 @@ test("cover upload authenticates and accepts only type=cover", async () => {
   });
 });
 
+test("AI input upload reuses the matching completed content-security check", async () => {
+  const calls = [];
+  await withApplication(dependencies({
+    aiFileMaximumBytes: 10 * 1024 * 1024,
+    contentSecurity: {
+      async assertMediaCheck(userId, checkId, buffer) {
+        calls.push({ method: "reuse", userId, checkId, buffer });
+      },
+      async checkMedia() { throw new Error("must not repeat content security"); },
+    },
+    files: {
+      async upload(userId, input) {
+        calls.push({ method: "upload", userId, input });
+        return { id: "file_ai", type: "ai_input", url: "/api/media/ai/input.png", contentType: "image/png", size: PNG.length, createdAt: "2026-08-27T01:00:00.000Z" };
+      },
+    },
+  }), async (baseUrl) => {
+    const form = new FormData();
+    form.append("file", new Blob([PNG], { type: "image/png" }), "client.png");
+    form.append("type", "ai_input");
+    form.append("securityCheckId", "sec_0123456789abcdefghij");
+    const response = await fetch(`${baseUrl}/api/files/upload`, { method: "POST", headers: { authorization: "Bearer token" }, body: form });
+    const body = await response.json();
+
+    assert.equal(response.status, 201, JSON.stringify(body));
+    assert.equal(body.file.id, "file_ai");
+    assert.deepEqual(calls.map((call) => call.method), ["reuse", "upload"]);
+    assert.equal(calls[0].userId, "usr_current");
+    assert.equal(calls[0].checkId, "sec_0123456789abcdefghij");
+    assert.deepEqual(calls[0].buffer, PNG);
+  });
+});
+
 test("GET /api/media/covers serves an uploaded cover path", async () => {
   await withApplication(dependencies({
     covers: {
@@ -114,6 +148,67 @@ test("work creation rejects client-owned URLs/statistics and requires idempotenc
 
     const missingKey = await fetch(`${baseUrl}/api/works`, { method: "POST", headers: { authorization: "Bearer token", "content-type": "application/json" }, body: JSON.stringify({ coverFileId: "file_test", pattern: pattern() }) });
     assert.equal(missingKey.status, 400);
+  });
+});
+
+test("work title writes fail closed when content security is unavailable", async () => {
+  let writes = 0;
+  await withApplication(dependencies({
+    contentSecurity: undefined,
+    works: {
+      async create() { writes += 1; return summary(); },
+      async update() { writes += 1; return summary(); },
+    },
+  }), async (baseUrl) => {
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    const createResponse = await fetch(`${baseUrl}/api/works`, {
+      method: "POST",
+      headers: { ...headers, "Idempotency-Key": "security-unavailable" },
+      body: JSON.stringify({ title: "作品", coverFileId: "file_test", pattern: pattern() }),
+    });
+    const updateResponse = await fetch(`${baseUrl}/api/works/work_test`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ title: "新名称" }),
+    });
+
+    assert.equal(createResponse.status, 503);
+    assert.equal(updateResponse.status, 503);
+    assert.equal(writes, 0);
+  });
+});
+
+test("risky work titles are rejected before create or update", async () => {
+  let checks = 0;
+  let writes = 0;
+  await withApplication(dependencies({
+    contentSecurity: {
+      async checkText() {
+        checks += 1;
+        throw new AppError(400, "CONTENT_RISKY", "你发布的内容含违规信息，请修改后重试");
+      },
+    },
+    works: {
+      async create() { writes += 1; return summary(); },
+      async update() { writes += 1; return summary(); },
+    },
+  }), async (baseUrl) => {
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    const createResponse = await fetch(`${baseUrl}/api/works`, {
+      method: "POST",
+      headers: { ...headers, "Idempotency-Key": "risky-title-create" },
+      body: JSON.stringify({ title: "违规名称", coverFileId: "file_test", pattern: pattern() }),
+    });
+    const updateResponse = await fetch(`${baseUrl}/api/works/work_test`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ title: "违规改名" }),
+    });
+
+    assert.equal(createResponse.status, 400);
+    assert.equal(updateResponse.status, 400);
+    assert.equal(checks, 2);
+    assert.equal(writes, 0);
   });
 });
 
@@ -220,9 +315,14 @@ test("favorite update uses the authenticated user and validates the exact boolea
   });
 });
 
-test("favorite list accepts query pagination and returns summaries without pattern", async () => {
+test("favorite list accepts query pagination and returns favorite timestamps without pattern", async () => {
   let received;
-  const favoriteSummary = { ...summary(), isFavorite: true, pattern: pattern() };
+  const favoriteSummary = {
+    ...summary(),
+    isFavorite: true,
+    favoritedAt: "2026-09-02T03:00:00.000Z",
+    pattern: pattern(),
+  };
   const works = {
     ...dependencies().works,
     async listFavorites(options) {
@@ -239,6 +339,7 @@ test("favorite list accepts query pagination and returns summaries without patte
     assert.equal(response.status, 200, JSON.stringify(body));
     assert.deepEqual(received, { userId: "usr_current", query: "猫", page: 2, pageSize: 1 });
     assert.equal(body.items[0].isFavorite, true);
+    assert.equal(body.items[0].favoritedAt, "2026-09-02T03:00:00.000Z");
     assert.equal(body.items[0].pattern, undefined);
 
     const unsupported = await fetch(`${baseUrl}/api/favorites?status=completed`, {

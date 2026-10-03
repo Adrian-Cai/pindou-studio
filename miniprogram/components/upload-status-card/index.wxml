@@ -1,0 +1,99 @@
+<view class="upload-status-card upload-status-card--{{uploadStatus}} {{uploadStatus === 'empty' ? 'upload-status-card--empty' : 'upload-status-card--has-image'}} {{uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'success' ? 'upload-status-card--horizontal' : ''}}">
+  <view wx:if="{{uploadStatus !== 'empty'}}" class="upload-status-card__layout">
+    <view
+      class="upload-status-card__preview-wrap {{uploadStatus === 'rejected' ? 'upload-status-card__preview-wrap--blocked' : ''}}"
+    >
+      <image
+        wx:if="{{sourceImagePath}}"
+        class="upload-status-card__preview"
+        src="{{sourceImagePath}}"
+        mode="aspectFit"
+        binderror="handlePreviewError"
+      />
+      <view wx:else class="upload-status-card__preview-placeholder" aria-label="图片占位">
+        <image class="upload-status-card__preview-placeholder-icon" src="/assets/icons/image-upload.svg" mode="aspectFit" />
+      </view>
+      <button
+        class="upload-status-card__remove"
+        bindtap="handleRemoveImage"
+        disabled="{{choosing}}"
+        aria-label="移除图片"
+      >
+        <view class="upload-status-card__remove-symbol" aria-hidden="true">×</view>
+      </button>
+      <view wx:if="{{uploadStatus === 'rejected'}}" class="upload-status-card__preview-mask">
+        <view class="upload-status-card__blocked-icon" aria-hidden="true"></view>
+        <text>图片已被屏蔽</text>
+      </view>
+    </view>
+
+    <view class="upload-status-card__state-content upload-status-card__state-content--{{uploadStatus}}" aria-live="polite">
+      <block wx:if="{{uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'success'}}">
+        <view class="upload-status-card__result-content">
+          <view wx:if="{{uploadStatus === 'uploading'}}" class="upload-status-card__uploading-content">
+            <view class="upload-status-card__upload-heading">
+              <view class="upload-status-card__title">正在上传图片</view>
+              <view wx:if="{{uploadProgress >= 0}}" class="upload-status-card__progress-value">{{uploadProgress}}%</view>
+            </view>
+            <view class="upload-status-card__progress" aria-label="图片上传进度">
+              <view wx:if="{{uploadProgress >= 0}}" class="upload-status-card__progress-bar" style="width: {{uploadProgress}}%;"></view>
+              <view wx:else class="upload-status-card__progress-bar upload-status-card__progress-bar--indeterminate"></view>
+            </view>
+            <view class="upload-status-card__description">请稍候，不要关闭页面</view>
+          </view>
+
+          <view wx:else class="upload-status-card__message-carousel" aria-live="polite" aria-atomic="true">
+            <block wx:for="{{carouselMessages}}" wx:key="title">
+              <view wx:if="{{messageIndex === index}}" class="upload-status-card__message">
+                <view class="upload-status-card__message-icon" aria-hidden="true">
+                  <view wx:if="{{uploadStatus === 'checking'}}" class="upload-status-card__status-icon upload-status-card__status-icon--spinner"></view>
+                  <view wx:elif="{{index === 0}}" class="upload-status-card__message-check"></view>
+                  <image wx:else src="{{item.icon}}" mode="aspectFit" />
+                </view>
+                <view class="upload-status-card__message-copy">
+                  <view class="upload-status-card__message-title">{{item.title}}</view>
+                  <view class="upload-status-card__message-description">{{item.description}}</view>
+                </view>
+              </view>
+            </block>
+          </view>
+
+          <button class="upload-status-card__replace" bindtap="handleChooseImage" disabled="{{choosing || uploadStatus === 'uploading' || uploadStatus === 'checking'}}">
+            <image class="upload-status-card__replace-icon" src="/assets/icons/iconsax/refresh.svg" mode="aspectFit" aria-hidden="true" />
+            <text>更换图片</text>
+          </button>
+        </view>
+      </block>
+
+      <block wx:elif="{{uploadStatus === 'rejected'}}">
+        <view class="upload-status-card__title-row">
+          <view class="upload-status-card__status-icon upload-status-card__status-icon--warning" aria-hidden="true"></view>
+          <view class="upload-status-card__title">图片暂时无法处理</view>
+        </view>
+        <view class="upload-status-card__description">未通过内容安全检测，请更换图片</view>
+      </block>
+
+      <block wx:elif="{{uploadStatus === 'error'}}">
+        <view class="upload-status-card__title-row">
+          <view class="upload-status-card__status-icon upload-status-card__status-icon--warning" aria-hidden="true"></view>
+          <view class="upload-status-card__title">处理失败</view>
+        </view>
+        <view class="upload-status-card__description">网络异常或服务繁忙，请稍后重试</view>
+      </block>
+
+    </view>
+  </view>
+
+  <button
+    wx:else
+    class="upload-status-card__empty{{choosing ? ' upload-status-card__empty--disabled' : ''}}"
+    bindtap="handleChooseImage"
+    disabled="{{choosing}}"
+    aria-label="选择一张图片"
+  >
+    <image class="upload-status-card__empty-icon" src="/assets/icons/upload-cloud.svg" mode="aspectFit" />
+    <view class="upload-status-card__empty-title">上传图片</view>
+    <view class="upload-status-card__empty-hint">支持 JPG / PNG / WEBP 格式</view>
+    <view class="upload-status-card__empty-description">建议图片清晰，效果更佳</view>
+  </button>
+</view>

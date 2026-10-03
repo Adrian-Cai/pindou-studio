@@ -74,7 +74,7 @@ export class FileSystemCoverStorage implements CoverStorage {
       await unlink(join(this.directory, filename));
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        // 数据库元数据已经提交时，清理失败交给后续存储清理任务。
+        // 数据库元数据已经提交时，清理失败交给后续存储清理任务
       }
     }
   }

@@ -1,15 +1,15 @@
 # 一起拼豆吧（Pindou Studio）
 
-一个面向拼豆爱好者的微信小程序：上传图片后，将图片转换为可编辑的拼豆图案，并进一步生成成品图、材料清单、施工图和色板参考，帮助用户从「一张图片」完成到「可以实际照着制作的拼豆方案」。
+一个面向拼豆爱好者的微信小程序：上传图片后，将图片转换为可编辑的拼豆图案，并进一步生成成品图、材料清单、施工图和色板参考，帮助用户从「一张图片」完成到「可以实际照着制作的拼豆方案」
 
-当前项目版本：`0.19.0`
+当前项目版本：`0.34.1`
 
 ## 项目定位
 
 项目当前围绕两条生成路线设计：
 
-- **标准模式**：本地图片算法生成拼豆图，当前主要可用能力。
-- **AI 精致模式**：面向更高质量的 AI 辅助生成体验，当前保留产品入口和 UI 设计，实际 AI 生成能力尚未正式接入。
+- **标准模式**：本地图片算法生成拼豆图，当前主要可用能力
+- **AI 模式**：新任务由服务端通过 CloudBase 调用混元 `HY-Image-v3.0-I2I-ToB-v1.0.1`，完成结果持久化后扣除额度；小程序端继续使用项目任务接口
 
 核心目标不是单纯做图片像素化，而是形成完整的拼豆制作流程：
 
@@ -19,21 +19,21 @@
 
 ### 1. 图片生成与拼豆算法
 
-- 支持从相册选择图片并生成拼豆图案。
-- Standard Pattern Engine 已进入 V2 Phase 2。
-- 图片先进行中心裁剪，再缩放到目标网格的 4× 中间 Canvas。
-- 使用 Linear RGB Area Average 对每个区域采样，降低直接缩小造成的信息损失。
-- 透明像素使用 Alpha 权重处理，并保留透明阈值规则。
-- 保持现有 Pattern Schema、Palette、ColorCode 和业务接口稳定。
+- 支持从相册选择图片并生成拼豆图案
+- Standard Pattern Engine V2 已完成 Phase 2～Phase 6 的算法实现与自动化回归
+- 图片先进行中心裁剪，再缩放到目标网格的 4× 中间 Canvas
+- 使用 Linear RGB Area Average 对每个区域采样，降低直接缩小造成的信息损失
+- 透明像素使用 Alpha 权重处理，并保留透明阈值规则
+- 保持现有 Pattern Schema、Palette、ColorCode 和业务接口稳定
 
 ### 2. 拼豆图编辑器
 
-- 支持画笔、吸管、填充、橡皮擦。
-- 支持撤销、重做。
-- 支持双指缩放和平移。
-- 最大缩放支持到 300%。
-- 支持精准选格、目标格高亮和 7×7 放大镜辅助编辑。
-- 编辑工具统一基于逻辑 Grid 工作，缩放和平移不会改变底层图案数据。
+- 支持画笔、吸管、填充、橡皮擦
+- 支持撤销、重做
+- 支持双指缩放和平移
+- 最大缩放支持到 300%
+- 支持精准选格、目标格高亮和 7×7 放大镜辅助编辑
+- 编辑工具统一基于逻辑 Grid 工作，缩放和平移不会改变底层图案数据
 
 ### 3. 作品结果
 
@@ -44,28 +44,36 @@
 - 施工图
 - 色板参考
 
-四个 Tab 使用统一下载交互，并包含确认、处理中、成功等状态。
+四个 Tab 使用统一下载交互，并包含确认、处理中、成功等状态
 
-下载成功写入设备后才会消耗下载额度；取消、权限拒绝或生成失败不会扣减。
+下载成功写入设备后才会消耗下载额度；取消、权限拒绝或生成失败不会扣减
 
 ### 4. 账号与作品数据
 
-- 游客作品可保存在本地。
-- 登录用户作品接入自建后端。
-- 支持作品封面上传、保存、列表、详情恢复、编辑更新、改名和删除。
-- 用户登录或恢复登录后，可自动将本地作品迁移到云端。
-- 迁移失败时保留本地数据，避免作品丢失。
-- 本地作品迁移后会同步修正收藏和下载记录关联的作品 ID。
+- 游客作品可保存在本地
+- 登录用户作品接入自建后端，网络不可用时暂存本机并在恢复后继续同步
+- 支持作品封面上传、保存、列表、详情恢复、编辑更新、改名和删除
+- 登录后新作品默认保存云端；历史游客作品在登录成功后自动迁移到当前账号
+- 迁移失败时保留本地数据，避免作品丢失
+- 收藏已接入云端读写，并与作品列表、结果页和个人中心保持同步
+- 本地作品迁移后会同步修正收藏和下载记录关联的作品 ID
 
-### 5. 下载额度与下载记录
+### 5. 内容安全审核
+
+- 首次上传图片或本地作品改名时自动建立微信登录会话
+- 图片上传经过同步图片安全拦截，并提交微信 `mediaCheckAsync` 接收异步审核结果
+- 作品名称在客户端和服务端保存前均经过微信文本内容安全检测
+- 原始审核图片只在服务端临时保存，审核完成或过期后清理
+
+### 6. 下载额度与下载记录
 
 后端已提供：
 
-- `GET /api/quota/me`：获取每日免费额度、今日使用量、购买额度、剩余额度和下次重置时间。
-- `GET /api/downloads`：获取下载历史。
-- `POST /api/downloads`：记录一次成功下载并执行额度扣减。
+- `GET /api/quota/me`：获取每日免费额度、今日使用量、购买额度、剩余额度和下次重置时间
+- `GET /api/downloads`：获取下载历史
+- `POST /api/downloads`：记录一次成功下载并执行额度扣减
 
-下载额度按 `Asia/Shanghai` 自然日计算，数据库时间统一保存为 UTC。
+下载额度按 `Asia/Shanghai` 自然日计算，数据库时间统一保存为 UTC
 
 扣减过程在 PostgreSQL 事务中完成，并包含：
 
@@ -78,7 +86,15 @@
 - 购买额度兜底
 - 额度不足完整回滚
 
-### 6. 小程序包体优化
+### 7. AI 额度、套餐与订单
+
+- 个人页和充值页从服务端读取 AI 生成次数套餐
+- 用户资料和额度接口分别返回标准下载额度与 AI 生成额度
+- 支持查看当前账号的 AI 生成次数订单和订单状态
+- 后端已提供套餐、订单与支付能力：`GET /api/packages` 获取套餐，`GET /api/orders` 获取当前账号订单，`POST /api/payments/create` 创建支付订单，`POST /api/payments/notify` 验签并处理微信支付回调、发放额度
+- 小程序端暂未接入正式微信支付调用；商户号、正式定价和付费协议配置完成前不会产生实际扣费
+
+### 8. 小程序包体优化
 
 当前主包只保留三个核心 Tab 页面：
 
@@ -86,7 +102,7 @@
 - 我的作品
 - 我的
 
-编辑器、结果页、收藏、下载记录、帮助、反馈、隐私、关于、充值等二级页面已经迁移到分包，降低主包体积。
+编辑器、结果页、收藏、下载记录、帮助、反馈、隐私、关于、充值、订单、账号和资料编辑等二级页面已经迁移到分包，降低主包体积
 
 ## 页面结构
 
@@ -96,18 +112,16 @@
 - `pages/projects/index`：我的作品
 - `pages/profile/index`：我的
 
-### 分包 `pages-sub`
+### 分包 `packages`
 
-- `pages-sub/editor/index`：拼豆图编辑器
-- `pages-sub/result/index`：作品结果
-- `pages-sub/favorites/index`：我的收藏
-- `pages-sub/downloads/index`：下载记录
-- `pages-sub/help/index`：使用帮助
-- `pages-sub/feedback/index`：意见反馈
-- `pages-sub/privacy/index`：隐私设置
-- `pages-sub/about/index`：关于我们
-- `pages-sub/recharge/index`：下载次数 / 额度相关页面
-- `pages-sub/payment-success/index`：支付成功展示
+- `packages/editor/index`：拼豆图编辑器
+- `packages/ai-generation/index`：AI 生成任务状态、恢复和失败重试
+- `packages/result/index`：作品结果及内部下载组件
+- `packages/account/index`：账号、收藏、帮助、隐私和设置
+- `packages/payment/recharge/index`：AI 生成次数充值
+- `packages/payment/orders/index`：AI 生成次数订单
+- `packages/payment/payment-success/index`：支付结果展示
+- `packages/download/index`：下载记录
 
 ## 技术架构
 
@@ -141,8 +155,12 @@
 - 登录用户作品数据
 - 作品封面上传
 - 本地作品云端迁移
+- 收藏关系与收藏列表
 - 用户下载额度
 - 下载记录
+- AI 生成任务、文件和额度
+- 套餐、订单与微信支付回调
+- 内容安全审核
 - 幂等与并发扣减
 
 ## 目录结构
@@ -155,7 +173,7 @@ pindou-studio/
 │   ├── config/              # 产品常量与设计配置
 │   ├── models/              # 领域类型
 │   ├── pages/               # 主包页面
-│   ├── pages-sub/           # 分包页面
+│   ├── packages/             # 编辑器、AI、结果、账户、支付和下载分包
 │   ├── services/            # 微信 API / 后端接口封装
 │   ├── store/               # 全局轻量状态
 │   └── utils/               # 工具函数
@@ -167,12 +185,14 @@ pindou-studio/
 └── package.json
 ```
 
+完整文档分类与阅读入口见 [`docs/README.md`](docs/README.md)
+
 ## 本地开发
 
 ### 小程序
 
-1. 使用微信开发者工具导入仓库根目录。
-2. `project.config.json` 会指向 `miniprogram/`。
+1. 使用微信开发者工具导入仓库根目录
+2. `project.config.json` 会指向 `miniprogram/`
 3. 安装开发依赖：
 
 ```bash
@@ -191,7 +211,9 @@ npm run typecheck
 npm run test:pattern
 ```
 
-6. 在微信开发者工具中编译、预览和真机验证。
+6. 在微信开发者工具中编译、预览和真机验证
+
+小程序环境地址由 `miniprogram/config/` 中的环境配置决定；本地 `develop` 环境默认请求 `http://127.0.0.1:4000`。
 
 ### 后端
 
@@ -202,28 +224,31 @@ npm install
 npm run typecheck
 npm test
 npm run build
+npm start
 ```
+
+本地开发后端统一监听 `127.0.0.1:4000`，健康检查地址为 `http://127.0.0.1:4000/health`；微信开发者工具的 `develop` 环境也使用该地址
 
 ## 开发规范
 
 开始修改代码前必须先阅读：
 
 - `AGENTS.md`：仓库级 Agent 与开发流程规则
-- `docs/CODE_RULES.md`：代码规范
-- `docs/UI_RULES.md`：UI、导航栏、安全区与滚动规范
-- `docs/MINI_PROGRAM_RULES.md`：微信小程序专项规范
-- `docs/PRODUCT_FLOW.md`：产品业务流程
-- `docs/CHANGELOG.md`：版本变更记录
+- `docs/development/CODE_RULES.md`：代码规范
+- `docs/frontend/UI_RULES.md`：UI、导航栏、安全区与滚动规范
+- `docs/frontend/MINI_PROGRAM_RULES.md`：微信小程序专项规范
+- `docs/product/PRODUCT_FLOW.md`：产品业务流程
+- `docs/releases/CHANGELOG.md`：版本变更记录
 
 核心原则：
 
-- 设计稿优先，不允许 AI 自行重新设计页面。
-- 优先复用已有组件、services、utils 和设计 token。
-- 不为了未来需求提前抽象。
-- 不修改无关代码。
-- TypeScript 必须通过类型检查。
-- 任何代码文件不得超过 800 行。
-- Bug 修复必须定位根因并检查调用方。
+- 设计稿优先，不允许 AI 自行重新设计页面
+- 优先复用已有组件、services、utils 和设计 token
+- 不为了未来需求提前抽象
+- 不修改无关代码
+- TypeScript 必须通过类型检查
+- 任何代码文件不得超过 800 行
+- Bug 修复必须定位根因并检查调用方
 
 ## 提交前检查
 
@@ -237,27 +262,26 @@ npm run build
 .agents/skills/ponytail-review/SKILL.md
 ```
 
-它主要用于发现过度设计、无必要抽象、重复造轮子、可以使用标准库或平台原生能力替代的代码，以及可以直接删除或缩短的实现。
+它主要用于发现过度设计、无必要抽象、重复造轮子、可以使用标准库或平台原生能力替代的代码，以及可以直接删除或缩短的实现
 
 ## 当前仍在推进
 
 以下能力仍属于后续阶段，不应在当前代码中伪造已完成状态：
 
-- AI 精致模式的真实 AI 图像生成链路
-- 支付 / 购买额度完整闭环
-- 收藏数据云端同步
+- AI 模式的小程序真实生产链路
+- 微信支付前端调用与商户生产配置
 - 意见反馈服务端提交闭环
 - Standard Pattern Engine 后续算法阶段与质量优化
 
-具体进展以 `docs/CHANGELOG.md` 和实际代码为准。
+具体进展以 `docs/releases/CHANGELOG.md` 和实际代码为准
 
 ## UI 资源约定
 
-- 原始设计稿和对比资料放在 `docs/ui/`，不进入小程序运行包体。
-- 页面级图片放在 `miniprogram/assets/images/<page>/`。
-- 多页面复用图标放在 `miniprogram/assets/icons/`。
-- 文件名使用小写英文和短横线，例如 `empty-projects.webp`。
+- 原始设计稿和对比资料放在 `docs/ui/`，不进入小程序运行包体
+- 页面级图片放在 `miniprogram/assets/images/<page>/`
+- 多页面复用图标放在 `miniprogram/assets/icons/`
+- 文件名使用小写英文和短横线，例如 `empty-projects.webp`
 
 ## Version
 
-当前仓库版本：`0.19.0`
+当前仓库版本：`0.33.0`

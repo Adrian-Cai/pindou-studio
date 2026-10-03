@@ -8,7 +8,7 @@ const config = {
   timeoutMs: 1000,
 };
 
-test("official WeChat client sends code2Session parameters and returns only openid", async () => {
+test("official WeChat client sends code2Session parameters and returns openid with session key", async () => {
   let requestUrl;
   const client = new OfficialWeChatLoginClient(config, async (url) => {
     requestUrl = new URL(url);
@@ -18,7 +18,12 @@ test("official WeChat client sends code2Session parameters and returns only open
     });
   });
 
-  assert.deepEqual(await client.exchangeCode("wx-code"), { openid: "openid-value" });
+  // sessionKey 必须一起返回：虚拟支付的用户态签名 signature = HMAC-SHA256(sessionKey, signData)
+  // 依赖它，上层据此加密落库。这里只断言形状，不打印值（泄露等于他人可伪造该用户支付签名）
+  assert.deepEqual(await client.exchangeCode("wx-code"), {
+    openid: "openid-value",
+    sessionKey: "session-key-value",
+  });
   assert.equal(requestUrl.pathname, "/sns/jscode2session");
   assert.equal(requestUrl.searchParams.get("appid"), config.appId);
   assert.equal(requestUrl.searchParams.get("js_code"), "wx-code");

@@ -1,6 +1,8 @@
 import { ApiConfigurationError, buildApiUrl } from '../config/api'
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+export type PublicErrorCategory = 'USER' | 'INPUT' | 'CONTENT' | 'PROVIDER' | 'INTERNAL'
+export type PublicErrorAction = 'VIEW_BENEFITS' | 'SELECT_IMAGE' | 'USE_STANDARD_MODE' | 'RETRY'
 
 interface ApiRequestOptions {
   path: string
@@ -18,6 +20,7 @@ interface ApiUploadOptions {
   formData?: Readonly<Record<string, string>>
   token?: string
   timeoutMs?: number
+  onProgress?: (progress: number) => void
 }
 
 interface ApiErrorBody {
@@ -26,6 +29,9 @@ interface ApiErrorBody {
     message?: unknown
     requestId?: unknown
     details?: unknown
+    category?: unknown
+    retryable?: unknown
+    action?: unknown
   }
 }
 
@@ -34,6 +40,9 @@ export class ApiError extends Error {
   readonly code: string
   readonly requestId: string | null
   readonly details: Readonly<Record<string, unknown>>
+  readonly category: PublicErrorCategory | null
+  readonly retryable: boolean | null
+  readonly action: PublicErrorAction | null
 
   constructor(
     message: string,
@@ -42,6 +51,9 @@ export class ApiError extends Error {
       code?: string
       requestId?: string | null
       details?: Readonly<Record<string, unknown>>
+      category?: PublicErrorCategory | null
+      retryable?: boolean | null
+      action?: PublicErrorAction | null
     } = {},
   ) {
     super(message)
@@ -50,9 +62,16 @@ export class ApiError extends Error {
     this.code = options.code ?? 'UNKNOWN_ERROR'
     this.requestId = options.requestId ?? null
     this.details = options.details ?? {}
+    this.category = options.category ?? null
+    this.retryable = options.retryable ?? null
+    this.action = options.action ?? null
   }
 }
 
+/**
+ * 统一封装 wx.request：2xx 原样返回业务数据，其他状态转换为 ApiError，
+ * 让页面只处理稳定的 code/message/requestId，而不依赖微信原始响应结构。
+ */
 export function apiRequest<T>(options: ApiRequestOptions): Promise<T> {
   let url: string
   try {
@@ -72,7 +91,7 @@ export function apiRequest<T>(options: ApiRequestOptions): Promise<T> {
 
     wx.request({
       url,
-      method: options.method ?? 'GET',
+      method: options.method as WechatMiniprogram.RequestOption['method'] ?? 'GET',
       data: options.data,
       header,
       timeout: options.timeoutMs ?? 10_000,
@@ -84,12 +103,13 @@ export function apiRequest<T>(options: ApiRequestOptions): Promise<T> {
         reject(createApiError(response.statusCode, response.data))
       },
       fail: () => {
-        reject(new ApiError('网络连接失败，请检查网络后重试。', { code: 'NETWORK_ERROR' }))
+        reject(new ApiError('网络连接失败，请检查网络后重试', { code: 'NETWORK_ERROR' }))
       },
     })
   })
 }
 
+/** 上传接口返回的是 JSON 字符串，需要先解析成功，再按 HTTP 状态决定 resolve 或 reject。 */
 export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
   let url: string
   try {
@@ -102,7 +122,7 @@ export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const header: Record<string, string> = { accept: 'application/json' }
     if (options.token) header.authorization = `Bearer ${options.token}`
-    wx.uploadFile({
+    const task = wx.uploadFile({
       url,
       filePath: options.filePath,
       name: options.name,
@@ -114,7 +134,7 @@ export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
         try {
           body = response.data ? JSON.parse(response.data) as unknown : {}
         } catch {
-          reject(new ApiError('服务返回了无法识别的数据，请稍后重试。', {
+          reject(new ApiError('服务返回了无法识别的数据，请稍后重试', {
             statusCode: response.statusCode,
             code: 'INVALID_RESPONSE',
           }))
@@ -126,21 +146,51 @@ export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
         }
         reject(createApiError(response.statusCode, body))
       },
-      fail: () => {
-        reject(new ApiError('图片上传失败，请检查网络后重试。', { code: 'NETWORK_ERROR' }))
+      fail: (error) => {
+        const rawMessage = typeof error?.errMsg === 'string' ? error.errMsg : ''
+        reject(new ApiError('图片上传失败，请检查网络后重试', {
+          code: 'NETWORK_ERROR',
+          details: rawMessage ? { rawMessage } : {},
+        }))
       },
     })
+    if (options.onProgress) {
+      task.onProgressUpdate(({ progress }) => options.onProgress?.(progress))
+    }
   })
 }
 
+/** 兼容非标准错误响应，并保留 requestId，便于根据服务端日志定位一次具体请求。 */
 function createApiError(statusCode: number, value: unknown): ApiError {
   const body = isRecord(value) ? value as ApiErrorBody : {}
   const error = body.error
   const code = typeof error?.code === 'string' ? error.code : `HTTP_${statusCode}`
-  const message = typeof error?.message === 'string' ? error.message : '服务请求失败，请稍后重试。'
+  const message = typeof error?.message === 'string' ? error.message : '服务请求失败，请稍后重试'
   const requestId = typeof error?.requestId === 'string' ? error.requestId : null
   const details = isRecord(error?.details) ? error.details : {}
-  return new ApiError(message, { statusCode, code, requestId, details })
+  const category = parseCategory(error?.category)
+  const retryable = typeof error?.retryable === 'boolean' ? error.retryable : null
+  const action = parseAction(error?.action)
+  return new ApiError(message, { statusCode, code, requestId, details, category, retryable, action })
+}
+
+function parseCategory(value: unknown): PublicErrorCategory | null {
+  return value === 'USER'
+    || value === 'INPUT'
+    || value === 'CONTENT'
+    || value === 'PROVIDER'
+    || value === 'INTERNAL'
+    ? value
+    : null
+}
+
+function parseAction(value: unknown): PublicErrorAction | null {
+  return value === 'VIEW_BENEFITS'
+    || value === 'SELECT_IMAGE'
+    || value === 'USE_STANDARD_MODE'
+    || value === 'RETRY'
+    ? value
+    : null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,3 +1,12 @@
+/**
+ * 下载额度服务：图纸下载扣次 + 下载记录读写 + 额度查询。
+ *
+ * 职责：下载这一条链路的额度扣减与记录持久化；不负责文件内容生成（由 works / files 模块处理）。
+ * 调用方：http 路由层的 /api/downloads、/api/quota 相关接口。
+ * 关键点：扣次用 pg_advisory_xact_lock + idempotencyKey 做幂等，重复提交同一 key 不会重复扣费；
+ *         扣减顺序为「写下载记录 → 写额度流水 → 回填 quota_transaction_id」，全程在同一事务内；
+ *         额度日期用上海时区，跨天重置；免费额度优先于购买额度消耗。
+ */
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import type { ServerConfig } from "../../config/env";
 import {
@@ -9,8 +18,18 @@ import {
 } from "../../shared/app-error";
 import { createEntityId } from "../../shared/identity";
 import { nextShanghaiMidnight, shanghaiDate } from "../../shared/shanghai-time";
+import { rollbackTransaction } from "../../shared/transaction";
+import {
+  availableQuota,
+  debitBucket,
+  ensureDailyGrant,
+  lockQuotaUser,
+  readQuota,
+  type QuotaValues,
+} from "../quota/quota-ledger";
 
-export type DownloadFileType = "preview" | "chart" | "materials";
+/** 可下载的文件类型：预览图 / 图纸 / 材料清单 / 色号表。 */
+export type DownloadFileType = "preview" | "chart" | "materials" | "palette";
 
 export interface QuotaResponse {
   readonly dailyFree: number;
@@ -20,6 +39,13 @@ export interface QuotaResponse {
   readonly membershipType: null;
   readonly membershipExpiresAt: null;
   readonly resetsAt: string;
+  readonly aiGeneration: {
+    readonly dailyFree: number;
+    readonly usedToday: number;
+    readonly purchased: number;
+    readonly remaining: number;
+    readonly resetsAt: string;
+  };
 }
 
 export interface DownloadRecord {
@@ -59,19 +85,6 @@ export interface CreateDownloadResponse {
   readonly quota: Pick<QuotaResponse, "remaining" | "usedToday" | "purchased">;
 }
 
-export interface QuotaDownloadService {
-  getQuota(userId: string): Promise<QuotaResponse>;
-  listDownloads(options: DownloadListOptions): Promise<DownloadListResponse>;
-  createDownload(input: CreateDownloadInput): Promise<CreateDownloadResponse>;
-}
-
-interface QuotaRow extends QueryResultRow {
-  readonly daily_free: string;
-  readonly used_today: string;
-  readonly daily_remaining: string;
-  readonly purchased: string;
-}
-
 interface DownloadRow extends QueryResultRow {
   readonly id: string;
   readonly user_id: string;
@@ -90,48 +103,39 @@ interface WorkRow extends QueryResultRow {
   readonly deleted_at: Date | string | null;
 }
 
-interface QuotaValues {
-  readonly dailyFree: number;
-  readonly usedToday: number;
-  readonly dailyRemaining: number;
-  readonly purchased: number;
-}
-
-function nonNegativeInteger(value: string | number): number {
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
-}
-
 function toIsoString(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(value);
   if (!Number.isFinite(date.getTime())) throw new Error("数据库返回了无效下载时间");
   return date.toISOString();
 }
 
-function mapQuota(row: QuotaRow | undefined): QuotaValues {
-  return {
-    dailyFree: nonNegativeInteger(row?.daily_free ?? "0"),
-    usedToday: nonNegativeInteger(row?.used_today ?? "0"),
-    dailyRemaining: nonNegativeInteger(row?.daily_remaining ?? "0"),
-    purchased: nonNegativeInteger(row?.purchased ?? "0"),
-  };
-}
-
-function quotaResponse(values: QuotaValues, currentTime: Date): QuotaResponse {
+function quotaResponse(
+  values: QuotaValues,
+  aiGeneration: QuotaValues,
+  currentTime: Date,
+): QuotaResponse {
+  const resetsAt = nextShanghaiMidnight(currentTime);
   return {
     dailyFree: values.dailyFree,
     usedToday: values.usedToday,
     purchased: values.purchased,
-    remaining: values.dailyRemaining + values.purchased,
+    remaining: availableQuota(values),
     membershipType: null,
     membershipExpiresAt: null,
-    resetsAt: nextShanghaiMidnight(currentTime),
+    resetsAt,
+    aiGeneration: {
+      dailyFree: aiGeneration.dailyFree,
+      usedToday: aiGeneration.usedToday,
+      purchased: aiGeneration.purchased,
+      remaining: availableQuota(aiGeneration),
+      resetsAt,
+    },
   };
 }
 
 function responseQuota(values: QuotaValues): CreateDownloadResponse["quota"] {
   return {
-    remaining: values.dailyRemaining + values.purchased,
+    remaining: availableQuota(values),
     usedToday: values.usedToday,
     purchased: values.purchased,
   };
@@ -139,7 +143,7 @@ function responseQuota(values: QuotaValues): CreateDownloadResponse["quota"] {
 
 function mapDownload(row: DownloadRow): DownloadRecord {
   if (
-    (row.file_type !== "preview" && row.file_type !== "chart" && row.file_type !== "materials")
+    (row.file_type !== "preview" && row.file_type !== "chart" && row.file_type !== "materials" && row.file_type !== "palette")
     || row.consumed_quota !== true
     || !row.quota_transaction_id
   ) {
@@ -154,81 +158,6 @@ function mapDownload(row: DownloadRow): DownloadRecord {
     quotaTransactionId: row.quota_transaction_id,
     downloadedAt: toIsoString(row.downloaded_at),
   };
-}
-
-async function rollback(client: PoolClient): Promise<void> {
-  try {
-    await client.query("ROLLBACK");
-  } catch {
-    // Preserve the original failure when the connection has already failed.
-  }
-}
-
-async function lockCurrentUser(client: PoolClient, userId: string): Promise<void> {
-  const result = await client.query(
-    `SELECT id
-       FROM pindou_users
-      WHERE id = $1 AND deleted_at IS NULL
-      FOR UPDATE`,
-    [userId],
-  );
-  if (!result.rows[0]) throw unauthorized("用户不存在或已失效");
-}
-
-async function ensureDailyGrant(
-  client: PoolClient,
-  userId: string,
-  quotaDate: string,
-  amount: number,
-  currentTime: Date,
-): Promise<void> {
-  if (amount <= 0) return;
-  await client.query(
-    `INSERT INTO pindou_quota_transactions (
-       id, user_id, type, amount, source, bucket, quota_date, order_id,
-       download_record_id, idempotency_key, note, created_at
-     )
-     VALUES ($1, $2, 'daily_grant', $3, 'daily_free', 'daily_free', $4::date,
-             NULL, NULL, NULL, NULL, $5)
-     ON CONFLICT DO NOTHING`,
-    [createEntityId("qt"), userId, amount, quotaDate, currentTime],
-  );
-}
-
-async function readQuota(
-  client: Pick<Pool, "query"> | Pick<PoolClient, "query">,
-  userId: string,
-  quotaDate: string,
-): Promise<QuotaValues> {
-  const result = await client.query<QuotaRow>(
-    `SELECT COALESCE(
-              SUM(amount) FILTER (
-                WHERE bucket = 'daily_free'
-                  AND quota_date = $2::date
-                  AND type = 'daily_grant'
-              ),
-              0
-            )::text AS daily_free,
-            COALESCE(
-              -SUM(amount) FILTER (
-                WHERE bucket = 'daily_free'
-                  AND quota_date = $2::date
-                  AND amount < 0
-              ),
-              0
-            )::text AS used_today,
-            COALESCE(
-              SUM(amount) FILTER (
-                WHERE bucket = 'daily_free' AND quota_date = $2::date
-              ),
-              0
-            )::text AS daily_remaining,
-            COALESCE(SUM(amount) FILTER (WHERE bucket = 'purchased'), 0)::text AS purchased
-       FROM pindou_quota_transactions
-      WHERE user_id = $1`,
-    [userId, quotaDate],
-  );
-  return mapQuota(result.rows[0]);
 }
 
 async function readDownloadByIdempotencyKey(
@@ -246,32 +175,30 @@ async function readDownloadByIdempotencyKey(
   return result.rows[0];
 }
 
-export class PostgresQuotaDownloadService implements QuotaDownloadService {
+export class PostgresQuotaDownloadService {
   public constructor(
     private readonly pool: Pool,
     private readonly quotaConfig: ServerConfig["quota"],
     private readonly now: () => Date = () => new Date(),
   ) {}
 
+  /** 返回上海自然日口径的免费额度，以及不会按天清零的付费额度。 */
   public async getQuota(userId: string): Promise<QuotaResponse> {
     const currentTime = this.now();
     const quotaDate = shanghaiDate(currentTime);
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      await lockCurrentUser(client, userId);
-      await ensureDailyGrant(client, userId, quotaDate, this.quotaConfig.dailyFree, currentTime);
-      const quota = await readQuota(client, userId, quotaDate);
-      await client.query("COMMIT");
-      return quotaResponse(quota, currentTime);
-    } catch (error: unknown) {
-      await rollback(client);
-      throw error;
-    } finally {
-      client.release();
-    }
+    const user = await this.pool.query("SELECT id FROM pindou_users WHERE id = $1 AND deleted_at IS NULL", [userId]);
+    if (!user.rows[0]) throw unauthorized("用户不存在或已失效");
+    const [quota, aiQuota] = await Promise.all([
+      readQuota(this.pool, userId, "standard_download", quotaDate, this.quotaConfig.dailyStandardDownloads),
+      readQuota(this.pool, userId, "ai_generation", quotaDate, this.quotaConfig.dailyAiGenerations),
+    ]);
+    return quotaResponse(quota, aiQuota, currentTime);
   }
 
+  /**
+   * 分页查询下载记录，支持按文件类型与标题模糊匹配（ILIKE 大小写不敏感）。
+   * 条件与参数按数组下标拼装占位符，避免字符串拼接导致 SQL 注入。
+   */
   public async listDownloads(options: DownloadListOptions): Promise<DownloadListResponse> {
     const conditions = ["user_id = $1"];
     const parameters: unknown[] = [options.userId];
@@ -309,16 +236,27 @@ export class PostgresQuotaDownloadService implements QuotaDownloadService {
     };
   }
 
+  /**
+   * 创建下载记录并扣减额度；记录与额度流水在同一事务中提交或回滚，幂等键避免重试重复扣费。
+   *
+   * @param input.idempotencyKey 客户端生成的幂等键；相同 key 重复调用直接返回首次结果，不重复扣费
+   * @throws idempotencyConflict 幂等键被不同用户/作品/类型复用
+   * @throws notFound 作品不存在或已删除
+   * @throws forbidden 作品不属于当前用户
+   * @throws quotaInsufficient 当日免费额度与购买额度均已耗尽
+   */
   public async createDownload(input: CreateDownloadInput): Promise<CreateDownloadResponse> {
     const currentTime = this.now();
+    // 每日免费额度按上海时区划分日期，不能直接使用服务器所在时区或 UTC 日期。
     const quotaDate = shanghaiDate(currentTime);
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      // 事务级 advisory lock：把并发的同一幂等键串行化，防止同一请求被处理两次
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
         `pindou-download:${input.idempotencyKey}`,
       ]);
-      await lockCurrentUser(client, input.userId);
+      await lockQuotaUser(client, input.userId);
 
       const existing = await readDownloadByIdempotencyKey(client, input.idempotencyKey);
       if (existing) {
@@ -329,8 +267,8 @@ export class PostgresQuotaDownloadService implements QuotaDownloadService {
         ) {
           throw idempotencyConflict();
         }
-        await ensureDailyGrant(client, input.userId, quotaDate, this.quotaConfig.dailyFree, currentTime);
-        const quota = await readQuota(client, input.userId, quotaDate);
+        await ensureDailyGrant(client, input.userId, "standard_download", quotaDate, this.quotaConfig.dailyStandardDownloads, currentTime);
+        const quota = await readQuota(client, input.userId, "standard_download", quotaDate);
         await client.query("COMMIT");
         return { downloadRecord: mapDownload(existing), quota: responseQuota(quota) };
       }
@@ -347,13 +285,9 @@ export class PostgresQuotaDownloadService implements QuotaDownloadService {
       if (!work || work.deleted_at) throw notFound("作品不存在");
       if (work.user_id !== input.userId) throw forbidden("作品不属于当前用户");
 
-      await ensureDailyGrant(client, input.userId, quotaDate, this.quotaConfig.dailyFree, currentTime);
-      const quotaBefore = await readQuota(client, input.userId, quotaDate);
-      const bucket = quotaBefore.dailyRemaining > 0
-        ? "daily_free"
-        : quotaBefore.purchased > 0
-          ? "purchased"
-          : null;
+      await ensureDailyGrant(client, input.userId, "standard_download", quotaDate, this.quotaConfig.dailyStandardDownloads, currentTime);
+      const quotaBefore = await readQuota(client, input.userId, "standard_download", quotaDate);
+      const bucket = debitBucket(quotaBefore);
       if (!bucket) throw quotaInsufficient();
 
       const downloadId = createEntityId("dl");
@@ -368,11 +302,11 @@ export class PostgresQuotaDownloadService implements QuotaDownloadService {
       );
       await client.query(
         `INSERT INTO pindou_quota_transactions (
-           id, user_id, type, amount, source, bucket, quota_date, order_id,
+           id, user_id, quota_kind, type, amount, source, bucket, quota_date, order_id,
            download_record_id, idempotency_key, note, created_at
          )
-         VALUES ($1, $2, 'download_debit', -1, 'download', $3,
-                 $4::date, NULL, $5, $6, NULL, $7)`,
+          VALUES ($1, $2, 'standard_download', 'download_debit', -1, 'download', $3,
+                  $4::date, NULL, $5, $6, NULL, $7)`,
         [
           quotaTransactionId,
           input.userId,
@@ -389,7 +323,8 @@ export class PostgresQuotaDownloadService implements QuotaDownloadService {
           WHERE id = $1 AND quota_transaction_id IS NULL`,
         [downloadId, quotaTransactionId],
       );
-      const quotaAfter = await readQuota(client, input.userId, quotaDate);
+      // 以额度流水为审计事实来源；下载记录保存流水 ID，方便后台追踪每次消耗。
+      const quotaAfter = await readQuota(client, input.userId, "standard_download", quotaDate);
       await client.query("COMMIT");
       return {
         downloadRecord: {
@@ -404,7 +339,7 @@ export class PostgresQuotaDownloadService implements QuotaDownloadService {
         quota: responseQuota(quotaAfter),
       };
     } catch (error: unknown) {
-      await rollback(client);
+      await rollbackTransaction(client);
       throw error;
     } finally {
       client.release();

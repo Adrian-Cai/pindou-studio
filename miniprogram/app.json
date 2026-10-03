@@ -1,23 +1,62 @@
 {
   "pages": [
     "pages/home/index",
+    "pages/create/index",
     "pages/projects/index",
     "pages/profile/index"
   ],
   "subPackages": [
     {
-      "root": "pages-sub",
+      "name": "editor",
+      "root": "packages/editor",
       "pages": [
-        "editor/index",
-        "result/index",
-        "downloads/index",
-        "favorites/index",
-        "help/index",
+        "index"
+      ]
+    },
+    {
+      "name": "ai-generation",
+      "root": "packages/ai-generation",
+      "pages": [
+        "index",
+        "text/index"
+      ]
+    },
+    {
+      "name": "result",
+      "root": "packages/result",
+      "pages": [
+        "index"
+      ]
+    },
+    {
+      "name": "account",
+      "root": "packages/account",
+      "pages": [
+        "index",
         "about/index",
-        "privacy/index",
+        "favorites/index",
         "feedback/index",
-        "recharge/index",
-        "payment-success/index"
+        "help/index",
+        "privacy-document/index",
+        "privacy/index",
+        "profile-edit/index",
+        "settings/index"
+      ]
+    },
+    {
+      "name": "payment",
+      "root": "packages/payment",
+      "pages": [
+        "orders/index",
+        "payment-success/index",
+        "recharge/index"
+      ]
+    },
+    {
+      "name": "download",
+      "root": "packages/download",
+      "pages": [
+        "index"
       ]
     }
   ],

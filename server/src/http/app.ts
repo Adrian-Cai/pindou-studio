@@ -1,286 +1,66 @@
-import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { DatabaseHealthProvider } from "../db/database-runtime";
-import type { AuthLoginService } from "../modules/auth/auth-service";
-import type { RequestAuthenticator } from "../modules/auth/authenticator";
-import type { AvatarStorage } from "../modules/users/avatar-storage";
-import type { UserProfileService } from "../modules/users/user-profile-service";
-import type { FileAssetService } from "../modules/files/file-asset-service";
-import type { CoverStorage } from "../modules/files/cover-storage";
-import type {
-  DownloadFileType,
-  DownloadListOptions,
-  QuotaDownloadService,
-} from "../modules/downloads/quota-download-service";
-import type { PaymentService } from "../modules/payments/payment-service";
-import { validatePersistedPattern, type PersistedPattern } from "../modules/works/pattern";
-import type { FavoriteListOptions, UpdateWorkInput, WorkService, WorkStatus } from "../modules/works/work-service";
-import { AppError, invalidArgument } from "../shared/app-error";
-import { readJsonObject, readRawJsonObject, readSingleUploadedFile } from "./request-body";
+import { TEXT_IMAGE_SIZES } from '../modules/ai/text-image-options';
+import {
+  decryptPushBody,
+  extractPushCiphertext,
+  verifyPushRequest,
+  verifyPushSignature,
+} from "../modules/payments/virtual-pay-push";
+import { getLegalDocument } from "../modules/legal/legal-document-service";
+import { validatePersistedPattern } from "../modules/works/pattern";
+import { aiPublicFailure, aiPublicHttpStatus } from "../modules/ai/error-contract";
+import { AppError, invalidArgument, unauthorized } from "../shared/app-error";
+import { parseBearerToken } from "../modules/auth/authenticator";
+import { readJsonObject, readRawBody, readRawJsonObject, readSingleUploadedFile } from "./request-body";
+import {
+  idempotencyKey,
+  validateContentSecurityTextBody,
+  validateCreateAiGenerationBody,
+  validateCreateTextImageGenerationBody,
+  validateCreatePaymentBody,
+  validateDownloadBody,
+  validateFavoriteBody,
+  validateLoginBody,
+  validateNicknameBody,
+  validatePrivacyPatch,
+  validateWorkBody,
+  validateWorkUpdateBody,
+} from "./request-validation";
+import {
+  uploadCurrentUserAvatar,
+  DELIVERY_EVENT,
+  IOS_REFUND_QUERY_EVENT,
+  REFUND_EVENT,
+  aiGenerationId,
+  textImageGenerationId,
+  textImageGenerationConsumeId,
+  downloadListOptions,
+  errorPayload,
+  favoriteListOptions,
+  favoriteWorkId,
+  hasRequestBody,
+  listOptions,
+  orderListOptions,
+  parseDeliveryNotification,
+  parseEventName,
+  parseIosRefundQuery,
+  parseRefundNotification,
+  paymentOrderAction,
+  positiveQueryInteger,
+  requestId,
+  requireContentSecurity,
+  sendImage,
+  sendJson,
+  sendNoContent,
+  sendRaw,
+  sendText,
+  wechatPaymentHeaders,
+  workId,
+} from "./app-helpers";
+import type { HttpApplication, HttpApplicationDependencies } from "./app-helpers";
+export type { HttpApplication, HttpApplicationDependencies } from "./app-helpers";
 
 const SERVICE_NAME = "pindou-studio-server";
-
-interface ErrorResponse {
-  readonly error: {
-    readonly code: string;
-    readonly message: string;
-    readonly requestId: string;
-    readonly details: Readonly<Record<string, unknown>>;
-  };
-}
-
-function requestId(): string {
-  return `req_${randomUUID().replaceAll("-", "")}`;
-}
-
-function sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {
-  response.statusCode = statusCode;
-  response.setHeader("content-type", "application/json; charset=utf-8");
-  response.setHeader("cache-control", "no-store");
-  response.end(JSON.stringify(payload));
-}
-
-function sendImage(
-  response: ServerResponse,
-  avatar: { readonly buffer: Buffer; readonly contentType: string },
-): void {
-  response.statusCode = 200;
-  response.setHeader("content-type", avatar.contentType);
-  response.setHeader("content-length", avatar.buffer.length);
-  response.setHeader("cache-control", "public, max-age=31536000, immutable");
-  response.setHeader("x-content-type-options", "nosniff");
-  response.end(avatar.buffer);
-}
-
-function errorPayload(
-  code: string,
-  message: string,
-  id: string,
-  details: Readonly<Record<string, unknown>> = {},
-): ErrorResponse {
-  return { error: { code, message, requestId: id, details } };
-}
-
-export type HttpApplication = (request: IncomingMessage, response: ServerResponse) => void;
-
-export interface HttpApplicationDependencies {
-  readonly database: DatabaseHealthProvider;
-  readonly auth: AuthLoginService;
-  readonly authenticator: RequestAuthenticator;
-  readonly users: UserProfileService;
-  readonly avatars: AvatarStorage;
-  readonly avatarMaximumBytes: number;
-  readonly files: FileAssetService;
-  readonly covers: CoverStorage;
-  readonly works: WorkService;
-  readonly quotaDownloads: QuotaDownloadService;
-  readonly payments: PaymentService;
-  readonly coverMaximumBytes: number;
-}
-
-function validateLoginBody(body: Record<string, unknown>): string {
-  const keys = Object.keys(body);
-  if (keys.length !== 1 || keys[0] !== "code" || typeof body.code !== "string") {
-    throw invalidArgument("请求体只能包含字符串字段 code");
-  }
-  return body.code;
-}
-
-function validateNicknameBody(body: Record<string, unknown>): string {
-  const keys = Object.keys(body);
-  if (keys.length !== 1 || keys[0] !== "nickname" || typeof body.nickname !== "string") {
-    throw invalidArgument("请求体只能包含字符串字段 nickname");
-  }
-  const nickname = body.nickname.trim().normalize("NFC");
-  const length = Array.from(nickname).length;
-  if (length < 1 || length > 80 || /[\u0000-\u001f\u007f]/u.test(nickname)) {
-    throw invalidArgument("昵称长度必须为 1 到 80 个字符，且不能包含控制字符");
-  }
-  return nickname;
-}
-
-function idempotencyKey(request: IncomingMessage): string {
-  const value = request.headers["idempotency-key"];
-  if (typeof value !== "string" || value.length < 1 || value.length > 128 || !/^[\x21-\x7e]+$/u.test(value)) {
-    throw invalidArgument("请求必须包含合法的 Idempotency-Key");
-  }
-  return value;
-}
-
-function validateWorkBody(body: Record<string, unknown>): {
-  readonly title: string;
-  readonly coverFileId: string;
-  readonly status: WorkStatus;
-  readonly pattern: PersistedPattern;
-} {
-  const allowed = ["title", "coverFileId", "status", "pattern"];
-  if (!Object.keys(body).every((key) => allowed.includes(key)) || typeof body.coverFileId !== "string" || !body.coverFileId.trim()) {
-    throw invalidArgument("作品请求只能包含 title、coverFileId、status 和 pattern");
-  }
-  const title = body.title === undefined ? "未命名作品" : body.title;
-  if (typeof title !== "string" || title.trim().length < 1 || Array.from(title.trim()).length > 120 || /[\u0000-\u001f\u007f]/u.test(title)) {
-    throw invalidArgument("作品标题长度必须为 1 到 120 个字符，且不能包含控制字符");
-  }
-  const status = body.status === undefined ? "completed" : body.status;
-  if (status !== "draft" && status !== "completed") throw invalidArgument("作品 status 只能是 draft 或 completed");
-  const validated = validatePersistedPattern(body.pattern);
-  return { title: title.trim(), coverFileId: body.coverFileId.trim(), status, pattern: validated.pattern };
-}
-
-function validateWorkUpdateBody(body: Record<string, unknown>): Omit<UpdateWorkInput, "userId" | "workId"> {
-  const allowed = ["title", "coverFileId", "status", "pattern"];
-  const keys = Object.keys(body);
-  if (keys.length < 1 || !keys.every((key) => allowed.includes(key))) {
-    throw invalidArgument("作品更新只能包含 title、coverFileId、status 和 pattern，且至少包含一项");
-  }
-  const result: {
-    title?: string;
-    coverFileId?: string;
-    status?: WorkStatus;
-    validatedPattern?: ReturnType<typeof validatePersistedPattern>;
-  } = {};
-  if ("title" in body) {
-    if (typeof body.title !== "string" || body.title.trim().length < 1 || Array.from(body.title.trim()).length > 120 || /[\u0000-\u001f\u007f]/u.test(body.title)) {
-      throw invalidArgument("作品标题长度必须为 1 到 120 个字符，且不能包含控制字符");
-    }
-    result.title = body.title.trim();
-  }
-  if ("coverFileId" in body) {
-    if (typeof body.coverFileId !== "string" || !body.coverFileId.trim()) {
-      throw invalidArgument("coverFileId 必须是非空字符串");
-    }
-    result.coverFileId = body.coverFileId.trim();
-  }
-  if ("status" in body) {
-    if (body.status !== "draft" && body.status !== "completed") {
-      throw invalidArgument("作品 status 只能是 draft 或 completed");
-    }
-    result.status = body.status;
-  }
-  if ("pattern" in body) result.validatedPattern = validatePersistedPattern(body.pattern);
-  return result;
-}
-
-function validateFavoriteBody(body: Record<string, unknown>): boolean {
-  const keys = Object.keys(body);
-  if (keys.length !== 1 || keys[0] !== "favorite" || typeof body.favorite !== "boolean") {
-    throw invalidArgument("收藏请求体只能包含布尔字段 favorite");
-  }
-  return body.favorite;
-}
-
-function validateDownloadBody(body: Record<string, unknown>): {
-  readonly workId: string;
-  readonly fileType: DownloadFileType;
-} {
-  const keys = Object.keys(body);
-  if (
-    keys.length !== 2
-    || !keys.every((key) => key === "workId" || key === "fileType")
-    || typeof body.workId !== "string"
-    || !body.workId.trim()
-    || (body.fileType !== "preview" && body.fileType !== "chart" && body.fileType !== "materials")
-  ) {
-    throw invalidArgument("下载请求体只能包含非空 workId 和合法 fileType");
-  }
-  return { workId: body.workId.trim(), fileType: body.fileType };
-}
-
-function validateCreatePaymentBody(body: Record<string, unknown>): string {
-  const keys = Object.keys(body);
-  if (keys.length !== 1 || keys[0] !== "packageId" || typeof body.packageId !== "string") {
-    throw invalidArgument("支付创建请求体只能包含字符串字段 packageId");
-  }
-  const packageId = body.packageId.trim();
-  if (!packageId || packageId.length > 40) throw invalidArgument("packageId 无效");
-  return packageId;
-}
-
-function wechatPaymentHeaders(request: IncomingMessage): Readonly<Record<string, string | undefined>> {
-  const names = [
-    "wechatpay-timestamp",
-    "wechatpay-nonce",
-    "wechatpay-serial",
-    "wechatpay-signature",
-  ] as const;
-  return Object.fromEntries(names.map((name) => {
-    const value = request.headers[name];
-    return [name, typeof value === "string" ? value : undefined];
-  }));
-}
-
-function listOptions(url: URL, userId: string): { userId: string; status?: WorkStatus; page: number; pageSize: number; query?: string } {
-  for (const key of url.searchParams.keys()) {
-    if (!["status", "page", "pageSize", "query"].includes(key)) throw invalidArgument("作品列表包含不支持的查询参数");
-    if (url.searchParams.getAll(key).length > 1) throw invalidArgument(`查询参数 ${key} 不能重复`);
-  }
-  const page = positiveQueryInteger(url.searchParams.get("page"), 1, 1_000_000, "page");
-  const pageSize = positiveQueryInteger(url.searchParams.get("pageSize"), 20, 50, "pageSize");
-  const statusValue = url.searchParams.get("status");
-  if (statusValue !== null && statusValue !== "draft" && statusValue !== "completed") throw invalidArgument("status 只能是 draft 或 completed");
-  const query = url.searchParams.get("query")?.trim() || undefined;
-  if (query && Array.from(query).length > 120) throw invalidArgument("query 不能超过 120 个字符");
-  return { userId, page, pageSize, ...(statusValue ? { status: statusValue } : {}), ...(query ? { query } : {}) };
-}
-
-function favoriteListOptions(url: URL, userId: string): FavoriteListOptions {
-  for (const key of url.searchParams.keys()) {
-    if (!["page", "pageSize", "query"].includes(key)) throw invalidArgument("收藏列表包含不支持的查询参数");
-    if (url.searchParams.getAll(key).length > 1) throw invalidArgument(`查询参数 ${key} 不能重复`);
-  }
-  const page = positiveQueryInteger(url.searchParams.get("page"), 1, 1_000_000, "page");
-  const pageSize = positiveQueryInteger(url.searchParams.get("pageSize"), 20, 50, "pageSize");
-  const query = url.searchParams.get("query")?.trim() || undefined;
-  if (query && Array.from(query).length > 120) throw invalidArgument("query 不能超过 120 个字符");
-  return { userId, page, pageSize, ...(query ? { query } : {}) };
-}
-
-function downloadListOptions(url: URL, userId: string): DownloadListOptions {
-  for (const key of url.searchParams.keys()) {
-    if (!["fileType", "page", "pageSize", "query"].includes(key)) throw invalidArgument("下载记录列表包含不支持的查询参数");
-    if (url.searchParams.getAll(key).length > 1) throw invalidArgument(`查询参数 ${key} 不能重复`);
-  }
-  const page = positiveQueryInteger(url.searchParams.get("page"), 1, 1_000_000, "page");
-  const pageSize = positiveQueryInteger(url.searchParams.get("pageSize"), 20, 50, "pageSize");
-  const fileType = url.searchParams.get("fileType");
-  if (fileType !== null && fileType !== "preview" && fileType !== "chart" && fileType !== "materials") {
-    throw invalidArgument("fileType 只能是 preview、chart 或 materials");
-  }
-  const query = url.searchParams.get("query")?.trim() || undefined;
-  if (query && Array.from(query).length > 120) throw invalidArgument("query 不能超过 120 个字符");
-  return {
-    userId,
-    page,
-    pageSize,
-    ...(fileType ? { fileType } : {}),
-    ...(query ? { query } : {}),
-  };
-}
-
-function positiveQueryInteger(value: string | null, fallback: number, maximum: number, name: string): number {
-  if (value === null) return fallback;
-  if (!/^[0-9]+$/u.test(value)) throw invalidArgument(`${name} 必须是整数`);
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) throw invalidArgument(`${name} 超出允许范围`);
-  return parsed;
-}
-
-function workId(pathname: string): string | null {
-  const match = pathname.match(/^\/api\/works\/([^/]+)$/u);
-  return match?.[1] ?? null;
-}
-
-function favoriteWorkId(pathname: string): string | null {
-  const match = pathname.match(/^\/api\/works\/([^/]+)\/favorite$/u);
-  return match?.[1] ?? null;
-}
-
-function sendNoContent(response: ServerResponse): void {
-  response.statusCode = 204;
-  response.removeHeader("content-type");
-  response.removeHeader("cache-control");
-  response.end();
-}
 
 export function createHttpApplication(dependencies: HttpApplicationDependencies): HttpApplication {
   return (request, response) => {
@@ -297,6 +77,13 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
             service: SERVICE_NAME,
             timestamp: new Date().toISOString(),
             database: databaseHealth,
+            capabilities: dependencies.capabilities ?? {
+              wechatPay: false,
+              aiGeneration: false,
+              persistentStorage: false,
+              httpsPublicUrls: false,
+              monitoringAlerts: false,
+            },
           });
         } catch {
           sendJson(response, 503, {
@@ -334,25 +121,162 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         return;
       }
 
+      if (request.method === "DELETE" && url.pathname === "/api/auth/session") {
+        if (url.searchParams.size > 0) throw invalidArgument("登出接口不接受查询参数");
+        if (hasRequestBody(request)) throw invalidArgument("登出接口不接受请求体");
+        await dependencies.authenticator.authenticate(request.headers.authorization);
+        const token = parseBearerToken(request.headers.authorization);
+        if (!token) throw unauthorized();
+        await dependencies.auth.revokeSession(token);
+        sendNoContent(response);
+        return;
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/api/auth/sessions") {
+        if (url.searchParams.size > 0) throw invalidArgument("登出接口不接受查询参数");
+        if (hasRequestBody(request)) throw invalidArgument("登出接口不接受请求体");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        await dependencies.auth.revokeUserSessions(currentUser.id);
+        sendNoContent(response);
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname.startsWith("/api/media/ai/")) {
+        if (url.searchParams.size > 0) throw invalidArgument("AI 文件地址不接受查询参数");
+        const file = await dependencies.aiFiles.read(url.pathname);
+        if (file) {
+          sendImage(response, file, "private, no-store");
+          return;
+        }
+      }
+
       if (request.method === "POST" && url.pathname === "/api/files/upload") {
         if (url.searchParams.size > 0) throw invalidArgument("文件上传接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         const upload = await readSingleUploadedFile(
           request,
           "file",
-          dependencies.coverMaximumBytes,
-          ["type"],
-          "封面文件",
+          Math.max(
+            dependencies.coverMaximumBytes,
+            dependencies.aiFileMaximumBytes ?? dependencies.coverMaximumBytes,
+          ),
+          ["type", "securityCheckId"],
+          "图片文件",
         );
-        if (upload.fields.type !== "cover" || Object.keys(upload.fields).length !== 1) {
-          throw invalidArgument("文件上传的 type 只能是 cover");
+        const type = upload.fields.type;
+        const securityCheckId = upload.fields.securityCheckId;
+        const fieldCount = Object.keys(upload.fields).length;
+        if (
+          (type !== "cover" && type !== "ai_input")
+          || (type === "cover" && fieldCount !== 1)
+          || (type === "ai_input" && fieldCount !== (securityCheckId ? 2 : 1))
+        ) {
+          throw invalidArgument("文件上传的 type 只能是 cover 或 ai_input");
+        }
+        const maximumBytes = type === "cover"
+          ? dependencies.coverMaximumBytes
+          : dependencies.aiFileMaximumBytes;
+        if (upload.buffer.length > maximumBytes) {
+          throw new AppError(413, "PAYLOAD_TOO_LARGE", "图片文件超过大小限制");
+        }
+        if (type === "ai_input") {
+          dependencies.aiRateLimiter?.check(`${currentUser.id}:upload`);
+          const contentSecurity = requireContentSecurity(dependencies);
+          if (securityCheckId) {
+            await contentSecurity.assertMediaCheck(currentUser.id, securityCheckId, upload.buffer);
+          } else {
+            await contentSecurity.checkMedia(currentUser.id, {
+              buffer: upload.buffer,
+              filename: upload.filename,
+              contentType: upload.declaredContentType,
+            });
+          }
         }
         sendJson(response, 201, {
           file: await dependencies.files.upload(currentUser.id, {
-            type: "cover",
+            type,
             buffer: upload.buffer,
             filename: upload.filename,
             declaredContentType: upload.declaredContentType,
+          }),
+        });
+        return;
+      }
+
+      const legalDocumentMatch = url.pathname.match(/^\/api\/legal-documents\/([^/]+)$/u);
+      if (legalDocumentMatch && request.method === "GET") {
+        if (url.searchParams.size > 0) throw invalidArgument("法律文档接口不接受查询参数");
+        const key = legalDocumentMatch[1];
+        if (!key) throw invalidArgument("法律文档 key 无效");
+        sendJson(response, 200, { document: getLegalDocument(key) });
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/content-security/media/")) {
+        if (request.method !== "GET" || url.searchParams.size > 0 || !dependencies.contentSecurity) {
+          throw invalidArgument("内容安全媒体地址无效");
+        }
+        const media = await dependencies.contentSecurity.readMedia(url.pathname);
+        if (media) {
+          sendImage(response, media, "private, no-store");
+          return;
+        }
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/wechat/content-security/callback") {
+        if (!dependencies.contentSecurity?.verifyCallback(
+          url.searchParams.get("signature") ?? undefined,
+          url.searchParams.get("timestamp") ?? undefined,
+          url.searchParams.get("nonce") ?? undefined,
+        )) {
+          throw new AppError(403, "INVALID_CALLBACK_SIGNATURE", "微信回调校验失败");
+        }
+        sendText(response, url.searchParams.get("echostr") ?? "success");
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/wechat/content-security/callback") {
+        if (!dependencies.contentSecurity?.verifyCallback(
+          url.searchParams.get("signature") ?? undefined,
+          url.searchParams.get("timestamp") ?? undefined,
+          url.searchParams.get("nonce") ?? undefined,
+        )) {
+          throw new AppError(403, "INVALID_CALLBACK_SIGNATURE", "微信回调校验失败");
+        }
+        await dependencies.contentSecurity.handleCallback(await readJsonObject(request));
+        sendText(response, "success");
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/content-security/text") {
+        if (url.searchParams.size > 0) throw new AppError(503, "CONTENT_SECURITY_NOT_CONFIGURED", "内容安全服务尚未配置");
+        const contentSecurity = requireContentSecurity(dependencies);
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const trace = await contentSecurity.checkText(
+          currentUser.id,
+          validateContentSecurityTextBody(await readJsonObject(request)),
+        );
+        sendJson(response, 200, trace);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/content-security/media") {
+        if (!dependencies.contentSecurity || url.searchParams.size > 0) {
+          throw new AppError(503, "CONTENT_SECURITY_NOT_CONFIGURED", "内容安全服务尚未配置");
+        }
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const upload = await readSingleUploadedFile(
+          request,
+          "file",
+          dependencies.contentSecurityMediaMaximumBytes ?? 10 * 1_024 * 1_024,
+          [],
+          "待审核图片",
+        );
+        sendJson(response, 201, {
+          check: await dependencies.contentSecurity.checkMedia(currentUser.id, {
+            buffer: upload.buffer,
+            filename: upload.filename,
+            contentType: upload.declaredContentType,
           }),
         });
         return;
@@ -362,12 +286,16 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         if (url.searchParams.size > 0) throw invalidArgument("作品保存接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         const validated = validateWorkBody(await readJsonObject(request, 2 * 1024 * 1024));
+        await requireContentSecurity(dependencies).checkText(currentUser.id, validated.title);
+        if (validated.sourcePrompt) await requireContentSecurity(dependencies).checkText(currentUser.id, validated.sourcePrompt);
         sendJson(response, 201, await dependencies.works.create({
           userId: currentUser.id,
           idempotencyKey: idempotencyKey(request),
           title: validated.title,
           coverFileId: validated.coverFileId,
           status: validated.status,
+          creationSource: validated.creationSource,
+          sourcePrompt: validated.sourcePrompt,
           validatedPattern: validatePersistedPattern(validated.pattern),
         }));
         return;
@@ -411,9 +339,99 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/ai/generations") {
+        if (url.searchParams.size > 0) throw invalidArgument("AI 生成接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const body = validateCreateAiGenerationBody(await readJsonObject(request));
+        dependencies.aiRateLimiter?.check(`${currentUser.id}:generation`);
+        sendJson(response, 201, await dependencies.aiGenerations.create({
+          userId: currentUser.id,
+          requestId: id,
+          idempotencyKey: idempotencyKey(request),
+          ...body,
+        }));
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/ai/text-generation-options') {
+        if (url.searchParams.size > 0) throw invalidArgument('尺寸配置不接受查询参数');
+        sendJson(response, 200, { sizes: TEXT_IMAGE_SIZES, defaultSize: '1024x1024', cost: 1 });
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/ai/text-inspirations') {
+        if (url.searchParams.size > 0) throw invalidArgument('灵感接口不接受查询参数');
+        if (!dependencies.textGenerations) throw new AppError(503, 'AI_SERVICE_UNAVAILABLE', 'AI 灵感暂未开放');
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        dependencies.aiRateLimiter?.check(`${currentUser.id}:text-inspiration`);
+        const items = await dependencies.textGenerations.inspirations();
+        for (const item of items) await requireContentSecurity(dependencies).checkText(currentUser.id, `${item.title} ${item.prompt}`);
+        sendJson(response, 200, { items });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/ai/text-generations") {
+        if (url.searchParams.size > 0) throw invalidArgument("文生图接口不接受查询参数");
+        if (!dependencies.textGenerations) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const body = validateCreateTextImageGenerationBody(await readJsonObject(request));
+        dependencies.aiRateLimiter?.check(`${currentUser.id}:text-generation`);
+        await requireContentSecurity(dependencies).checkText(currentUser.id, body.prompt);
+        sendJson(response, 201, await dependencies.textGenerations.create({
+          userId: currentUser.id,
+          idempotencyKey: idempotencyKey(request),
+          prompt: body.prompt,
+          size: body.size,
+        }));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/ai/text-generations") {
+        if (url.searchParams.size !== 1 || url.searchParams.getAll("active").length !== 1 || url.searchParams.get("active") !== "true") {
+          throw invalidArgument("文生图任务列表只支持 active=true");
+        }
+        if (!dependencies.textGenerations) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, { items: await dependencies.textGenerations.listRecoverable(currentUser.id) });
+        return;
+      }
+
+      const textGenerationConsumeId = textImageGenerationConsumeId(url.pathname);
+      if (request.method === "POST" && textGenerationConsumeId) {
+        if (url.searchParams.size > 0) throw invalidArgument("文生图任务操作不接受查询参数");
+        if (!dependencies.textGenerations) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        await dependencies.textGenerations.consume(currentUser.id, textGenerationConsumeId);
+        sendNoContent(response);
+        return;
+      }
+
+      const requestedTextGenerationId = textImageGenerationId(url.pathname);
+      if (request.method === "GET" && requestedTextGenerationId) {
+        if (url.searchParams.size > 0) throw invalidArgument("文生图任务接口不接受查询参数");
+        if (!dependencies.textGenerations) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, await dependencies.textGenerations.get(currentUser.id, requestedTextGenerationId));
+        return;
+      }
+
+      const requestedAiGenerationId = aiGenerationId(url.pathname);
+      if (requestedAiGenerationId && request.method === "GET") {
+        if (url.searchParams.size > 0) throw invalidArgument("AI 生成任务接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, await dependencies.aiGenerations.get(currentUser.id, requestedAiGenerationId));
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/packages") {
         if (url.searchParams.size > 0) throw invalidArgument("套餐接口不接受查询参数");
         sendJson(response, 200, await dependencies.payments.listPackages());
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/orders") {
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, await dependencies.payments.listOrders(orderListOptions(url, currentUser.id)));
         return;
       }
 
@@ -429,6 +447,193 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         return;
       }
 
+      // 订单页的两个支付订单操作：继续支付（复用原订单重新拉起）与主动取消。
+      // 都要求登录；orderId 在服务端做归属校验，路径里带什么都拿不到别人的订单。
+      const paymentOrderActionRoute = paymentOrderAction(url.pathname);
+      if (request.method === "POST" && paymentOrderActionRoute) {
+        if (url.searchParams.size > 0) throw invalidArgument("支付订单操作接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        if (paymentOrderActionRoute.action === "continue") {
+          sendJson(response, 200, await dependencies.payments.continuePayment({
+            userId: currentUser.id,
+            orderId: paymentOrderActionRoute.orderId,
+          }));
+        } else {
+          sendJson(response, 200, await dependencies.payments.cancelOrder({
+            userId: currentUser.id,
+            orderId: paymentOrderActionRoute.orderId,
+          }));
+        }
+        return;
+      }
+
+      // 虚拟支付发货推送（xpay_goods_deliver_notify）：MP 后台需配置为回调 URL + 订阅该事件。
+      // 与旧 notify 分开是两个独立端点：两套协议的报文格式与响应要求都不同，混在一个路由里
+      // 只能靠猜 Content-Type 分支，出错时还难以定位是哪条链路。
+      /**
+       * GET 不是业务请求，而是 MP 后台的 URL 握手：点「保存」或「模拟推送」时微信会带
+       * signature / timestamp / nonce / echostr 打过来，校验通过后必须**原样回显 echostr**，
+       * 否则后台直接判定 URL 不可用 —— 连配置都存不进去，后面一条推送都收不到。
+       */
+      if (request.method === "GET" && url.pathname === "/api/payments/virtual-notify") {
+        const push = dependencies.virtualPayPush;
+        if (!push?.token) {
+          throw new AppError(503, "VIRTUAL_PAY_PUSH_NOT_CONFIGURED", "虚拟支付推送尚未配置 Token");
+        }
+        if (!verifyPushSignature(push.token, {
+          signature: url.searchParams.get("signature") ?? undefined,
+          timestamp: url.searchParams.get("timestamp") ?? undefined,
+          nonce: url.searchParams.get("nonce") ?? undefined,
+        })) {
+          throw new AppError(403, "INVALID_CALLBACK_SIGNATURE", "微信回调校验失败");
+        }
+        sendText(response, url.searchParams.get("echostr") ?? "success");
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/payments/virtual-notify") {
+        const push = dependencies.virtualPayPush;
+        /**
+         * 这里曾经拒绝一切带查询参数的请求，等于把全部推送都 400 掉 —— 微信 POST 时
+         * 一定带 signature / timestamp / nonce（安全模式还带 msg_signature、encrypt_type）。
+         * 现在改成「校验而不是拒绝」。
+         */
+        const query = {
+          signature: url.searchParams.get("signature") ?? undefined,
+          msgSignature: url.searchParams.get("msg_signature") ?? undefined,
+          timestamp: url.searchParams.get("timestamp") ?? undefined,
+          nonce: url.searchParams.get("nonce") ?? undefined,
+        };
+        const received = await readRawBody(request);
+        let rawBody = received;
+        try {
+          if (!push?.token) {
+            throw new AppError(503, "VIRTUAL_PAY_PUSH_NOT_CONFIGURED", "虚拟支付推送未配置验签 Token");
+          }
+          // 没配 EncodingAESKey 就说明后台选的是明文模式，硬解只会把明文当密文炸掉
+          const ciphertext = push?.encodingAesKey ? extractPushCiphertext(received) : null;
+          if (!verifyPushRequest(push, query, ciphertext)) {
+            throw new AppError(403, "INVALID_CALLBACK_SIGNATURE", "虚拟支付推送签名校验失败");
+          }
+          if (ciphertext && push?.encodingAesKey) {
+            rawBody = decryptPushBody(ciphertext, push.encodingAesKey, push.appId);
+          }
+        } catch (error: unknown) {
+          /**
+           * 验签 / 解密失败一律回 ErrCode=1 而不是 4xx：这类故障的根因在配置，
+           * 重试多少次结果都一样，回 4xx 会被平台当成网络失败重试 15 次，
+           * 把真正需要人看的告警淹没在噪音里。
+           */
+          console.error(JSON.stringify({
+            event: "virtual_payment_push_rejected",
+            requestId: id,
+            errorCode: error instanceof AppError ? error.code : "UNKNOWN",
+          }));
+          sendRaw(
+            response,
+            200,
+            "application/xml",
+            "<xml><ErrCode>1</ErrCode><ErrMsg><![CDATA[处理失败]]></ErrMsg></xml>",
+          );
+          return;
+        }
+        const eventName = parseEventName(rawBody);
+
+        /**
+         * iOS 退款问询走**完全独立的应答协议**：回的是 result_code / result_info / evidence，
+         * 不是 ErrCode。而且它有时限 —— 3 秒内不答，平台就向 Apple 回「不确定」。
+         * 所以异常分支也必须答，宁可放过（result_code=0）也不能不答：
+         * 不答等于放弃举证、把退款决定权整个交给 Apple。
+         */
+        if (eventName === IOS_REFUND_QUERY_EVENT) {
+          try {
+            const answer = await dependencies.payments.answerIosRefundQuery(parseIosRefundQuery(rawBody));
+            sendJson(response, 200, {
+              result_code: answer.resultCode,
+              result_info: answer.resultInfo,
+              evidence: answer.evidence,
+            });
+          } catch {
+            console.error(JSON.stringify({
+              event: "virtual_payment_ios_refund_query_failed",
+              requestId: id,
+            }));
+            sendJson(response, 200, {
+              result_code: 0,
+              result_info: "处理异常，不主张拒绝退款",
+              evidence: "服务端未能完成举证",
+            });
+          }
+          return;
+        }
+
+        const handler = eventName === REFUND_EVENT
+          ? async () => {
+            await dependencies.payments.handleRefund(parseRefundNotification(rawBody));
+          }
+          : eventName === DELIVERY_EVENT
+            ? async () => {
+              // 已按事件名确认过是发货推送，这里的 null 分支只可能是解析层的防御性返回
+              const delivery = parseDeliveryNotification(rawBody);
+              if (delivery) await dependencies.payments.handleDelivery(delivery);
+            }
+            : null;
+
+        /**
+         * 其余 xpay_* 事件（退款/投诉/风控/代币支付）一律回成功让平台停止重试，
+         * 但**必须留下事件名**。此前这里是静默吞掉的：商户被管控、用户发起投诉
+         * 这种事发生时我们连一行日志都没有。
+         */
+        if (handler === null) {
+          console.warn(JSON.stringify({
+            event: "virtual_payment_event_ignored",
+            requestId: id,
+            eventName,
+          }));
+          sendRaw(
+            response,
+            200,
+            "application/xml",
+            "<xml><ErrCode>0</ErrCode><ErrMsg><![CDATA[success]]></ErrMsg></xml>",
+          );
+          return;
+        }
+
+        try {
+          await handler();
+          sendRaw(
+            response,
+            200,
+            "application/xml",
+            "<xml><ErrCode>0</ErrCode><ErrMsg><![CDATA[success]]></ErrMsg></xml>",
+          );
+        } catch (error: unknown) {
+          if (error instanceof AppError) {
+            console.warn(JSON.stringify({
+              event: "virtual_payment_callback_rejected",
+              requestId: id,
+              eventName,
+              errorCode: error.code,
+            }));
+          } else {
+            console.error(JSON.stringify({
+              event: "virtual_payment_callback_failed",
+              requestId: id,
+              eventName,
+            }));
+          }
+          // 必须返回 200 + ErrCode≠0：平台只在 HTTP 层成功时才读 ErrCode 决定是否重试，
+          // 直接回 4xx/5xx 会被当作网络失败，导致同样的错误被重试 15 次。
+          sendRaw(
+            response,
+            200,
+            "application/xml",
+            "<xml><ErrCode>1</ErrCode><ErrMsg><![CDATA[处理失败]]></ErrMsg></xml>",
+          );
+        }
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/payments/notify") {
         if (url.searchParams.size > 0) throw invalidArgument("微信支付回调接口不接受查询参数");
         try {
@@ -440,8 +645,14 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           sendJson(response, 200, { code: "SUCCESS", message: "成功" });
         } catch (error: unknown) {
           if (error instanceof AppError) {
+            console.warn(JSON.stringify({
+              event: "wechat_payment_notification_rejected",
+              requestId: id,
+              errorCode: error.code,
+            }));
             sendJson(response, error.statusCode, { code: "FAIL", message: error.message });
           } else {
+            console.error(JSON.stringify({ event: "wechat_payment_notification_failed", requestId: id }));
             sendJson(response, 500, { code: "FAIL", message: "服务内部错误" });
           }
         }
@@ -468,6 +679,10 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
           sendNoContent(response);
         } else {
           const update = validateWorkUpdateBody(await readJsonObject(request, 2 * 1024 * 1024));
+          if (update.title !== undefined) {
+            await requireContentSecurity(dependencies).checkText(currentUser.id, update.title);
+          }
+          if (update.sourcePrompt) await requireContentSecurity(dependencies).checkText(currentUser.id, update.sourcePrompt);
           sendJson(response, 200, await dependencies.works.update({
             userId: currentUser.id,
             workId: requestedWorkId,
@@ -486,6 +701,38 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/users/me/privacy") {
+        if (url.searchParams.size > 0) throw invalidArgument("隐私偏好接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(
+          request.headers.authorization,
+        );
+        sendJson(response, 200, { privacy: await dependencies.users.getPrivacyPreferences(currentUser.id) });
+        return;
+      }
+
+      if (request.method === "PATCH" && url.pathname === "/api/users/me/privacy") {
+        if (url.searchParams.size > 0) throw invalidArgument("隐私偏好接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(
+          request.headers.authorization,
+        );
+        const privacy = await dependencies.users.updatePrivacyPreferences(
+          currentUser.id,
+          validatePrivacyPatch(await readJsonObject(request)),
+        );
+        sendJson(response, 200, { privacy });
+        return;
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/api/users/me") {
+        if (url.searchParams.size > 0) throw invalidArgument("账号注销接口不接受查询参数");
+        const currentUser = await dependencies.authenticator.authenticate(
+          request.headers.authorization,
+        );
+        await dependencies.users.deleteAccount(currentUser.id);
+        sendNoContent(response);
+        return;
+      }
+
 
       if ((request.method === "PATCH" || request.method === "PUT") && url.pathname === "/api/users/me") {
         if (url.searchParams.size > 0) throw invalidArgument("当前用户接口不接受查询参数");
@@ -498,31 +745,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       }
 
       if (request.method === "POST" && url.pathname === "/api/users/me/avatar") {
-        if (url.searchParams.size > 0) throw invalidArgument("头像上传接口不接受查询参数");
-        const currentUser = await dependencies.authenticator.authenticate(
-          request.headers.authorization,
-        );
-        const upload = await readSingleUploadedFile(
-          request,
-          "file",
-          dependencies.avatarMaximumBytes,
-          ["nickname"],
-          "头像文件",
-        );
-        const nickname = validateNicknameBody({ nickname: upload.fields.nickname });
-        const avatar = await dependencies.avatars.save(upload.buffer, upload.declaredContentType);
-        try {
-          const updated = await dependencies.users.updateProfileWithAvatar(
-            currentUser.id,
-            nickname,
-            avatar.publicPath,
-          );
-          await dependencies.avatars.remove(updated.previousAvatarUrl);
-          sendJson(response, 200, { user: updated.user });
-        } catch (error: unknown) {
-          await dependencies.avatars.remove(avatar.publicPath);
-          throw error;
-        }
+        await uploadCurrentUserAvatar(request, response, url, dependencies);
         return;
       }
 
@@ -530,12 +753,25 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
     })().catch((error: unknown) => {
       if (!response.headersSent) {
         if (error instanceof AppError) {
+          const failure = aiPublicFailure(error.code);
           sendJson(
             response,
-            error.statusCode,
-            errorPayload(error.code, error.message, id, error.details),
+            failure ? aiPublicHttpStatus(error.code, error.statusCode) : error.statusCode,
+            errorPayload(
+              failure?.code ?? error.code,
+              failure?.message ?? error.message,
+              id,
+              publicErrorDetails(error),
+              failure,
+            ),
           );
         } else {
+          console.error(JSON.stringify({
+            event: "request_failed",
+            requestId: id,
+            method: request.method,
+            pathname: new URL(request.url ?? "/", "http://localhost").pathname,
+          }));
           sendJson(response, 500, errorPayload("INTERNAL_ERROR", "服务内部错误", id));
         }
       } else {
@@ -543,4 +779,18 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       }
     });
   };
+}
+
+function publicErrorDetails(error: AppError): Readonly<Record<string, unknown>> {
+  if (error.code === "ORDER_ALREADY_PAID") {
+    const orderId = error.details.orderId;
+    return typeof orderId === "string" && /^order_[A-Za-z0-9_-]{1,26}$/.test(orderId)
+      ? { orderId }
+      : {};
+  }
+  if (error.code !== "RATE_LIMITED") return {};
+  const retryAfterSeconds = error.details.retryAfterSeconds;
+  return typeof retryAfterSeconds === "number" && Number.isSafeInteger(retryAfterSeconds)
+    ? { retryAfterSeconds }
+    : {};
 }

@@ -1,0 +1,42 @@
+<view class="quota-strip">
+  <view class="quota-strip__remaining">
+    <text class="quota-strip__label">今日剩余免费下载次数</text>
+    <text class="quota-strip__value">{{quota}} 次</text>
+    <view
+      class="quota-strip__help"
+      catchtap="toggleTips"
+      role="button"
+      aria-label="免费下载次数说明"
+      aria-expanded="{{tipsOpen}}"
+    ><image src="/assets/icons/iconsax/info-circle.svg" mode="aspectFit" aria-hidden="true" /></view>
+  </view>
+
+  <view
+    class="quota-strip__link"
+    catchtap="openMembership"
+    role="button"
+    aria-label="购买 AI 生成次数"
+  >
+    <text>购买 AI 生成次数</text>
+    <image class="quota-strip__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+  </view>
+
+  <view wx:if="{{tipsOpen}}" class="quota-tips" catchtap="keepTipsOpen" role="tooltip">
+    <view class="quota-tips__arrow"></view>
+    <view class="quota-tips__title">免费下载次数说明</view>
+    <view class="quota-tips__list">
+      <view>· 每日可免费成功保存 {{dailyFreeQuota}} 个文件</view>
+      <view>· 每成功保存 1 个文件消耗 1 次</view>
+      <view>· 四个 Tab 的文件分别计算下载次数</view>
+      <view>· 免费次数每日 00:00 自动恢复</view>
+      <view>· AI 生成次数与免费下载次数分开计算</view>
+    </view>
+    <view class="quota-tips__emphasis">只有文件成功保存到设备后，才会扣除 1 次</view>
+    <view
+      class="quota-tips__close"
+      catchtap="closeTips"
+      role="button"
+      aria-label="关闭免费下载次数说明"
+    >知道了</view>
+  </view>
+</view>

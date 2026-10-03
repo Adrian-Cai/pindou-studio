@@ -1,0 +1,79 @@
+<page-layout title="购买 AI 生成次数" back showMainNav selectedTab="2">
+  <view class="subpage recharge-page">
+    <view class="recharge-summary">
+      <view class="recharge-summary__columns">
+        <view class="recharge-summary__primary">
+          <text class="recharge-summary__label">当前总可用</text>
+          <view class="recharge-summary__total">
+            <text class="recharge-summary__total-number">{{quota}}</text>
+            <text class="recharge-summary__total-unit">次</text>
+          </view>
+        </view>
+        <view class="recharge-summary__secondary">
+          <text class="recharge-summary__meta-label">今日免费剩余</text>
+          <view class="recharge-summary__meta-value">
+            <text class="recharge-summary__meta-number">{{dailyFreeRemaining}}</text>
+            <text class="recharge-summary__meta-slash">/</text>
+            <text>{{dailyFreeQuota}} 次</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="recharge-options">
+      <view wx:if="{{packagesLoading}}" class="recharge-options__message">正在加载 AI 套餐…</view>
+      <view wx:elif="{{packageMessage}}" class="recharge-options__message">{{packageMessage}}</view>
+      <block wx:else>
+        <view class="recharge-option {{selected === index ? 'recharge-option--active' : ''}}" wx:for="{{packages}}" wx:key="id" data-index="{{index}}" bindtap="selectPackage">
+          <view class="recharge-option__icon-wrap">
+            <image
+              class="recharge-option__icon"
+              src="{{item.count === 5 ? '/assets/icons/ai-package-sprout.svg' : item.count === 30 ? '/assets/icons/ai-package-bolt.svg' : '/assets/icons/ai-package-diamond.svg'}}"
+              mode="aspectFit"
+            />
+          </view>
+          <view class="recharge-option__content">
+            <view class="recharge-option__title-row">
+              <text class="recharge-option__label">{{item.count === 5 ? 'AI 精致生成 5 次' : item.label}}</text>
+              <text wx:if="{{item.count === 5}}" class="recharge-option__tag">新用户</text>
+            </view>
+            <text wx:if="{{item.count === 5}}" class="recharge-option__desc">适合体验和日常使用</text>
+            <text wx:elif="{{item.count === 30}}" class="recharge-option__desc">适合经常创作的用户</text>
+            <text wx:else class="recharge-option__desc">适合深度创作，单次更划算</text>
+          </view>
+          <view class="recharge-option__price"><text class="recharge-option__currency">¥</text><text>{{item.price}}</text></view>
+          <view class="recharge-option__check"><image wx:if="{{selected === index}}" src="/assets/icons/iconsax/check.svg" mode="aspectFit" /></view>
+        </view>
+      </block>
+    </view>
+
+    <view class="payment-method">
+      <text class="payment-method__label">支付方式</text>
+      <view class="payment-method__value">
+        <image src="/assets/icons/login/wechat.svg" mode="aspectFit" />
+        <text>微信支付</text>
+        <image class="payment-method__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" />
+      </view>
+    </view>
+
+    <button class="button-primary recharge-button" style="width: 100%; margin: 28rpx 0 0;" loading="{{paymentLoading}}" disabled="{{packagesLoading || packages.length === 0 || paymentLoading}}" bindtap="purchase">
+      <text>{{paymentLoading ? '正在支付…' : '立即支付'}}</text>
+      <text wx:if="{{!paymentLoading && selectedPrice}}" class="recharge-button__price">¥ {{selectedPrice}}</text>
+    </button>
+
+    <view class="recharge-notes">
+      <view class="recharge-notes__agreement" bindtap="openPaidServiceAgreement" hover-class="recharge-notes__agreement--pressed" aria-role="link" aria-label="查看付费服务协议">支付即表示同意 <text class="recharge-notes__link">《付费服务协议》</text></view>
+    </view>
+
+    <view class="recharge-hint">
+      <view class="recharge-hint__copy">
+        <image class="recharge-hint__icon" src="/assets/icons/iconsax/info-circle.svg" mode="aspectFit" />
+        <text>AI 生成次数以服务到账为准，若支付后长时间未到账，请联系在线客服。</text>
+      </view>
+      <button class="recharge-hint__contact" open-type="contact" hover-class="recharge-hint__contact--pressed">
+        <image src="/assets/icons/ai-customer-service.svg" mode="aspectFit" />
+        <text>在线客服</text>
+      </button>
+    </view>
+  </view>
+</page-layout>

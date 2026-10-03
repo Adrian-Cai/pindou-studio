@@ -1,0 +1,33 @@
+<page-layout title="编辑个人资料" back>
+  <view class="subpage profile-edit-page">
+    <view class="profile-edit-card ui-card">
+      <view class="profile-edit-avatar-wrap">
+        <image class="profile-edit-avatar" src="{{profileDraftAvatarPath}}" mode="aspectFill" />
+      </view>
+      <text class="profile-edit-tip">头像使用默认品牌图，昵称将保存到账号</text>
+
+      <view class="profile-edit-field">
+        <text class="profile-edit-label">昵称</text>
+        <input
+          class="profile-edit-input"
+          type="nickname"
+          value="{{profileDraftNickname}}"
+          maxlength="80"
+          placeholder="请输入昵称"
+          confirm-type="done"
+          cursor-spacing="32"
+          bindinput="updateProfileNickname"
+        />
+      </view>
+
+      <view wx:if="{{profileMessage}}" class="profile-edit-message">{{profileMessage}}</view>
+
+      <button
+        class="profile-edit-submit"
+        loading="{{profileSaving}}"
+        disabled="{{profileSaving || !profileCanSave}}"
+        bindtap="saveProfile"
+      >{{profileSaving ? '保存中…' : '保存个人资料'}}</button>
+    </view>
+  </view>
+</page-layout>

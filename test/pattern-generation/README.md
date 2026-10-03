@@ -1,6 +1,6 @@
 # Standard Pattern Generation Baselines
 
-本目录冻结 Standard V1 行为，记录 Standard V2 Phase 2 的 4× Area Sampling A/B 结果，并验证 Phase 3 OKLab 与 Phase 4 MARD 经典 221 色施工链路。
+本目录冻结 Standard V1 行为，记录 Standard V2 Phase 2 的 4× Area Sampling A/B 结果，并验证 Phase 3 OKLab 与 Phase 4 MARD 经典 221 色施工链路
 
 ## 自动 Characterization
 
@@ -18,11 +18,12 @@ npm run test:pattern
 4. 对比冻结的 Cell、Palette 顺序、ColorCode、Alpha、Crop 和 FNV-1a Hash；
 5. 验证 4× Canvas、Linear RGB Area Average、Alpha 加权与透明阈值；
 6. 验证标准 OKLab 参考值、感知最近色、Palette 顺序和 tie 行为；
-7. 验证固定版本 MARD 291 色源数据、经典 221 色范围、候选权重、加权贪心限色和生产真实色号输出；
-8. 比较真实微信 V1 与 Phase 2 的固定字段及 Matrix 变化；
-9. 删除临时编译目录。
+7. 通过真实 `createDraft()` 验证固定 RGB/OKLab 分歧、Alpha 31/32 和 `colorLimit`；
+8. 验证固定版本 MARD 291 色源数据、经典 221 色范围、候选权重、加权贪心限色和生产真实色号输出；
+9. 比较真实微信 V1 与 Phase 2 的固定字段及 Matrix 变化；
+10. 删除临时编译目录
 
-测试替身不模拟图片解码或 Canvas 插值。它只让纯算法输入保持稳定，所以不能替代下面的真实微信 Canvas 基线。
+测试替身不模拟图片解码或 Canvas 插值它只让纯算法输入保持稳定，所以不能替代下面的真实微信 Canvas 基线
 
 ## 测试覆盖
 
@@ -36,17 +37,17 @@ npm run test:pattern
 - Bucket score tie 保留前项；
 - `Math.round()` 平均值；
 - `00` / `0f` / `10` / `ff` 小写 HEX；
-- 横图、竖图、同宽高比、16:9→4:3、4:3→16:9 中心裁剪。
+- 横图、竖图、同宽高比、16:9→4:3、4:3→16:9 中心裁剪
 
 ## PNG fixture
 
-图片位于 `miniprogram/test-assets/pattern-generation/`，全部由本仓库脚本生成，无外部版权素材。重新生成命令：
+图片位于 `miniprogram/test-assets/pattern-generation/`，全部由本仓库脚本生成，无外部版权素材重新生成命令：
 
 ```bash
 node test/pattern-generation/generate-test-assets.js
 ```
 
-普通测试使用 `--check` 只校验内容，不覆盖文件。
+普通测试使用 `--check` 只校验内容，不覆盖文件
 
 ## 真实微信 OffscreenCanvas Baseline
 
@@ -56,9 +57,9 @@ node test/pattern-generation/generate-test-assets.js
 miniprogram/tests/pattern-generation/wechat-canvas-baseline.ts
 ```
 
-该 V1 runner 仅保留为 Phase 0/1 历史执行入口。Phase 2 启用后，生产 `createDraft()` 已不再生成 V1 结果，不得重新运行它并覆盖冻结的 `wechat-v1-before.json` / `wechat-v1-after.json`。
+该 V1 runner 仅保留为 Phase 0/1 历史执行入口Phase 2 启用后，生产 `createDraft()` 已不再生成 V1 结果，不得重新运行它并覆盖冻结的 `wechat-v1-before.json` / `wechat-v1-after.json`
 
-Phase 0/1 采集时它通过生产 `createDraft()` 覆盖微信真实图片解码、`drawImage()` 缩放和 `getImageData()`。为了不改变产品路由或页面，runner 不会常驻执行。当时的历史步骤如下：
+Phase 0/1 采集时它通过生产 `createDraft()` 覆盖微信真实图片解码、`drawImage()` 缩放和 `getImageData()`为了不改变产品路由或页面，runner 不会常驻执行当时的历史步骤如下：
 
 1. 在 Phase 1 重构前，临时在 `miniprogram/app.ts` 顶部导入：
 
@@ -72,25 +73,25 @@ Phase 0/1 采集时它通过生产 `createDraft()` 覆盖微信真实图片解�
    void runWechatCanvasBaseline()
    ```
 
-3. 编译并等待控制台输出 `[Standard V1 WeChat Canvas Baseline]`。runner 也会把完整 JSON 写入：
+3. 编译并等待控制台输出 `[Standard V1 WeChat Canvas Baseline]`runner 也会把完整 JSON 写入：
 
    ```text
    wx.env.USER_DATA_PATH/standard-v1-wechat-canvas-baseline.json
    ```
 
-4. 保存为 `wechat-v1-before.json`，并删除 `app.ts` 的两处临时代码。
-5. Phase 1 完成后重复执行，保存为 `wechat-v1-after.json`。
+4. 保存为 `wechat-v1-before.json`，并删除 `app.ts` 的两处临时代码
+5. Phase 1 完成后重复执行，保存为 `wechat-v1-after.json`
 6. 比较：
 
    ```bash
    node test/pattern-generation/compare-wechat-baselines.js wechat-v1-before.json wechat-v1-after.json
    ```
 
-比较范围包含 Cell/opaque count、Palette count、matrixHash、paletteHash、图片尺寸和全部设置；`generationTimeMs` 只记录、不作为严格 equality 字段。
+比较范围包含 Cell/opaque count、Palette count、matrixHash、paletteHash、图片尺寸和全部设置；`generationTimeMs` 只记录、不作为严格 equality 字段
 
-`fixtures/v1-baseline-manifest.json` 中 `baselineStatus = pending-wechat-devtools` 表示尚未获得真实微信结果。只有真实运行后才能改成 `recorded` 并填写 Hash；禁止用浏览器 Canvas 或 Node Canvas 结果代填。
+`fixtures/v1-baseline-manifest.json` 中 `baselineStatus = pending-wechat-devtools` 表示尚未获得真实微信结果只有真实运行后才能改成 `recorded` 并填写 Hash；禁止用浏览器 Canvas 或 Node Canvas 结果代填
 
-当前 V1 before/after baseline 已由微信开发者工具 `2.02.2607271` 实际运行，分别记录为 `fixtures/wechat-v1-before.json` 与 `fixtures/wechat-v1-after.json`。Manifest 中 6 项均为 `recorded`，严格比较结果为 PASS；普通 `npm run test:pattern` 也会持续校验这两份真实微信记录。
+当前 V1 before/after baseline 已由微信开发者工具 `2.02.2607271` 实际运行，分别记录为 `fixtures/wechat-v1-before.json` 与 `fixtures/wechat-v1-after.json`Manifest 中 6 项均为 `recorded`，严格比较结果为 PASS；普通 `npm run test:pattern` 也会持续校验这两份真实微信记录
 
 ## Phase 2 Area Sampling
 
@@ -101,9 +102,9 @@ Phase 2 固定采样行为：
 - sRGB 通道先转 Linear RGB，区域平均后再转回 sRGB；
 - RGB 使用 Alpha 权重，完全透明像素的隐藏 RGB 不参与颜色平均；
 - Cell Alpha 使用 16 个样本的算术平均，之后继续应用生产逻辑现有的 `alpha < 32` 透明阈值；
-- Median Cut、RGB nearest、Palette 顺序与 `Cxx` 编号逻辑不在 Phase 2 修改。
+- Median Cut、RGB nearest、Palette 顺序与 `Cxx` 编号逻辑不在 Phase 2 修改
 
-纯算法测试位于 `phase-2-area-sampling.test.js`，覆盖常量色、黑白 Linear RGB 平均值 `188`、透明 RGB 隔离、行优先顺序、数据尺寸校验、4× Canvas 参数与 Alpha 31/32 边界。
+纯算法测试位于 `phase-2-area-sampling.test.js`，覆盖常量色、黑白 Linear RGB 平均值 `188`、透明 RGB 隔离、行优先顺序、数据尺寸校验、4× Canvas 参数与 Alpha 31/32 边界
 
 真实微信 runner 位于：
 
@@ -123,19 +124,20 @@ runWechatCanvasPhase2()
 wx.env.USER_DATA_PATH/standard-v2-phase-2-wechat-canvas-baseline.json
 ```
 
-本次真实结果已由微信开发者工具 `2.02.2607271` 记录为 `fixtures/wechat-phase-2.json`。执行：
+本次真实结果已由微信开发者工具 `2.02.2607271` 记录为 `fixtures/wechat-phase-2.json`执行：
 
 ```bash
 node test/pattern-generation/compare-wechat-phase-2.js
 ```
 
-会验证所有业务固定字段，并要求至少一个 Matrix Hash 相比 V1 发生预期变化。当前 6 个案例中 5 个 Matrix 变化，纯色案例保持一致；耗时仅记录，不参与严格相等判断。
+会验证所有业务固定字段，并要求至少一个 Matrix Hash 相比 V1 发生预期变化当前 6 个案例中 5 个 Matrix 变化，纯色案例保持一致；耗时仅记录，不参与严格相等判断
 
 ## Phase 3 OKLab 与 Phase 4 MARD
 
 Phase 3/4 自动测试位于：
 
 ```text
+test/pattern-generation/phase-3-oklab.test.js
 test/pattern-generation/phase-3-4-color-matching.test.js
 ```
 
@@ -149,11 +151,44 @@ test/pattern-generation/phase-3-4-color-matching.test.js
 - 默认经典 221 个不透明色号范围及特殊效果色排除；
 - 最多 128 个过采样候选色的像素权重守恒；
 - 加权贪心选择的主色优先、确定性与 `colorLimit`；
-- 生产 `createDraft()` 输出真实 MARD HEX 与色号。
+- 生产 `createDraft()` 输出真实 MARD HEX 与色号
+
+Phase 3 专项测试额外覆盖：
+
+- Black / White / Red / Green / Blue OKLab 参考值；
+- 原始 RGB 引用保持和不同引用对象的严格 tie；
+- 固定 RGB/OKLab 分歧经过真实 `createDraft()` 后仍选择 OKLab 结果；
+- 当前生产链路的 Alpha 31/32 边界和 `colorLimit`
 
 MARD 数据位于 `miniprogram/data/bead-palettes/mard.ts`，固定到
-`maxcleme/beadcolors@f97ff4283d03cef5cd7e1071a86f5892e0c0c61b`。数据中的 HEX/RGB
-是屏幕参考值，不承诺与不同批次、材质和光照下的实物完全一致。
+`maxcleme/beadcolors@f97ff4283d03cef5cd7e1071a86f5892e0c0c61b`数据中的 HEX/RGB
+是屏幕参考值，不承诺与不同批次、材质和光照下的实物完全一致
+
+Phase 3 历史基线 runner 位于：
+
+```text
+miniprogram/tests/pattern-generation/wechat-canvas-phase-3.ts
+```
+
+该 runner 使用不含 MARD/Phase 5 Cleanup 的 Phase 3 历史 pipeline，仅用于在微信开发者工具中记录 Phase 2 → Phase 3 的真实 Canvas 结果执行后把：
+
+```text
+wx.env.USER_DATA_PATH/standard-v2-phase-3-wechat-canvas-baseline.json
+```
+
+保存为：
+
+```text
+test/pattern-generation/fixtures/wechat-phase-3.json
+```
+
+然后执行：
+
+```bash
+node test/pattern-generation/compare-wechat-phase-3.js
+```
+
+比较器严格校验 Phase 2 / Phase 3 的稳定字段，并记录 Matrix、Palette 和 generation time 变化禁止用当前 Phase 4/5 `createDraft()` 输出代填该文件
 
 Phase 4 runner 位于：
 
@@ -163,19 +198,19 @@ miniprogram/tests/pattern-generation/wechat-canvas-phase-4.ts
 
 生产 Phase 4 结果已由微信开发者工具 `3.17.1`（桌面工具版本
 `2.02.2607271`）使用同一组 6 张结构化 fixture 记录为
-`fixtures/wechat-phase-4.json`。执行：
+`fixtures/wechat-phase-4.json`执行：
 
 ```bash
 node test/pattern-generation/compare-wechat-phase-4.js
 ```
 
 会严格校验 Phase 2 / Phase 4 的尺寸、设置、Cell 数和透明 Cell 数，并检查限色与
-Matrix/Palette Hash 变化；耗时只记录、不参与严格 equality。当前优化基线使用
+Matrix/Palette Hash 变化；耗时只记录、不参与严格 equality当前优化基线使用
 `standard-v2-phase-4-classic-221-weighted-greedy`，6/6 Matrix 和 Palette 均发生
-预期变化，最大案例 `128×128 / 64 色` 本次记录为 124 ms。
+预期变化，最大案例 `128×128 / 64 色` 本次记录为 124 ms
 
-Phase 3 已被 Phase 4 生产链路取代，因此未伪造独立的 Phase 3 微信 Hash；Phase 3
-使用固定 RGB/OKLab 分歧案例证明生产所用 matcher 的感知距离行为。使用同一组 6 张
+Phase 3 的真实微信 fixture 必须通过上述 runner 重新记录后才能宣称 Phase 3 Canvas Gate 通过当前 Phase 4
+视觉记录不能替代 Phase 3 A/B；Phase 3 的确定性 Production Path 证据来自专项测试中的真实 `createDraft()` 分歧案例使用同一组 6 张
 人物/动漫图片完成 64×64 / 32 色视觉 A/B，并对高动态案例补充 96×96 / 32 色：经典
 色号合规率 100%，平均实际色数从旧 Phase 4 的 19.9 提升到 29.4；经典色卡色域收窄
-造成平均 OKLab 误差增加 3.3%，属于可施工性优先的已知取舍。
+造成平均 OKLab 误差增加 3.3%，属于可施工性优先的已知取舍

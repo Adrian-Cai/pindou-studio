@@ -1,0 +1,21 @@
+<page-layout title="意见反馈" back showMainNav selectedTab="2">
+  <view class="subpage feedback-page">
+    <view class="feedback-hero">
+      <image class="feedback-hero__icon" src="/assets/icons/iconsax/message-text.svg" mode="aspectFit" aria-hidden="true" />
+      <view><view>感谢你的反馈</view><text>你可以通过微信客服直接描述问题，也可以发送截图</text></view>
+    </view>
+
+    <view class="feedback-contact-card ui-card">
+      <view class="feedback-contact-card__icon">
+        <image src="/assets/icons/iconsax/message-text.svg" mode="aspectFit" aria-hidden="true" />
+      </view>
+      <view class="feedback-contact-card__content">
+        <view class="feedback-contact-card__title">在线联系客服</view>
+        <text>进入客服会话后，发送你的问题描述和相关截图</text>
+      </view>
+    </view>
+
+    <button class="button-primary feedback-submit" open-type="contact" aria-label="联系客服">联系客服</button>
+    <view class="feedback-safe"><image src="/assets/icons/iconsax/message-text.svg" mode="aspectFit" aria-hidden="true" />客服会尽快处理你的问题</view>
+  </view>
+</page-layout>

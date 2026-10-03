@@ -36,15 +36,13 @@ function quotaRow(dailyFree, usedToday, dailyRemaining, purchased) {
   };
 }
 
-test("GET quota lazily grants and summarizes the Asia/Shanghai natural day", async () => {
+test("GET quota only reads and summarizes the Asia/Shanghai natural day", async () => {
   const { pool, calls } = clientPool((sql) => {
-    if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
     if (sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
-    if (sql.includes("INSERT INTO pindou_quota_transactions")) return { rows: [] };
     if (sql.includes("AS daily_free")) return { rows: [quotaRow(3, 1, 2, 4)] };
     throw new Error(`unexpected SQL: ${sql}`);
   });
-  const service = new PostgresQuotaDownloadService(pool, { dailyFree: 3 }, () => NOW);
+  const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
 
   assert.deepEqual(await service.getQuota("usr_a"), {
     dailyFree: 3,
@@ -54,13 +52,18 @@ test("GET quota lazily grants and summarizes the Asia/Shanghai natural day", asy
     membershipType: null,
     membershipExpiresAt: null,
     resetsAt: "2026-09-02T00:00:00+08:00",
+    aiGeneration: {
+      dailyFree: 3,
+      usedToday: 1,
+      purchased: 4,
+      remaining: 6,
+      resetsAt: "2026-09-02T00:00:00+08:00",
+    },
   });
-  const grant = calls.find((call) => call.sql.includes("'daily_grant'"));
-  assert.equal(grant.parameters[1], "usr_a");
-  assert.equal(grant.parameters[2], 3);
-  assert.equal(grant.parameters[3], "2026-09-01");
+  assert.ok(calls.every((call) => call.sql.trim().startsWith("SELECT")));
   const summary = calls.find((call) => call.sql.includes("AS daily_free"));
-  assert.deepEqual(summary.parameters, ["usr_a", "2026-09-01"]);
+  assert.deepEqual(summary.parameters, ["usr_a", "standard_download", "2026-09-01", 3]);
+
 });
 
 async function assertDebitBucket({ before, after, expectedBucket, expectedQuotaDate }) {
@@ -81,7 +84,7 @@ async function assertDebitBucket({ before, after, expectedBucket, expectedQuotaD
     if (sql.includes("UPDATE pindou_download_records")) return { rows: [] };
     throw new Error(`unexpected SQL: ${sql}`);
   });
-  const service = new PostgresQuotaDownloadService(pool, { dailyFree: 3 }, () => NOW);
+  const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
   const result = await service.createDownload({
     userId: "usr_a",
     idempotencyKey: `export-${expectedBucket}`,
@@ -126,7 +129,7 @@ test("insufficient quota rolls back without a download record or negative transa
     if (sql.includes("INSERT")) writes.push(sql);
     return { rows: [] };
   });
-  const service = new PostgresQuotaDownloadService(pool, { dailyFree: 0 }, () => NOW);
+  const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 0, dailyAiGenerations: 0 }, () => NOW);
   await assert.rejects(
     () => service.createDownload({ userId: "usr_a", idempotencyKey: "no-quota", workId: "work_a", fileType: "preview" }),
     (error) => error.statusCode === 402 && error.code === "QUOTA_INSUFFICIENT",
@@ -155,7 +158,7 @@ test("same idempotency request returns the original record without another debit
     if (sql.includes("AS daily_free")) return { rows: [quotaRow(3, 1, 2, 0)] };
     throw new Error(`unexpected SQL: ${sql}`);
   });
-  const service = new PostgresQuotaDownloadService(pool, { dailyFree: 3 }, () => NOW);
+  const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
   const result = await service.createDownload({ userId: "usr_a", idempotencyKey: "same-export", workId: "work_a", fileType: "materials" });
   assert.equal(result.downloadRecord.id, "dl_existing");
   assert.equal(result.downloadRecord.title, "历史标题");
@@ -175,7 +178,7 @@ test("download rejects a work owned by another user before writing records", asy
     if (sql.includes("FROM pindou_works")) return { rows: [{ user_id: "usr_b", title: "他人作品", deleted_at: null }] };
     throw new Error(`unexpected SQL: ${sql}`);
   });
-  const service = new PostgresQuotaDownloadService(pool, { dailyFree: 3 }, () => NOW);
+  const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
   await assert.rejects(
     () => service.createDownload({ userId: "usr_a", idempotencyKey: "foreign", workId: "work_b", fileType: "preview" }),
     (error) => error.statusCode === 403 && error.code === "FORBIDDEN",
@@ -199,11 +202,48 @@ test("download history filters the authenticated user's title snapshots and neve
     if (sql.includes("COUNT(*)")) return { rows: [{ total_count: "1" }] };
     return { rows: [row] };
   });
-  const service = new PostgresQuotaDownloadService(pool, { dailyFree: 3 }, () => NOW);
+  const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
   const result = await service.listDownloads({ userId: "usr_a", fileType: "preview", query: "猫咪", page: 2, pageSize: 1 });
   assert.equal(result.items[0].workId, null);
   assert.equal(result.items[0].title, "已删除的猫咪");
   assert.equal(result.items[0].fileUrl, undefined);
   assert.deepEqual(calls[0].parameters, ["usr_a", "preview", "%猫咪%"]);
   assert.deepEqual(calls[1].parameters, ["usr_a", "preview", "%猫咪%", 1, 1]);
+});
+
+test("palette download records are accepted and mapped as quota-consuming downloads", async () => {
+  const row = {
+    id: "dl_palette",
+    user_id: "usr_a",
+    work_id: "work_a",
+    work_title_snapshot: "色板作品",
+    file_type: "palette",
+    consumed_quota: true,
+    quota_transaction_id: "qt_palette",
+    idempotency_key: "palette-history",
+    downloaded_at: NOW,
+  };
+  const { pool } = clientPool((sql) => {
+    if (sql.includes("COUNT(*)")) return { rows: [{ total_count: "1" }] };
+    return { rows: [row] };
+  });
+  const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
+  const result = await service.listDownloads({ userId: "usr_a", fileType: "palette", page: 1, pageSize: 20 });
+  assert.equal(result.items[0].fileType, "palette");
+  assert.equal(result.items[0].consumedQuota, true);
+});
+
+
+test("quota preview passes each configured daily allowance to read-only ledger queries", async () => {
+  const { pool, calls } = clientPool((sql, parameters) => {
+    if (sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
+    assert.ok(sql.trim().startsWith("SELECT"));
+    assert.equal(parameters[3], parameters[1] === "ai_generation" ? 2 : 5);
+    return { rows: [quotaRow(parameters[3], 0, parameters[3], 0)] };
+  });
+  const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 5, dailyAiGenerations: 2 }, () => NOW);
+  const quota = await service.getQuota("usr_a");
+  assert.equal(quota.remaining, 5);
+  assert.equal(quota.aiGeneration.remaining, 2);
+  assert.equal(calls.length, 3);
 });

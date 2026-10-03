@@ -111,7 +111,7 @@ test("official JSAPI order call verifies WeChat response and returns only client
   const client = new OfficialWeChatPaymentGateway(config(), fetchImplementation, () => NOW);
   const result = await client.createPayment({
     orderId: "order_test",
-    description: "拼豆工作室-加购 3 次",
+    description: "拼豆工作室-AI 精致生成 30 次",
     amountFen: 990,
     currency: "CNY",
     payerOpenid: "payer-openid-private",

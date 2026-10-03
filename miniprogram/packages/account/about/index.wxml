@@ -1,0 +1,31 @@
+<page-layout title="关于我们" back showMainNav selectedTab="2">
+  <view class="subpage about-page">
+    <image class="about-logo" src="/assets/icons/brand-avatar.svg" mode="aspectFit" />
+    <view class="about-name">拼豆制作工具</view>
+    <view class="about-version">Version 0.37.2</view>
+
+    <view class="about-intro">
+      <view class="about-intro__title"><text>i</text> 产品介绍</view>
+      <view class="about-intro__body">
+        <view>拼豆制作工具是一款专为拼豆爱好者打造的创作助手</view>
+        <view>支持上传图片，智能识别并生成拼豆图、施工图和材料清单，帮助你轻松完成每一件拼豆作品</view>
+      </view>
+      <image src="/assets/icons/bead-stack.svg" mode="aspectFit" />
+    </view>
+
+    <view class="about-menu ui-card">
+      <view class="about-menu__item" data-id="features" bindtap="openItem"><image class="about-menu__icon" src="/assets/icons/iconsax/element.svg" mode="aspectFit" /><view>功能特色</view><image class="about-menu__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
+      <view class="about-menu__item" data-id="agreement" bindtap="openItem"><image class="about-menu__icon" src="/assets/icons/iconsax/document-text.svg" mode="aspectFit" /><view>用户协议</view><image class="about-menu__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
+      <view class="about-menu__item" data-id="paid-service" bindtap="openItem"><image class="about-menu__icon" src="/assets/icons/iconsax/document-text.svg" mode="aspectFit" /><view>付费服务协议</view><image class="about-menu__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
+      <view class="about-menu__item" data-id="privacy" bindtap="openItem"><image class="about-menu__icon" src="/assets/icons/iconsax/shield-tick.svg" mode="aspectFit" /><view>隐私政策</view><image class="about-menu__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
+      <view class="about-menu__item" data-id="update" bindtap="openItem"><image class="about-menu__icon" src="/assets/icons/iconsax/refresh.svg" mode="aspectFit" /><view>检查更新</view><view class="about-menu__meta">当前已是最新版本</view><image class="about-menu__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
+      <view class="about-menu__item" data-id="support" bindtap="openItem"><image class="about-menu__icon" src="/assets/icons/iconsax/call.svg" mode="aspectFit" /><view>联系客服</view><view class="about-menu__meta">工作日 9:00-18:00</view><image class="about-menu__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view>
+    </view>
+
+    <view class="about-footer">
+      <view>© 2026 拼豆制作工具</view>
+      <view>由 小露拼豆 用心打造</view>
+      <view>让创意，拼出美好时光 <image src="/assets/icons/iconsax/heart-active.svg" mode="aspectFit" aria-hidden="true" /></view>
+    </view>
+  </view>
+</page-layout>

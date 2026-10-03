@@ -50,15 +50,19 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
     );
     await pool.query(
       `INSERT INTO pindou_quota_transactions (
-         id, user_id, type, amount, source, bucket, quota_date, order_id,
+         id, user_id, quota_kind, type, amount, source, bucket, quota_date, order_id,
          download_record_id, idempotency_key, note, created_at
        ) VALUES
-         ($1, $3, 'adjustment', 2, 'support', 'purchased', NULL, NULL, NULL, NULL, '测试购买额度', $4),
-         ($2, $3, 'adjustment', -2, 'support', 'daily_free', '2026-08-31', NULL, NULL, NULL, '前一上海自然日流水', $4)`,
+          ($1, $3, 'standard_download', 'adjustment', 2, 'support', 'purchased', NULL, NULL, NULL, NULL, '测试购买额度', $4),
+          ($2, $3, 'standard_download', 'adjustment', -2, 'support', 'daily_free', '2026-08-31', NULL, NULL, NULL, '前一上海自然日流水', $4)`,
       [`qt_buy_${suffix}`, `qt_old_${suffix}`, userA, now],
     );
 
-    const service = new PostgresQuotaDownloadService(pool, { dailyFree: 3 }, () => now);
+    const service = new PostgresQuotaDownloadService(
+      pool,
+      { dailyStandardDownloads: 3, dailyAiGenerations: 3 },
+      () => now,
+    );
     const firstQuota = await service.getQuota(userA);
     const repeatedQuota = await service.getQuota(userA);
     assert.deepEqual(firstQuota, {
@@ -69,13 +73,20 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
       membershipType: null,
       membershipExpiresAt: null,
       resetsAt: "2026-09-02T00:00:00+08:00",
+      aiGeneration: {
+        dailyFree: 3,
+        usedToday: 0,
+        purchased: 0,
+        remaining: 3,
+        resetsAt: "2026-09-02T00:00:00+08:00",
+      },
     });
     assert.deepEqual(repeatedQuota, firstQuota);
     const grantCount = await pool.query(
-      "SELECT COUNT(*)::int AS count FROM pindou_quota_transactions WHERE user_id = $1 AND type = 'daily_grant' AND quota_date = '2026-09-01'",
+      "SELECT COUNT(*)::int AS count FROM pindou_quota_transactions WHERE user_id = $1 AND quota_kind = 'standard_download' AND type = 'daily_grant' AND quota_date = '2026-09-01'",
       [userA],
     );
-    assert.equal(grantCount.rows[0].count, 1);
+    assert.equal(grantCount.rows[0].count, 0);
 
     const successful = [];
     for (let index = 1; index <= 4; index += 1) {
@@ -83,7 +94,7 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
         userId: userA,
         idempotencyKey: `stage4-${suffix}-${index}`,
         workId: workA,
-        fileType: index % 2 === 0 ? "chart" : "preview",
+        fileType: index === 1 ? "palette" : index % 2 === 0 ? "chart" : "preview",
       }));
     }
     assert.equal(successful[2].quota.usedToday, 3);
@@ -96,6 +107,13 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
       [userA],
     );
     assert.deepEqual(firstBuckets.rows.map((row) => row.bucket).sort(), ["daily_free", "daily_free", "daily_free", "purchased"].sort());
+
+    const changedConfig = new PostgresQuotaDownloadService(pool,
+      { dailyStandardDownloads: 10, dailyAiGenerations: 1 }, () => now);
+    const persistedQuota = await changedConfig.getQuota(userA);
+    assert.equal(persistedQuota.dailyFree, 3, "已发放额度以流水为准，不随配置变化重发");
+    assert.equal(persistedQuota.remaining, 1);
+    assert.equal(persistedQuota.aiGeneration.dailyFree, 1, "未发放 AI 额度只读预览新配置");
 
     const duplicate = await service.createDownload({
       userId: userA,
@@ -150,8 +168,8 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
     assert.deepEqual({ usedToday: finalQuota.usedToday, purchased: finalQuota.purchased, remaining: finalQuota.remaining }, { usedToday: 3, purchased: 0, remaining: 0 });
     const rawBalances = await pool.query(
       `SELECT
-         COALESCE(SUM(amount) FILTER (WHERE bucket = 'daily_free' AND quota_date = '2026-09-01'), 0)::int AS daily_balance,
-         COALESCE(SUM(amount) FILTER (WHERE bucket = 'purchased'), 0)::int AS purchased_balance
+         COALESCE(SUM(amount) FILTER (WHERE quota_kind = 'standard_download' AND bucket = 'daily_free' AND quota_date = '2026-09-01'), 0)::int AS daily_balance,
+         COALESCE(SUM(amount) FILTER (WHERE quota_kind = 'standard_download' AND bucket = 'purchased'), 0)::int AS purchased_balance
        FROM pindou_quota_transactions
        WHERE user_id = $1`,
       [userA],

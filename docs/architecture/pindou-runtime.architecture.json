@@ -8,9 +8,9 @@
     "repository": { "url": "https://github.com/Adrian-Cai/pindou-studio.git", "revision": "29f82be69f0b4304098d29d17bc6623ce3a413ae" },
     "viewBox": [1080, 600],
     "views": [
-      { "id": "main-path", "label": "主链路：图片到图纸", "focus": ["user", "mp-pages", "canvas", "mp-services", "http-app", "biz-mod", "pg"], "note": "用户选图后在本地 Canvas 2D 转成拼豆图纸，登录用户再经 HTTPS 保存到自建后端。" },
-      { "id": "login", "label": "登录与鉴权", "focus": ["mp-services", "http-app", "auth-mod", "wx-open", "pg"], "note": "wx.login 取 code，服务端调 jscode2session 换 openid，签发 Bearer 令牌。" },
-      { "id": "media", "label": "封面与头像媒体", "focus": ["mp-services", "http-app", "biz-mod", "fs-media"], "note": "上传写本地磁盘，读取走 /api/media/* 公共路径。" }
+      { "id": "main-path", "label": "主链路：图片到图纸", "focus": ["user", "mp-pages", "canvas", "mp-services", "http-app", "biz-mod", "pg"], "note": "用户选图后在本地 Canvas 2D 转成拼豆图纸，登录用户再经 HTTPS 保存到自建后端" },
+      { "id": "login", "label": "登录与鉴权", "focus": ["mp-services", "http-app", "auth-mod", "wx-open", "pg"], "note": "wx.login 取 code，服务端调 jscode2session 换 openid，签发 Bearer 令牌" },
+      { "id": "media", "label": "封面与头像媒体", "focus": ["mp-services", "http-app", "biz-mod", "fs-media"], "note": "上传写本地磁盘，读取走 /api/media/* 公共路径" }
     ]
   },
   "components": [

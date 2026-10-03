@@ -1,0 +1,35 @@
+<page-layout title="使用帮助" back showMainNav selectedTab="2">
+  <view class="subpage help-page">
+    <view class="search-box help-search">
+      <image class="search-box__icon" src="/assets/icons/iconsax/search.svg" mode="aspectFit" aria-hidden="true" />
+      <input class="search-box__input" placeholder-class="search-box__placeholder" placeholder="搜索问题" value="{{query}}" bindinput="changeSearch" />
+    </view>
+
+    <view class="help-section-title">常见问题</view>
+    <view wx:if="{{questions.length}}" class="faq-list">
+      <view class="faq-item ui-card {{openIndex === index ? 'faq-item--open' : ''}}" wx:for="{{questions}}" wx:key="title" data-index="{{index}}" bindtap="toggleQuestion">
+        <view class="faq-item__head">
+          <view class="faq-item__symbol"><image src="{{openIndex === index ? '/assets/icons/iconsax/minus.svg' : '/assets/icons/iconsax/add.svg'}}" mode="aspectFit" aria-hidden="true" /></view>
+          <view class="faq-item__question">{{item.title}}</view>
+          <image class="faq-item__arrow" src="{{openIndex === index ? '/assets/icons/iconsax/chevron-up.svg' : '/assets/icons/iconsax/chevron-down.svg'}}" mode="aspectFit" aria-hidden="true" />
+        </view>
+        <view wx:if="{{openIndex === index}}" class="faq-item__answer">{{item.answer}}</view>
+      </view>
+    </view>
+    <view wx:else class="help-empty">没有找到相关问题，换个关键词试试</view>
+
+    <view class="help-section-title">快速帮助</view>
+    <view class="quick-grid">
+      <view class="quick-card ui-card" data-id="beginner" bindtap="openQuickHelp"><image class="quick-card__icon" src="/assets/icons/iconsax/book.svg" mode="aspectFit" /><view>新手教程</view><view class="quick-card__hint">快速上手指南 <image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view></view>
+      <view class="quick-card ui-card" data-id="download" bindtap="openQuickHelp"><image class="quick-card__icon" src="/assets/icons/iconsax/document-download.svg" mode="aspectFit" /><view>下载说明</view><view class="quick-card__hint">下载规则说明 <image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view></view>
+      <view class="quick-card ui-card" data-id="payment" bindtap="openQuickHelp"><image class="quick-card__icon" src="/assets/icons/bead-stack.svg" mode="aspectFit" /><view>支付说明</view><view class="quick-card__hint">会员与支付 <image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view></view>
+      <view class="quick-card ui-card" data-id="support" bindtap="openQuickHelp"><image class="quick-card__icon" src="/assets/icons/iconsax/call.svg" mode="aspectFit" /><view>联系客服</view><view class="quick-card__hint">人工在线支持 <image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" /></view></view>
+    </view>
+
+    <view class="help-feedback ui-card">
+      <image src="/assets/icons/brand-avatar.svg" mode="aspectFit" />
+      <view class="help-feedback__content"><view>还没有找到答案？</view><text>告诉我们您的问题，客服会尽快为您解答</text></view>
+      <view class="help-feedback__button" data-id="feedback" bindtap="openQuickHelp">去反馈</view>
+    </view>
+  </view>
+</page-layout>

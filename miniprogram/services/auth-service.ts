@@ -1,6 +1,16 @@
+/**
+ * 登录相关接口封装（小程序端网络层）。
+ *
+ * 职责：把微信登录 code 换成服务端 token、拉取当前用户 profile、删除账号、修改昵称，
+ *       以及把服务端返回的原始 JSON 解析/校验成强类型结构。不直接持有登录态——token 的
+ *       存取交给 token-storage，登录态的状态机由 store/auth-store 维护。
+ * 调用方：store/auth-store。
+ * 关键点：所有解析函数都做严格字段校验，缺失或类型不符直接抛 INVALID_RESPONSE，防止脏数据进 store。
+ */
 import type { AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
 import { ApiError, apiRequest } from './http-client'
 
+/** 微信登录：拿 wx.login 的 code 调 /api/auth/login，返回含 token 的 AuthSession。 */
 export async function loginWithWechat(): Promise<AuthSession> {
   const code = await getWechatLoginCode()
   const response = await apiRequest<unknown>({
@@ -11,6 +21,7 @@ export async function loginWithWechat(): Promise<AuthSession> {
   return parseLoginResponse(response)
 }
 
+/** 携带 token 调用 /api/users/me，返回完整 profile（user/stats/quota/privacy）。 */
 export async function fetchCurrentUser(token: string): Promise<CurrentUserProfile> {
   const response = await apiRequest<unknown>({
     path: '/api/users/me',
@@ -19,6 +30,26 @@ export async function fetchCurrentUser(token: string): Promise<CurrentUserProfil
   return parseCurrentUserResponse(response)
 }
 
+/** 携带 token 调用 /api/users/me 的 DELETE，注销当前账号（成功后由调用方负责本地登出）。 */
+export async function deleteCurrentUser(token: string): Promise<void> {
+  await apiRequest<unknown>({
+    path: '/api/users/me',
+    method: 'DELETE',
+    token,
+  })
+}
+
+/** 吊销当前会话，用于退出登录。 */
+export async function revokeCurrentSession(token: string): Promise<void> {
+  await apiRequest<unknown>({ path: '/api/auth/session', method: 'DELETE', token })
+}
+
+/** 吊销该账号在所有设备上的会话。 */
+export async function revokeAllSessions(token: string): Promise<void> {
+  await apiRequest<unknown>({ path: '/api/auth/sessions', method: 'DELETE', token })
+}
+
+/** 携带 token 修改昵称（/api/users/me PUT），返回更新后的用户基础信息。 */
 export async function updateNickname(token: string, nickname: string): Promise<AuthUser> {
   const response = await apiRequest<unknown>({
     path: '/api/users/me',
@@ -32,16 +63,17 @@ export async function updateNickname(token: string, nickname: string): Promise<A
 function getWechatLoginCode(): Promise<string> {
   return new Promise((resolve, reject) => {
     wx.login({
+      // 微信登录最长等待 10 秒，超时视为失败
       timeout: 10_000,
       success: ({ code }) => {
         if (code) {
           resolve(code)
           return
         }
-        reject(new ApiError('微信登录未返回有效凭证，请重新尝试。', { code: 'WX_LOGIN_FAILED' }))
+        reject(new ApiError('微信登录未返回有效凭证，请重新尝试', { code: 'WX_LOGIN_FAILED' }))
       },
       fail: () => {
-        reject(new ApiError('微信登录未完成，请检查网络后重新尝试。', { code: 'WX_LOGIN_FAILED' }))
+        reject(new ApiError('微信登录未完成，请检查网络后重新尝试', { code: 'WX_LOGIN_FAILED' }))
       },
     })
   })
@@ -52,6 +84,7 @@ function parseLoginResponse(value: unknown): AuthSession {
   const user = parseUser(value.user)
   if (
     typeof value.token !== 'string'
+    // token 至少 16 位才视为有效，防服务端返回异常短串
     || value.token.length < 16
     || typeof value.expiresAt !== 'string'
     || !Number.isFinite(Date.parse(value.expiresAt))
@@ -81,9 +114,14 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
   const createdAt = value.user.createdAt
   const stats = value.stats
   const quota = value.quota
+  const aiGeneration = quota.aiGeneration
+  // createdAt / quota.resetsAt 与 aiGeneration.resetsAt 一视同仁：只判 typeof string 会放过
+  // 「看起来像时间、Date.parse 却是 NaN」的脏串，下游拿去做倒计时就渲染出 NaN。
+  // 三个时间字段必须用同一把尺子量，否则哪天服务端改了格式，只有一半字段能挡住。
   if (
     !user
     || typeof createdAt !== 'string'
+    || !Number.isFinite(Date.parse(createdAt))
     || !isFiniteNumber(stats.workCount)
     || !isFiniteNumber(stats.favoriteCount)
     || !isFiniteNumber(stats.downloadCount)
@@ -92,6 +130,14 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
     || !isFiniteNumber(quota.purchased)
     || !isFiniteNumber(quota.remaining)
     || typeof quota.resetsAt !== 'string'
+    || !Number.isFinite(Date.parse(quota.resetsAt))
+    || !isRecord(aiGeneration)
+    || !isFiniteNumber(aiGeneration.dailyFree)
+    || !isFiniteNumber(aiGeneration.usedToday)
+    || !isFiniteNumber(aiGeneration.purchased)
+    || !isFiniteNumber(aiGeneration.remaining)
+    || typeof aiGeneration.resetsAt !== 'string'
+    || !Number.isFinite(Date.parse(aiGeneration.resetsAt))
   ) throw invalidResponse()
 
   return {
@@ -107,6 +153,13 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
       purchased: quota.purchased,
       remaining: quota.remaining,
       resetsAt: quota.resetsAt,
+      aiGeneration: {
+        dailyFree: aiGeneration.dailyFree,
+        usedToday: aiGeneration.usedToday,
+        purchased: aiGeneration.purchased,
+        remaining: aiGeneration.remaining,
+        resetsAt: aiGeneration.resetsAt,
+      },
     },
   }
 }
@@ -114,11 +167,15 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
 function parseUser(value: unknown): AuthUser | null {
   if (!isRecord(value) || typeof value.id !== 'string' || !value.id) return null
   if (value.nickname !== null && typeof value.nickname !== 'string') return null
-  return { id: value.id, nickname: value.nickname, avatarUrl: null }
+  // 服务端 /api/auth/login 与 /api/users/me 都会下 avatarUrl。
+  // 这里不能图省事写死 null —— 那会让头像永远显示占位图。
+  // 缺字段不是「数据损坏」，口径放宽成 null（头像本来就可空），不要因此把整段登录态判成无效。
+  const avatarUrl = typeof value.avatarUrl === 'string' && value.avatarUrl ? value.avatarUrl : null
+  return { id: value.id, nickname: value.nickname, avatarUrl }
 }
 
 function invalidResponse(): ApiError {
-  return new ApiError('服务返回了无法识别的数据，请稍后重试。', { code: 'INVALID_RESPONSE' })
+  return new ApiError('服务返回了无法识别的数据，请稍后重试', { code: 'INVALID_RESPONSE' })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

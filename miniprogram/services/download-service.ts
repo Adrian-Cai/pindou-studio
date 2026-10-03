@@ -1,9 +1,16 @@
+/**
+ * 图纸下载与配额：查询下载配额、拉取下载记录、创建下载（消耗配额）。
+ *
+ * 职责：封装 /api/quota、/api/downloads 接口与返回校验，并把云端下载记录转本地记录；
+ *       不负责实际文件的本地落盘/分享（那在结果页下载服务里）。
+ * 调用方：结果页下载、下载历史页。
+ * 关键点：createDownload 带幂等键避免重复扣配额；所有解析对返回做严格字段校验。
+ */
 import type { DownloadFileType, DownloadRecord } from '../models/pattern'
 import { isAuthSessionExpired, loadAuthSession } from './token-storage'
 import { ApiError, apiRequest } from './http-client'
 
-export type ServerDownloadFileType = Exclude<DownloadFileType, 'palette'>
-
+/** 当前用户的下载配额：每日免费额度、已用、已购、剩余，及 AI 生成的独立配额。 */
 export interface QuotaResponse {
   dailyFree: number
   usedToday: number
@@ -12,18 +19,27 @@ export interface QuotaResponse {
   membershipType: null
   membershipExpiresAt: null
   resetsAt: string
+  aiGeneration: {
+    dailyFree: number
+    usedToday: number
+    purchased: number
+    remaining: number
+    resetsAt: string
+  }
 }
 
+/** 云端一条下载记录：含作品 id、文件类型、扣费交易与下载时间。 */
 export interface CloudDownloadRecord {
   id: string
   workId: string | null
   title: string
-  fileType: ServerDownloadFileType
+  fileType: DownloadFileType
   consumedQuota: true
   quotaTransactionId: string
   downloadedAt: string
 }
 
+/** 下载记录分页响应。 */
 export interface DownloadListResponse {
   total: number
   page: number
@@ -31,11 +47,13 @@ export interface DownloadListResponse {
   items: CloudDownloadRecord[]
 }
 
+/** 创建下载后返回：下载记录 + 扣减后的配额快照。 */
 export interface CreateDownloadResponse {
   downloadRecord: CloudDownloadRecord
   quota: Pick<QuotaResponse, 'remaining' | 'usedToday' | 'purchased'>
 }
 
+/** 拉取当前用户的下载配额（含 AI 生成独立配额）。 */
 export async function fetchQuota(): Promise<QuotaResponse> {
   const response = await apiRequest<unknown>({
     path: '/api/quota/me',
@@ -44,16 +62,22 @@ export async function fetchQuota(): Promise<QuotaResponse> {
   return parseQuota(response)
 }
 
+/**
+ * 分页拉取云端下载记录，可按文件类型筛选与关键字搜索。
+ * @param options.fileType 仅 'preview' | 'chart' | 'materials' | 'palette'
+ */
 export async function fetchDownloads(options: {
   page?: number
   pageSize?: number
-  fileType?: ServerDownloadFileType
+  fileType?: DownloadFileType
   query?: string
 } = {}): Promise<DownloadListResponse> {
   const params = [
     `page=${options.page ?? 1}`,
     `pageSize=${options.pageSize ?? 50}`,
-    ...(options.fileType ? [`fileType=${options.fileType}`] : []),
+    // 与 query 保持一致也做转义：fileType 目前是枚举值，但两处口径不一致的话，
+    // 哪天往这里传了外部输入（比如用户自定义筛选值）就会漏编码。
+    ...(options.fileType ? [`fileType=${encodeURIComponent(options.fileType)}`] : []),
     ...(options.query?.trim() ? [`query=${encodeURIComponent(options.query.trim())}`] : []),
   ].join('&')
   const response = await apiRequest<unknown>({
@@ -63,25 +87,39 @@ export async function fetchDownloads(options: {
   return parseDownloadList(response)
 }
 
+/**
+ * 创建一次下载（服务端据此扣减配额并返回下载记录）。
+ * @param workId 作品 id
+ * @param fileType 下载文件类型
+ * @param idempotencyKey 幂等键，防止网络重试重复扣费
+ */
 export async function createDownload(
   workId: string,
-  fileType: ServerDownloadFileType,
+  fileType: DownloadFileType,
   idempotencyKey: string,
 ): Promise<CreateDownloadResponse> {
+  // 幂等键是「不重复扣次数」的唯一凭证，必须在使用前验明：
+  // 空串会让服务端拿不到去重依据（重试就是真扣两次），
+  // 而误复用的键会把两次不同下载折叠成一笔，用户少拿一份文件却不自知。
+  const trimmedKey = idempotencyKey.trim()
+  if (!trimmedKey) {
+    throw new Error('下载幂等键缺失，请重新发起下载')
+  }
   const response = await apiRequest<unknown>({
     path: '/api/downloads',
     method: 'POST',
     token: requireToken(),
-    headers: { 'Idempotency-Key': idempotencyKey },
+    headers: { 'Idempotency-Key': trimmedKey },
     data: { workId, fileType },
   })
   return parseCreateDownload(response)
 }
 
-export function isServerDownloadFileType(fileType: DownloadFileType): fileType is ServerDownloadFileType {
-  return fileType !== 'palette'
-}
-
+/**
+ * 把云端下载记录转成本地统一记录；封面/尺寸等作品信息可选补全。
+ * @param record 云端下载记录
+ * @param work 可选的作品展示信息（封面、宽高、色数）
+ */
 export function cloudDownloadToLocalRecord(
   record: CloudDownloadRecord,
   work?: { coverPath: string; width?: number; height?: number; colorCount: number },
@@ -100,6 +138,7 @@ export function cloudDownloadToLocalRecord(
 }
 
 function parseQuota(value: unknown): QuotaResponse {
+  const aiGeneration = isRecord(value) ? value.aiGeneration : null
   if (!isRecord(value)
     || !isFiniteNumber(value.dailyFree)
     || !isFiniteNumber(value.usedToday)
@@ -108,7 +147,14 @@ function parseQuota(value: unknown): QuotaResponse {
     || (value.membershipType !== null)
     || (value.membershipExpiresAt !== null)
     || typeof value.resetsAt !== 'string'
-    || !Number.isFinite(Date.parse(value.resetsAt))) throw invalidResponse()
+    || !Number.isFinite(Date.parse(value.resetsAt))
+    || !isRecord(aiGeneration)
+    || !isFiniteNumber(aiGeneration.dailyFree)
+    || !isFiniteNumber(aiGeneration.usedToday)
+    || !isFiniteNumber(aiGeneration.purchased)
+    || !isFiniteNumber(aiGeneration.remaining)
+    || typeof aiGeneration.resetsAt !== 'string'
+    || !Number.isFinite(Date.parse(aiGeneration.resetsAt))) throw invalidResponse()
   return {
     dailyFree: value.dailyFree,
     usedToday: value.usedToday,
@@ -117,6 +163,13 @@ function parseQuota(value: unknown): QuotaResponse {
     membershipType: null,
     membershipExpiresAt: null,
     resetsAt: value.resetsAt,
+    aiGeneration: {
+      dailyFree: aiGeneration.dailyFree,
+      usedToday: aiGeneration.usedToday,
+      purchased: aiGeneration.purchased,
+      remaining: aiGeneration.remaining,
+      resetsAt: aiGeneration.resetsAt,
+    },
   }
 }
 
@@ -156,7 +209,7 @@ function parseDownloadRecord(value: unknown): CloudDownloadRecord {
     || typeof value.id !== 'string'
     || (value.workId !== null && typeof value.workId !== 'string')
     || typeof value.title !== 'string'
-    || !isServerDownloadFileTypeValue(value.fileType)
+    || !isDownloadFileTypeValue(value.fileType)
     || value.consumedQuota !== true
     || typeof value.quotaTransactionId !== 'string'
     || typeof value.downloadedAt !== 'string'
@@ -172,20 +225,24 @@ function parseDownloadRecord(value: unknown): CloudDownloadRecord {
   }
 }
 
-function isServerDownloadFileTypeValue(value: unknown): value is ServerDownloadFileType {
-  return value === 'preview' || value === 'chart' || value === 'materials'
+// 校验文件类型取值是否合法（预览图/图纸/材料清单/调色板）
+function isDownloadFileTypeValue(value: unknown): value is DownloadFileType {
+  return value === 'preview'
+    || value === 'chart'
+    || value === 'materials'
+    || value === 'palette'
 }
 
 function requireToken(): string {
   const session = loadAuthSession()
   if (!session || isAuthSessionExpired(session)) {
-    throw new ApiError('请先登录后再使用云端下载服务。', { statusCode: 401, code: 'UNAUTHORIZED' })
+    throw new ApiError('请先登录后再使用云端下载服务', { statusCode: 401, code: 'UNAUTHORIZED' })
   }
   return session.token
 }
 
 function invalidResponse(): ApiError {
-  return new ApiError('服务返回了无法识别的下载数据，请稍后重试。', { code: 'INVALID_RESPONSE' })
+  return new ApiError('服务返回了无法识别的下载数据，请稍后重试', { code: 'INVALID_RESPONSE' })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

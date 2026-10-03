@@ -1,116 +1,223 @@
 <page-layout title="我的" showMainNav selectedTab="2">
-  <view class="profile-page">
+  <!-- ── 未登录状态 ── -->
+  <view wx:if="{{!isLoggedIn}}" class="profile-page profile-guest">
+    <view class="guest-body">
+      <image class="guest-avatar" src="/assets/icons/brand-avatar.png" mode="aspectFit" />
+      <view class="guest-title">登录后使用更多功能</view>
+
+      <view class="guest-agreement">
+        <view
+          class="guest-agreement__consent"
+          bindtap="toggleLoginAgreement"
+          aria-role="checkbox"
+          aria-checked="{{loginAgreementAccepted}}"
+          aria-label="我已阅读并同意用户协议和隐私政策"
+        >
+          <view class="login-sheet__checkbox {{loginAgreementAccepted ? 'login-sheet__checkbox--checked' : ''}}">
+            <image wx:if="{{loginAgreementAccepted}}" src="/assets/icons/login/check.svg" mode="aspectFit" aria-hidden="true" />
+          </view>
+          <text>我已阅读并同意</text>
+        </view>
+        <text class="login-sheet__agreement-link" catchtap="openUserAgreement" aria-role="link">《用户协议》</text>
+        <text>和</text>
+        <text class="login-sheet__agreement-link" catchtap="openPrivacyPolicy" aria-role="link">《隐私政策》</text>
+      </view>
+
+      <view
+        wx:if="{{loginMessage}}"
+        class="guest-message {{loginMessageTone === 'error' ? 'guest-message--error' : ''}}"
+      >{{loginMessage}}</view>
+
+      <button
+        class="login-sheet__submit guest-login-btn"
+        loading="{{loginUiState === 'loading'}}"
+        disabled="{{loginUiState === 'loading'}}"
+        bindtap="startWechatLogin"
+      >
+        <image wx:if="{{loginUiState !== 'loading'}}" class="login-sheet__wechat" src="/assets/icons/login/wechat.svg" mode="aspectFit" aria-hidden="true" />
+        <text>{{loginUiState === 'loading' ? '登录中…' : loginUiState === 'error' ? '重新登录' : '微信登录'}}</text>
+      </button>
+    </view>
+  </view>
+
+  <!-- ── 已登录状态 ── -->
+  <view wx:else class="profile-page">
+    <!-- A. 用户卡 -->
     <view class="user-card ui-card" bindtap="openUserPanel">
       <image class="user-card__avatar" src="{{avatarPath}}" mode="aspectFill" />
-      <view class="user-card__content">
-        <view class="user-card__name">{{isLoggedIn ? accountName : '登录拼豆工作室'}}</view>
-        <view class="user-card__desc">{{isLoggedIn ? accountStatusText : '登录后可保存云端作品和同步账号数据'}}</view>
-      </view>
-      <view class="user-card__arrow">›</view>
+      <view class="user-card__name">{{accountName}}</view>
+      <image class="user-card__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
     </view>
 
+    <!-- B. 权益卡 -->
     <view class="benefit-card">
-      <view class="benefit-card__label"><image class="benefit-card__icon" src="/assets/icons/profile-benefit-badge.svg" mode="aspectFit" /> <text>我的权益</text></view>
-      <view class="benefit-card__body">
-        <view>
-          <view class="benefit-card__caption">今日免费下载</view>
-          <view class="benefit-card__quota"><text>{{downloadQuota}}</text> / 3 次</view>
-          <view class="benefit-card__hint">每日 00:00 自动恢复</view>
+      <view class="benefit-card__header">
+        <view class="benefit-card__brand-mark">
+          <image class="benefit-card__icon" src="/assets/icons/profile-benefit-badge.svg" mode="aspectFit" aria-hidden="true" />
         </view>
-        <image class="benefit-card__beads" src="/assets/icons/bead-stack.svg" mode="aspectFit" />
+        <view class="benefit-card__heading">
+          <text class="benefit-card__title">AI 生成权益</text>
+          <text class="benefit-card__subtitle">解锁更多创意可能</text>
+        </view>
+        <view class="benefit-card__header-action" bindtap="showRechargeSheet" aria-role="button" aria-label="购买 AI 生成次数" hover-class="benefit-card__header-action--pressed">
+          <image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+        </view>
       </view>
-      <view class="benefit-card__action" bindtap="showRechargeSheet">获取更多次数　›</view>
+      <view class="benefit-card__content">
+        <view class="benefit-card__quota-panel">
+          <view class="benefit-card__caption-row">
+            <text class="benefit-card__caption">可用次数</text>
+            <view
+              class="benefit-card__info-trigger"
+              catchtap="toggleAiQuotaTips"
+              role="button"
+              aria-label="可用次数说明"
+              aria-expanded="{{aiQuotaTipsOpen}}"
+            >
+              <image class="benefit-card__info-icon" src="/assets/icons/iconsax/info-circle.svg" mode="aspectFit" aria-hidden="true" />
+            </view>
+          </view>
+          <view class="benefit-card__quota-val">
+            <text class="benefit-card__quota-num">{{aiGenerationQuota}}</text>
+            <text class="benefit-card__quota-unit">次</text>
+          </view>
+          <view class="benefit-card__insight-pill">
+            <text>让灵感持续发生</text>
+            <text class="benefit-card__sparkle" aria-hidden="true">✦</text>
+          </view>
+        </view>
+        <view class="benefit-card__details">
+          <view class="benefit-card__detail-row">
+            <view class="benefit-card__detail-icon-wrap">
+              <image class="benefit-card__detail-icon" src="/assets/icons/iconsax/calendar.svg" mode="aspectFit" aria-hidden="true" />
+            </view>
+            <view class="benefit-card__detail-copy">
+              <view class="benefit-card__detail-line">
+                <text class="benefit-card__detail-label">今日免费</text>
+                <view class="benefit-card__detail-value">
+                  <text class="benefit-card__detail-count">{{aiGenerationDailyFreeRemaining}} / {{dailyFreeAiGenerationQuota}}</text>
+                  <text class="benefit-card__detail-unit">次</text>
+                </view>
+              </view>
+            </view>
+          </view>
+          <view class="benefit-card__action" bindtap="showRechargeSheet" aria-role="button" aria-label="购买次数" hover-class="benefit-card__action--pressed">
+            <text>购买次数</text>
+            <image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+          </view>
+        </view>
+      </view>
+      <view wx:if="{{aiQuotaTipsOpen}}" class="benefit-card__quota-tip" catchtap="keepAiQuotaTipsOpen" role="tooltip">
+        <view class="benefit-card__quota-tip-arrow"></view>
+        <view class="benefit-card__quota-tip-title">可用次数说明</view>
+        <view class="benefit-card__quota-tip-list">
+          <view>· 每次 AI 生成消耗 1 次</view>
+          <view>· 每日免费次数会在每日 00:00 恢复</view>
+        </view>
+        <view class="benefit-card__quota-tip-close" catchtap="closeAiQuotaTips" role="button" aria-label="关闭可用次数说明">知道了</view>
+      </view>
     </view>
 
-    <view class="profile-stats ui-card">
-      <view class="profile-stat" bindtap="openProjects">
-        <image class="profile-stat__icon" src="/assets/icons/profile-stat-gallery.svg" mode="aspectFit" />
-        <view class="profile-stat__content"><view class="profile-stat__label">作品</view><view class="profile-stat__value">{{workCount}}</view></view>
+    <view class="order-entry ui-card" bindtap="openOrders" aria-role="button" aria-label="我的订单">
+      <view class="order-entry__content">
+        <view class="order-entry__title">我的订单</view>
+        <view class="order-entry__description">查看支付记录、套餐和订单状态</view>
       </view>
-      <view class="profile-stats__line"></view>
-      <view class="profile-stat" bindtap="openDownloads">
-        <image class="profile-stat__icon" src="/assets/icons/profile-stat-download.svg" mode="aspectFit" />
-        <view class="profile-stat__content"><view class="profile-stat__label">下载</view><view class="profile-stat__value">{{downloadCount}}</view></view>
-      </view>
-      <view class="profile-stats__line"></view>
-      <view class="profile-stat" bindtap="openFavorites">
-        <image class="profile-stat__icon" src="/assets/icons/profile-stat-star.svg" mode="aspectFit" />
-        <view class="profile-stat__content"><view class="profile-stat__label">收藏</view><view class="profile-stat__value">{{favoriteCount}}</view></view>
-      </view>
+      <image class="order-entry__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
     </view>
 
-    <view class="profile-menu ui-card">
-      <view
-        class="profile-menu__item"
-        wx:for="{{menuItems}}"
-        wx:key="id"
-        data-url="{{item.url}}"
-        bindtap="openMenu"
-      >
-        <view class="profile-menu__icon-wrap"><image class="profile-menu__icon" src="{{item.icon}}" mode="aspectFit" /></view>
-        <view class="profile-menu__title">{{item.title}}</view>
-        <view class="profile-menu__arrow">›</view>
+    <!-- C. 2×2 功能宫格 -->
+    <view class="profile-grid">
+      <view class="profile-grid__item ui-card" bindtap="openProjects">
+        <view class="profile-grid__body">
+          <image class="profile-grid__icon" src="/assets/icons/iconsax/gallery.svg" mode="aspectFit" aria-hidden="true" />
+          <text class="profile-grid__title">我的作品</text>
+        </view>
+        <image class="profile-grid__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      </view>
+      <view class="profile-grid__item ui-card" bindtap="openFavorites">
+        <view class="profile-grid__body">
+          <image class="profile-grid__icon" src="/assets/icons/iconsax/heart-profile.svg" mode="aspectFit" aria-hidden="true" />
+          <text class="profile-grid__title">我的收藏</text>
+        </view>
+        <image class="profile-grid__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      </view>
+      <view class="profile-grid__item ui-card" bindtap="openDownloads">
+        <view class="profile-grid__body">
+          <image class="profile-grid__icon" src="/assets/icons/iconsax/document-download-profile.svg" mode="aspectFit" aria-hidden="true" />
+          <text class="profile-grid__title">下载记录</text>
+        </view>
+        <image class="profile-grid__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      </view>
+      <view class="profile-grid__item ui-card" bindtap="openSettings">
+        <view class="profile-grid__body">
+          <image class="profile-grid__icon" src="/assets/icons/iconsax/setting-2-profile.svg" mode="aspectFit" aria-hidden="true" />
+          <text class="profile-grid__title">设置</text>
+        </view>
+        <image class="profile-grid__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
       </view>
     </view>
-
-    <view class="profile-page__version">拼豆制作工具 · Version 0.7.1</view>
   </view>
 </page-layout>
 
+<!-- ── Recharge Sheet ── -->
 <view wx:if="{{activeSheet === 'recharge'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
   <view class="profile-sheet recharge-sheet" catchtap="stopPropagation">
     <view class="profile-sheet__handle"></view>
-    <view class="recharge-sheet__title">获取下载次数</view>
-    <view class="recharge-sheet__quota">今日剩余 <text>{{downloadQuota}}</text> 次</view>
-    <view
-      class="recharge-option package-row {{selectedPackage === index ? 'recharge-option--active' : ''}}"
-      wx:for="{{packages}}"
-      wx:key="id"
-      data-index="{{index}}"
-      bindtap="selectPackage"
-    >
-      <view class="package-icon-wrap">
-        <image class="package-icon" src="/assets/icons/bead-stack.svg" mode="aspectFit" />
-      </view>
-      <text class="recharge-option__label">{{item.label}}</text>
-      <view class="package-right">
-        <text class="recharge-option__price">¥ {{item.price}}</text>
+    <view class="recharge-sheet__title">购买 AI 生成次数</view>
+    <view class="recharge-sheet__quota">
+      <text class="recharge-sheet__quota-label">当前可用</text>
+      <text class="recharge-sheet__quota-number">{{aiGenerationQuota}}</text>
+      <text class="recharge-sheet__quota-unit">次</text>
+    </view>
+    <view class="recharge-sheet__quota-detail">今日免费剩余 {{aiGenerationDailyFreeRemaining}} / {{dailyFreeAiGenerationQuota}} 次</view>
+    <view class="recharge-sheet__section-title">选择购买套餐</view>
+    <view wx:if="{{packagesLoading}}" class="recharge-sheet__message">正在加载 AI 套餐…</view>
+    <view wx:elif="{{packageMessage}}" class="recharge-sheet__message">{{packageMessage}}</view>
+    <block wx:else>
+      <view
+        class="recharge-option {{selectedPackage === index ? 'recharge-option--active' : ''}}"
+        wx:for="{{packages}}"
+        wx:key="id"
+        data-index="{{index}}"
+        bindtap="selectPackage"
+      >
+        <view class="recharge-option__copy">
+          <text wx:if="{{item.count === 5}}" class="recharge-option__name">新人体验包</text>
+          <text wx:else class="recharge-option__name">AI 生成 {{item.count}} 次</text>
+          <text wx:if="{{item.count === 5}}" class="recharge-option__count">AI 生成 5 次</text>
+        </view>
+        <text class="recharge-option__price">¥{{item.price}}</text>
         <view class="package-radio {{selectedPackage === index ? 'package-radio--selected' : ''}}"></view>
       </view>
-    </view>
+    </block>
     <view class="payment-row">
       <text>支付方式</text>
       <view class="payment-row__method">
         <text>微信支付</text>
-        <text class="payment-row__arrow">›</text>
+        <image class="payment-row__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
       </view>
     </view>
-    <button class="button-primary recharge-sheet__pay" style="width: 100%;" bindtap="purchase">立即支付</button>
-    <view class="recharge-sheet__cancel" bindtap="hideActiveSheet">取消</view>
+    <button class="button-primary recharge-sheet__pay" style="width: 100%;" loading="{{paymentLoading}}" disabled="{{packagesLoading || packages.length === 0 || paymentLoading}}" bindtap="purchase">
+      <text wx:if="{{paymentLoading}}">正在支付…</text>
+      <text wx:else>立即支付<text wx:if="{{selectedPackagePrice}}"> ¥{{selectedPackagePrice}}</text></text>
+    </button>
+    <view wx:if="{{!paymentLoading}}" class="recharge-sheet__cancel" bindtap="hideActiveSheet">取消</view>
   </view>
 </view>
 
-<view wx:if="{{activeSheet === 'login'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
-  <view class="profile-sheet login-sheet" catchtap="stopPropagation">
-    <view class="profile-sheet__handle"></view>
-    <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭登录弹层">×</view>
-    <image class="login-sheet__avatar" src="/assets/icons/brand-avatar.webp" mode="aspectFit" />
-    <view class="login-sheet__title">登录拼豆工作室</view>
-    <view class="login-sheet__subtitle">保存云端作品，跨设备查看账号数据</view>
-
-    <view class="login-benefits">
-      <view class="login-benefit">
-        <image src="/assets/icons/profile-stat-gallery.svg" mode="aspectFit" />
-        <text>云端保存作品</text>
-      </view>
-      <view class="login-benefit">
-        <image src="/assets/icons/profile-stat-download.svg" mode="aspectFit" />
-        <text>同步下载记录</text>
-      </view>
-      <view class="login-benefit">
-        <image src="/assets/icons/profile-benefit-badge.svg" mode="aspectFit" />
-        <text>查看账号权益</text>
-      </view>
+<!-- ── Login Sheet（后台回退：过期 / account 触发 relogin） ── -->
+<view wx:if="{{activeSheet === 'login'}}" class="login-mask {{loginClosing ? 'login-mask--closing' : ''}}" catchtap="closeLoginSheet" catchtouchmove="stopPropagation">
+  <view class="login-sheet" catchtap="stopPropagation" aria-role="dialog" aria-label="登录小露拼豆">
+    <view class="login-sheet__handle"></view>
+    <view class="login-sheet__close" bindtap="closeLoginSheet" aria-role="button" aria-label="关闭登录弹层" hover-class="login-sheet__pressed">
+      <image src="/assets/icons/login/close.svg" mode="aspectFit" aria-hidden="true" />
+    </view>
+    <image class="login-sheet__avatar" src="/assets/icons/brand-avatar.png" mode="aspectFit" />
+    <view class="login-sheet__title">登录小露拼豆</view>
+    <view class="login-sheet__subtitle">
+      <view>登录后即可保存作品，跨设备同步</view>
+      <view>享受完整的创作体验</view>
     </view>
 
     <view
@@ -121,19 +228,31 @@
     <button
       class="login-sheet__submit"
       loading="{{loginUiState === 'loading'}}"
-      disabled="{{loginUiState === 'loading'}}"
+      disabled="{{loginUiState === 'loading' || loginClosing}}"
       bindtap="startWechatLogin"
-    >{{loginUiState === 'loading' ? '登录中…' : loginUiState === 'error' ? '重新登录' : '微信快捷登录'}}</button>
-    <view class="login-sheet__later" bindtap="hideActiveSheet">暂不登录</view>
-    <view class="login-sheet__agreement">登录即表示你同意《隐私政策》</view>
-    <view class="login-sheet__local-hint">当前本地作品不会自动上传</view>
+    >
+      <image wx:if="{{loginUiState !== 'loading'}}" class="login-sheet__wechat" src="/assets/icons/login/wechat.svg" mode="aspectFit" aria-hidden="true" />
+      <text>{{loginUiState === 'loading' ? '登录中…' : loginUiState === 'error' ? '重新登录' : '微信一键登录'}}</text>
+    </button>
+    <view class="login-sheet__agreement">
+      <view class="login-sheet__consent" bindtap="toggleLoginAgreement" aria-role="checkbox" aria-checked="{{loginAgreementAccepted}}" aria-label="我已阅读并同意用户协议和隐私政策" hover-class="login-sheet__pressed">
+        <view class="login-sheet__checkbox {{loginAgreementAccepted ? 'login-sheet__checkbox--checked' : ''}}">
+          <image wx:if="{{loginAgreementAccepted}}" src="/assets/icons/login/check.svg" mode="aspectFit" aria-hidden="true" />
+        </view>
+        <text>我已阅读并同意</text>
+      </view>
+      <text class="login-sheet__agreement-link" catchtap="openUserAgreement" aria-role="link">《用户协议》</text>
+      <text>和</text>
+      <text class="login-sheet__agreement-link" catchtap="openPrivacyPolicy" aria-role="link">《隐私政策》</text>
+    </view>
   </view>
 </view>
 
+<!-- ── Profile Editor Sheet ── -->
 <view wx:if="{{activeSheet === 'profile'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
   <view class="profile-sheet profile-editor" catchtap="stopPropagation">
     <view class="profile-sheet__handle"></view>
-    <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭个人资料编辑">×</view>
+    <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭个人资料编辑"><image src="/assets/icons/iconsax/close.svg" mode="aspectFit" aria-hidden="true" /></view>
     <view class="profile-editor__title">完善个人资料</view>
     <view class="profile-editor__subtitle">头像使用默认品牌图，昵称保存到账号</view>
     <view class="profile-editor__avatar-button" aria-label="默认头像">
@@ -149,6 +268,7 @@
         maxlength="80"
         placeholder="请输入昵称"
         confirm-type="done"
+        cursor-spacing="32"
         bindinput="updateProfileNickname"
       />
     </view>
@@ -160,39 +280,5 @@
       disabled="{{profileSaving || !profileCanSave}}"
       bindtap="saveProfile"
     >{{profileSaving ? '保存中…' : '保存个人资料'}}</button>
-    <view class="profile-editor__later" bindtap="hideActiveSheet">暂不完善</view>
-  </view>
-</view>
-
-<view wx:if="{{activeSheet === 'account'}}" class="sheet-mask" catchtap="hideActiveSheet" catchtouchmove="stopPropagation">
-  <view class="profile-sheet account-sheet" catchtap="stopPropagation">
-    <view class="profile-sheet__handle"></view>
-    <view class="profile-sheet__close" bindtap="hideActiveSheet" aria-role="button" aria-label="关闭账号面板">×</view>
-    <view class="account-sheet__title">账号与登录</view>
-
-    <view class="account-summary">
-      <image class="account-summary__avatar" src="{{avatarPath}}" mode="aspectFill" />
-      <view class="account-summary__content">
-        <view class="account-summary__name">{{accountName}}</view>
-        <view class="account-summary__desc">{{accountStatusText}}</view>
-      </view>
-      <view class="account-summary__status">✓ 已登录</view>
-    </view>
-
-    <view class="account-action" bindtap="openProfileEditor">
-      <image class="account-action__avatar-icon" src="/assets/icons/brand-avatar.svg" mode="aspectFit" />
-      <text>编辑个人资料</text>
-      <view>›</view>
-    </view>
-    <view class="account-action {{accountRefreshing ? 'account-action--disabled' : ''}}" bindtap="refreshAccountData">
-      <image src="/assets/icons/profile-stat-download.svg" mode="aspectFit" />
-      <text>{{accountRefreshing ? '正在刷新…' : '刷新账号数据'}}</text>
-      <view>›</view>
-    </view>
-    <view class="account-action account-action--danger" bindtap="confirmLogout">
-      <text class="account-action__logout-icon">↪</text>
-      <text>退出登录</text>
-    </view>
-    <view class="account-sheet__cancel" bindtap="hideActiveSheet">取消</view>
   </view>
 </view>

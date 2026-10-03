@@ -1,0 +1,9 @@
+# Third-party dependencies
+node_modules/
+
+# Test fixtures
+**/testdata/**
+
+# Build artifacts
+dist/
+build/

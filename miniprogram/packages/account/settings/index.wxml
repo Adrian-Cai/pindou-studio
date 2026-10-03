@@ -1,0 +1,26 @@
+<page-layout title="设置" back>
+  <view class="subpage settings-page">
+    <view class="settings-group">
+      <view class="settings-item" bindtap="openHelp">
+        <image class="settings-item__icon" src="/assets/icons/iconsax/message-question.svg" mode="aspectFit" aria-hidden="true" />
+        <text class="settings-item__title">使用帮助</text>
+        <image class="settings-item__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      </view>
+      <view class="settings-item" bindtap="openFeedback">
+        <image class="settings-item__icon" src="/assets/icons/iconsax/message-text.svg" mode="aspectFit" aria-hidden="true" />
+        <text class="settings-item__title">意见反馈</text>
+        <image class="settings-item__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      </view>
+      <view class="settings-item" bindtap="openPrivacy">
+        <image class="settings-item__icon" src="/assets/icons/iconsax/setting-2.svg" mode="aspectFit" aria-hidden="true" />
+        <text class="settings-item__title">隐私设置</text>
+        <image class="settings-item__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      </view>
+      <view class="settings-item settings-item--last" bindtap="openAbout">
+        <image class="settings-item__icon" src="/assets/icons/iconsax/info-circle.svg" mode="aspectFit" aria-hidden="true" />
+        <text class="settings-item__title">关于我们</text>
+        <image class="settings-item__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      </view>
+    </view>
+  </view>
+</page-layout>

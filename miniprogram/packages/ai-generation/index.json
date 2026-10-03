@@ -1,0 +1,7 @@
+{
+  "usingComponents": {
+    "page-layout": "/components/page-layout/index",
+    "generating-preview-card": "/components/generating-preview-card/index",
+    "editor-control-panel": "/components/editor-control-panel/index"
+  }
+}

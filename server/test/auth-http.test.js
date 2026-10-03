@@ -107,6 +107,104 @@ test("login failures follow the shared error contract", async () => {
   );
 });
 
+test("DELETE /api/auth/session passes the authenticated token to revocation", async () => {
+  let receivedToken;
+  await withApplication(
+    baseDependencies({
+      auth: { async revokeSession(token) { receivedToken = token; } },
+      authenticator: { async authenticate() { return { id: "usr_test" }; } },
+    }),
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/auth/session`, {
+        method: "DELETE",
+        headers: { authorization: "Bearer opaque_token_12345678901234567890" },
+      });
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.has("content-type"), false);
+      assert.equal(receivedToken, "opaque_token_12345678901234567890");
+    },
+  );
+});
+
+test("DELETE /api/auth/sessions revokes sessions for the authenticated user", async () => {
+  let receivedUserId;
+  await withApplication(
+    baseDependencies({
+      auth: { async revokeUserSessions(userId) { receivedUserId = userId; } },
+      authenticator: { async authenticate() { return { id: "usr_from_token" }; } },
+    }),
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/auth/sessions`, {
+        method: "DELETE",
+        headers: { authorization: "Bearer opaque_token_12345678901234567890" },
+      });
+      assert.equal(response.status, 204);
+      assert.equal(receivedUserId, "usr_from_token");
+    },
+  );
+});
+
+test("session revocation rejects missing auth, query parameters and request bodies", async (t) => {
+  let authenticated = 0;
+  let revoked = 0;
+  await withApplication(
+    baseDependencies({
+      auth: {
+        async revokeSession() { revoked += 1; },
+        async revokeUserSessions() { revoked += 1; },
+      },
+      authenticator: { async authenticate() {
+        authenticated += 1;
+        if (authenticated === 1) throw new AppError(401, "UNAUTHORIZED", "登录状态已失效");
+        return { id: "usr_test" };
+      } },
+    }),
+    async (baseUrl) => {
+      const missing = await fetch(`${baseUrl}/api/auth/session`, { method: "DELETE" });
+      assert.equal(missing.status, 401);
+      assert.equal(revoked, 0);
+
+      const query = await fetch(`${baseUrl}/api/auth/sessions?userId=usr_attacker`, {
+        method: "DELETE",
+        headers: { authorization: "Bearer opaque_token_12345678901234567890" },
+      });
+      assert.equal(query.status, 400);
+      assert.equal(authenticated, 1);
+
+      const body = await fetch(`${baseUrl}/api/auth/session`, {
+        method: "DELETE",
+        headers: {
+          authorization: "Bearer opaque_token_12345678901234567890",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ userId: "usr_attacker" }),
+      });
+      assert.equal(body.status, 400);
+      assert.equal(authenticated, 1);
+      assert.equal(revoked, 0);
+    },
+  );
+});
+
+test("session revocation failures use the shared error contract", async () => {
+  await withApplication(
+    baseDependencies({
+      auth: { async revokeSession() { throw new AppError(503, "AUTH_UNAVAILABLE", "会话存储不可用"); } },
+      authenticator: { async authenticate() { return { id: "usr_test" }; } },
+    }),
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/auth/session`, {
+        method: "DELETE",
+        headers: { authorization: "Bearer opaque_token_12345678901234567890" },
+      });
+      const body = await response.json();
+      assert.equal(response.status, 503);
+      assert.equal(body.error.code, "AUTH_UNAVAILABLE");
+      assert.equal(body.error.requestId, response.headers.get("x-request-id"));
+    },
+  );
+});
+
 test("GET /api/users/me derives ownership exclusively from Bearer token", async () => {
   let receivedAuthorization;
   let receivedUserId;
@@ -121,7 +219,20 @@ test("GET /api/users/me derives ownership exclusively from Bearer token", async 
         return {
           user: { id: userId, nickname: null, avatarUrl: null, createdAt: "2026-08-26T09:00:00.000Z" },
           stats: { workCount: 0, favoriteCount: 0, downloadCount: 0 },
-          quota: { dailyFree: 3, usedToday: 0, purchased: 0, remaining: 3, resetsAt: "2026-08-27T00:00:00+08:00" },
+          quota: {
+            dailyFree: 3,
+            usedToday: 0,
+            purchased: 0,
+            remaining: 3,
+            resetsAt: "2026-08-27T00:00:00+08:00",
+            aiGeneration: {
+              dailyFree: 3,
+              usedToday: 0,
+              purchased: 0,
+              remaining: 3,
+              resetsAt: "2026-08-27T00:00:00+08:00",
+            },
+          },
         };
       } },
     }),
@@ -217,8 +328,8 @@ test("POST /api/users/me/avatar authenticates, uploads one file and replaces the
         async read() { return null; },
         async remove(path) { calls.push({ action: "remove", path }); },
       },
-      users: { async updateProfileWithAvatar(userId, nickname, avatarUrl) {
-        calls.push({ action: "update", userId, nickname, avatarUrl });
+      users: { async updateAvatar(userId, avatarUrl) {
+        calls.push({ action: "update", userId, avatarUrl });
         return {
           user: { id: userId, nickname: "拼豆玩家", avatarUrl, createdAt: "2026-08-26T09:00:00.000Z" },
           previousAvatarUrl: "/api/media/avatars/avatar_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
@@ -228,7 +339,7 @@ test("POST /api/users/me/avatar authenticates, uploads one file and replaces the
     async (baseUrl) => {
       const form = new FormData();
       form.append("file", new Blob([Buffer.from("png-data")], { type: "image/png" }), "avatar.png");
-      form.append("nickname", "拼豆玩家");
+      form.append("nickname", "不得覆盖原昵称");
       const response = await fetch(`${baseUrl}/api/users/me/avatar`, {
         method: "POST",
         headers: { authorization: "Bearer opaque_token_12345678901234567890" },
@@ -242,7 +353,6 @@ test("POST /api/users/me/avatar authenticates, uploads one file and replaces the
         {
           action: "update",
           userId: "usr_test",
-          nickname: "拼豆玩家",
           avatarUrl: "/api/media/avatars/avatar_0123456789abcdef0123456789abcdef.png",
         },
         { action: "remove", path: "/api/media/avatars/avatar_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg" },
@@ -271,4 +381,44 @@ test("GET /api/media/avatars serves immutable image bytes", async () => {
       assert.deepEqual(Buffer.from(await response.arrayBuffer()), Buffer.from([1, 2, 3]));
     },
   );
+});
+
+
+test("avatar upload accepts a file alone and preserves it if old-file cleanup fails", async () => {
+  const removed = [];
+  await withApplication(baseDependencies({
+    authenticator: { async authenticate() { return { id: "usr_test" }; } },
+    users: { async updateAvatar(userId, avatarUrl) {
+      return { user: { id: userId, nickname: "原昵称", avatarUrl }, previousAvatarUrl: "old.png" };
+    } },
+    avatars: {
+      async save() { return { publicPath: "new.png" }; },
+      async remove(path) { removed.push(path); throw new Error("storage unavailable"); },
+    },
+  }), async (baseUrl) => {
+    const form = new FormData();
+    form.append("file", new Blob([Buffer.from("png-data")], { type: "image/png" }), "avatar.png");
+    const response = await fetch(`${baseUrl}/api/users/me/avatar`, { method: "POST", body: form });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).user.nickname, "原昵称");
+    assert.deepEqual(removed, ["old.png"]);
+  });
+});
+
+test("avatar update failure removes the uncommitted uploaded file", async () => {
+  const removed = [];
+  await withApplication(baseDependencies({
+    authenticator: { async authenticate() { return { id: "usr_test" }; } },
+    users: { async updateAvatar() { throw new AppError(401, "UNAUTHORIZED", "账号失效"); } },
+    avatars: {
+      async save() { return { publicPath: "new.png" }; },
+      async remove(path) { removed.push(path); },
+    },
+  }), async (baseUrl) => {
+    const form = new FormData();
+    form.append("file", new Blob([Buffer.from("png-data")], { type: "image/png" }), "avatar.png");
+    const response = await fetch(`${baseUrl}/api/users/me/avatar`, { method: "POST", body: form });
+    assert.equal(response.status, 401);
+    assert.deepEqual(removed, ["new.png"]);
+  });
 });

@@ -1,0 +1,23 @@
+services:
+  api:
+    image: ${IMAGE_REPO}:${IMAGE_TAG}
+    container_name: pindou-api
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+    env_file:
+      - ../config/api.env
+    ports:
+      - "127.0.0.1:3100:3000"
+    volumes:
+      - /opt/pindou/data/avatars:/app/data/avatars
+      - /opt/pindou/data/covers:/app/data/covers
+      - /opt/pindou/data/ai:/app/data/ai
+      - /opt/pindou/data/content-security:/app/data/content-security
+      - /opt/pindou/config/certs:/app/certs:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(async (response) => { console.log(await response.text()); process.exit(response.ok ? 0 : 1); }).catch((error) => { console.error(error.message); process.exit(1); })"]
+      interval: 10s
+      timeout: 5s
+      retries: 12

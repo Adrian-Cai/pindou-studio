@@ -8,23 +8,37 @@ Component({
     actionText: { type: String, value: '' },
     actionType: { type: String, value: 'text' },
     home: { type: Boolean, value: false },
+    fillViewport: { type: Boolean, value: false },
     showMainNav: { type: Boolean, value: false },
     selectedTab: { type: Number, value: -1 },
     compactBottomPadding: { type: Boolean, value: false },
+    scrollIntoView: { type: String, value: '' },
   },
 
   data: {
     navigationBarHeight: 0,
-    scrollAreaHeight: 0,
+    showEmbeddedMainNav: false,
+    isMainTabPage: false,
+  },
+
+  observers: {
+    showMainNav() {
+      this.syncEmbeddedMainNav()
+    },
   },
 
   lifetimes: {
     attached() {
       this.updateLayoutMetrics()
+      this.syncEmbeddedMainNav()
     },
   },
 
   pageLifetimes: {
+    show() {
+      this.syncEmbeddedMainNav()
+    },
+
     resize() {
       this.updateLayoutMetrics()
     },
@@ -35,7 +49,17 @@ Component({
       const metrics = getCustomNavigationMetrics()
       this.setData({
         navigationBarHeight: metrics.navigationBarHeight,
-        scrollAreaHeight: Math.max(0, metrics.windowHeight - metrics.topBarHeight),
+      })
+    },
+
+    syncEmbeddedMainNav() {
+      const pages = getCurrentPages()
+      const page = pages[pages.length - 1]
+      const route = '/' + (page?.route ?? '')
+      const isMainTabPage = Boolean(this.properties.home) || ['/pages/home/index', '/pages/projects/index', '/pages/profile/index'].includes(route)
+      this.setData({
+        showEmbeddedMainNav: this.properties.showMainNav && !isMainTabPage,
+        isMainTabPage,
       })
     },
 
