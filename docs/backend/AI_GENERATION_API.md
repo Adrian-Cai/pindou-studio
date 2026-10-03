@@ -16,7 +16,7 @@
 
 - Provider：`hunyuan`
 - 模型：`HY-Image-v3.0-I2I-ToB-v1.0.1`
-- 云函数文字标识：`小露拼豆`
+- 云函数文字标识：`AI生成`
 - Prompt 模板版本：`v3`
 - 输入/输出文件默认保留：24 小时
 - 默认本地服务地址：`http://127.0.0.1:4000`
@@ -408,7 +408,7 @@ await app.callFunction({
 });
 ```
 
-云函数用 `cloud.ai().createImageModel("hunyuan-image")` 调用固定模型 `HY-Image-v3.0-I2I-ToB-v1.0.1`，并设置 `footnote: "小露拼豆"`。函数将生成图片保存到 CloudBase 存储并返回 `fileID`、文件类型、字节数和请求 ID。服务端通过 `downloadFile` 读取字节，按真实文件内容校验后持久化到项目 AI 文件存储；CloudBase 临时 `fileID` 不会返回给小程序。
+云函数用 `cloud.ai().createImageModel("hunyuan-image")` 调用固定模型 `HY-Image-v3.0-I2I-ToB-v1.0.1`，并设置 `footnote: "AI生成"`。函数将生成图片保存到 CloudBase 存储并返回 `fileID`、文件类型、字节数和请求 ID。服务端通过 `downloadFile` 读取字节，按真实文件内容校验后持久化到项目 AI 文件存储；CloudBase 临时 `fileID` 不会返回给小程序。
 
 项目自己的任务接口仍保留 `queued -> processing -> succeeded/failed` 状态，避免小程序等待长 HTTP 请求。输出图持久化且任务成功更新后，才扣一次额度。
 

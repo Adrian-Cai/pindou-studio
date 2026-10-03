@@ -14,10 +14,9 @@ const MAX_PROMPT_LENGTH = 500
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 /**
  * 产物右下角的显式标识文案（SDK 的 footnote 参数），上限 16 个字符。
- * 平台默认烙「AI生成」且不支持关闭（见 CloudBase 社区 issue #1317），只能换文案，
- * 这里换成自家小程序名。要改回含“AI 生成”字样只需改这一个常量。
+ * 平台默认标注「AI生成」且当前 SDK 不提供关闭参数；这里使用明确的 AI 生成文案。
  */
-const IMAGE_FOOTNOTE = '小露拼豆'
+const IMAGE_FOOTNOTE = 'AI生成'
 
 /**
  * 云函数入口：解析入参并触发一次混元生图，产物上传云存储后回包。
