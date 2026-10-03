@@ -1,6 +1,15 @@
+const PROGRESS_BEADS = Array.from({ length: 20 }, (_, index) => ({
+  id: index,
+  threshold: (index + 1) * 5,
+}))
+
 Component({
   options: {
     virtualHost: true,
+  },
+
+  data: {
+    progressBeads: PROGRESS_BEADS,
   },
 
   properties: {

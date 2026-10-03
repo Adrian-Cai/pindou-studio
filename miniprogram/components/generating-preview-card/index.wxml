@@ -1,39 +1,42 @@
-<view class="generating-card">
-  <!-- 柔和雾感背景光晕层 -->
-  <view class="generating-card__glow-layer" aria-hidden="true"></view>
+<view class="generating-card {{failed ? 'generating-card--failed' : ''}}">
+  <image
+    class="generating-card__decor"
+    src="/components/generating-preview-card/assets/bead-decoration.png"
+    mode="scaleToFill"
+    aria-hidden="true"
+  />
 
-  <!-- 中心内容区 -->
   <view class="generating-card__center">
-    <!-- 调色盘与灵感星星图标 -->
-    <view class="generating-card__icon-wrap">
-      <view class="generating-card__icon-art"></view>
-    </view>
-
-    <!-- 标题与副标题 -->
+    <image
+      class="generating-card__icon"
+      src="/components/generating-preview-card/assets/bead-mascot.png"
+      mode="aspectFit"
+      aria-hidden="true"
+    />
     <view class="generating-card__title">{{title}}</view>
     <view class="generating-card__subtitle">{{subtitle}}</view>
 
-    <!-- 进度条区域：失败态原地切换时移除 -->
     <view class="generating-card__progress-wrap" wx:if="{{!failed}}">
-      <view class="generating-card__progress-track">
-        <view
-          class="generating-card__progress-bar"
-          style="width: {{progress}}%;"
-        ></view>
+      <view class="generating-card__beads">
+        <image
+          wx:for="{{progressBeads}}"
+          wx:key="id"
+          class="generating-card__bead {{item.threshold <= progress ? 'generating-card__bead--active' : (item.threshold <= progress + 5 ? 'generating-card__bead--current' : 'generating-card__bead--inactive')}}"
+          src="/components/generating-preview-card/assets/progress-bead.png"
+          mode="aspectFit"
+          aria-hidden="true"
+        />
       </view>
       <text class="generating-card__progress-text">约 {{progress}}%</text>
     </view>
   </view>
 
-  <!-- 底部：提示胶囊 + 卡片内操作 -->
   <view class="generating-card__foot">
     <view class="generating-card__tip-capsule" wx:if="{{!failed && showTip && tipText}}">
-      <view class="generating-card__tip-icon"></view>
+      <view class="generating-card__tip-icon" aria-hidden="true"></view>
       <text class="generating-card__tip-text">{{tipText}}</text>
     </view>
 
-    <!-- 轻量操作：与卡片内容同处一张卡片；生成中为「取消生成 / 返回首页」，
-         失败态原位切换为「重新生成（或对应恢复动作）/ 返回首页」 -->
     <view class="generating-card__actions" wx:if="{{showActions || failed}}">
       <button
         wx:if="{{!failed || primaryText}}"

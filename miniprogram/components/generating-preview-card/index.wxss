@@ -1,137 +1,37 @@
-/* ==========================================================================
-   AI 生成中的图片预览区组件 (GeneratingPreviewCard)
-   高保真还原设计稿规范
-   ========================================================================== */
-
 :host {
   display: block;
   width: 100%;
   box-sizing: border-box;
 }
 
-/* 外层预览卡片 */
 .generating-card {
   position: relative;
+  display: flex;
   width: 100%;
-  min-height: 290px;
+  min-height: 346px;
   box-sizing: border-box;
-  border-radius: 16px;
-  overflow: hidden;
-  background: linear-gradient(135deg, #EEF0FD 0%, #E2DCFE 34%, #ECE7FF 68%, #DCD6FA 100%);
-  display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  padding: 30px 18px 16px;
-  box-shadow: 0 4px 20px rgba(125, 105, 240, 0.08);
-}
-
-/* 朦胧紫雾氛围层 */
-.generating-card__glow-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 82% 16%, rgba(188, 170, 255, 0.45) 0%, rgba(188, 170, 255, 0) 52%),
-    radial-gradient(circle at 16% 80%, rgba(205, 192, 255, 0.38) 0%, rgba(205, 192, 255, 0) 58%),
-    radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0) 70%);
-  filter: blur(12px);
-  transform: translateZ(0);
-}
-
-/* 中心内容区 */
-.generating-card__center {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-}
-
-/* 图标容器与轻微呼吸浮动动效 */
-.generating-card__icon-wrap {
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: float-breathing 2.8s ease-in-out infinite;
-}
-
-/* 调色盘与灵感四角星星 */
-.generating-card__icon-art {
-  width: 44px;
-  height: 44px;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none'%3E%3C!-- Sparkle --%3E%3Cpath d='M38 2C38 5.5 40.5 8 44 8C40.5 8 38 10.5 38 14C38 10.5 35.5 8 32 8C35.5 8 38 5.5 38 2Z' fill='%237057FE'/%3E%3C!-- Palette Body --%3E%3Cpath d='M22 8C12.8 8 5 15.6 5 25C5 34.4 12.6 42 22 42C25.6 42 27.8 39.8 28.8 37.5C29.4 36.2 30.5 35.4 31.9 35.4H33C38.5 35.4 43 30.9 43 25.4C43 15.8 33.5 8 22 8Z' fill='%23968BFF'/%3E%3C!-- Palette Paint Holes --%3E%3Ccircle cx='14' cy='22' r='2.8' fill='%23FFFFFF' fill-opacity='0.95'/%3E%3Ccircle cx='21' cy='16' r='2.8' fill='%23FFFFFF' fill-opacity='0.95'/%3E%3Ccircle cx='29' cy='19' r='2.8' fill='%23FFFFFF' fill-opacity='0.95'/%3E%3C!-- Paintbrush --%3E%3Cpath d='M38 24L26.5 35.5' stroke='%237055FE' stroke-width='3.2' stroke-linecap='round'/%3E%3Cpath d='M24.8 37.2L23 40C22.6 40.7 23.3 41.4 24 41L26.8 39.2' fill='%237055FE'/%3E%3C/svg%3E");
-}
-
-/* 标题 */
-.generating-card__title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1F1D38;
-  line-height: 25px;
-  margin-top: 14px;
-  letter-spacing: 0.2px;
-  text-align: center;
-}
-
-/* 副标题 */
-.generating-card__subtitle {
-  font-size: 14px;
-  font-weight: 400;
-  color: #797698;
-  line-height: 20px;
-  margin-top: 6px;
-  text-align: center;
-}
-
-/* 进度条外层容器 */
-.generating-card__progress-wrap {
-  margin-top: 20px;
-  width: 250px;
-  max-width: 82%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* 进度条轨道 */
-.generating-card__progress-track {
-  flex: 1;
-  height: 8px;
-  background: rgba(144, 126, 255, 0.18);
-  border-radius: 999px;
   overflow: hidden;
-  position: relative;
+  padding: 10px 16px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 20px;
+  background: linear-gradient(145deg, #f2fbf6 0%, #eaf8f0 100%);
+  box-shadow: 0 8px 24px rgba(25, 132, 79, 0.08);
 }
 
-/* 进度条高亮条 */
-.generating-card__progress-bar {
+.generating-card__decor {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
   height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #745CFF 0%, #9C89FF 100%);
-  transition: width 0.35s ease;
-  position: relative;
+  opacity: 0.52;
+  pointer-events: none;
 }
 
-/* 进度文本 */
-.generating-card__progress-text {
-  font-size: 13px;
-  font-weight: 500;
-  color: #757294;
-  margin-left: 10px;
-  white-space: nowrap;
-}
-
-/* 底部内容区：提示胶囊 + 卡片内操作按钮 */
+.generating-card__center,
 .generating-card__foot {
   position: relative;
   z-index: 1;
@@ -141,112 +41,222 @@
   align-items: center;
 }
 
-/* 底部提示胶囊 */
-.generating-card__tip-capsule {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  height: 44px;
-  padding: 0 16px;
-  box-sizing: border-box;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 4px 14px rgba(118, 98, 240, 0.06);
+.generating-card__icon {
+  display: block;
+  width: 184px;
+  height: 116px;
+  animation: mascot-float 3s ease-in-out infinite;
+}
+
+.generating-card__title {
+  margin-top: 2px;
+  color: #18221d;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 28px;
+  letter-spacing: 0.2px;
+  text-align: center;
+}
+
+.generating-card__subtitle {
+  margin-top: 3px;
+  color: #69756f;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 22px;
+  text-align: center;
+}
+
+.generating-card__progress-wrap {
   display: flex;
+  width: 100%;
   align-items: center;
+  margin-top: 15px;
 }
 
-/* 提示图标 */
-.generating-card__tip-icon {
-  width: 16px;
-  height: 16px;
+.generating-card__beads {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.generating-card__bead {
+  display: block;
+  width: 11px;
+  height: 11px;
+  min-width: 0;
+  flex: 0 1 11px;
+  transition: filter 0.25s ease, opacity 0.25s ease, transform 0.25s ease;
+}
+
+.generating-card__bead--active {
+  filter: none;
+  opacity: 1;
+}
+
+.generating-card__bead--current {
+  filter: none;
+  opacity: 0.62;
+  animation: bead-current 0.9s ease-in-out infinite;
+}
+
+.generating-card__bead--inactive {
+  filter: grayscale(1);
+  opacity: 0.24;
+}
+
+.generating-card__progress-text {
   flex-shrink: 0;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23745CFF' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 2a5 5 0 0 0-5 5c0 2.2 1.2 3.6 2.2 4.7.5.5.8 1.3.8 2.1h4c0-.8.3-1.6.8-2.1 1-1.1 2.2-2.5 2.2-4.7a5 5 0 0 0-5-5z'/%3E%3Cpath d='M8 17h4'/%3E%3C/svg%3E");
-}
-
-/* 提示文案 */
-.generating-card__tip-text {
-  font-size: 12.5px;
-  color: #535676;
-  margin-left: 8px;
+  margin-left: 9px;
+  color: #68756e;
+  font-size: 15px;
+  font-weight: 500;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
 }
 
-/* 卡片内操作行：取消生成 / 返回首页，横向排列，轻量低干扰 */
+.generating-card__tip-capsule {
+  display: flex;
+  width: 100%;
+  height: 46px;
+  box-sizing: border-box;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 14px rgba(33, 131, 83, 0.05);
+}
+
+.generating-card__tip-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  background: center / contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%230BA45B' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 2a5 5 0 0 0-5 5c0 2.2 1.2 3.6 2.2 4.7.5.5.8 1.3.8 2.1h4c0-.8.3-1.6.8-2.1 1-1.1 2.2-2.5 2.2-4.7a5 5 0 0 0-5-5z'/%3E%3Cpath d='M8 17h4'/%3E%3C/svg%3E");
+}
+
+.generating-card__tip-text {
+  overflow: hidden;
+  margin-left: 9px;
+  color: #596b61;
+  font-size: 12.5px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .generating-card__actions {
   display: flex;
-  flex-shrink: 0;
   width: 100%;
-  margin-top: 12px;
+  flex-shrink: 0;
   gap: 12px;
+  margin-top: 12px;
 }
 
 .generating-card__action {
-  box-sizing: border-box;
-  height: 36px;
+  height: 44px;
   min-width: 0;
   flex: 1;
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
   border: 0;
   border-radius: 999px;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 36px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 44px;
   text-align: center;
   transition: background 0.15s ease;
 }
 
 .generating-card__action::after {
-  border: none;
+  border: 0;
 }
 
-/* 取消生成：浅色描边按钮 */
 .generating-card__action--ghost {
-  background: rgba(255, 255, 255, 0.72);
-  color: #6F6A94;
-  box-shadow: inset 0 0 0 1px rgba(124, 92, 255, 0.24);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: inset 0 0 0 1px rgba(17, 174, 96, 0.18);
+  color: #647168;
 }
 
 .generating-card__action--ghost:active {
-  background: rgba(255, 255, 255, 0.94);
+  background: #fff;
 }
 
-/* 返回首页：同风格浅色实底次按钮 */
 .generating-card__action--soft {
-  background: rgba(124, 92, 255, 0.12);
-  color: #6F5BFF;
+  background: rgba(20, 187, 107, 0.16);
+  color: #079a55;
 }
 
 .generating-card__action--soft:active {
-  background: rgba(124, 92, 255, 0.2);
+  background: rgba(20, 187, 107, 0.24);
 }
 
-/* 图标呼吸浮动动画 */
-@keyframes float-breathing {
-  0%, 100% {
-    transform: translateY(0) scale(1);
-  }
-  50% {
-    transform: translateY(-3px) scale(1.02);
-  }
+.generating-card--failed {
+  min-height: 250px;
+  justify-content: center;
+}
+
+.generating-card--failed .generating-card__foot {
+  margin-top: 20px;
+}
+
+@keyframes mascot-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes bead-current {
+  0%, 100% { opacity: 0.48; transform: scale(0.86); }
+  50% { opacity: 1; transform: scale(1.18); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .generating-card__icon-wrap {
+  .generating-card__icon,
+  .generating-card__bead--current {
     animation: none;
   }
 
   .generating-card__action {
     transition: none;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .generating-card {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(145deg, #1a2a21 0%, #20372a 100%);
+  }
+
+  .generating-card__decor {
+    opacity: 0.2;
+  }
+
+  .generating-card__title {
+    color: #f3f6f4;
+  }
+
+  .generating-card__subtitle,
+  .generating-card__progress-text,
+  .generating-card__tip-text,
+  .generating-card__action--ghost {
+    color: #c1cec5;
+  }
+
+  .generating-card__tip-capsule {
+    border-color: rgba(255, 255, 255, 0.06);
+    background: rgba(31, 43, 36, 0.94);
+  }
+
+  .generating-card__action--ghost {
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 0 0 1px rgba(57, 217, 138, 0.2);
+  }
+
+  .generating-card__action--soft {
+    background: rgba(57, 217, 138, 0.16);
+    color: #70e0a5;
   }
 }
