@@ -73,6 +73,7 @@
 }
 
 .ai-generation-result-card__preview {
+  position: relative;
   display: flex;
   box-sizing: border-box;
   margin-top: 16rpx;
@@ -84,13 +85,172 @@
   background: #f7f7f7;
 }
 
-.ai-generation-result-card__canvas {
+.ai-generation-result-card__coordinate-grid {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.ai-generation-result-card__coordinate-corner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: 44rpx;
+  height: 44rpx;
+  background: #f0f1f2;
+  border-right: 1rpx solid #c5cbd2;
+  border-bottom: 1rpx solid #c5cbd2;
+}
+
+.ai-generation-result-card__ruler {
+  position: relative;
+  overflow: hidden;
+  background: #f0f1f2;
+}
+
+.ai-generation-result-card__ruler-ticks {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform-origin: center;
+}
+
+.ai-generation-result-card__ruler--top {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 44rpx;
+  box-sizing: border-box;
+  height: 44rpx;
+  border-bottom: 1rpx solid #c5cbd2;
+}
+
+.ai-generation-result-card__ruler--left {
+  position: absolute;
+  top: 44rpx;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: 44rpx;
+  border-right: 1rpx solid #c5cbd2;
+}
+
+.ai-generation-result-card__tick {
+  position: absolute;
+  background: #aab2bc;
+}
+
+.ai-generation-result-card__ruler--top .ai-generation-result-card__tick {
+  bottom: 0;
+  width: 1rpx;
+  height: 9rpx;
+}
+
+.ai-generation-result-card__ruler--left .ai-generation-result-card__tick {
+  right: 0;
+  width: 9rpx;
+  height: 1rpx;
+}
+
+.ai-generation-result-card__tick--major {
+  background: #788492;
+}
+
+.ai-generation-result-card__ruler--top .ai-generation-result-card__tick--major {
+  height: 16rpx;
+}
+
+.ai-generation-result-card__ruler--left .ai-generation-result-card__tick--major {
+  width: 16rpx;
+}
+
+.ai-generation-result-card__ruler-label {
+  position: absolute;
+  color: #64707d;
+  font-size: 18rpx;
+  line-height: 22rpx;
+  white-space: nowrap;
+}
+
+.ai-generation-result-card__ruler--top .ai-generation-result-card__ruler-label {
+  bottom: 17rpx;
+  left: 0;
+  transform: translateX(-50%);
+}
+
+.ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label {
+  transform: none;
+}
+
+.ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.ai-generation-result-card__ruler--left .ai-generation-result-card__ruler-label {
+  top: 0;
+  right: 13rpx;
+  transform: translateY(-50%);
+}
+
+.ai-generation-result-card__ruler--left .ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label {
+  transform: none;
+}
+
+.ai-generation-result-card__ruler--left .ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label {
+  top: auto;
+  bottom: 0;
+  right: 13rpx;
+  transform: none;
+}
+
+.ai-generation-result-card__board {
+  position: absolute;
+  top: 44rpx;
+  right: 0;
+  bottom: 0;
+  left: 44rpx;
+  overflow: hidden;
+  background: #f7f7f7;
+}
+
+.ai-generation-result-card__image {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
   width: 100%;
   height: 100%;
+  transform-origin: center;
+}
+
+.ai-generation-result-card__pan-area {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: transparent;
 }
 
 .ai-generation-result-card__fallback {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24rpx;
+  text-align: center;
   color: var(--color-text-secondary, #5f6963);
   font-size: 26rpx;
   line-height: 40rpx;
@@ -102,6 +262,36 @@
   }
 
   .ai-generation-result-card__preview {
+    background: #20242a;
+  }
+
+  .ai-generation-result-card__coordinate-corner,
+  .ai-generation-result-card__ruler {
+    background: #292d33;
+  }
+
+  .ai-generation-result-card__coordinate-corner {
+    border-color: #4a515a;
+  }
+
+  .ai-generation-result-card__ruler--top,
+  .ai-generation-result-card__ruler--left {
+    border-color: #4a515a;
+  }
+
+  .ai-generation-result-card__tick {
+    background: #626d7a;
+  }
+
+  .ai-generation-result-card__tick--major {
+    background: #9ba6b2;
+  }
+
+  .ai-generation-result-card__ruler-label {
+    color: #c2cad3;
+  }
+
+  .ai-generation-result-card__board {
     background: #20242a;
   }
 }

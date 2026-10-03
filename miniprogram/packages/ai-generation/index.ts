@@ -36,16 +36,51 @@ function loadPatternRenderer(): Promise<PatternRendererModule> {
 
 type TaskFrom = 'home' | 'projects'
 
-interface PatternPreviewCanvas {
+interface PatternPreviewQueryResult {
   width: number
   height: number
-  getContext(type: '2d'): PatternCanvasContext
 }
 
-interface PatternPreviewQueryResult {
-  node: PatternPreviewCanvas
-  width: number
-  height: number
+interface CoordinateTick {
+  coordinate: number
+  position: string
+  label: string
+  start: boolean
+  end: boolean
+}
+
+interface PanGestureStart {
+  clientX: number
+  clientY: number
+  panX: number
+  panY: number
+}
+
+function clampPanOffset(offset: number, viewportSize: number, scalePercent: number): number {
+  // 缩放以画布中心为锚点，位移限制在图案仍覆盖视口的范围内。
+  const maxOffset = Math.max(0, viewportSize * (scalePercent / 100 - 1) / 2)
+  return Math.max(-maxOffset, Math.min(maxOffset, offset))
+}
+
+function buildCoordinateTicks(size: number, otherSize: number): CoordinateTick[] {
+  const count = Math.max(1, Math.floor(size))
+  // 图纸会在正方形画布中等比适配；短边两侧留白，坐标刻度需跟随实际网格边界。
+  const extent = Math.min(size, otherSize) / size
+  const offset = (1 - extent) / 2
+  return Array.from({ length: count }, (_, index) => {
+    const coordinate = index + 1
+    const label = coordinate === 1 || coordinate % 10 === 0 || coordinate === count
+    const position = count === 1
+      ? offset + extent / 2
+      : offset + (index / (count - 1)) * extent
+    return {
+      coordinate,
+      position: `${position * 100}%`,
+      label: label ? String(coordinate) : '',
+      start: index === 0,
+      end: index === count - 1,
+    }
+  })
 }
 
 const GENERATING_STATUSES: ReadonlySet<AiTaskStatus> = new Set<AiTaskStatus>([
@@ -74,10 +109,14 @@ Page({
     /** 成功态在当前页面直接展示结果，编辑面板随草稿就绪切换为可用。 */
     draft: null as PatternDraft | null,
     editorReady: false,
-    patternCanvasReady: false,
+    patternPreviewPath: '',
     patternRenderError: false,
+    rulerColumns: [] as CoordinateTick[],
+    rulerRows: [] as CoordinateTick[],
     activeTool: 'pencil',
     scalePercent: 100,
+    panX: 0,
+    panY: 0,
     canZoomOut: false,
     canZoomIn: true,
     paletteColors: [] as string[],
@@ -94,6 +133,10 @@ Page({
   _from: 'home' as TaskFrom,
   _unsubscribe: null as (() => void) | null,
   _visible: false,
+  _previewRenderId: 0,
+  _boardWidth: 0,
+  _boardHeight: 0,
+  _panGesture: null as PanGestureStart | null,
 
   onLoad(query?: Record<string, string | undefined>) {
     const from: TaskFrom = query?.from === 'projects' ? 'projects' : 'home'
@@ -122,11 +165,15 @@ Page({
 
   onHide() {
     this._visible = false
+    this._previewRenderId += 1
+    this._panGesture = null
     this.unsubscribe()
   },
 
   onUnload() {
     this._visible = false
+    this._previewRenderId += 1
+    this._panGesture = null
     this.unsubscribe()
   },
 
@@ -162,6 +209,7 @@ Page({
     const isFailed = view.isFailed
     const isSucceeded = view.isSucceeded
     const isQueued = !isGenerating && !isFailed && !isSucceeded
+    if (!isSucceeded) this._previewRenderId += 1
     this.setData({
       isQueued,
       isGenerating,
@@ -182,8 +230,10 @@ Page({
         draft: null,
         paletteColors: [],
         selectedColor: '',
-        patternCanvasReady: false,
+        patternPreviewPath: '',
         patternRenderError: false,
+        panX: 0,
+        panY: 0,
       }),
     })
   },
@@ -198,11 +248,16 @@ Page({
       ? this.data.selectedColor
       : (paletteColors[0] ?? '')
     const draftChanged = this.data.draft?.id !== draft.id
+    this._previewRenderId += 1
     this.setData({
       draft,
       editorReady: true,
-      patternCanvasReady: false,
+      patternPreviewPath: '',
       patternRenderError: false,
+      panX: draftChanged ? 0 : this.data.panX,
+      panY: draftChanged ? 0 : this.data.panY,
+      rulerColumns: buildCoordinateTicks(draft.settings.width, draft.settings.height),
+      rulerRows: buildCoordinateTicks(draft.settings.height, draft.settings.width),
       paletteColors,
       selectedColor,
     }, () => this.renderPatternPreview())
@@ -254,47 +309,103 @@ Page({
     const next = Math.min(300, this.data.scalePercent + 20)
     this.setData({
       scalePercent: next,
+      panX: clampPanOffset(this.data.panX, this._boardWidth, next),
+      panY: clampPanOffset(this.data.panY, this._boardHeight, next),
       canZoomIn: next < 300,
       canZoomOut: next > 100,
-    }, () => this.renderPatternPreview())
+    })
   },
 
   zoomOut() {
     const next = Math.max(100, this.data.scalePercent - 20)
     this.setData({
       scalePercent: next,
+      panX: clampPanOffset(this.data.panX, this._boardWidth, next),
+      panY: clampPanOffset(this.data.panY, this._boardHeight, next),
       canZoomIn: next < 300,
       canZoomOut: next > 100,
-    }, () => this.renderPatternPreview())
+    })
+  },
+
+  panStart(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.scalePercent <= 100 || event.touches.length !== 1) {
+      this._panGesture = null
+      return
+    }
+    const touch = event.touches[0]
+    this._panGesture = {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      panX: this.data.panX,
+      panY: this.data.panY,
+    }
+  },
+
+  panMove(event: WechatMiniprogram.TouchEvent) {
+    const start = this._panGesture
+    if (!start) return
+    if (event.touches.length !== 1) {
+      this._panGesture = null
+      return
+    }
+    const touch = event.touches[0]
+    this.setData({
+      panX: clampPanOffset(start.panX + touch.clientX - start.clientX, this._boardWidth, this.data.scalePercent),
+      panY: clampPanOffset(start.panY + touch.clientY - start.clientY, this._boardHeight, this.data.scalePercent),
+    })
+  },
+
+  panEnd() {
+    this._panGesture = null
   },
 
   renderPatternPreview() {
     const draft = this.data.draft
     if (!draft) return
+    // 图片导出异步返回；丢弃切页、任务状态变化或新绘制后才返回的旧结果。
+    const renderId = ++this._previewRenderId
     wx.createSelectorQuery()
       .in(this)
-      .select('#aiPatternCanvas')
-      .fields({ node: true, size: true })
+      .select('.ai-generation-result-card__board')
+      .fields({ size: true })
       .exec((results) => {
         const result = results[0] as PatternPreviewQueryResult | undefined
-        if (!result?.node || !result.width || !result.height) {
-          this.setData({ patternRenderError: true })
+        if (!result?.width || !result.height) {
+          if (renderId === this._previewRenderId) this.setData({ patternRenderError: true })
           return
         }
+        this._boardWidth = result.width
+        this._boardHeight = result.height
         const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
         loadPatternRenderer()
           .then(({ drawPatternOnCanvas }) => {
-            result.node.width = Math.round(result.width * pixelRatio)
-            result.node.height = Math.round(result.height * pixelRatio)
-            const context = result.node.getContext('2d')
+            if (renderId !== this._previewRenderId) return
+            const width = Math.round(result.width * pixelRatio)
+            const height = Math.round(result.height * pixelRatio)
+            const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })
+            const context = canvas.getContext('2d') as PatternCanvasContext
             context.scale(pixelRatio, pixelRatio)
-            const scale = this.data.scalePercent / 100
-            context.translate(result.width * (1 - scale) / 2, result.height * (1 - scale) / 2)
-            context.scale(scale, scale)
             drawPatternOnCanvas(context, result.width, result.height, draft, true)
-            this.setData({ patternCanvasReady: true })
+            wx.canvasToTempFilePath({
+              canvas: canvas as unknown as WechatMiniprogram.IAnyObject,
+              fileType: 'png',
+              width,
+              height,
+              destWidth: width,
+              destHeight: height,
+              success: ({ tempFilePath }) => {
+                if (renderId !== this._previewRenderId) return
+                this.setData({ patternPreviewPath: tempFilePath, patternRenderError: false })
+              },
+              fail: (error) => {
+                if (renderId !== this._previewRenderId) return
+                console.error('AI 拼豆图预览导出失败', error)
+                this.setData({ patternRenderError: true })
+              },
+            })
           })
           .catch((error) => {
+            if (renderId !== this._previewRenderId) return
             console.error('AI 拼豆图预览绘制失败', error)
             this.setData({ patternRenderError: true })
           })
