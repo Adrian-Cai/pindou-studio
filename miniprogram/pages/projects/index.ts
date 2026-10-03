@@ -70,7 +70,6 @@ Page({
     query: '',
     allWorks: [] as WorkView[],
     works: [] as WorkView[],
-    textJobs: [] as TextGeneration[],
     failedTextJobs: [] as FailedTextTaskView[],
     visibleFailedTextJobs: [] as FailedTextTaskView[],
     textImageWorks: [] as TextImageWorkView[],
@@ -112,7 +111,7 @@ Page({
   async refreshWorks() {
     // 未登录时没有云端列表可拉，直接渲染本地缓存
     if (!hasCloudSession()) {
-      this.setData({ textJobs: [], failedTextJobs: [], visibleFailedTextJobs: [], textImageWorks: [], visibleTextImageWorks: [] })
+      this.setData({ failedTextJobs: [], visibleFailedTextJobs: [], textImageWorks: [], visibleTextImageWorks: [] })
       this.refreshVisibleWorks()
       return
     }
@@ -132,7 +131,6 @@ Page({
             updatedText: formatDateTime(Date.parse(task.updatedAt)),
           }))
         this.setData({
-          textJobs: textJobsResult.value.filter((task) => task.status !== 'failed'),
           failedTextJobs,
         })
       } else console.warn('读取文生图恢复任务失败', textJobsResult.reason)

@@ -9,14 +9,6 @@
 .project-summary__value--green { color: var(--color-primary); }
 .project-summary__line { width: 1rpx; height: 72rpx; align-self: center; background: var(--color-border); }
 
-.text-task-list { display: flex; flex-direction: column; gap: 12rpx; margin-top: var(--space-3); }
-.text-task-list__title { color: var(--color-text); font-size: 28rpx; font-weight: 600; line-height: 40rpx; }
-.text-task-card { display: flex; min-width: 0; align-items: center; gap: 20rpx; padding: 22rpx 24rpx; border: 1rpx solid rgba(18, 180, 102, 0.14); border-radius: var(--radius-card); background: #f5fbf7; }
-.text-task-card__copy { min-width: 0; flex: 1; }
-.text-task-card__status { color: var(--color-primary); font-size: 24rpx; font-weight: 600; line-height: 34rpx; }
-.text-task-card__prompt { overflow: hidden; margin-top: 6rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 34rpx; text-overflow: ellipsis; white-space: nowrap; }
-.text-task-card__action { flex-shrink: 0; color: var(--color-primary); font-size: 24rpx; }
-
 .projects-page .segmented { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .projects-page .segmented__item { padding: 0 4rpx; font-size: 24rpx; }
 
