@@ -2,15 +2,84 @@ master:
   push:
     - services:
         - docker
+      # latest 标签由多个提交共享，串行构建避免旧构建后完成时覆盖新镜像。
+      lock:
+        key: build-pindou-studio
+        wait: true
+        cancel-in-wait: true
       stages:
+        # 门禁失败即中止，不构建也不推送镜像：坏代码到不了服务器。
+        # 只跑不需要数据库的用例，*database-integration* 需要真实 PostgreSQL，留给手工验收。
+        - name: 质量门禁
+          image: node:24-bookworm-slim
+          script: |
+            set -eu
+            npm ci
+            npm run typecheck
+            npm run test:pattern
+            npm run test:assets
+            npm run test:ai-failure
+            npm run test:auth-store-logout
+            cd server
+            npm ci
+            npm run build
+            files=""
+            for f in test/*.test.js; do
+              case "$f" in
+                *database-integration*) continue ;;
+              esac
+              files="$files $f"
+            done
+            node --test $files
         - name: 构建 Docker 镜像
           script: |
+            # 完整 sha tag 供 Jenkins 精确拉取；latest 只作为兜底，存在构建进度竞态。
+            COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "${CNB_COMMIT_SHORT}")
             docker build \
               -f server/Dockerfile \
+              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${COMMIT} \
               -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${CNB_COMMIT_SHORT} \
               -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest \
               server
         - name: 推送镜像到 CNB 制品库
           script: |
+            COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "${CNB_COMMIT_SHORT}")
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${COMMIT}
             docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${CNB_COMMIT_SHORT}
             docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
+
+# 打 Tag 时用 Tag 名作为镜像标签构建并推送
+$:
+  tag_push:
+    - services:
+        - docker
+      stages:
+        - name: 构建 Docker 镜像
+          script: |
+            docker build \
+              -f server/Dockerfile \
+              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${CNB_BRANCH} \
+              server
+        - name: 推送镜像到 CNB 制品库
+          script: |
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${CNB_BRANCH}
+
+main:
+  pull_request:
+    - stages:
+        - name: validate code scan config
+          image: cnbcool/code-security-config
+          args:
+            - validate
+        - name: 开源组件漏洞扫描
+          image: cnbcool/sca-vulnerability:latest
+          settings:
+            failOnSeverity: high
+        - name: License 扫描
+          image: cnbcool/sca-license:latest
+          settings:
+            failOnSeverity: high
+        - name: 生成 SBOM Delta
+          image: cnbcool/sca-sbom:latest
+          settings:
+            output: ${CNB_BUILD_WORKSPACE}/.cnb-sca/sbom-delta.json

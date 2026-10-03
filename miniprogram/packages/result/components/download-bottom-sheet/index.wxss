@@ -1,0 +1,325 @@
+.download-sheet {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+}
+
+.download-sheet__mask {
+  position: fixed;
+  z-index: 1001;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  animation: sheetFadeIn 0.25s ease-out forwards;
+}
+
+.download-sheet__panel {
+  position: fixed;
+  z-index: 1002;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 20rpx 40rpx calc(32rpx + env(safe-area-inset-bottom));
+  border-radius: var(--radius-card-large) var(--radius-card-large) 0 0;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sheet);
+  animation: sheetSlideUp 0.28s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.download-sheet__handle {
+  width: 72rpx;
+  height: 8rpx;
+  margin: 0 auto 32rpx;
+  border-radius: 4rpx;
+  background: var(--color-disabled);
+}
+
+/* ── 确认状态样式 ── */
+.download-sheet__title {
+  color: var(--color-text);
+  font-size: 36rpx;
+  font-weight: 600;
+  line-height: 48rpx;
+  margin-bottom: 32rpx;
+  text-align: center;
+}
+
+.download-sheet__file-card {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  margin-bottom: 24rpx;
+  padding: 24rpx 28rpx;
+  border: 0;
+  border-radius: var(--radius-card-small);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.download-sheet__file-icon {
+  display: flex;
+  width: 88rpx;
+  height: 88rpx;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20rpx;
+  background: var(--color-primary);
+}
+
+.download-sheet__icon-img {
+  width: 46rpx;
+  height: 46rpx;
+  filter: brightness(0) invert(1);
+}
+
+.download-sheet__file-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.download-sheet__file-name {
+  color: var(--color-text);
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 42rpx;
+}
+
+.download-sheet__file-desc {
+  margin-top: 6rpx;
+  color: var(--color-text-tertiary);
+  font-size: 24rpx;
+  line-height: 34rpx;
+}
+
+.download-sheet__file-check {
+  display: flex;
+  width: 44rpx;
+  height: 44rpx;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+
+.download-sheet__check-symbol { width: 28rpx; height: 28rpx; }
+
+.download-sheet__meta-card {
+  margin-bottom: 36rpx;
+  padding: 24rpx 32rpx;
+  border-radius: var(--radius-card-small);
+  background: var(--color-surface-muted);
+  box-shadow: var(--shadow-card);
+}
+
+.download-sheet__meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10rpx 0;
+}
+
+.download-sheet__meta-label {
+  color: var(--color-text-secondary);
+  font-size: 26rpx;
+  line-height: 36rpx;
+}
+
+.download-sheet__meta-value {
+  color: var(--color-text);
+  font-size: 26rpx;
+  line-height: 36rpx;
+}
+
+.download-sheet__meta-value--purple {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* ── 成功状态样式 ── */
+.download-sheet__success-badge {
+  display: flex;
+  justify-content: center;
+  margin-top: 8rpx;
+  margin-bottom: 24rpx;
+}
+
+.download-sheet__success-halo {
+  display: flex;
+  width: 136rpx;
+  height: 136rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-success-soft);
+}
+
+.download-sheet__success-circle {
+  display: flex;
+  width: 92rpx;
+  height: 92rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: var(--shadow-success);
+}
+
+.download-sheet__success-check { width: 54rpx; height: 54rpx; }
+
+.download-sheet__success-title {
+  color: var(--color-text);
+  font-size: 38rpx;
+  font-weight: 700;
+  line-height: 52rpx;
+  text-align: center;
+}
+
+.download-sheet__success-desc {
+  margin-top: 12rpx;
+  color: var(--color-text-secondary);
+  font-size: 28rpx;
+  line-height: 40rpx;
+  text-align: center;
+}
+
+.download-sheet__success-hint {
+  margin-top: 8rpx;
+  color: var(--color-text-tertiary);
+  font-size: 24rpx;
+  line-height: 34rpx;
+  text-align: center;
+}
+
+.download-sheet__quota-bar {
+  display: flex;
+  height: 72rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  margin: 32rpx 0 36rpx;
+  padding: 0 24rpx;
+  border-radius: 16rpx;
+  background: var(--color-primary-soft);
+}
+
+.download-sheet__quota-icon {
+  width: 28rpx;
+  height: 28rpx;
+  filter: invert(48%) sepia(85%) saturate(490%) hue-rotate(100deg) brightness(92%) contrast(92%);
+}
+
+.download-sheet__quota-text {
+  color: var(--color-text-secondary);
+  font-size: 26rpx;
+  line-height: 36rpx;
+}
+
+.download-sheet__quota-num {
+  margin: 0 4rpx;
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+/* ── 按钮与交互 ── */
+.download-sheet__cta-btn {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  height: 96rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  margin: 0;
+  padding: 0 32rpx;
+  border: 0;
+  border-radius: var(--radius-card-small);
+  background: var(--download-btn-bg, linear-gradient(90deg, var(--color-primary), var(--color-primary-gradient-end)));
+  box-shadow: 0 8rpx 20rpx rgba(106, 85, 246, 0.28);
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 96rpx;
+  transition: var(--transition-press);
+}
+
+.download-sheet__cta-btn::after {
+  border: 0;
+}
+
+.download-sheet__cta-btn:active {
+  background: var(--download-btn-bg-pressed, var(--color-primary-pressed));
+  transform: scale(0.97);
+}
+
+.download-sheet__cta-btn--loading {
+  opacity: 0.88;
+}
+
+.download-sheet__cta-icon {
+  width: 36rpx;
+  height: 36rpx;
+  filter: brightness(0) invert(1);
+}
+
+.download-sheet__spinner {
+  width: 32rpx;
+  height: 32rpx;
+  border: 4rpx solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: sheetSpin 0.8s linear infinite;
+}
+
+.download-sheet__cancel-btn {
+  display: flex;
+  width: 100%;
+  height: 80rpx;
+  align-items: center;
+  justify-content: center;
+  margin-top: 16rpx;
+  color: var(--color-text-secondary);
+  font-size: 30rpx;
+  text-align: center;
+  transition: var(--transition-press);
+}
+
+.download-sheet__cancel-btn:active {
+  opacity: 0.65;
+  transform: scale(0.97);
+}
+
+.download-sheet__cancel-btn--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ── 动画 ── */
+@keyframes sheetFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sheetSlideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheetSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}

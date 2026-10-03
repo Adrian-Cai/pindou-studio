@@ -1,6 +1,8 @@
 import { ApiConfigurationError, buildApiUrl } from '../config/api'
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+export type PublicErrorCategory = 'USER' | 'INPUT' | 'CONTENT' | 'PROVIDER' | 'INTERNAL'
+export type PublicErrorAction = 'VIEW_BENEFITS' | 'SELECT_IMAGE' | 'USE_STANDARD_MODE' | 'RETRY'
 
 interface ApiRequestOptions {
   path: string
@@ -27,6 +29,9 @@ interface ApiErrorBody {
     message?: unknown
     requestId?: unknown
     details?: unknown
+    category?: unknown
+    retryable?: unknown
+    action?: unknown
   }
 }
 
@@ -35,6 +40,9 @@ export class ApiError extends Error {
   readonly code: string
   readonly requestId: string | null
   readonly details: Readonly<Record<string, unknown>>
+  readonly category: PublicErrorCategory | null
+  readonly retryable: boolean | null
+  readonly action: PublicErrorAction | null
 
   constructor(
     message: string,
@@ -43,6 +51,9 @@ export class ApiError extends Error {
       code?: string
       requestId?: string | null
       details?: Readonly<Record<string, unknown>>
+      category?: PublicErrorCategory | null
+      retryable?: boolean | null
+      action?: PublicErrorAction | null
     } = {},
   ) {
     super(message)
@@ -51,6 +62,9 @@ export class ApiError extends Error {
     this.code = options.code ?? 'UNKNOWN_ERROR'
     this.requestId = options.requestId ?? null
     this.details = options.details ?? {}
+    this.category = options.category ?? null
+    this.retryable = options.retryable ?? null
+    this.action = options.action ?? null
   }
 }
 
@@ -154,7 +168,29 @@ function createApiError(statusCode: number, value: unknown): ApiError {
   const message = typeof error?.message === 'string' ? error.message : '服务请求失败，请稍后重试'
   const requestId = typeof error?.requestId === 'string' ? error.requestId : null
   const details = isRecord(error?.details) ? error.details : {}
-  return new ApiError(message, { statusCode, code, requestId, details })
+  const category = parseCategory(error?.category)
+  const retryable = typeof error?.retryable === 'boolean' ? error.retryable : null
+  const action = parseAction(error?.action)
+  return new ApiError(message, { statusCode, code, requestId, details, category, retryable, action })
+}
+
+function parseCategory(value: unknown): PublicErrorCategory | null {
+  return value === 'USER'
+    || value === 'INPUT'
+    || value === 'CONTENT'
+    || value === 'PROVIDER'
+    || value === 'INTERNAL'
+    ? value
+    : null
+}
+
+function parseAction(value: unknown): PublicErrorAction | null {
+  return value === 'VIEW_BENEFITS'
+    || value === 'SELECT_IMAGE'
+    || value === 'USE_STANDARD_MODE'
+    || value === 'RETRY'
+    ? value
+    : null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -2,7 +2,7 @@
 
 > 状态：当前实现基线
 >
-> 适用版本：0.19.x
+> 适用版本：0.32.0
 >
 > 本文描述当前已经落地的系统，不包含尚未接入的 Ai 模式未来 AI 架构见 `docs/backend/AI_GENERATION_DESIGN.md`
 
@@ -97,6 +97,23 @@ wx.login
 
 登录或恢复登录后，客户端先切换到当前账号的数据空间并恢复云端作品、收藏；历史游客作品自动迁移至当前账号。运行期云端缓存不会持久化，待同步作品按账号隔离；迁移成功后使用云端作品 ID 替换本地关联 ID，失败则保留本地作品并标记同步状态。
 
+退出当前设备时，小程序先清除本地凭证和登录 UI，再调用 `DELETE /api/auth/session` 吊销服务端会话；网络失败不阻塞本地登出。设备丢失或疑似泄漏时，`DELETE /api/auth/sessions` 会吊销该用户所有设备会话，包含当前设备。
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant MP as 小程序
+    participant API as 后端
+    participant DB as PostgreSQL
+    U->>MP: 退出登录
+    MP->>MP: 清除 token、内存会话并切换游客态
+    MP->>API: DELETE /api/auth/session
+    API->>DB: 设置当前会话 revoked_at
+    DB-->>API: 更新完成
+    API-->>MP: 204 No Content
+    Note over API,DB: 后续 Bearer 请求因 revoked_at 返回 401
+```
+
 ### 2.3 下载额度
 
 ```text
@@ -113,6 +130,13 @@ wx.login
 
 取消、生成失败或保存相册失败时，不应调用下载扣减接口
 
+### 2.4 查询与业务动作边界
+
+- 图生图查询只返回任务状态；服务端启动及每 5 秒扫描驱动生成、输出持久化和成功扣次，重启后恢复已持久化任务。
+- 订单列表只查询；回调和既有后台对账负责到账与关单，不依赖用户刷新列表。
+- 额度查询与用户资料摘要共用只读账本计算；尚未落账的当日免费额度只预览，业务写操作在事务内懒发放。
+- 头像上传只替换头像，昵称走独立资料接口；兼容接收旧请求 nickname 字段但忽略它。
+
 ## 3. 小程序包结构
 
 ### 主包
@@ -121,18 +145,14 @@ wx.login
 - `pages/projects/index`
 - `pages/profile/index`
 
-### 分包 `pages-sub`
+### 分包 `packages`
 
-- editor
-- result
-- favorites
-- downloads
-- help
-- feedback
-- privacy
-- about
-- recharge
-- payment-success
+- `packages/editor`：拼豆图编辑器与编辑服务
+- `packages/ai-generation`：AI 生成等待页、任务轮询、输出转换和恢复流程
+- `packages/result`：结果页及结果页内部的下载组件
+- `packages/account`：个人中心、收藏、帮助、隐私、关于和账号设置
+- `packages/payment`：充值、订单、支付结果及订单服务
+- `packages/download`：下载记录页面
 
 ## 4. 后端模块
 

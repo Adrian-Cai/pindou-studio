@@ -49,10 +49,13 @@ function parseSession(value: unknown): AuthSession | null {
 function parseUser(value: unknown): AuthUser | null {
   if (!isRecord(value) || typeof value.id !== 'string' || !value.id) return null
   if (value.nickname !== null && typeof value.nickname !== 'string') return null
+  // 与 services/auth-service.ts 的 parseUser 保持同一口径：头像要如实读回来。
+  // 写死 null 的话，冷启动从 storage 恢复的会话会丢掉已保存的头像。
+  const avatarUrl = typeof value.avatarUrl === 'string' && value.avatarUrl ? value.avatarUrl : null
   return {
     id: value.id,
     nickname: value.nickname,
-    avatarUrl: null,
+    avatarUrl,
   }
 }
 
@@ -64,6 +67,7 @@ function parseProfile(value: unknown): CurrentUserProfile | null {
 
   const stats = value.stats
   const quota = value.quota
+  const aiGeneration = quota.aiGeneration
   if (
     !isFiniteNumber(stats.workCount)
     || !isFiniteNumber(stats.favoriteCount)
@@ -73,6 +77,13 @@ function parseProfile(value: unknown): CurrentUserProfile | null {
     || !isFiniteNumber(quota.purchased)
     || !isFiniteNumber(quota.remaining)
     || typeof quota.resetsAt !== 'string'
+    || !isRecord(aiGeneration)
+    || !isFiniteNumber(aiGeneration.dailyFree)
+    || !isFiniteNumber(aiGeneration.usedToday)
+    || !isFiniteNumber(aiGeneration.purchased)
+    || !isFiniteNumber(aiGeneration.remaining)
+    || typeof aiGeneration.resetsAt !== 'string'
+    || !Number.isFinite(Date.parse(aiGeneration.resetsAt))
   ) return null
 
   return {
@@ -88,6 +99,13 @@ function parseProfile(value: unknown): CurrentUserProfile | null {
       purchased: quota.purchased,
       remaining: quota.remaining,
       resetsAt: quota.resetsAt,
+      aiGeneration: {
+        dailyFree: aiGeneration.dailyFree,
+        usedToday: aiGeneration.usedToday,
+        purchased: aiGeneration.purchased,
+        remaining: aiGeneration.remaining,
+        resetsAt: aiGeneration.resetsAt,
+      },
     },
   }
 }

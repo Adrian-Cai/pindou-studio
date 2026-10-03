@@ -4,11 +4,19 @@
 
 ## 当前必须执行的数据库迁移
 
-由 `pindou_*` 表 owner 在目标数据库执行：
+由数据库工具或运维脚本使用 `pindou_*` 表 owner（或超级用户）在目标数据库执行。Jenkins 只负责部署 API，不连接数据库，也不会自动执行 SQL 迁移。`000_schema_migrations.sql` 会创建迁移记录表；如使用 `deploy/migrate.sh`，它会按编号和 SHA-256 只执行未记录的迁移。迁移含 `ALTER TABLE` / `COMMENT ON` / `CREATE INDEX`，PostgreSQL 只允许 owner 改表，仅有表级 `GRANT` 会报 `ERROR: must be owner of table pindou_*`：
 
-```powershell
-psql "<由运维安全提供的迁移连接>" -v ON_ERROR_STOP=1 -f server/sql/001_ai_quota_and_jobs.sql
+```bash
+export DB_HOST="<API 实际使用的数据库地址>"
+export DB_PORT="5432"
+export DB_NAME="<数据库名>"
+export DB_USER="<表 owner 或超级用户>"
+export DB_PASSWORD="<数据库密码>"
+sh deploy/migrate.sh server/sql
+unset DB_PASSWORD
 ```
+
+迁移连接必须是 API 实际使用的那个库（`config/api.env` 中 `DB_HOST` 指向的实例）；数据库工具或运维脚本必须对准该实例并使用 owner 账号。Jenkins 不执行数据库迁移。完整清单与说明见 `server/README.md`。
 
 随后使用应用账号执行：
 
@@ -20,24 +28,33 @@ $env:RUN_DATABASE_INTEGRATION='1'
 npm test
 ```
 
-迁移会加入双额度字段、AI 任务表和三档 AI 套餐：`¥9.9/30`、`¥19.9/80`、`¥29.9/150`生产执行前先备份，并在预发布库完整演练一次
+迁移完成后正式可售两档 AI 套餐：`¥9.9/30`、`¥19.9/80`；`012` 另外加入仅限首次购买 AI 次数账号的一次性测试套餐 `¥0.1/5`。`001` 会加入 AI 套餐并停用旧下载套餐和无限会员套餐，`011` 会下架 `ai_generation_150`，生产执行前先备份，并在预发布库完整演练一次；测试完成后应停用 `ai_generation_new_user_5`
 
 ## 微信支付小额实付
 
 1. 服务端安全注入 `.env.example` 中全部 `WECHAT_PAY_*` 项；私钥、API v3 Key 和 AppSecret 不进入仓库、日志或客户端
 2. 回调域名使用有效 HTTPS 证书，并在微信商户平台配置同一 AppID/商户号关系
-3. 使用真实测试用户购买 `ai_generation_30`，核对微信侧金额为 `¥9.90`，不要修改生产套餐价格来制造“一分钱成功”
-4. 保存商户订单号、微信交易号、支付时间和脱敏截图；数据库核对订单为 `paid`，且恰好一笔 `quota_kind=ai_generation AND type=purchase_grant`，金额为 30
-5. 重放同一微信通知，确认 HTTP 成功但订单仍只有一笔发放；分别验证错金额、错商户、错 AppID、失败状态、未知订单和错误签名不会发放
-6. 支付成功页只能重新请求 `/api/quota/me`，不得读取 URL 参数增加额度
+3. 使用从未成功购买 AI 次数的真实测试用户购买 `ai_generation_new_user_5`，核对微信侧金额为 `¥0.10`，额度增加 5 次；不要修改正式套餐价格来制造“一分钱成功”
+4. 同一测试用户再次购买新人测试福利应被服务端拒绝；再使用真实测试用户购买 `ai_generation_30`，核对微信侧金额为 `¥9.90`
+5. 保存商户订单号、微信交易号、支付时间和脱敏截图；数据库核对订单为 `paid`，且恰好一笔 `quota_kind=ai_generation AND type=purchase_grant`，新人测试订单金额为 10、额度为 5
+6. 重放同一微信通知，确认 HTTP 成功但订单仍只有一笔发放；分别验证错金额、错商户、错 AppID、失败状态、未知订单和错误签名不会发放
+7. 支付成功页只能重新请求 `/api/quota/me`，不得读取 URL 参数增加额度
 
-## 千问、存储、HTTPS 与监控
+## 混元、存储、HTTPS 与监控
 
-- 配置同地域 `QWEN_IMAGE_API_KEY`、`QWEN_IMAGE_BASE_URL` 和 `qwen-image-3.0`；任务保持异步轮询，Provider 输出必须下载并持久化，不能长期引用 24 小时临时 URL
+- 新任务配置 `HUNYUAN_IMAGE_API_KEY` 与 `HUNYUAN_IMAGE_BASE_URL`；服务端固定调用 CloudBase 混元 `HY-Image-v3.0-I2I-ToB-v1.0.1`，凭据只能注入服务端运行环境
+- 发布前在预发布执行图生图，确认参考图可达、CloudBase 文件下载与项目文件持久化正常、错误不会泄漏凭据，并检查模型实际输出标识及额度扣减时机
+- 新任务应保存 Provider `hunyuan` 与模型 `HY-Image-v3.0-I2I-ToB-v1.0.1`；确认没有新增 TokenHub 请求。只读核对 `pindou_ai_generation_jobs` 中 `provider='hunyuan-tokenhub-v35'` 且状态为 `queued` / `processing` 的旧任务；保留 TokenHub 配置直至其排空
+- ToAPIs 凭据配置已移除；只读核对 `provider='toapis'` 的在途任务数量并记录残留。代码按未配置 Provider 失败关闭，不会改由混元提交
+- 验收客户端包、接口响应和日志均无 CloudBase 或 TokenHub API Key、供应商原始错误或内部堆栈
+- 验收 AI 输入/输出真实格式、10 MiB 大小、4096×4096 尺寸及 16 MP 像素限制；验收每用户 10 分钟 5 次的上传/任务创建限流
+- 使用恶意或非腾讯云 COS 输出地址、跨域跳转和不支持的输出格式做回归，确认均不会被服务端下载或持久化
+- 用正常、输入命中风险和审核服务不可用样本验收：输入图片必须先通过微信内容安全审核再提交模型服务商；输出安全审核由模型服务商负责，服务端校验输出格式、大小、尺寸后才进入 `ai_output`
+- 创建孤立 `ai_input`、过期 queued/processing/succeeded/failed 任务并执行清理，确认数据库资产软删除、物理文件删除且清理失败有监控/补偿
 - `AVATAR_STORAGE_DIR`、`COVER_STORAGE_DIR`、`AI_FILE_STORAGE_DIR` 必须挂载到有备份和恢复能力的生产持久卷；完成恢复演练后才设置 `PERSISTENT_STORAGE_MOUNTED=true`
 - `COVER_PUBLIC_BASE_URL` 与 `AI_FILE_PUBLIC_BASE_URL` 必须为 HTTPS；API HTTPS 由入口网关/负载均衡终止，HTTP 只允许在受信任内网回源
 - 监控至少探测 `/health`，采集 `wechat_payment_notification_rejected`、`wechat_payment_granted`、`ai_generation_failed` 和 `request_failed` 结构化事件，并为连续失败、5xx、数据库不可用和支付回调失败设置告警；完成告警演练后才设置 `MONITORING_ALERTS_CONFIGURED=true`
-- `APP_ENV=production` 时，代码会拒绝缺少微信支付、千问、HTTPS 文件地址、持久存储确认或监控确认的配置
+- `APP_ENV=production` 时，代码会拒绝缺少微信支付、CloudBase 新任务配置、在途 TokenHub 配置、HTTPS 文件地址、持久存储确认或监控确认的配置；不读取 ToAPIs 配置
 
 ## 放行门槛
 

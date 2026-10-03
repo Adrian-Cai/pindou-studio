@@ -1,0 +1,83 @@
+@import "../../../styles/profile-pages.wxss";
+
+.orders-page { padding-top: 16rpx; }
+.orders-list { display: grid; gap: 20rpx; }
+.order-card { min-width: 0; padding: 24rpx 28rpx; }
+/* 状态区固定在右侧一行：套餐名吃掉剩余宽度并单行省略，标签绝不换行 */
+.order-card__header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16rpx; }
+.order-card__label { min-width: 0; flex: 1; overflow: hidden; color: var(--color-text); font-size: 30rpx; font-weight: 600; line-height: 44rpx; white-space: nowrap; text-overflow: ellipsis; }
+.order-card__tags { display: flex; flex-shrink: 0; align-items: center; gap: 20rpx; }
+.order-card__amount { margin-top: 12rpx; color: var(--color-text); font-family: var(--font-heading); font-size: 40rpx; font-weight: 600; line-height: 48rpx; }
+.order-card__details { display: grid; gap: 10rpx; margin-top: 20rpx; padding-top: 16rpx; border-top: 1rpx solid var(--color-border); }
+.order-card__detail { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 20rpx; font-size: 23rpx; line-height: 34rpx; }
+.order-card__detail-label { flex-shrink: 0; color: var(--color-text-secondary); }
+.order-card__detail-value { min-width: 0; overflow-wrap: anywhere; color: var(--color-text-tertiary); text-align: right; }
+
+/* ── 状态筛选 Tab：轻量文字 + 品牌绿下划线，不做底色/边框 ── */
+.orders-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 24rpx; }
+.orders-tabs__item { position: relative; min-width: 0; padding: 16rpx 0 20rpx; color: var(--color-text-secondary); font-size: 28rpx; line-height: 40rpx; text-align: center; transition: var(--transition-press); }
+.orders-tabs__item--active { color: var(--color-primary); font-weight: 600; }
+.orders-tabs__item--active::after {
+  position: absolute;
+  right: 34%;
+  bottom: 4rpx;
+  left: 34%;
+  height: 6rpx;
+  border-radius: 6rpx;
+  background: var(--color-primary);
+  content: "";
+}
+
+/* ── 待支付名额提示：浅绿底轻模块，不是营销 Banner ── */
+.orders-quota { display: flex; gap: 16rpx; align-items: flex-start; margin-bottom: 20rpx; padding: 20rpx 24rpx; border-radius: var(--radius-card-small); background: var(--color-primary-soft); }
+.orders-quota__icon { width: 36rpx; height: 36rpx; flex-shrink: 0; margin-top: 2rpx; }
+.orders-quota__text { min-width: 0; flex: 1; }
+.orders-quota__title { color: var(--color-text); font-size: 26rpx; font-weight: 600; line-height: 38rpx; }
+.orders-quota__count { color: var(--color-primary); font-family: var(--font-heading); }
+.orders-quota__limit { color: var(--color-text-secondary); font-weight: 400; }
+.orders-quota__desc { margin-top: 4rpx; color: var(--color-text-secondary); font-size: 22rpx; line-height: 32rpx; }
+
+/* ── 状态标签：待支付浅黄、确认中浅蓝灰、其余沿用全局色板 ── */
+.order-status { flex-shrink: 0; height: 44rpx; padding: 0 14rpx; font-size: 21rpx; line-height: 44rpx; }
+.order-status--pending { background: var(--color-warning-soft); color: var(--color-warning); }
+.order-status--paid { background: var(--color-success-soft); color: var(--color-success); }
+.order-status--failed { background: var(--color-danger-soft); color: var(--color-danger); }
+.order-status--closed { background: var(--color-surface-muted); color: var(--color-text-secondary); }
+.order-status--refunded { background: var(--color-info-soft); color: var(--color-info); }
+.order-status--confirming { background: #edf3f9; color: #5c7a99; }
+
+/* ── 倒计时：浅橙红底 + 深橙红字，与状态标签等高，同一行展示不拆行 ── */
+.order-card__countdown { display: inline-flex; flex-shrink: 0; align-items: center; gap: 8rpx; height: 44rpx; padding: 0 14rpx; border-radius: var(--radius-full); background: #fdeee2; color: #cf5b21; font-family: var(--font-heading); font-size: 21rpx; line-height: 44rpx; white-space: nowrap; }
+.order-card__countdown-icon { width: 26rpx; height: 26rpx; }
+
+/* ── 超时未核实提示：可点击整行刷新 ── */
+.order-card__confirming { margin-top: 24rpx; padding: 16rpx 20rpx; border-radius: var(--radius-control); background: var(--color-surface-muted); color: var(--color-text-secondary); font-size: 23rpx; line-height: 34rpx; text-align: center; }
+
+/* ── 操作按钮：横向并排，主次分明，不喧宾夺主 ── */
+.order-card__actions { display: flex; gap: 20rpx; margin-top: 24rpx; }
+.order-card__actions--single { justify-content: flex-end; }
+.order-card__action { display: block; box-sizing: border-box; flex: 1; min-width: 0; height: 72rpx; padding: 0; border-radius: var(--radius-full); font-family: var(--font-heading); font-size: 27rpx; line-height: 72rpx; text-align: center; transition: var(--transition-press); }
+.order-card__actions--single .order-card__action { flex: 0 0 auto; padding: 0 44rpx; }
+.order-card__action--primary { border: 0; background: var(--color-primary); color: #ffffff; box-shadow: 0 6rpx 16rpx rgba(18, 180, 102, 0.24); }
+.order-card__action--primary:active { background: var(--color-primary-pressed); }
+.order-card__action--secondary { border: 1rpx solid var(--color-border); background: var(--color-surface); color: var(--color-text-secondary); }
+.order-card__action--secondary:active { background: var(--color-surface-muted); }
+
+.orders-message { display: flex; min-height: 520rpx; flex-direction: column; align-items: center; justify-content: center; padding: 48rpx 32rpx; text-align: center; }
+.orders-message__title { color: var(--color-text); font-size: 32rpx; font-weight: 600; line-height: 44rpx; }
+.orders-message__description { max-width: 560rpx; margin-top: 12rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 38rpx; }
+.orders-message__button { width: 320rpx; margin-top: 32rpx; }
+.orders-empty { min-height: 560rpx; }
+.orders-empty__icon { width: 96rpx; height: 96rpx; padding: 24rpx; border-radius: 40rpx; background: var(--color-primary-soft); }
+
+@media (max-width: 340px) {
+  .order-card { padding-right: 24rpx; padding-left: 24rpx; }
+  .order-card__label { font-size: 28rpx; }
+  .order-card__amount { font-size: 36rpx; }
+  .order-card__action { font-size: 25rpx; }
+  /* 窄屏先挤标签的左右内边距与标签间距：套餐名让位单行省略，状态区绝不拆成两行 */
+  .order-card__header { gap: 12rpx; }
+  .order-card__tags { gap: 16rpx; }
+  .order-status,
+  .order-card__countdown { padding: 0 10rpx; font-size: 20rpx; }
+}

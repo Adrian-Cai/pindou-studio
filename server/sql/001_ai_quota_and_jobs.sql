@@ -1,3 +1,4 @@
+-- 前置条件：pindou_* 基础业务表已按 docs/backend/database/DATABASE_DESIGN.md 建立。
 BEGIN;
 
 ALTER TABLE pindou_quota_transactions
@@ -49,7 +50,8 @@ CREATE UNIQUE INDEX uq_pindou_quota_transactions_daily_grant
   ON pindou_quota_transactions (user_id, type, quota_kind, quota_date)
   WHERE type = 'daily_grant' AND quota_date IS NOT NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_pindou_quota_transactions_ai_usage
+DROP INDEX IF EXISTS uq_pindou_quota_transactions_ai_usage;
+CREATE UNIQUE INDEX uq_pindou_quota_transactions_ai_usage
   ON pindou_quota_transactions (idempotency_key)
   WHERE type = 'usage_debit'
     AND quota_kind = 'ai_generation'
@@ -139,16 +141,6 @@ INSERT INTO pindou_packages (
   ('ai_generation_30', 'AI 精致生成 30 次', 30, 'ai_generation', NULL, NULL, 990, 'CNY', TRUE, 10, NOW(), NOW()),
   ('ai_generation_80', 'AI 精致生成 80 次', 80, 'ai_generation', NULL, NULL, 1990, 'CNY', TRUE, 20, NOW(), NOW()),
   ('ai_generation_150', 'AI 精致生成 150 次', 150, 'ai_generation', NULL, NULL, 2990, 'CNY', TRUE, 30, NOW(), NOW())
-ON CONFLICT (id) DO UPDATE SET
-  label = EXCLUDED.label,
-  quota_amount = EXCLUDED.quota_amount,
-  quota_kind = EXCLUDED.quota_kind,
-  membership_type = EXCLUDED.membership_type,
-  membership_days = EXCLUDED.membership_days,
-  price_fen = EXCLUDED.price_fen,
-  currency = EXCLUDED.currency,
-  enabled = EXCLUDED.enabled,
-  sort_order = EXCLUDED.sort_order,
-  updated_at = NOW();
+ON CONFLICT (id) DO NOTHING;
 
 COMMIT;

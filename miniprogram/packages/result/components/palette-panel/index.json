@@ -1,0 +1,6 @@
+{
+  "component": true,
+  "usingComponents": {
+    "result-download-button": "/packages/result/components/result-download-button/index"
+  }
+}

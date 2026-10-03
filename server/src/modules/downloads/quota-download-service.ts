@@ -1,3 +1,12 @@
+/**
+ * 下载额度服务：图纸下载扣次 + 下载记录读写 + 额度查询。
+ *
+ * 职责：下载这一条链路的额度扣减与记录持久化；不负责文件内容生成（由 works / files 模块处理）。
+ * 调用方：http 路由层的 /api/downloads、/api/quota 相关接口。
+ * 关键点：扣次用 pg_advisory_xact_lock + idempotencyKey 做幂等，重复提交同一 key 不会重复扣费；
+ *         扣减顺序为「写下载记录 → 写额度流水 → 回填 quota_transaction_id」，全程在同一事务内；
+ *         额度日期用上海时区，跨天重置；免费额度优先于购买额度消耗。
+ */
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import type { ServerConfig } from "../../config/env";
 import {
@@ -5,6 +14,7 @@ import {
   idempotencyConflict,
   notFound,
   quotaInsufficient,
+  unauthorized,
 } from "../../shared/app-error";
 import { createEntityId } from "../../shared/identity";
 import { nextShanghaiMidnight, shanghaiDate } from "../../shared/shanghai-time";
@@ -18,6 +28,7 @@ import {
   type QuotaValues,
 } from "../quota/quota-ledger";
 
+/** 可下载的文件类型：预览图 / 图纸 / 材料清单 / 色号表。 */
 export type DownloadFileType = "preview" | "chart" | "materials" | "palette";
 
 export interface QuotaResponse {
@@ -175,26 +186,19 @@ export class PostgresQuotaDownloadService {
   public async getQuota(userId: string): Promise<QuotaResponse> {
     const currentTime = this.now();
     const quotaDate = shanghaiDate(currentTime);
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      await lockQuotaUser(client, userId);
-      await ensureDailyGrant(client, userId, "standard_download", quotaDate, this.quotaConfig.dailyStandardDownloads, currentTime);
-      await ensureDailyGrant(client, userId, "ai_generation", quotaDate, this.quotaConfig.dailyAiGenerations, currentTime);
-      const [quota, aiQuota] = await Promise.all([
-        readQuota(client, userId, "standard_download", quotaDate),
-        readQuota(client, userId, "ai_generation", quotaDate),
-      ]);
-      await client.query("COMMIT");
-      return quotaResponse(quota, aiQuota, currentTime);
-    } catch (error: unknown) {
-      await rollbackTransaction(client);
-      throw error;
-    } finally {
-      client.release();
-    }
+    const user = await this.pool.query("SELECT id FROM pindou_users WHERE id = $1 AND deleted_at IS NULL", [userId]);
+    if (!user.rows[0]) throw unauthorized("用户不存在或已失效");
+    const [quota, aiQuota] = await Promise.all([
+      readQuota(this.pool, userId, "standard_download", quotaDate, this.quotaConfig.dailyStandardDownloads),
+      readQuota(this.pool, userId, "ai_generation", quotaDate, this.quotaConfig.dailyAiGenerations),
+    ]);
+    return quotaResponse(quota, aiQuota, currentTime);
   }
 
+  /**
+   * 分页查询下载记录，支持按文件类型与标题模糊匹配（ILIKE 大小写不敏感）。
+   * 条件与参数按数组下标拼装占位符，避免字符串拼接导致 SQL 注入。
+   */
   public async listDownloads(options: DownloadListOptions): Promise<DownloadListResponse> {
     const conditions = ["user_id = $1"];
     const parameters: unknown[] = [options.userId];
@@ -233,8 +237,13 @@ export class PostgresQuotaDownloadService {
   }
 
   /**
-   * 创建下载记录和额度流水必须处于同一事务：成功时两者同时落库，失败时均回滚。
-   * 幂等键用于抵御客户端超时重试，确保同一次下载最多扣减一次额度。
+   * 创建下载记录并扣减额度；记录与额度流水在同一事务中提交或回滚，幂等键避免重试重复扣费。
+   *
+   * @param input.idempotencyKey 客户端生成的幂等键；相同 key 重复调用直接返回首次结果，不重复扣费
+   * @throws idempotencyConflict 幂等键被不同用户/作品/类型复用
+   * @throws notFound 作品不存在或已删除
+   * @throws forbidden 作品不属于当前用户
+   * @throws quotaInsufficient 当日免费额度与购买额度均已耗尽
    */
   public async createDownload(input: CreateDownloadInput): Promise<CreateDownloadResponse> {
     const currentTime = this.now();
@@ -243,6 +252,7 @@ export class PostgresQuotaDownloadService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      // 事务级 advisory lock：把并发的同一幂等键串行化，防止同一请求被处理两次
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
         `pindou-download:${input.idempotencyKey}`,
       ]);

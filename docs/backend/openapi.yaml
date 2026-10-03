@@ -1,0 +1,1974 @@
+openapi: 3.1.0
+info:
+  title: 拼豆工作室后端 API
+  version: 1.0.0
+  description: |
+    拼豆工作室小程序后端的机器可读接口规范。
+
+    业务语义、流程约束和暂不实现的接口仍以 API_SPEC.md 为准；本文件用于导入 Apifox、生成客户端和接口联调。
+servers:
+  - url: https://api.pindou.wiac.xyz
+    description: 生产/测试 HTTPS API
+  - url: http://127.0.0.1:4000
+    description: 本地开发服务
+tags:
+  - name: 健康检查
+  - name: 认证
+  - name: 用户
+  - name: 文件与媒体
+  - name: 作品
+  - name: 收藏
+  - name: 额度与下载
+  - name: 套餐与支付
+  - name: AI 生成
+  - name: 内容安全
+  - name: 法律文档
+paths:
+  /health:
+    get:
+      tags: [健康检查]
+      operationId: getHealth
+      summary: 检查服务和数据库状态
+      responses:
+        '200':
+          description: 服务正常
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: 服务可用但数据库不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthDegradedResponse'
+
+  /api/auth/login:
+    post:
+      tags: [认证]
+      operationId: loginWithWeChat
+      summary: 使用微信登录凭证换取系统令牌
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/auth/session:
+    delete:
+      tags: [认证]
+      operationId: revokeCurrentSession
+      summary: 退出当前设备
+      description: 吊销当前 Bearer token。拒绝查询参数和请求体；重复调用或已过期 token 返回 401。
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: 当前会话已吊销。
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/auth/sessions:
+    delete:
+      tags: [认证]
+      operationId: revokeAllSessions
+      summary: 退出所有设备
+      description: 吊销当前用户的全部会话，包括当前设备。用户身份只从 Bearer token 推导；拒绝查询参数和请求体。
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: 该用户的全部会话已吊销。
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/users/me:
+    get:
+      tags: [用户]
+      operationId: getCurrentUser
+      summary: 获取当前用户资料、统计和额度
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 当前用户信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [用户]
+      operationId: updateCurrentUserPut
+      summary: 更新当前用户昵称
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NicknameRequest'
+      responses:
+        '200':
+          description: 更新后的用户信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    patch:
+      tags: [用户]
+      operationId: updateCurrentUserPatch
+      summary: 更新当前用户昵称
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NicknameRequest'
+      responses:
+        '200':
+          description: 更新后的用户信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [用户]
+      operationId: deleteCurrentUser
+      summary: 注销当前用户
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: 注销成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/users/me/privacy:
+    get:
+      tags: [用户]
+      operationId: getPrivacyPreferences
+      summary: 获取当前用户隐私偏好
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 隐私偏好
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [privacy]
+                properties:
+                  privacy:
+                    $ref: '#/components/schemas/PrivacyPreferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [用户]
+      operationId: updatePrivacyPreferences
+      summary: 更新当前用户隐私偏好
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrivacyPreferencesPatch'
+      responses:
+        '200':
+          description: 更新后的隐私偏好
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [privacy]
+                properties:
+                  privacy:
+                    $ref: '#/components/schemas/PrivacyPreferences'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/users/me/avatar:
+    post:
+      tags: [用户]
+      operationId: updateCurrentUserAvatar
+      summary: 上传头像并更新昵称
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AvatarUploadRequest'
+      responses:
+        '200':
+          description: 更新后的用户信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+
+  /api/media/avatars/{filename}:
+    get:
+      tags: [文件与媒体]
+      operationId: getAvatar
+      summary: 读取头像文件
+      parameters:
+        - $ref: '#/components/parameters/Filename'
+      responses:
+        '200':
+          description: 头像二进制内容
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/media/covers/{filename}:
+    get:
+      tags: [文件与媒体]
+      operationId: getCover
+      summary: 读取作品封面
+      parameters:
+        - $ref: '#/components/parameters/Filename'
+      responses:
+        '200':
+          description: 封面二进制内容
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/media/ai/{filename}:
+    get:
+      tags: [文件与媒体]
+      operationId: getAiMedia
+      summary: 读取 AI 输入或输出文件
+      description: 返回项目自己持久化的 AI 文件，不返回上游 Provider 的临时地址。
+      parameters:
+        - $ref: '#/components/parameters/Filename'
+      responses:
+        '200':
+          description: AI 图片二进制内容
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/files/upload:
+    post:
+      tags: [文件与媒体]
+      operationId: uploadFile
+      summary: 上传作品封面或 AI 输入图片
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FileUploadRequest'
+      responses:
+        '201':
+          description: 文件资产创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/legal-documents/{key}:
+    get:
+      tags: [法律文档]
+      operationId: getLegalDocument
+      summary: 获取法律文档
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [paid-service, user-agreement, privacy-policy, personal-information, third-party-sharing]
+      responses:
+        '200':
+          description: 法律文档
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [document]
+                properties:
+                  document:
+                    $ref: '#/components/schemas/LegalDocument'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/content-security/text:
+    post:
+      tags: [内容安全]
+      operationId: checkTextContent
+      summary: 检查文本内容安全
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentSecurityTextRequest'
+      responses:
+        '200':
+          description: 文本通过审核
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TextSecurityResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/content-security/media:
+    post:
+      tags: [内容安全]
+      operationId: checkMediaContent
+      summary: 检查图片内容安全
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MediaSecurityUploadRequest'
+      responses:
+        '201':
+          description: 图片已通过同步审核并完成登记
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaSecurityResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/content-security/media/{filename}:
+    get:
+      tags: [内容安全]
+      operationId: getContentSecurityMedia
+      summary: 读取待异步审核的临时媒体
+      parameters:
+        - $ref: '#/components/parameters/Filename'
+      responses:
+        '200':
+          description: 临时媒体二进制内容
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/wechat/content-security/callback:
+    get:
+      tags: [内容安全]
+      operationId: verifyContentSecurityCallback
+      summary: 微信内容安全回调地址校验
+      parameters:
+        - $ref: '#/components/parameters/CallbackSignature'
+        - $ref: '#/components/parameters/CallbackTimestamp'
+        - $ref: '#/components/parameters/CallbackNonce'
+        - name: echostr
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 返回微信要求的纯文本校验串
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [内容安全]
+      operationId: handleContentSecurityCallback
+      summary: 接收微信内容安全异步回调
+      parameters:
+        - $ref: '#/components/parameters/CallbackSignature'
+        - $ref: '#/components/parameters/CallbackTimestamp'
+        - $ref: '#/components/parameters/CallbackNonce'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: 回调已接收
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: success
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/works:
+    post:
+      tags: [作品]
+      operationId: createWork
+      summary: 创建云端作品
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkRequest'
+      responses:
+        '201':
+          description: 作品创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      tags: [作品]
+      operationId: listWorks
+      summary: 获取当前用户的作品列表
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorkStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Query'
+      responses:
+        '200':
+          description: 分页作品摘要
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/works/{id}:
+    get:
+      tags: [作品]
+      operationId: getWork
+      summary: 获取作品详情和完整图案
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200':
+          description: 作品详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [作品]
+      operationId: updateWorkPut
+      summary: 更新作品
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkRequest'
+      responses:
+        '200':
+          description: 更新后的作品摘要
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [作品]
+      operationId: updateWorkPatch
+      summary: 更新作品
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkRequest'
+      responses:
+        '200':
+          description: 更新后的作品摘要
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [作品]
+      operationId: deleteWork
+      summary: 删除作品
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '204':
+          description: 删除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/works/{id}/favorite:
+    patch:
+      tags: [收藏]
+      operationId: setWorkFavorite
+      summary: 设置作品收藏状态
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FavoriteRequest'
+      responses:
+        '200':
+          description: 当前收藏状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/favorites:
+    get:
+      tags: [收藏]
+      operationId: listFavorites
+      summary: 获取当前用户收藏的作品
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Query'
+      responses:
+        '200':
+          description: 分页收藏作品摘要
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/quota/me:
+    get:
+      tags: [额度与下载]
+      operationId: getQuota
+      summary: 获取当前用户额度
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 标准下载和 AI 生成额度
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/downloads:
+    get:
+      tags: [额度与下载]
+      operationId: listDownloads
+      summary: 获取当前用户下载记录
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DownloadFileType'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Query'
+      responses:
+        '200':
+          description: 分页下载记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [额度与下载]
+      operationId: createDownloadRecord
+      summary: 记录成功导出并扣除一次额度
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDownloadRequest'
+      responses:
+        '201':
+          description: 下载记录创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDownloadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/QuotaInsufficient'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/ai/generations:
+    post:
+      tags: [AI 生成]
+      operationId: createAiGeneration
+      summary: 创建 AI 图片生成任务
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAiGenerationRequest'
+      responses:
+        '201':
+          description: 任务已创建，通常为 queued 状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiGenerationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/QuotaInsufficient'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/ai/generations/{id}:
+    get:
+      tags: [AI 生成]
+      operationId: getAiGeneration
+      summary: 查询 AI 图片生成任务
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200':
+          description: 任务状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiGenerationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/packages:
+    get:
+      tags: [套餐与支付]
+      operationId: listPackages
+      summary: 获取当前可售 AI 生成套餐
+      responses:
+        '200':
+          description: 可售套餐列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentPackage'
+
+  /api/orders:
+    get:
+      tags: [套餐与支付]
+      operationId: listOrders
+      summary: 获取当前用户订单
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 分页订单列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/payments/create:
+    post:
+      tags: [套餐与支付]
+      operationId: createPayment
+      summary: 创建小程序虚拟支付订单
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '201':
+          description: 返回小程序调起支付所需参数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePaymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 支付幂等、状态或未完成订单上限冲突；业务错误码包括 MAX_PENDING_ORDERS_REACHED、PAYMENT_STATUS_CONFIRMING、ORDER_EXPIRED、ORDER_ALREADY_PAID。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/payments/{orderId}/continue:
+    post:
+      tags: [套餐与支付]
+      operationId: continuePayment
+      summary: 继续支付一笔待支付订单
+      description: >-
+        订单页「继续支付」。服务端按路径上的订单号校验归属与状态，查询微信真实支付状态后
+        重新签发虚拟支付参数：未关单沿用原商户单号，已关单且未过期则签发新的支付尝试。
+        不创建新订单、不需要幂等键。
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 返回小程序调起支付所需参数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePaymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 订单不存在，或订单不属于当前用户（两者不区分，避免订单号被枚举探测）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 订单状态冲突或微信状态不可确认；业务错误码包括 ORDER_ALREADY_PAID、ORDER_EXPIRED、PAYMENT_STATUS_CONFIRMING、ORDER_NOT_PAYABLE、PACKAGE_NOT_PAYABLE。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/payments/{orderId}/cancel:
+    post:
+      tags: [套餐与支付]
+      operationId: cancelOrder
+      summary: 取消一笔待支付订单
+      description: >-
+        订单页「取消订单」。必须先查询微信支付事实：已支付则照常发货并返回冲突，
+        查单失败不关单，确认未支付才本地置为 closed。重复取消按成功返回。
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 订单已关闭
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: closed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 订单不存在，或订单不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 订单已支付、已关闭或状态不可确认；业务错误码包括 ORDER_ALREADY_PAID、ORDER_NOT_PAYABLE、PAYMENT_STATUS_CONFIRMING。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/payments/virtual-notify:
+    get:
+      tags: [套餐与支付]
+      operationId: verifyVirtualPaymentNotificationUrl
+      summary: 验证虚拟支付推送 URL
+      description: 微信平台 URL 握手；服务端验证 signature 后原样回显 echostr。
+      parameters:
+        - { name: signature, in: query, required: true, schema: { type: string } }
+        - { name: timestamp, in: query, required: true, schema: { type: string } }
+        - { name: nonce, in: query, required: true, schema: { type: string } }
+        - { name: echostr, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 回显微信发送的 echostr。
+          content:
+            text/plain:
+              schema: { type: string }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [套餐与支付]
+      operationId: receiveVirtualPaymentNotification
+      summary: 接收小程序虚拟支付推送
+      description: 验证 Token 与签名后记录事件，并通过微信查单核实支付事实；加密模式必须校验覆盖密文的 msg_signature。
+      parameters:
+        - { name: signature, in: query, required: false, schema: { type: string } }
+        - { name: msg_signature, in: query, required: false, schema: { type: string } }
+        - { name: timestamp, in: query, required: true, schema: { type: string } }
+        - { name: nonce, in: query, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema: { type: string }
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: XML acknowledgement; ErrCode=0 means accepted, ErrCode=1 asks WeChat to retry.
+          content:
+            application/xml:
+              schema: { type: string }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/payments/notify:
+    post:
+      tags: [套餐与支付]
+      operationId: receivePaymentNotification
+      summary: 接收旧通道微信支付回调
+      deprecated: true
+      description: 仅用于收尾普通微信支付旧订单；新订单使用 /api/payments/virtual-notify。
+      parameters:
+        - $ref: '#/components/parameters/WechatPayTimestamp'
+        - $ref: '#/components/parameters/WechatPayNonce'
+        - $ref: '#/components/parameters/WechatPaySerial'
+        - $ref: '#/components/parameters/WechatPaySignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: 已成功处理或确认重复回调
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentNotificationResponse'
+        '400':
+          description: 回调验签或订单校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentNotificationResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque token
+      description: 登录接口返回的系统 token。
+
+  parameters:
+    EntityId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+      description: 资源 ID。
+    Filename:
+      name: filename
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+      description: 服务端生成的媒体文件名。
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000000
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    Query:
+      name: query
+      in: query
+      required: false
+      schema:
+        type: string
+        maxLength: 120
+      description: 按作品标题搜索。
+    WorkStatus:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [draft, completed]
+    DownloadFileType:
+      name: fileType
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/DownloadFileType'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[\x21-\x7E]+$'
+      description: 同一业务动作重试时必须复用；换请求内容时必须生成新值。
+    CallbackSignature:
+      name: signature
+      in: query
+      required: true
+      schema:
+        type: string
+    CallbackTimestamp:
+      name: timestamp
+      in: query
+      required: true
+      schema:
+        type: string
+    CallbackNonce:
+      name: nonce
+      in: query
+      required: true
+      schema:
+        type: string
+    WechatPayTimestamp:
+      name: Wechatpay-Timestamp
+      in: header
+      required: true
+      schema:
+        type: string
+    WechatPayNonce:
+      name: Wechatpay-Nonce
+      in: header
+      required: true
+      schema:
+        type: string
+    WechatPaySerial:
+      name: Wechatpay-Serial
+      in: header
+      required: true
+      schema:
+        type: string
+    WechatPaySignature:
+      name: Wechatpay-Signature
+      in: header
+      required: true
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: 请求参数、请求体或业务校验失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: 缺少或无效的 Bearer Token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: 无权访问资源或回调签名校验失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: 资源或接口不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: 幂等冲突或资源状态冲突
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    QuotaInsufficient:
+      description: 可用额度不足
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLarge:
+      description: 请求或上传文件超过大小限制
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnsupportedMediaType:
+      description: Content-Type 不受支持
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: 请求频率超过限制
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BadGateway:
+      description: 上游服务返回异常
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: 服务未配置或暂时不可用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: 服务内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, requestId, details]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            category:
+              type: string
+              enum: [USER, INPUT, CONTENT, PROVIDER, INTERNAL]
+            retryable:
+              type: boolean
+            action:
+              type: string
+              enum: [VIEW_BENEFITS, SELECT_IMAGE, USE_STANDARD_MODE, RETRY]
+            requestId:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+
+    HealthResponse:
+      type: object
+      required: [status, service, timestamp, database, capabilities]
+      properties:
+        status:
+          type: string
+          const: ok
+        service:
+          type: string
+          example: pindou-studio-server
+        timestamp:
+          type: string
+          format: date-time
+        database:
+          $ref: '#/components/schemas/DatabaseHealth'
+        capabilities:
+          $ref: '#/components/schemas/Capabilities'
+    HealthDegradedResponse:
+      type: object
+      required: [status, service, timestamp, database]
+      properties:
+        status:
+          type: string
+          const: degraded
+        service:
+          type: string
+          example: pindou-studio-server
+        timestamp:
+          type: string
+          format: date-time
+        database:
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              const: down
+    DatabaseHealth:
+      type: object
+      required: [status, product, version, schemaStatus]
+      properties:
+        status:
+          type: string
+          const: up
+        product:
+          type: string
+          const: PostgreSQL
+        version:
+          type: string
+        schemaStatus:
+          type: string
+          const: valid
+    Capabilities:
+      type: object
+      required: [wechatPay, aiGeneration, persistentStorage, httpsPublicUrls, monitoringAlerts]
+      properties:
+        wechatPay: { type: boolean }
+        aiGeneration: { type: boolean }
+        persistentStorage: { type: boolean }
+        httpsPublicUrls: { type: boolean }
+        monitoringAlerts: { type: boolean }
+        contentSecurity: { type: boolean }
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 256
+    LoginResponse:
+      type: object
+      required: [token, expiresAt, user]
+      properties:
+        token: { type: string }
+        expiresAt: { type: string, format: date-time }
+        user:
+          $ref: '#/components/schemas/PublicUser'
+    PublicUser:
+      type: object
+      required: [id, nickname, avatarUrl]
+      properties:
+        id: { type: string }
+        nickname:
+          type: [string, 'null']
+          maxLength: 80
+        avatarUrl:
+          type: [string, 'null']
+    User:
+      type: object
+      required: [id, nickname, avatarUrl, createdAt]
+      properties:
+        id: { type: string }
+        nickname:
+          type: [string, 'null']
+          maxLength: 80
+        avatarUrl:
+          type: [string, 'null']
+        createdAt: { type: string, format: date-time }
+    UserResponse:
+      type: object
+      additionalProperties: false
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+    NicknameRequest:
+      type: object
+      additionalProperties: false
+      required: [nickname]
+      properties:
+        nickname:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: 服务端会去除首尾空白并拒绝控制字符。
+    AvatarUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [file, nickname]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: JPG、PNG 或 WEBP，最大 2 MiB。
+        nickname:
+          type: string
+          minLength: 1
+          maxLength: 80
+    PrivacyPreferences:
+      type: object
+      required: [localOnly, cloudSync, serviceNotices, personalizedRecommendations, updatedAt]
+      properties:
+        localOnly: { type: boolean }
+        cloudSync: { type: boolean }
+        serviceNotices: { type: boolean }
+        personalizedRecommendations: { type: boolean }
+        updatedAt: { type: string, format: date-time }
+    PrivacyPreferencesPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        localOnly: { type: boolean }
+        cloudSync: { type: boolean }
+        serviceNotices: { type: boolean }
+        personalizedRecommendations: { type: boolean }
+    CurrentUserResponse:
+      type: object
+      required: [user, stats, quota, privacy]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        stats:
+          type: object
+          required: [workCount, favoriteCount, downloadCount]
+          properties:
+            workCount: { type: integer, minimum: 0 }
+            favoriteCount: { type: integer, minimum: 0 }
+            downloadCount: { type: integer, minimum: 0 }
+        quota:
+          $ref: '#/components/schemas/ProfileQuota'
+        privacy:
+          $ref: '#/components/schemas/PrivacyPreferences'
+    ProfileQuota:
+      type: object
+      required: [dailyFree, usedToday, purchased, remaining, resetsAt, aiGeneration]
+      properties:
+        dailyFree: { type: integer, minimum: 0 }
+        usedToday: { type: integer, minimum: 0 }
+        purchased: { type: integer, minimum: 0 }
+        remaining: { type: integer, minimum: 0 }
+        resetsAt: { type: string, format: date-time }
+        aiGeneration:
+          $ref: '#/components/schemas/AiQuota'
+    QuotaResponse:
+      type: object
+      required: [dailyFree, usedToday, purchased, remaining, membershipType, membershipExpiresAt, resetsAt, aiGeneration]
+      properties:
+        dailyFree: { type: integer, minimum: 0 }
+        usedToday: { type: integer, minimum: 0 }
+        purchased: { type: integer, minimum: 0 }
+        remaining: { type: integer, minimum: 0 }
+        membershipType:
+          type: [string, 'null']
+        membershipExpiresAt:
+          type: [string, 'null']
+          format: date-time
+        resetsAt: { type: string, format: date-time }
+        aiGeneration:
+          $ref: '#/components/schemas/AiQuota'
+    AiQuota:
+      type: object
+      required: [dailyFree, usedToday, purchased, remaining, resetsAt]
+      properties:
+        dailyFree: { type: integer, minimum: 0 }
+        usedToday: { type: integer, minimum: 0 }
+        purchased: { type: integer, minimum: 0 }
+        remaining: { type: integer, minimum: 0 }
+        resetsAt: { type: string, format: date-time }
+
+    PersistedPaletteItem:
+      type: object
+      additionalProperties: false
+      required: [code, color]
+      properties:
+        code: { type: string, minLength: 1, maxLength: 40 }
+        color:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+    PersistedPattern:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, generationMode, width, height, settings, palette, cells]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        generationMode:
+          type: string
+          enum: [standard, ai]
+        width:
+          type: integer
+          enum: [32, 48, 64, 96, 128]
+        height:
+          type: integer
+          enum: [32, 48, 64, 96, 128]
+        settings:
+          type: object
+          additionalProperties: false
+          required: [colorLimit, brand]
+          properties:
+            colorLimit: { type: integer, minimum: 1, maximum: 128 }
+            brand: { type: string, minLength: 1, maxLength: 40 }
+        palette:
+          type: array
+          maxItems: 128
+          items:
+            $ref: '#/components/schemas/PersistedPaletteItem'
+        cells:
+          type: array
+          items:
+            type: integer
+            minimum: -1
+          description: 行优先的一维颜色索引数组；长度必须严格等于 width × height，-1 表示透明格。
+    WorkStatus:
+      type: string
+      enum: [draft, completed]
+    WorkSummary:
+      type: object
+      required: [id, title, coverUrl, width, height, beadCount, colorCount, brand, generationMode, status, isFavorite, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        coverUrl:
+          type: [string, 'null']
+        width: { type: integer }
+        height: { type: integer }
+        beadCount: { type: integer, minimum: 0 }
+        colorCount: { type: integer, minimum: 0 }
+        brand: { type: string }
+        generationMode:
+          type: string
+          enum: [standard, ai]
+        status:
+          $ref: '#/components/schemas/WorkStatus'
+        isFavorite: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    WorkDetail:
+      allOf:
+        - $ref: '#/components/schemas/WorkSummary'
+        - type: object
+          required: [pattern]
+          properties:
+            pattern:
+              $ref: '#/components/schemas/PersistedPattern'
+    CreateWorkRequest:
+      type: object
+      additionalProperties: false
+      required: [coverFileId, pattern]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+          default: 未命名作品
+        coverFileId: { type: string, minLength: 1 }
+        status:
+          $ref: '#/components/schemas/WorkStatus'
+        pattern:
+          $ref: '#/components/schemas/PersistedPattern'
+    UpdateWorkRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        coverFileId: { type: string, minLength: 1 }
+        status:
+          $ref: '#/components/schemas/WorkStatus'
+        pattern:
+          $ref: '#/components/schemas/PersistedPattern'
+    WorkListResponse:
+      type: object
+      required: [total, page, pageSize, items]
+      properties:
+        total: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 50 }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkSummary'
+    FavoriteWorkSummary:
+      allOf:
+        - $ref: '#/components/schemas/WorkSummary'
+        - type: object
+          required: [favoritedAt]
+          properties:
+            favoritedAt: { type: string, format: date-time }
+    FavoriteListResponse:
+      type: object
+      required: [total, page, pageSize, items]
+      properties:
+        total: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 50 }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FavoriteWorkSummary'
+    FavoriteRequest:
+      type: object
+      additionalProperties: false
+      required: [favorite]
+      properties:
+        favorite: { type: boolean }
+    FavoriteResponse:
+      type: object
+      required: [workId, isFavorite, favoritedAt]
+      properties:
+        workId: { type: string }
+        isFavorite: { type: boolean }
+        favoritedAt:
+          type: [string, 'null']
+          format: date-time
+
+    FileType:
+      type: string
+      enum: [cover, ai_input, ai_output]
+    FileUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [file, type]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: JPG、PNG 或 WEBP 图片。
+        type:
+          type: string
+          enum: [cover, ai_input]
+        securityCheckId:
+          type: string
+          description: 可选。上传 ai_input 时携带同一用户、同一图片的有效内容安全检测标识，可复用已完成的检测；上传 cover 时不得携带。
+    FileUploadResponse:
+      type: object
+      required: [file]
+      properties:
+        file:
+          $ref: '#/components/schemas/FileAsset'
+    FileAsset:
+      type: object
+      required: [id, type, url, contentType, size, createdAt]
+      properties:
+        id: { type: string }
+        type:
+          $ref: '#/components/schemas/FileType'
+        url: { type: string }
+        contentType: { type: string }
+        size: { type: integer, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+
+    DownloadFileType:
+      type: string
+      enum: [preview, chart, materials, palette]
+    DownloadRecord:
+      type: object
+      required: [id, workId, title, fileType, consumedQuota, quotaTransactionId, downloadedAt]
+      properties:
+        id: { type: string }
+        workId:
+          type: [string, 'null']
+        title: { type: string }
+        fileType:
+          $ref: '#/components/schemas/DownloadFileType'
+        consumedQuota:
+          type: boolean
+          const: true
+        quotaTransactionId: { type: string }
+        downloadedAt: { type: string, format: date-time }
+    DownloadListResponse:
+      type: object
+      required: [total, page, pageSize, items]
+      properties:
+        total: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 50 }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DownloadRecord'
+    CreateDownloadRequest:
+      type: object
+      additionalProperties: false
+      required: [workId, fileType]
+      properties:
+        workId: { type: string, minLength: 1 }
+        fileType:
+          $ref: '#/components/schemas/DownloadFileType'
+    CreateDownloadResponse:
+      type: object
+      required: [downloadRecord, quota]
+      properties:
+        downloadRecord:
+          $ref: '#/components/schemas/DownloadRecord'
+        quota:
+          type: object
+          required: [remaining, usedToday, purchased]
+          properties:
+            remaining: { type: integer, minimum: 0 }
+            usedToday: { type: integer, minimum: 0 }
+            purchased: { type: integer, minimum: 0 }
+
+    PaymentPackage:
+      type: object
+      required: [id, label, quotaAmount, quotaKind, membershipType, priceFen, currency, enabled]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        quotaAmount: { type: integer, minimum: 1 }
+        quotaKind:
+          type: string
+          const: ai_generation
+        membershipType:
+          type: [string, 'null']
+        priceFen: { type: integer, minimum: 0 }
+        currency:
+          type: string
+          const: CNY
+        enabled:
+          type: boolean
+          const: true
+    OrderStatus:
+      type: string
+      enum: [pending, paid, failed, closed, refunded]
+    OrderItem:
+      type: object
+      required: [id, packageId, packageLabel, quotaAmount, quotaKind, priceFen, currency, status, createdAt, paidAt]
+      properties:
+        id: { type: string }
+        packageId:
+          type: [string, 'null']
+        packageLabel: { type: string }
+        quotaAmount: { type: integer, minimum: 0 }
+        quotaKind:
+          type: string
+          const: ai_generation
+        priceFen: { type: integer, minimum: 0 }
+        currency:
+          type: string
+          const: CNY
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        createdAt: { type: string, format: date-time }
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+          description: 支付截止时间；仅用于客户端倒计时，是否过期以服务端与微信事实为准。
+        paidAt:
+          type: [string, 'null']
+          format: date-time
+    OrderListResponse:
+      type: object
+      required: [total, page, pageSize, items]
+      properties:
+        total: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 50 }
+        pendingCount:
+          type: integer
+          minimum: 0
+          description: 当前用户未完成支付订单数，与下单接口的 5 个上限同口径。
+        serverTime:
+          type: string
+          format: date-time
+          description: 服务端当前时间；客户端据此校准本机时钟后再做支付倒计时。
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+    CreatePaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [packageId]
+      properties:
+        packageId: { type: string, minLength: 1, maxLength: 40 }
+    PaymentParameters:
+      type: object
+      required: [timeStamp, nonceStr, package, signType, paySign]
+      properties:
+        timeStamp: { type: string }
+        nonceStr: { type: string }
+        package: { type: string }
+        signType: { type: string, const: RSA }
+        paySign: { type: string }
+    CreatePaymentResponse:
+      type: object
+      required: [orderId, virtual, payment]
+      properties:
+        orderId: { type: string }
+        virtual:
+          anyOf:
+            - $ref: '#/components/schemas/VirtualPaymentPayload'
+            - type: 'null'
+        payment:
+          anyOf:
+            - $ref: '#/components/schemas/PaymentParameters'
+            - type: 'null'
+    VirtualPaymentPayload:
+      type: object
+      required: [signData, paySig, signature, mode]
+      properties:
+        signData: { type: string, description: 微信虚拟支付签名数据，客户端需原样透传。 }
+        paySig: { type: string }
+        signature: { type: string }
+        mode: { type: string, const: short_series_goods }
+    PaymentNotificationResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [SUCCESS, FAIL]
+        message: { type: string }
+
+    AiGenerationStatus:
+      type: string
+      enum: [queued, processing, succeeded, failed, canceled]
+    AiGenerationStyle:
+      type: string
+      enum: [kawaii, natural, cartoon, minimal]
+    AiGenerationDetailLevel:
+      type: string
+      enum: [low, medium, high]
+    AiGenerationBackgroundMode:
+      type: string
+      enum: [keep, simplify, remove]
+    CreateAiGenerationRequest:
+      type: object
+      additionalProperties: false
+      required: [inputFileId, style, detailLevel, backgroundMode]
+      properties:
+        inputFileId: { type: string, minLength: 1 }
+        style:
+          $ref: '#/components/schemas/AiGenerationStyle'
+        detailLevel:
+          $ref: '#/components/schemas/AiGenerationDetailLevel'
+        backgroundMode:
+          $ref: '#/components/schemas/AiGenerationBackgroundMode'
+    AiOutputFile:
+      type: object
+      required: [id, url, contentType, size]
+      properties:
+        id: { type: string }
+        url: { type: string }
+        contentType: { type: string }
+        size: { type: integer, minimum: 1 }
+    AiGenerationFailure:
+      type: object
+      required: [code, message, category, retryable, action]
+      properties:
+        code:
+          type: string
+          enum: [USER_AI_QUOTA_EXHAUSTED, INVALID_IMAGE, AI_INPUT_FILE_UNAVAILABLE, CONTENT_REJECTED, AI_SERVICE_UNAVAILABLE, AI_SERVICE_BUSY, AI_TIMEOUT, AI_RESULT_INVALID, AI_GENERATION_FAILED]
+        message: { type: string }
+        category:
+          type: string
+          enum: [USER, INPUT, CONTENT, PROVIDER, INTERNAL]
+        retryable: { type: boolean }
+        action:
+          type: string
+          enum: [VIEW_BENEFITS, SELECT_IMAGE, USE_STANDARD_MODE, RETRY]
+    AiGenerationResponse:
+      type: object
+      required: [id, status, inputFileId, outputFile, style, detailLevel, backgroundMode, generationMode, failure, createdAt, updatedAt, completedAt]
+      properties:
+        id: { type: string }
+        status:
+          $ref: '#/components/schemas/AiGenerationStatus'
+        inputFileId: { type: string }
+        outputFile:
+          oneOf:
+            - $ref: '#/components/schemas/AiOutputFile'
+            - type: 'null'
+        style:
+          $ref: '#/components/schemas/AiGenerationStyle'
+        detailLevel:
+          $ref: '#/components/schemas/AiGenerationDetailLevel'
+        backgroundMode:
+          $ref: '#/components/schemas/AiGenerationBackgroundMode'
+        generationMode:
+          type: string
+          enum: [ai]
+        failure:
+          oneOf:
+            - $ref: '#/components/schemas/AiGenerationFailure'
+            - type: 'null'
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+
+    ContentSecurityTextRequest:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content: { type: string }
+    TextSecurityResult:
+      type: object
+      required: [safe, traceId]
+      properties:
+        safe:
+          type: boolean
+          const: true
+        traceId:
+          type: [string, 'null']
+    MediaSecurityUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: 待审核图片。
+    MediaSecurityResponse:
+      type: object
+      required: [check]
+      properties:
+        check:
+          type: object
+          required: [safe, checkId, traceId]
+          properties:
+            safe:
+              type: boolean
+              const: true
+            checkId: { type: string }
+            traceId:
+              type: [string, 'null']
+
+    LegalDocument:
+      type: object
+      required: [key, title, version, effectiveAt, contentType, content]
+      properties:
+        key:
+          type: string
+          enum: [paid-service, user-agreement, privacy-policy, personal-information, third-party-sharing]
+        title: { type: string }
+        version: { type: string }
+        effectiveAt: { type: string, format: date-time }
+        contentType:
+          type: string
+          const: rich-text
+        content: { type: string }

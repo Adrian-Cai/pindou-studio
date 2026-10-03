@@ -7,6 +7,16 @@ const { PostgresAiGenerationService } = require("../dist/modules/ai/ai-generatio
 
 const enabled = process.env.RUN_DATABASE_INTEGRATION === "1";
 
+async function waitForTerminal(service, userId, jobId) {
+  let result = await service.get(userId, jobId);
+  for (let attempt = 0; attempt < 10 && (result.status === "queued" || result.status === "processing"); attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.processQueued();
+    result = await service.get(userId, jobId);
+  }
+  return result;
+}
+
 test("stage 6 real database flow: AI success, failure, output asset and idempotent debit", { skip: !enabled }, async () => {
   loadLocalEnv();
   const config = readConfig();
@@ -19,17 +29,17 @@ test("stage 6 real database flow: AI success, failure, output asset and idempote
   let outputNumber = 0;
   const provider = {
     configured: true,
-    name: "qwen",
-    model: "qwen-image-3.0",
-    async createTask(_image, prompt) {
+    name: "hunyuan",
+    model: "HY-Image-v3.0-I2I-ToB-v1.0.1",
+    async createTask(input, legacyPrompt) {
       providerCreateCount += 1;
-      assert.match(prompt, /不添加文字、水印、边框或拼豆网格/);
-      return providerCreateCount === 1 ? `task_success_${suffix}` : `task_failed_${suffix}`;
-    },
-    async getTask(taskId) {
-      return taskId.startsWith("task_success")
-        ? { status: "succeeded", outputUrl: "https://result.aliyuncs.com/output.png" }
-        : { status: "failed", errorCode: "CONTENT_REJECTED" };
+      const prompt = typeof input === "string" ? legacyPrompt : input.prompt;
+      assert.match(prompt, /不要生成拼豆网格、方格、材料标记、施工图、边框、Logo、水印或额外文字/);
+      if (providerCreateCount > 1) throw new Error("provider rejected image");
+      return {
+        requestId: `request_success_${suffix}`,
+        outputUrl: "https://aigc-image.cos.myqcloud.com/output.png",
+      };
     },
     async downloadOutput() { return Buffer.from("verified-provider-output"); },
   };
@@ -78,19 +88,22 @@ test("stage 6 real database flow: AI success, failure, output asset and idempote
       detailLevel: "medium",
       backgroundMode: "simplify",
     };
-    const succeeded = await service.create(successInput);
+    const created = await service.create(successInput);
+    assert.equal(created.status, "queued");
+    const succeeded = await waitForTerminal(service, userId, created.id);
     const duplicate = await service.create(successInput);
     assert.equal(succeeded.status, "succeeded");
     assert.equal(duplicate.id, succeeded.id);
     assert.equal(providerCreateCount, 1);
 
-    const failed = await service.create({
+    const failedCreated = await service.create({
       ...successInput,
       idempotencyKey: `stage6-failed-${suffix}`,
       style: "cartoon",
     });
+    const failed = await waitForTerminal(service, userId, failedCreated.id);
     assert.equal(failed.status, "failed");
-    assert.equal(failed.errorCode, "PROVIDER_CONTENT_REJECTED");
+    assert.equal(failed.failure.code, "AI_GENERATION_FAILED");
 
     const audit = await pool.query(
       `SELECT jobs.status, jobs.output_file_id, files.file_type,

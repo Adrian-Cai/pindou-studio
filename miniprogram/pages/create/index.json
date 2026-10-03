@@ -1,0 +1,6 @@
+{
+  "usingComponents": {
+    "page-layout": "/components/page-layout/index",
+    "upload-status-card": "/components/upload-status-card/index"
+  }
+}

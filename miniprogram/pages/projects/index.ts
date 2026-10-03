@@ -1,4 +1,13 @@
-import type { WorkItem } from '../../models/pattern'
+/**
+ * 「我的作品」列表页：展示/筛选/搜索本地+云端作品，支持打开、改名、删除、下载。
+ *
+ * 职责：聚合 appStore 中的作品与云端作品（登录时拉取并写入本地），按 tab/搜索过滤渲染；
+ *       打开云端作品时取详情还原草稿并跳转编辑器/结果页；不负责图纸生成与绘制。
+ * 调用方：tabBar 第 2 项（路由 /pages/projects/index）。
+ * 关键点：AI 生成任务是 appStore.works 里的真实作品记录；未完成的文生图失败任务只在列表展示占位卡，
+ *       不伪装成已保存作品。封面加载失败回退到占位图（COVER_FALLBACK_PATH）。
+ */
+import { isAiTaskWork, isWorkDraft, type WorkItem } from '../../models/pattern'
 import {
   cloudDetailToDraft,
   cloudSummaryToWorkItem,
@@ -8,8 +17,14 @@ import {
   hasCloudSession,
   renameCloudWork,
 } from '../../services/work-service'
-import { appStore } from '../../store/app-store'
+import { appStore, LocalStorageError } from '../../store/app-store'
+import { fetchRecoverableTextGenerations, type TextGeneration } from '../../services/text-generation-service'
 import { checkTextContent } from '../../services/content-security-service'
+import {
+  aiTaskManager,
+  canRetryTask,
+  retryActionLabel,
+} from '../../services/ai-generation-manager'
 
 type ProjectTab = 'all' | 'recent' | 'draft' | 'completed'
 type WorkView = WorkItem & {
@@ -18,6 +33,19 @@ type WorkView = WorkItem & {
   statusLabel: string
   isDraft: boolean
   syncLabel: string
+  isAiTask: boolean
+  isAiGenerating: boolean
+  isAiFailed: boolean
+  /** 0-100，随 aiTaskManager 通知刷新 */
+  aiProgress: number
+  /** AI 卡片失败原因文案（ai_failed 才有） */
+  failureMessage: string
+  canRetry: boolean
+  retryLabel: string
+}
+type FailedTextTaskView = Pick<TextGeneration, 'id' | 'prompt' | 'updatedAt'> & {
+  coverPath: string
+  updatedText: string
 }
 const tabs = [
   { id: 'all', label: '全部' },
@@ -25,6 +53,8 @@ const tabs = [
   { id: 'draft', label: '草稿' },
   { id: 'completed', label: '已完成' },
 ] as const
+// 封面加载失败时的占位图
+const COVER_FALLBACK_PATH = '/assets/icons/image-upload.svg'
 
 Page({
   data: {
@@ -33,6 +63,9 @@ Page({
     query: '',
     allWorks: [] as WorkView[],
     works: [] as WorkView[],
+    textJobs: [] as TextGeneration[],
+    failedTextJobs: [] as FailedTextTaskView[],
+    visibleFailedTextJobs: [] as FailedTextTaskView[],
     recentCount: 0,
     draftCount: 0,
     loading: false,
@@ -46,42 +79,106 @@ Page({
     renameSaving: false,
   },
 
+  _unsubscribeAiTask: null as (() => void) | null,
+
   onShow() {
     this.getTabBar()?.setData({ selected: 1, hidden: Boolean(this.data.renameWorkId) })
+    if (!this._unsubscribeAiTask) {
+      this._unsubscribeAiTask = aiTaskManager.subscribeAll(() => this.refreshVisibleWorks())
+    }
     void this.refreshWorks()
   },
 
+  onHide() {
+    this._unsubscribeAiTask?.()
+    this._unsubscribeAiTask = null
+  },
+
+  onUnload() {
+    this._unsubscribeAiTask?.()
+    this._unsubscribeAiTask = null
+  },
+
   async refreshWorks() {
-    if (hasCloudSession()) {
-      this.setData({ loading: true })
-      try {
-        const response = await fetchCloudWorks()
-        appStore.replaceCloudWorks(response.items.map(cloudSummaryToWorkItem))
-      } catch (error) {
-        console.error('读取云端作品失败', error)
-        wx.showToast({ title: '云端作品加载失败，已显示本地缓存', icon: 'none' })
-      } finally {
-        this.setData({ loading: false })
-      }
+    // 未登录时没有云端列表可拉，直接渲染本地缓存
+    if (!hasCloudSession()) {
+      this.setData({ textJobs: [], failedTextJobs: [], visibleFailedTextJobs: [] })
+      this.refreshVisibleWorks()
+      return
     }
-    this.refreshVisibleWorks()
+    this.setData({ loading: true })
+    try {
+      const [worksResult, textJobsResult] = await Promise.allSettled([
+        fetchCloudWorks(),
+        fetchRecoverableTextGenerations(),
+      ])
+      if (textJobsResult.status === 'fulfilled') {
+        const failedTextJobs = textJobsResult.value
+          .filter((task) => task.status === 'failed')
+          .map((task) => ({
+            ...task,
+            coverPath: COVER_FALLBACK_PATH,
+            updatedText: formatDateTime(Date.parse(task.updatedAt)),
+          }))
+        this.setData({
+          textJobs: textJobsResult.value.filter((task) => task.status !== 'failed'),
+          failedTextJobs,
+        })
+      } else console.warn('读取文生图恢复任务失败', textJobsResult.reason)
+      if (worksResult.status === 'rejected') {
+        // 这里是**网络/接口**失败，本地缓存还在，按「加载失败」提示
+        console.error('读取云端作品失败', worksResult.reason)
+        wx.showToast({ title: '云端作品加载失败，已显示本地缓存', icon: 'none' })
+        return
+      }
+      try {
+        await appStore.replaceCloudWorks(worksResult.value.items.map(cloudSummaryToWorkItem))
+      } catch (error) {
+        // 云端已经读回来了，写不进去只可能是本机落盘（典型是 storage 写满）。
+        // 列表内存态已经更新，这里如实告诉用户「没存住」，而不是谎报云端加载失败。
+        console.error('云端作品写入本机失败', error)
+        wx.showToast({
+          title: error instanceof LocalStorageError ? error.message : '本机保存失败，请清理空间后重试',
+          icon: 'none',
+        })
+      }
+    } finally {
+      // 「复位 loading + 重渲染」是这段刷新的唯一出口：提前 return / 网络失败 / 落盘失败
+      // 都从这里走。写成单点出口后，将来再加分支也不可能漏掉 loading 导致页面一直转圈。
+      this.setData({ loading: false })
+      this.refreshVisibleWorks()
+    }
   },
 
   refreshVisibleWorks() {
     const state = appStore.getSnapshot()
     const currentDraft = state.currentDraft
-    const allWorks = state.works.map((work) => {
-      const isDraft = work.status === 'draft'
+    const allWorks: WorkView[] = state.works.map((work) => {
+      const isAiTask = isAiTaskWork(work)
+      const isAiGenerating = work.status === 'ai_pending'
+      const isAiFailed = work.status === 'ai_failed'
+      // 缺尺寸的作品尝试用当前草稿补（尺寸待云端同步时显示「尺寸待同步」）
       const width = work.width ?? (currentDraft?.id === work.id ? currentDraft.settings.width : 0)
       const height = work.height ?? (currentDraft?.id === work.id ? currentDraft.settings.height : 0)
+      const taskView = aiTaskManager.getTaskView(work.id)
       return {
         ...work,
-        coverPath: work.coverPath || '/assets/icons/image-upload.svg',
-        updatedText: formatDateTime(work.updatedAt),
+        coverPath: work.coverPath || COVER_FALLBACK_PATH,
+        updatedText: isAiTask
+          ? `${formatDateTime(work.createdAt ?? work.updatedAt)} 提交`
+          : formatDateTime(work.updatedAt),
         dimensions: width && height ? `${width}×${height}` : '尺寸待同步',
-        statusLabel: isDraft ? '草稿' : '已完成',
-        isDraft,
-        syncLabel: syncLabel(work),
+        statusLabel: statusLabel(work),
+        isDraft: isWorkDraft(work),
+        // AI 占位作品只存本机，展示同步标签只会让人困惑
+        syncLabel: isAiTask ? '' : syncLabel(work),
+        isAiTask,
+        isAiGenerating,
+        isAiFailed,
+        aiProgress: taskView?.progress ?? PHASE_FALLBACK_PROGRESS,
+        failureMessage: isAiFailed ? work.failureMessage ?? '生成失败，请重试' : '',
+        canRetry: isAiFailed && canRetryTask(work.failureCode),
+        retryLabel: retryActionLabel(work.failureCode),
       }
     })
 
@@ -90,6 +187,17 @@ Page({
       recentCount: allWorks.filter((work) => isRecent(work.updatedAt)).length,
       draftCount: allWorks.filter((work) => work.isDraft).length,
     }, () => this.applyFilters())
+  },
+
+  handleCoverError(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    const work = this.data.allWorks.find((item) => item.id === id)
+    if (!work || work.coverPath === COVER_FALLBACK_PATH) return
+    const allWorks = this.data.allWorks.map((work) => work.id === id
+      ? { ...work, coverPath: COVER_FALLBACK_PATH }
+      : work)
+    this.setData({ allWorks }, () => this.applyFilters())
   },
 
   changeSearch(event: WechatMiniprogram.Input) {
@@ -110,7 +218,12 @@ Page({
       if (activeTab === 'completed') return !work.isDraft
       return true
     })
-    this.setData({ works })
+    const failedTextJobs = this.data.failedTextJobs.filter((task) => {
+      if (activeTab === 'draft' || activeTab === 'completed') return false
+      if (query && !task.prompt.toLowerCase().includes(query) && !'文生图创作'.includes(query)) return false
+      return activeTab !== 'recent' || isRecent(Date.parse(task.updatedAt))
+    })
+    this.setData({ works, visibleFailedTextJobs: failedTextJobs })
   },
 
   showFilter() {
@@ -133,6 +246,32 @@ Page({
     void this.openWorkById(id, false)
   },
 
+  openTextTask(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    wx.navigateTo({ url: `/packages/ai-generation/text/index?taskId=${encodeURIComponent(id)}&from=projects` })
+  },
+
+  async showSourcePrompt(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    const work = this.data.allWorks.find((item) => item.id === id)
+    if (!work || work.creationSource !== 'text') return
+    let prompt = work.sourcePrompt
+    if (!prompt && work.isCloud) {
+      try {
+        prompt = (await fetchCloudWork(id)).sourcePrompt ?? ''
+      } catch (error) {
+        wx.showToast({ title: error instanceof Error ? error.message : '读取创作描述失败', icon: 'none' })
+        return
+      }
+    }
+    if (!prompt) {
+      wx.showToast({ title: '没有找到这段创作描述', icon: 'none' })
+      return
+    }
+    wx.showModal({ title: '创作描述', content: prompt, showCancel: false, confirmText: '知道了' })
+  },
+
   editWork(event: WechatMiniprogram.TouchEvent) {
     const id = String(event.currentTarget.dataset.id)
     void this.openWorkById(id, true)
@@ -142,13 +281,22 @@ Page({
     const state = appStore.getSnapshot()
     const work = state.works.find((item) => item.id === id)
     if (!work) return
+    // AI 占位作品：跳到对应任务的详情页看进度/重试
+    if (isAiTaskWork(work)) {
+      wx.navigateTo({ url: `/packages/ai-generation/index?taskId=${encodeURIComponent(id)}&from=projects` })
+      return
+    }
     if (work.isCloud) {
+      // 云端作品：先取完整详情还原草稿，再跳转（编辑→编辑器页，查看→结果页）
       wx.showLoading({ title: '正在读取', mask: true })
       try {
         const detail = await fetchCloudWork(id)
-        await appStore.setCurrentDraft(cloudDetailToDraft(detail))
+        // 顺序要紧：先落 WorkItem，再设当前草稿。
+        // setCurrentDraft 靠 id 能否在云端列表里找到来判定归属，反过来的话这份
+        // 草稿会被当成游客草稿落进 guest 区，本站看不到、下次同步也带上不去。
         await appStore.saveWork(cloudSummaryToWorkItem(detail))
-        wx.navigateTo({ url: edit ? '/pages-sub/editor/index' : '/pages-sub/result/index' })
+        await appStore.setCurrentDraft(cloudDetailToDraft(detail))
+        wx.navigateTo({ url: edit ? '/packages/editor/index' : '/packages/result/index' })
       } catch (error) {
         console.error('读取作品详情失败', error)
         wx.showToast({
@@ -161,7 +309,13 @@ Page({
       return
     }
     if (state.currentDraft?.id === id) {
-      wx.navigateTo({ url: edit ? '/pages-sub/editor/index' : '/pages-sub/result/index' })
+      wx.navigateTo({ url: edit ? '/packages/editor/index' : '/packages/result/index' })
+      return
+    }
+    const localDraft = appStore.getLocalDraft(id)
+    if (localDraft) {
+      await appStore.setCurrentDraft(localDraft)
+      wx.navigateTo({ url: edit ? '/packages/editor/index' : '/packages/result/index' })
       return
     }
     wx.showToast({ title: '这份本地作品缺少可恢复的网格数据', icon: 'none' })
@@ -221,11 +375,25 @@ Page({
     this.setData({ renameSaving: true })
     try {
       await checkTextContent(title)
-      if (work.isCloud) {
+      // await 期间可能已完成一次云同步：本地作品被换成云端记录（id 都变了），
+      // 这时再把 await 之前那份快照写回去，等于把已经被替换掉的旧记录重新塞回列表，
+      // 用户看到的是「重命名成功，但列表里多了一份同名旧作品」。
+      // 因此写之前必须重新取一次，取不到就说明它已被同步/删除，这次改名直接放弃。
+      const current = appStore.getSnapshot().works.find((item) => item.id === id)
+      if (!current) {
+        this.refreshVisibleWorks()
+        this.setData({
+          renameError: '作品状态已变化，请刷新后重试',
+          renameSaving: false,
+        })
+        return
+      }
+      // 云端作品走 renameCloudWork，其余直接改本地 store
+      if (current.isCloud) {
         const summary = await renameCloudWork(id, title)
         await appStore.saveWork(cloudSummaryToWorkItem(summary))
       } else {
-        await appStore.saveWork({ ...work, title, updatedAt: Date.now() })
+        await appStore.saveWork({ ...current, title, updatedAt: Date.now() })
       }
       this.refreshVisibleWorks()
       this.resetRenameDialog()
@@ -258,8 +426,39 @@ Page({
     if (!this.data.allWorks.some((work) => work.id === id)) return
     this.getTabBar()?.setData({ hidden: false })
     this.setData({ showPageNav: true }, () => {
-      wx.navigateTo({ url: '/pages-sub/downloads/index' })
+      void this.openWorkById(id, false)
     })
+  },
+
+  /** AI 卡片「取消任务 / 删除」：停止任务 + 删除占位作品。 */
+  cancelAiTask(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    const work = this.data.allWorks.find((item) => item.id === id)
+    if (!work) return
+    const isGenerating = work.status === 'ai_pending'
+    wx.showModal({
+      title: isGenerating ? '取消任务？' : '删除这条记录？',
+      content: isGenerating
+        ? '确定要取消这个 AI 生成任务吗？'
+        : `确定要删除“${work.title}”吗？`,
+      cancelText: '保留',
+      confirmText: isGenerating ? '取消任务' : '删除',
+      confirmColor: '#e5484d',
+      success: ({ confirm }) => {
+        if (!confirm) return
+        void aiTaskManager.cancelTask(id).then(() => this.refreshVisibleWorks())
+      },
+    })
+  },
+
+  /** AI 卡片「重试」：图片/内容类问题不在这里重试（文案会引导用户重新选图）。 */
+  retryAiTask(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    const work = this.data.allWorks.find((item) => item.id === id)
+    if (!work?.canRetry) return
+    void aiTaskManager.retryTask(id).then(() => this.refreshVisibleWorks())
   },
 
   deleteWork(event: WechatMiniprogram.TouchEvent) {
@@ -303,6 +502,15 @@ Page({
   },
 })
 
+/** 作品缺失任务记录时的兜底进度（例如任务记录已被清理但作品还在）。 */
+const PHASE_FALLBACK_PROGRESS = 0
+
+function statusLabel(work: WorkItem): string {
+  if (work.status === 'ai_pending') return '生成中'
+  if (work.status === 'ai_failed') return '生成失败'
+  return isWorkDraft(work) ? '草稿' : '已完成'
+}
+
 function validateWorkTitle(value: string, originalTitle: string) {
   const title = value.trim()
   if (!title) return { title, error: '作品名称不能为空', canSave: false }
@@ -312,6 +520,7 @@ function validateWorkTitle(value: string, originalTitle: string) {
   return { title, error: '', canSave: true }
 }
 
+// 近 30 天内的作品算「最近」
 function isRecent(timestamp: number) {
   return Date.now() - timestamp <= 30 * 24 * 60 * 60 * 1000
 }

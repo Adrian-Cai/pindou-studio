@@ -12,7 +12,7 @@
 
 ## 1. 当前数据库概览
 
-项目当前使用一套 PostgreSQL 业务数据库，核心包含 12 张业务表：
+项目当前使用一套 PostgreSQL 业务数据库，核心包含 12 张业务表，另有 1 张仅供部署使用的迁移记录表：
 
 | 表名 | 用途 |
 | --- | --- |
@@ -28,6 +28,15 @@
 | `pindou_orders` | 支付订单 |
 | `pindou_ai_generation_jobs` | AI 精致生成任务与状态机 |
 | `pindou_content_security_checks` | 微信内容安全审核任务与回调状态 |
+
+`pindou_schema_migrations` 不是业务表，不参与 API 业务查询。它记录迁移编号、文件名、文件 SHA-256 和成功执行时间；Schema Inspector 会明确忽略这张运维元数据表。
+
+| 字段 | PostgreSQL 类型 | 可空 | 说明 |
+| --- | --- | --- | --- |
+| `version` | `int4` | 否 | 迁移编号，作为主键 |
+| `filename` | `varchar(255)` | 否 | 迁移文件名，必须唯一 |
+| `checksum` | `varchar(64)` | 否 | 迁移文件内容的 SHA-256 小写摘要 |
+| `applied_at` | `timestamptz` | 否 | 迁移成功完成时间 |
 
 关系概览：
 
@@ -150,6 +159,7 @@ pindou_users
 | `bead_count` | `int4` | 否 | 非透明拼豆数量 |
 | `color_count` | `int2` | 否 | 实际使用颜色数 |
 | `brand` | `varchar(40)` | 否 | 色板/品牌 |
+| `generation_mode` | `varchar(20)` | 否 | `standard` / `ai`；历史作品迁移默认 `standard` |
 | `status` | `varchar(20)` | 否 | `draft` / `completed` |
 | `created_at` | `timestamptz` | 否 | 创建时间 |
 | `updated_at` | `timestamptz` | 否 | 更新时间 |
@@ -161,6 +171,7 @@ pindou_users
 - FK：`user_id -> pindou_users.id`
 - FK：`cover_file_id -> pindou_file_assets.id`
 - CHECK：`status in ('draft', 'completed')`
+- CHECK：`generation_mode in ('standard', 'ai')`
 - CHECK：宽高不得超过 128
 - CHECK：`bead_count >= 0`
 - CHECK：`color_count >= 0`
@@ -335,6 +346,7 @@ pindou_users
 - FK：`user_id -> pindou_users.id`
 - FK：`package_id -> pindou_packages.id`，删除套餐时 `SET NULL`
 - UNIQUE：`wx_transaction_id`
+- INDEX：`(user_id, created_at DESC)`
 - CHECK：`quota_amount_snapshot >= 0`
 - CHECK：`price_fen >= 0`
 - `status` 的合法值由当前 Schema Contract 的 CHECK 约束维护
@@ -343,27 +355,31 @@ pindou_users
 
 AI 精致生成任务表客户端创建任务后轮询状态；只有输出图片落库成功时才写 AI 额度扣减流水
 
+AI 任务的 `expires_at` 默认设置为创建后 24 小时。定时清理会将过期任务置为失败、软删除关联的 `ai_input` / `ai_output` 资产，并异步删除对应物理文件；没有关联任务且超过相同期限的 `ai_input` 也会被清理。清理不改变已发生的额度流水。
+
 | 字段 | PostgreSQL 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
 | `id` | `varchar(32)` | 否 | 任务 ID |
 | `user_id` | `varchar(32)` | 否 | 用户 ID |
 | `input_file_id` | `varchar(32)` | 否 | `ai_input` 文件 ID |
 | `output_file_id` | `varchar(32)` | 是 | 成功后的 `ai_output` 文件 ID |
-| `provider` | `varchar(40)` | 否 | Provider 快照，当前为 `qwen` |
+| `provider` | `varchar(40)` | 否 | Provider 快照，当前为 `hunyuan` |
 | `model` | `varchar(80)` | 否 | 模型快照 |
 | `status` | `varchar(20)` | 否 | `queued` / `processing` / `succeeded` / `failed` / `canceled` |
 | `prompt_version` | `varchar(20)` | 否 | 服务端提示词版本 |
-| `style` | `varchar(20)` | 否 | `natural` / `cartoon` / `minimal` |
+| `style` | `varchar(20)` | 否 | `kawaii` / `natural` / `cartoon` / `minimal` |
 | `detail_level` | `varchar(20)` | 否 | `low` / `medium` / `high` |
 | `background_mode` | `varchar(20)` | 否 | `keep` / `simplify` / `remove` |
-| `provider_request_id` | `varchar(128)` | 是 | Provider 异步任务 ID |
+| `generation_mode` | `varchar(20)` | 否 | 固定为 `ai`；AI 任务表不允许记录标准模式任务 |
+| `provider_request_id` | `varchar(128)` | 是 | Provider 请求 ID |
+| `provider_output_url` | `text` | 是 | 混元临时输出地址；持久化成功后清空 |
 | `idempotency_key` | `varchar(128)` | 否 | 同一用户创建任务的幂等键 |
 | `error_code` | `varchar(80)` | 是 | 稳定失败代码 |
 | `created_at` / `updated_at` | `timestamptz` | 否 | 创建/更新时间 |
 | `started_at` / `completed_at` | `timestamptz` | 是 | 处理/完成时间 |
 | `expires_at` | `timestamptz` | 否 | 任务查询截止时间 |
 
-幂等唯一索引为 `(user_id, idempotency_key)`；活跃状态索引用于额度预留和超时巡检
+幂等唯一索引为 `(user_id, idempotency_key)`；活跃状态索引用于额度预留和超时巡检。`generation_mode` 的 CHECK 约束固定为 `ai`，标准模式不会进入该表。
 
 ## 13. Schema 的事实来源与验证方式
 

@@ -18,7 +18,7 @@ const { createDraft } = require(path.join(compiledRoot, 'services', 'image-servi
 const { rgbToOklab, oklabDistanceSquared } = require(
   path.join(patternGenerationDirectory, 'color-space.js'),
 )
-const { findNearestColor } = require(
+const { pickNearest } = require(
   path.join(patternGenerationDirectory, 'color-utils.js'),
 )
 const {
@@ -134,7 +134,14 @@ test('Prepared OKLab palette preserves order, references, and strict tie semanti
 
 test('Fixed RGB and OKLab nearest colors diverge', () => {
   const palette = [DIVERGENCE.rgbNearest.rgb, DIVERGENCE.oklabNearest.rgb]
-  assert.strictEqual(findNearestColor(DIVERGENCE.pixel, palette), palette[0])
+  const rgbDistance = (color) => {
+    const pixel = DIVERGENCE.pixel
+    const red = pixel.r - color.r
+    const green = pixel.g - color.g
+    const blue = pixel.b - color.b
+    return red * red + green * green + blue * blue
+  }
+  assert.strictEqual(pickNearest(palette, rgbDistance), palette[0])
   assert.strictEqual(
     findNearestColorOklab(DIVERGENCE.pixel, prepareOklabPalette(palette)),
     palette[1],

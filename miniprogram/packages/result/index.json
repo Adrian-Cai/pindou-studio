@@ -1,0 +1,13 @@
+{
+  "disableScroll": true,
+  "usingComponents": {
+    "top-bar": "/components/top-bar/index",
+    "main-tab-bar": "/components/main-tab-bar/index",
+    "work-summary": "./components/work-summary/index",
+    "materials-panel": "./components/materials-panel/index",
+    "palette-panel": "./components/palette-panel/index",
+    "result-download-button": "/packages/result/components/result-download-button/index",
+    "download-quota-bar": "/packages/result/components/download-quota-bar/index",
+    "download-bottom-sheet": "/packages/result/components/download-bottom-sheet/index"
+  }
+}

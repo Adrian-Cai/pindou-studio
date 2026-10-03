@@ -18,7 +18,9 @@ test("current user response supports nullable profile and summarizes owned data"
           download_count: "3",
         }] };
       }
-      return { rows: [{ used_today: "1", purchased: "2" }] };
+      return { rows: [parameters[1] === "ai_generation"
+        ? { daily_free: "3", used_today: "2", daily_remaining: "1", purchased: "8" }
+        : { daily_free: "3", used_today: "1", daily_remaining: "2", purchased: "2" }] };
     },
   };
   const service = new PostgresUserProfileService(
@@ -41,9 +43,16 @@ test("current user response supports nullable profile and summarizes owned data"
     purchased: 2,
     remaining: 4,
     resetsAt: "2026-08-27T00:00:00+08:00",
+    aiGeneration: {
+      dailyFree: 3,
+      usedToday: 2,
+      purchased: 8,
+      remaining: 9,
+      resetsAt: "2026-08-27T00:00:00+08:00",
+    },
   });
   assert.deepEqual(calls[0].parameters, ["usr_test"]);
-  assert.deepEqual(calls[1].parameters, ["usr_test", "2026-08-26"]);
+  assert.deepEqual(calls[1].parameters, ["usr_test", "standard_download", "2026-08-26", 3]);
   assert.match(calls[0].sql, /favorites\.deleted_at IS NULL/u);
   assert.match(calls[0].sql, /works\.deleted_at IS NULL/u);
 });
@@ -53,7 +62,7 @@ test("missing current user is unauthorized", async () => {
     async query(sql) {
       return sql.includes("FROM pindou_users users")
         ? { rows: [] }
-        : { rows: [{ used_today: "0", purchased: "0" }] };
+        : { rows: [{ used_today: "0", purchased: "0", ai_used_today: "0", ai_purchased: "0" }] };
     },
   };
   const service = new PostgresUserProfileService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 });
@@ -96,15 +105,15 @@ test("profile updates derive ownership from the authenticated user id", async ()
   assert.equal(nicknameUser.nickname, "拼豆玩家");
   assert.deepEqual(calls[0].parameters, ["usr_test", "拼豆玩家", now]);
 
-  const avatar = await service.updateProfileWithAvatar(
+  const avatar = await service.updateAvatar(
     "usr_test",
-    "新昵称",
     "/api/media/avatars/avatar_new.png",
   );
+  assert.doesNotMatch(calls[1].sql, /SET nickname/u);
+  assert.equal(avatar.user.nickname, "拼豆玩家");
   assert.equal(avatar.previousAvatarUrl, "/api/media/avatars/avatar_old.jpg");
   assert.deepEqual(calls[1].parameters, [
     "usr_test",
-    "新昵称",
     "/api/media/avatars/avatar_new.png",
     now,
   ]);

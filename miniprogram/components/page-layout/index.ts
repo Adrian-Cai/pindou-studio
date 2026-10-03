@@ -8,14 +8,15 @@ Component({
     actionText: { type: String, value: '' },
     actionType: { type: String, value: 'text' },
     home: { type: Boolean, value: false },
+    fillViewport: { type: Boolean, value: false },
     showMainNav: { type: Boolean, value: false },
     selectedTab: { type: Number, value: -1 },
     compactBottomPadding: { type: Boolean, value: false },
+    scrollIntoView: { type: String, value: '' },
   },
 
   data: {
     navigationBarHeight: 0,
-    scrollAreaHeight: 0,
     showEmbeddedMainNav: false,
     isMainTabPage: false,
   },
@@ -48,7 +49,6 @@ Component({
       const metrics = getCustomNavigationMetrics()
       this.setData({
         navigationBarHeight: metrics.navigationBarHeight,
-        scrollAreaHeight: Math.max(0, metrics.windowHeight - metrics.topBarHeight),
       })
     },
 

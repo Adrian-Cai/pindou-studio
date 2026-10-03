@@ -30,7 +30,16 @@ test("GET /api/quota/me authenticates and returns the transaction summary", asyn
   await withApplication({
     async getQuota(value) {
       userId = value;
-      return { dailyFree: 3, usedToday: 1, purchased: 2, remaining: 4, membershipType: null, membershipExpiresAt: null, resetsAt: "2026-09-01T00:00:00+08:00" };
+    return {
+      dailyFree: 3,
+      usedToday: 1,
+      purchased: 2,
+      remaining: 4,
+      membershipType: null,
+      membershipExpiresAt: null,
+      resetsAt: "2026-09-01T00:00:00+08:00",
+      aiGeneration: { dailyFree: 3, usedToday: 0, purchased: 0, remaining: 3, resetsAt: "2026-09-01T00:00:00+08:00" },
+    };
     },
   }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/quota/me`, { headers: { authorization: "Bearer token" } });

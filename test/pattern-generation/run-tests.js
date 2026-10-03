@@ -43,6 +43,8 @@ try {
     path.join(__dirname, 'phase-3-4-color-matching.test.js'),
     path.join(__dirname, 'phase-5-cleanup.test.js'),
     path.join(__dirname, 'phase-6-edge-protection.test.js'),
+    path.join(__dirname, 'phase-7-ocr-hardening.test.js'),
+    path.join(__dirname, 'generation-mode.test.js'),
   ])
   run(process.execPath, [
     path.join(__dirname, 'compare-wechat-phase-2.js'),

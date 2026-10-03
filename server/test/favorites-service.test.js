@@ -71,6 +71,8 @@ test("favorite lifecycle preserves one row and all idempotent timestamps", async
   assert.match(mutationSql[1], /WHERE pindou_favorites\.deleted_at IS NOT NULL/u);
   assert.match(mutationSql[1], /FROM pindou_works/u);
   assert.match(mutationSql[1], /pindou_works[\s\S]*deleted_at IS NULL/u);
+  assert.match(mutationSql[1], /\$1::varchar/u);
+  assert.match(mutationSql[1], /\$3::timestamptz/u);
 
   const cancelled = await service.setFavorite("usr_current", "work_test", false);
   const firstDeletedAt = stored.deletedAt;

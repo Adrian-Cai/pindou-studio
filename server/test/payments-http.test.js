@@ -40,13 +40,17 @@ test("packages is public and payment creation accepts only packageId from an aut
   const createCalls = [];
   const payments = {
     async listPackages() {
-      return { items: [{ id: "starter", label: "加购 3 次", quotaAmount: 3, membershipType: null, priceFen: 990, currency: "CNY", enabled: true }] };
+      return { items: [{ id: "ai_generation_30", label: "AI 精致生成 30 次", quotaAmount: 30, quotaKind: "ai_generation", membershipType: null, priceFen: 990, currency: "CNY", enabled: true }] };
     },
     async createPayment(input) {
       createCalls.push(input);
+      if (input.idempotencyKey === "payment-http-paid") {
+        throw new AppError(409, "ORDER_ALREADY_PAID", "订单已支付", { orderId: "order_0123456789abcdef0123456789" });
+      }
       return {
         orderId: "order_http",
-        payment: { timeStamp: "1", nonceStr: "n", package: "prepay_id=wx", signType: "RSA", paySign: "p" },
+        virtual: { signData: "{}", paySig: "p", signature: "s", mode: "short_series_goods" },
+        payment: null,
       };
     },
     async handleNotification() { throw new Error("unused"); },
@@ -64,7 +68,7 @@ test("packages is public and payment creation accepts only packageId from an aut
         "content-type": "application/json",
         "idempotency-key": "payment-http-1",
       },
-      body: JSON.stringify({ packageId: "starter", priceFen: 1 }),
+      body: JSON.stringify({ packageId: "ai_generation_30", priceFen: 1 }),
     });
     assert.equal(tampered.status, 400);
     assert.equal((await tampered.json()).error.code, "INVALID_ARGUMENT");
@@ -77,11 +81,68 @@ test("packages is public and payment creation accepts only packageId from an aut
         "content-type": "application/json",
         "idempotency-key": "payment-http-2",
       },
-      body: JSON.stringify({ packageId: "starter" }),
+      body: JSON.stringify({ packageId: "ai_generation_30" }),
     });
     assert.equal(created.status, 201);
     assert.equal((await created.json()).orderId, "order_http");
-    assert.deepEqual(createCalls, [{ userId: "usr_payment", packageId: "starter", idempotencyKey: "payment-http-2" }]);
+    assert.deepEqual(createCalls, [{ userId: "usr_payment", packageId: "ai_generation_30", idempotencyKey: "payment-http-2" }]);
+
+    const alreadyPaid = await fetch(`${baseUrl}/api/payments/create`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer valid-payment-token-1234567890",
+        "content-type": "application/json",
+        "idempotency-key": "payment-http-paid",
+      },
+      body: JSON.stringify({ packageId: "ai_generation_30" }),
+    });
+    assert.equal(alreadyPaid.status, 409);
+    assert.deepEqual((await alreadyPaid.json()).error.details, { orderId: "order_0123456789abcdef0123456789" });
+  });
+});
+
+test("payment order continue and cancel require auth, forward the order id, and reject query params", async () => {
+  const calls = [];
+  const payments = {
+    async listPackages() { return { items: [] }; },
+    async createPayment() { throw new Error("unused"); },
+    async continuePayment(input) {
+      calls.push({ action: "continue", ...input });
+      return {
+        orderId: input.orderId,
+        virtual: { signData: "{}", paySig: "p", signature: "s", mode: "short_series_goods" },
+        payment: null,
+      };
+    },
+    async cancelOrder(input) {
+      calls.push({ action: "cancel", ...input });
+      return { status: "closed" };
+    },
+    async handleNotification() { throw new Error("unused"); },
+  };
+  await withServer(payments, async (baseUrl) => {
+    const auth = { authorization: "Bearer valid-payment-token-1234567890" };
+
+    const continued = await fetch(`${baseUrl}/api/payments/order_abc123/continue`, { method: "POST", headers: auth });
+    assert.equal(continued.status, 200);
+    assert.equal((await continued.json()).orderId, "order_abc123");
+
+    const cancelled = await fetch(`${baseUrl}/api/payments/order_abc123/cancel`, { method: "POST", headers: auth });
+    assert.equal(cancelled.status, 200);
+    assert.deepEqual(await cancelled.json(), { status: "closed" });
+    assert.deepEqual(calls, [
+      { action: "continue", userId: "usr_payment", orderId: "order_abc123" },
+      { action: "cancel", userId: "usr_payment", orderId: "order_abc123" },
+    ]);
+
+    const anonymous = await fetch(`${baseUrl}/api/payments/order_abc123/cancel`, { method: "POST" });
+    assert.equal(anonymous.status, 401);
+
+    const withQuery = await fetch(`${baseUrl}/api/payments/order_abc123/continue?force=1`, { method: "POST", headers: auth });
+    assert.equal(withQuery.status, 400);
+
+    const wrongMethod = await fetch(`${baseUrl}/api/payments/order_abc123/continue`, { headers: auth });
+    assert.equal(wrongMethod.status, 404, "只开放 POST，GET 落到通用 404");
   });
 });
 

@@ -1,11 +1,27 @@
-import type {
-  PatternDraft,
-  PersistedPattern,
-  WorkItem,
+/**
+ * 作品云端读写与本地/云端数据互转：把 PatternDraft 存成云端作品，或把云端作品读回草稿。
+ *
+ * 职责：封装所有 /api/works、/api/favorites 云端接口；负责草稿↔持久化图纸↔云端摘要
+ *       三套结构之间的转换，并对返回做严格字段校验；不负责图片选图/生成/下载。
+ * 调用方：我的作品页（pages/projects）、结果页与编辑器（保存/读取云端作品）。
+ * 关键点：所有解析函数对服务端返回做鸭子类型校验，字段不符即抛 INVALID_RESPONSE，
+ *       防止脏数据进入本地；保存新建作品带幂等键避免重复提交。
+ */
+import {
+  decodePatternCells,
+  encodePatternCells,
+  isGenerationMode,
+  type GenerationMode,
+  type CreationSource,
+  type PatternDraft,
+  type PersistedPattern,
+  type WorkItem,
 } from '../models/pattern'
+import { normalizeCoverUrl } from '../config/api'
 import { isAuthSessionExpired, loadAuthSession } from './token-storage'
 import { ApiError, apiRequest, apiUploadFile } from './http-client'
 
+/** 云端作品列表项/摘要：不含完整图纸，仅用于列表展示与转本地 WorkItem。 */
 export interface CloudWorkSummary {
   id: string
   title: string
@@ -15,16 +31,21 @@ export interface CloudWorkSummary {
   beadCount: number
   colorCount: number
   brand: string
+  generationMode: GenerationMode
+  creationSource: CreationSource
   status: 'draft' | 'completed'
   isFavorite: boolean
   createdAt: string
   updatedAt: string
 }
 
+/** 云端作品详情：在摘要基础上附带完整 PersistedPattern 图纸数据。 */
 export interface CloudWorkDetail extends CloudWorkSummary {
   pattern: PersistedPattern
+  sourcePrompt: string | null
 }
 
+/** 云端收藏项：在作品摘要基础上附带收藏时间。 */
 export interface CloudFavoriteSummary extends CloudWorkSummary {
   favoritedAt: string
 }
@@ -55,6 +76,12 @@ export function hasCloudSession(): boolean {
   return Boolean(session && !isAuthSessionExpired(session))
 }
 
+/**
+ * 新建并保存一个云端作品（草稿 + 封面图）。
+ * @param draft 要保存的图纸草稿
+ * @param coverPath 封面图本地路径（先上传取 fileId）
+ * @param title 作品标题，缺省「未命名作品」
+ */
 export async function saveNewCloudWork(
   draft: PatternDraft,
   coverPath: string,
@@ -63,6 +90,13 @@ export async function saveNewCloudWork(
   return persistCloudWork({ draft, coverPath, title })
 }
 
+/**
+ * 覆盖更新已存在的云端作品。
+ * @param workId 目标作品 id
+ * @param draft 新图纸草稿
+ * @param coverPath 新封面图本地路径
+ * @param title 新标题
+ */
 export async function updateCloudWork(
   workId: string,
   draft: PatternDraft,
@@ -72,6 +106,7 @@ export async function updateCloudWork(
   return persistCloudWork({ workId, draft, coverPath, title })
 }
 
+/** 仅修改云端作品标题，不上传图纸。 */
 export async function renameCloudWork(workId: string, title: string): Promise<CloudWorkSummary> {
   const response = await apiRequest<unknown>({
     path: `/api/works/${encodeURIComponent(workId)}`,
@@ -82,6 +117,12 @@ export async function renameCloudWork(workId: string, title: string): Promise<Cl
   return parseWorkSummary(response)
 }
 
+/**
+ * 分页拉取云端作品列表，支持按状态筛选与关键字搜索。
+ * @param options.page 页码（默认 1）；pageSize 默认 50
+ * @param options.status 仅取 'draft' 或 'completed'
+ * @param options.query 标题/关键字搜索串
+ */
 export async function fetchCloudWorks(options: {
   page?: number
   pageSize?: number
@@ -101,6 +142,7 @@ export async function fetchCloudWorks(options: {
   return parseWorkList(response)
 }
 
+/** 按 id 拉取云端作品完整详情（含图纸数据）。 */
 export async function fetchCloudWork(workId: string): Promise<CloudWorkDetail> {
   const response = await apiRequest<unknown>({
     path: `/api/works/${encodeURIComponent(workId)}`,
@@ -109,6 +151,10 @@ export async function fetchCloudWork(workId: string): Promise<CloudWorkDetail> {
   return parseWorkDetail(response)
 }
 
+/**
+ * 分页拉取云端收藏列表。
+ * @param options.page 页码（默认 1）；pageSize 默认 50
+ */
 export async function fetchCloudFavorites(options: {
   page?: number
   pageSize?: number
@@ -149,6 +195,7 @@ export async function setCloudFavorite(workId: string, favorite: boolean): Promi
   }
 }
 
+/** 删除云端作品（软/硬删由服务端决定）。 */
 export async function deleteCloudWork(workId: string): Promise<void> {
   await apiRequest<unknown>({
     path: `/api/works/${encodeURIComponent(workId)}`,
@@ -157,75 +204,80 @@ export async function deleteCloudWork(workId: string): Promise<void> {
   })
 }
 
-/** 将 API 的 ISO 时间转换为页面状态使用的毫秒时间戳，并保留作品更新时间与收藏时间的语义差异。 */
+/**
+ * 把云端摘要转成 WorkItem：封面 URL 归一化、ISO 时间转毫秒，并保留收藏时间语义。
+ * @param summary 云端作品摘要或收藏摘要
+ */
 export function cloudSummaryToWorkItem(summary: CloudWorkSummary | CloudFavoriteSummary): WorkItem {
   return {
     id: summary.id,
     title: summary.title,
-    coverPath: summary.coverUrl,
+    coverPath: normalizeCoverUrl(summary.coverUrl),
     updatedAt: Date.parse(summary.updatedAt),
     createdAt: Date.parse(summary.createdAt),
     beadCount: summary.beadCount,
     colorCount: summary.colorCount,
+    generationMode: summary.generationMode,
+    creationSource: summary.creationSource,
+    ...(summary.creationSource === 'text' ? { sourcePrompt: undefined } : {}),
     width: summary.width,
     height: summary.height,
     status: summary.status,
     isCloud: true,
+    isFavorite: summary.isFavorite,
     ...('favoritedAt' in summary ? { favoritedAt: Date.parse(summary.favoritedAt) } : {}),
   }
 }
 
+/**
+ * 把云端作品详情还原为本地 PatternDraft（用于重新编辑）；封面不回写，sourceImagePath 留空。
+ * @param detail 云端作品详情
+ */
 export function cloudDetailToDraft(detail: CloudWorkDetail): PatternDraft {
   const pattern = detail.pattern
+  // 下标越界/调色板缺失意味着图纸数据损坏，按无效响应处理，不让脏数据进编辑器
+  const cells = decodePatternCells(pattern)
+  if (!cells) throw invalidResponse()
   return {
     id: detail.id,
     sourceImagePath: '',
     createdAt: Date.parse(detail.createdAt),
+    generationMode: pattern.generationMode,
+    creationSource: detail.creationSource,
+    ...(detail.sourcePrompt ? { sourcePrompt: detail.sourcePrompt } : {}),
     settings: {
       width: pattern.width,
       height: pattern.height,
       colorLimit: pattern.settings.colorLimit,
       brand: pattern.settings.brand,
     },
-    cells: pattern.cells.map((paletteIndex) => {
-      if (paletteIndex === -1) return { color: 'transparent', colorCode: '' }
-      const paletteItem = pattern.palette[paletteIndex]
-      if (!paletteItem) throw invalidResponse()
-      return { color: paletteItem.color, colorCode: paletteItem.code }
-    }),
+    cells,
   }
 }
 
 /**
- * 将每格保存完整颜色的编辑态压缩成“调色板索引 + cells”。-1 固定表示透明格，
- * 颜色编号和色值共同作为去重键，避免不同品牌的同色值被错误合并。
+ * 把本地草稿转成云端持久化结构：调色板按色号与颜色值去重，cells 保存索引，透明格用 -1 表示。
+ * 网格尺寸不符时拒绝保存。
+ * @param draft 本地图纸草稿
  */
 export function draftToPersistedPattern(draft: PatternDraft): PersistedPattern {
   if (draft.cells.length !== draft.settings.width * draft.settings.height) {
     throw new ApiError('当前作品网格数据不完整，请重新生成', { code: 'INVALID_PATTERN' })
   }
-  const palette: PersistedPattern['palette'] = []
-  const paletteIndexes = new Map<string, number>()
-  const cells = draft.cells.map((cell) => {
-    if (cell.color === 'transparent') return -1
-    const key = `${cell.colorCode}\u0000${cell.color.toLowerCase()}`
-    const existing = paletteIndexes.get(key)
-    if (existing !== undefined) return existing
-    const index = palette.length
-    paletteIndexes.set(key, index)
-    palette.push({ code: cell.colorCode || `C${String(index + 1).padStart(2, '0')}`, color: cell.color })
-    return index
-  })
+  // 与本机落盘共用 models/pattern 的编码，避免两处压缩逻辑各自演化
+  const packed = encodePatternCells(draft.cells)
   return {
     schemaVersion: 1,
+    generationMode: draft.generationMode,
     width: draft.settings.width,
     height: draft.settings.height,
     settings: { colorLimit: draft.settings.colorLimit, brand: draft.settings.brand },
-    palette,
-    cells,
+    palette: packed.palette,
+    cells: packed.cells,
   }
 }
 
+// 上传封面图，返回服务端 fileId，供创建作品时引用
 async function uploadCover(token: string, filePath: string): Promise<string> {
   const response = await apiUploadFile<unknown>({
     path: '/api/files/upload',
@@ -240,6 +292,7 @@ async function uploadCover(token: string, filePath: string): Promise<string> {
   return response.file.id
 }
 
+// 新建或更新云端作品的统一入口：先上传封面，再按是否有 workId 决定 POST/PUT
 async function persistCloudWork(input: {
   readonly workId?: string
   readonly draft: PatternDraft
@@ -247,9 +300,18 @@ async function persistCloudWork(input: {
   readonly title: string
 }): Promise<CloudWorkSummary> {
   const token = requireToken()
+  const isNew = input.workId === undefined
+  // 新建的幂等键直接由 draft.id 派生：id 为空时键退化成 'create-'，
+  // 所有空 id 的新建会被服务端当成同一笔去重 —— 用户存了两份作品，云端只留下一份，
+  // 而且不会有任何报错。宁可在这里明确失败，也不要悄悄少存一份。
+  if (isNew && !input.draft.id) {
+    throw new ApiError('作品 id 缺失，无法安全创建云端作品', { code: 'INVALID_PATTERN' })
+  }
+  if (input.draft.creationSource === 'text' && !input.draft.sourcePrompt?.trim()) {
+    throw new ApiError('文字创作描述缺失，无法保存作品', { code: 'INVALID_PATTERN' })
+  }
   // 后端作品只引用受所有权校验的文件资产 ID，因此必须先上传封面，再创建或更新作品。
   const coverFileId = await uploadCover(token, input.coverPath)
-  const isNew = input.workId === undefined
   const response = await apiRequest<unknown>({
     path: isNew ? '/api/works' : `/api/works/${encodeURIComponent(input.workId)}`,
     method: isNew ? 'POST' : 'PUT',
@@ -260,6 +322,8 @@ async function persistCloudWork(input: {
       title: input.title,
       coverFileId,
       status: 'completed',
+      creationSource: input.draft.creationSource ?? 'image',
+      sourcePrompt: input.draft.creationSource === 'text' ? input.draft.sourcePrompt : null,
       pattern: draftToPersistedPattern(input.draft),
     },
     timeoutMs: 30_000,
@@ -267,6 +331,7 @@ async function persistCloudWork(input: {
   return parseWorkSummary(response)
 }
 
+// 取当前登录 token，未登录或过期直接抛 UNAUTHORIZED，由调用方兜底提示
 function requireToken(): string {
   const session = loadAuthSession()
   if (!session || isAuthSessionExpired(session)) {
@@ -306,9 +371,13 @@ function parseWorkDetail(value: unknown): CloudWorkDetail {
   const summary = parseWorkSummary(value)
   if (!isRecord(value) || !isRecord(value.pattern)) throw invalidResponse()
   const pattern = parsePersistedPattern(value.pattern)
-  return { ...summary, pattern }
+  if (summary.generationMode !== pattern.generationMode) throw invalidResponse()
+  if ((summary.creationSource === 'text' && typeof value.sourcePrompt !== 'string')
+    || (summary.creationSource === 'image' && value.sourcePrompt !== null && value.sourcePrompt !== undefined)) throw invalidResponse()
+  return { ...summary, pattern, sourcePrompt: typeof value.sourcePrompt === 'string' ? value.sourcePrompt : null }
 }
 
+// 解析并严格校验作品摘要字段；任何字段类型不符都抛 INVALID_RESPONSE
 function parseWorkSummary(value: unknown): CloudWorkSummary {
   if (!isRecord(value)
     || typeof value.id !== 'string'
@@ -319,6 +388,7 @@ function parseWorkSummary(value: unknown): CloudWorkSummary {
     || !isFiniteNumber(value.beadCount)
     || !isFiniteNumber(value.colorCount)
     || typeof value.brand !== 'string'
+    || (value.creationSource !== undefined && value.creationSource !== 'image' && value.creationSource !== 'text')
     || (value.status !== 'draft' && value.status !== 'completed')
     || typeof value.isFavorite !== 'boolean'
     || typeof value.createdAt !== 'string'
@@ -334,6 +404,8 @@ function parseWorkSummary(value: unknown): CloudWorkSummary {
     beadCount: value.beadCount,
     colorCount: value.colorCount,
     brand: value.brand,
+    generationMode: isGenerationMode(value.generationMode) ? value.generationMode : 'standard',
+    creationSource: value.creationSource === 'text' ? 'text' : 'image',
     status: value.status,
     isFavorite: value.isFavorite,
     createdAt: value.createdAt,
@@ -341,6 +413,7 @@ function parseWorkSummary(value: unknown): CloudWorkSummary {
   }
 }
 
+// 解析并校验持久化图纸：校验 schemaVersion=1、网格尺寸与 cells 长度一致、下标合法
 function parsePersistedPattern(value: Record<string, unknown>): PersistedPattern {
   if (value.schemaVersion !== 1
     || !isFiniteNumber(value.width)
@@ -358,6 +431,7 @@ function parsePersistedPattern(value: Record<string, unknown>): PersistedPattern
     return { code: item.code, color: item.color }
   })
   const cells = value.cells.map((cell) => {
+    // 每个格子下标必须是 -1（透明）或落在调色板范围内，否则数据损坏
     if (!Number.isInteger(cell) || (cell as number) < -1 || (cell as number) >= palette.length) {
       throw invalidResponse()
     }
@@ -365,6 +439,7 @@ function parsePersistedPattern(value: Record<string, unknown>): PersistedPattern
   })
   return {
     schemaVersion: 1,
+    generationMode: isGenerationMode(value.generationMode) ? value.generationMode : 'standard',
     width: value.width,
     height: value.height,
     settings: { colorLimit: value.settings.colorLimit, brand: value.settings.brand },

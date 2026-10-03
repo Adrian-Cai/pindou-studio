@@ -1,5 +1,6 @@
 {
   "miniprogramRoot": "miniprogram/",
+  "cloudfunctionRoot": "cloudfunctions/",
   "setting": {
     "swc": false,
     "disableSWC": true,
@@ -16,14 +17,27 @@
     },
     "useCompilerPlugins": [
       "typescript"
-    ],
-    "ignoreUploadUnusedFiles": false
+    ]
   },
   "compileType": "miniprogram",
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
-    "include": []
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "tests"
+      },
+      {
+        "type": "folder",
+        "value": "test-assets"
+      }
+    ],
+    "include": [
+      {
+        "type": "folder",
+        "value": "assets/samples"
+      }
+    ]
   },
   "appid": "wx78d89d6e64966b18",
   "projectname": "pindou_studio",

@@ -1,5 +1,9 @@
 name: CI
 
+# 官方 action 的主版本下限：checkout / setup-node 必须 >= v5。v4 的 action.yml 声明
+# using: node20，而 Runner 已默认 Node 24，会在 job 摘要里报「Node.js 20 is deprecated
+# ... forced to run on Node.js 24」；Node 20 二进制已从 Runner 镜像移除，继续留在 v4
+# 会由告警升级为失败。此处固定当前最新的 v7（v5 起即为 node24 运行时）。
 on:
   push:
     branches:
@@ -19,14 +23,17 @@ concurrency:
 jobs:
   miniprogram-static-check:
     name: Miniprogram Static Check
-    runs-on: ubuntu-latest
+    # runs-on 钉死 ubuntu-24.04 而非 ubuntu-latest：GitHub 从 2026-10-19 起把 ubuntu-latest
+    # 分批切到 Ubuntu 26.04（11-19 完成），内核 6.17→7.0、systemd 255→259、glibc 一并升级。
+    # 跟随浮动标签会让 CI 在某天无声换掉整个系统镜像；钉版本后可在自己选的时机验证再切 26.04。
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -41,9 +48,13 @@ jobs:
       - name: Pattern generation regression tests
         run: npm run test:pattern
 
+      # 本地图片资源守卫：防止包内 webp（真机不解码）与断链的 /assets 引用再次混入
+      - name: Miniprogram local image asset check
+        run: npm run test:assets
+
   server-static-check:
     name: Server Static Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     defaults:
       run:
@@ -51,10 +62,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -65,3 +76,27 @@ jobs:
 
       - name: TypeScript typecheck
         run: npm run typecheck
+
+      # axios 版本守卫：防止 overrides 被误删后 0.27.2 重新可安装（见用例注释）
+      - name: axios version guard
+        run: node --test test/dependency-axios-version.test.js
+
+      # axios FormData 深度守卫：CVE-2026-67313，恶意括号嵌套字段名不得冲垮调用栈
+      - name: axios formData depth guard
+        run: node --test test/dependency-axios-formdata-depth.test.js
+
+      # axios fetch 适配器 maxBodyLength 守卫：CVE-2026-67317，未知大小的流式请求体也必须受限
+      - name: axios fetch maxBodyLength guard
+        run: node --test test/dependency-axios-fetch-max-body-length.test.js
+
+      # axios 代理绕过守卫：CVE-2026-67315，NO_PROXY 覆盖回环地址时 0.0.0.0 目标不得走代理
+      - name: axios NO_PROXY guard
+        run: node --test test/dependency-axios-noproxy.test.js
+
+      # axios HTTP/2 流式上传守卫：CVE-2026-67318，httpVersion: 2 下 maxBodyLength 必须生效
+      - name: axios http2 maxBodyLength guard
+        run: node --test test/dependency-axios-maxbodylength-http2.test.js
+
+      # tslib 版本/许可证守卫：BSD-ZERO 0BSD 合规项，依赖树必须收敛到 tslib@2.8.1
+      - name: tslib 0BSD license guard
+        run: node --test test/dependency-tslib-license.test.js

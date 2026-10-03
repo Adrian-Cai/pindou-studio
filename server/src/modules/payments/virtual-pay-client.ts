@@ -1,0 +1,462 @@
+/**
+ * 小程序虚拟支付客户端：构造支付参数、计算双签名、调用 B 端服务端接口。
+ *
+ * 职责：只封装虚拟支付的密码学与 HTTP 通信，不涉及订单表与额度到账（那些在 payment-service）。
+ * 调用方：payments/payment-service（下单签名、发货前查单验真）。
+ *
+ * 与 wechat-pay-client 的关系：两者是**互补而非替代**。
+ * wechat-pay-client 走商户号 + APIv3 证书（适合实物/服务），本文件走 OfferID + AppKey
+ * （官方要求虚拟商品必须用它，且是 iOS 端唯一合法通道）。
+ *
+ * 关键点：
+ * - paySig 消息体必须与实际参与签名的 signData 字符串**逐字节一致**，键顺序敏感；
+ * - signature 用用户 session_key 签，session_key 过期会直接导致 -15007，需引导用户重新登录；
+ * - 发货推送 xpay_goods_deliver_notify **没有密码学签名**，因此发货前必须调 query_order
+ *   反向验真，不能凭推送内容就发放权益；
+ * - query_order 的 access_token 与 pay_sig 都在 **query string** 上，请求体只有
+ *   openid / env / order_id —— 缺 access_token 会稳定返回 41001，把 pay_sig 塞进请求体
+ *   同样不会生效（详见 queryOrder 的注释）；
+ * - AppKey 区分沙箱/现网，env=0 用现网、env=1 用沙箱，生产环境固定 env=0。
+ */
+import { createHmac } from "node:crypto";
+import { AppError } from "../../shared/app-error";
+import type { VirtualPayConfig } from "../../config/env";
+
+/** 道具直购：官方文档规定该 mode 下 productId 与 goodsPrice 必填。 */
+export const GOODS_MODE = "short_series_goods";
+/** 基础库拉起支付的固定 uri；参与 paySig 计算的字符串前缀。 */
+const CLIENT_SIGN_URI = "requestVirtualPayment";
+/** B 端查单接口路径，同时作为该接口 paySig 的 uri。 */
+const QUERY_ORDER_URI = "/xpay/query_order";
+/** access_token 换取接口路径（client_credential 模式，有效期 7200 秒）。 */
+const ACCESS_TOKEN_URI = "/cgi-bin/token";
+/**
+ * access_token 刷新/失效类错误码：收到后必须**换 token 重试一次**再判定失败。
+ *
+ * 与内容安全模块（content-security/wechat-client）保持同一集合：这类码不代表「没付款」，
+ * 直接当失败会把一次可自愈的调用打成告警，用户侧表现就是迟迟不到账。
+ */
+const ACCESS_TOKEN_ERROR_CODES = new Set([40001, 40014, 42001, 42007, 42009]);
+
+/** 服务端下单返回给小程序端的完整支付参数。 */
+export interface VirtualPaymentPayload {
+  /** 已序列化完毕的 signData：必须原样透传给 wx.requestVirtualPayment，不得重新 stringify。 */
+  readonly signData: string;
+  readonly paySig: string;
+  readonly signature: string;
+  readonly mode: typeof GOODS_MODE;
+}
+
+export interface CreateVirtualPaymentInput {
+  /**
+   * 业务订单号（8-32 位，数字/字母/_ - | * @，不以 _ 开头）。
+   *
+   * **不是订单号，也不得由订单号推导**：每个 outTradeNo 只绑定一个支付尝试，
+   * 永不覆盖；同一尝试仍未支付时复用该号，微信明确关闭后才签发新尝试号。
+   */
+  readonly outTradeNo: string;
+  /** MP 后台道具管理里已发布的道具 ID。 */
+  readonly productId: string;
+  /** 单价（分），必须与 MP 后台道具定价一致，否则报 -15013。 */
+  readonly goodsPriceFen: number;
+  readonly buyQuantity: number;
+  /** 发货回调原样回传的透传字段，这里放订单号便于对账。 */
+  readonly attach: string;
+  readonly sessionKey: string;
+}
+
+/** 发货推送 xpay_goods_deliver_notify 的关键字段（推送为明文，未经签名，不可作为放款依据）。 */
+export interface DeliveryNotification {
+  readonly openId: string;
+  readonly outTradeNo: string;
+  readonly env: number;
+  readonly mchOrderNo: string | null;
+  readonly transactionId: string | null;
+  readonly paidTimeSeconds: number | null;
+  readonly productId: string | null;
+  readonly quantity: number | null;
+  /** 实付金额（分），发货前需与订单快照比对。 */
+  readonly actualPriceFen: number | null;
+  readonly attach: string | null;
+}
+
+/**
+ * 退款推送 xpay_refund_notify 的关键字段。
+ *
+ * 存在意义：退款**不由我们决定是否发生**。iOS 上开发者根本无法主动发起退款
+ * （官方：Apple 支付不支持开发者主动向用户发起退款），用户在 App Store 自助申请、
+ * Apple 自行审批；安卓/鸿蒙/Windows 走微信支付，商户可主动退、用户也能走客诉渠道。
+ * 两条路径退成了都会推这个事件，不接就等于「钱退了、虚拟商品还留在用户手里」。
+ */
+export interface RefundNotification {
+  readonly openId: string;
+  /** 退款单对应支付单的**商户单号**，即我们下单时的 outTradeNo。 */
+  readonly mchOrderId: string | null;
+  /**
+   * iOS 退款通知会附带下单时的 attach（我们填的是订单号）。
+   * 作为定位订单的兜底：个别渠道不回传商户单号时还能靠它找到订单。
+   */
+  readonly attach: string | null;
+  readonly wxRefundId: string | null;
+  /** 退款金额（分）。可能小于订单金额（部分退款），只用于记录与核对，不作为扣回依据。 */
+  readonly refundFeeFen: number | null;
+  /** 退款结果：0 为成功，非 0 为失败（失败时不应扣回任何额度）。 */
+  readonly retCode: number | null;
+  readonly retMsg: string | null;
+  readonly refundSuccTimestamp: number | null;
+}
+
+/** iOS 退款问询 xpay_subscribe_ios_refund_query_notify 的字段。 */
+export interface IosRefundQueryNotification {
+  readonly refundTimeSeconds: number | null;
+  /** Apple 支付票据号。 */
+  readonly channelBill: string | null;
+  readonly productId: string | null;
+  readonly count: number | null;
+  readonly refundRequestReason: string | null;
+  /** 平台侧的发货状态：0 未发货 / 1 已发货 / 2 发货中。仅作参考，判定以我方订单为准。 */
+  readonly provideStatus: number | null;
+  /** 退款对应的支付订单号。 */
+  readonly payOrderId: string | null;
+}
+
+/**
+ * iOS 退款问询的应答。
+ *
+ * 官方：Apple 会**重复三次**发起问询；连续 3 次、3 秒内均未应答，平台会向 Apple 返回
+ * 「不确定」，退款决定权完全交给 Apple。因此这里必须快速应答，
+ * 且 evidence 是必填项（用于退款审计）—— 空着等于放弃了举证机会。
+ */
+export interface IosRefundQueryAnswer {
+  /** 0 放过（建议退款）；1 拦截（拒绝退款）。 */
+  readonly resultCode: 0 | 1;
+  readonly resultInfo: string;
+  readonly evidence: string;
+}
+
+/** query_order 的标准化事实；缺失或无法识别的状态必须保留为 UNKNOWN。 */
+export type VirtualOrderState = "PAID" | "UNPAID" | "CLOSED" | "REFUNDED" | "UNKNOWN";
+
+export interface QueriedVirtualOrder {
+  readonly state: VirtualOrderState;
+  /** 兼容已有调用方；只有 state=PAID 时为 true。 */
+  readonly paid: boolean;
+  readonly mchOrderNo: string | null;
+  readonly transactionId: string | null;
+  readonly paidTimeSeconds: number | null;
+  readonly actualPriceFen: number | null;
+}
+
+/** 虚拟支付网关抽象：未配置时由 UnavailableVirtualPayGateway 顶上，避免启动期就崩。 */
+export interface VirtualPayGateway {
+  readonly configured: boolean;
+  readonly offerId: string;
+  createPayment(input: CreateVirtualPaymentInput): VirtualPaymentPayload;
+  /** @param outTradeNo 下单时签发的商户单号，**不是**订单号。 */
+  queryOrder(input: { openid: string; outTradeNo: string }): Promise<QueriedVirtualOrder>;
+}
+
+interface ClientConfig {
+  readonly offerId: string;
+  readonly appKey: string;
+  readonly appId: string;
+  /** 小程序 AppSecret，仅用于换取 query_order 所需的 access_token。 */
+  readonly appSecret: string;
+  readonly timeoutMs: number;
+  readonly apiBaseUrl: string;
+}
+
+function unavailable(): AppError {
+  return new AppError(503, "VIRTUAL_PAYMENT_NOT_CONFIGURED", "虚拟支付尚未完成服务端配置");
+}
+
+export class UnavailableVirtualPayGateway implements VirtualPayGateway {
+  public readonly configured = false;
+  public readonly offerId = "";
+
+  public createPayment(): never {
+    throw unavailable();
+  }
+
+  public async queryOrder(): Promise<never> {
+    throw unavailable();
+  }
+}
+
+/**
+ * signData 的字段顺序**必须固定**，且其序列化结果同时用于两处：
+ * ① 原样下发给客户端；② 作为 paySig / signature 的签名输入。
+ *
+ * 单独抽成函数就是为了防止第二份实现：一旦有人用不同顺序或不同空格重新 stringify，
+ * 客户端 paySig 校验必然失败，而这类差异在本地测试里几乎不可复现。
+ */
+function buildSignData(input: CreateVirtualPaymentInput, offerId: string): string {
+  return JSON.stringify({
+    offerId,
+    buyQuantity: input.buyQuantity,
+    // 生产环境固定现网：沙箱（1）在真机预览下会被 PAYMENT_ILLEGAL_IN_SANDBOX 拦截
+    env: 0,
+    currencyType: "CNY",
+    productId: input.productId,
+    goodsPrice: input.goodsPriceFen,
+    outTradeNo: input.outTradeNo,
+    attach: input.attach,
+  });
+}
+
+/** 支付签名：HMAC-SHA256(appKey, uri + "&" + body)，结果为小写 hex。 */
+function signPay(uri: string, body: string, appKey: string): string {
+  return createHmac("sha256", appKey).update(`${uri}&${body}`, "utf8").digest("hex");
+}
+
+/** 用户态签名：HMAC-SHA256(sessionKey, body)，结果为小写 hex。 */
+function signUser(body: string, sessionKey: string): string {
+  return createHmac("sha256", sessionKey).update(body, "utf8").digest("hex");
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
+}
+
+function integerOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isSafeInteger(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed)) return parsed;
+  }
+  return null;
+}
+
+/**
+ * query_order 返回体里 `order.status` 的已支付取值（官方枚举）。
+ *
+ * 0 初始化 / 1 已创建（未支付）/ 2 已支付待发货 / 3 发货中 / 4 已发货 /
+ * 5 已退款 / 6 已关闭 / 7 退款失败 / 8 用户退款完成。
+ *
+ * 取 2/3/4/7：前三个是「钱到位了」，7 是退款失败 —— 钱还在我们手上、商品也确实给了，
+ * 同样算已支付（后续若真的退成，由退款推送扣回额度）。
+ * 5/8 属于已退款、6 已关闭、1 只是建单成功，一律不算。
+ */
+const PAID_STATUS_SET = new Set([2, 3, 4, 7]);
+
+/** 真实对接虚拟支付的网关实现。 */
+export class OfficialVirtualPayGateway implements VirtualPayGateway {
+  public readonly configured = true;
+  public readonly offerId: string;
+
+  public constructor(
+    private readonly config: ClientConfig,
+    private readonly fetchImplementation: typeof fetch = fetch,
+  ) {
+    this.offerId = config.offerId;
+  }
+
+  /**
+   * 生成拉起 wx.requestVirtualPayment 所需的全部参数。
+   *
+   * @throws VIRTUAL_PAYMENT_SESSION_EXPIRED session_key 缺失（对应微信 -15007）
+   */
+  public createPayment(input: CreateVirtualPaymentInput): VirtualPaymentPayload {
+    if (!input.sessionKey) {
+      throw new AppError(409, "VIRTUAL_PAYMENT_SESSION_EXPIRED", "登录状态已失效，请重新登录后支付");
+    }
+    const signData = buildSignData(input, this.config.offerId);
+    return {
+      signData,
+      paySig: signPay(CLIENT_SIGN_URI, signData, this.config.appKey),
+      signature: signUser(signData, input.sessionKey),
+      mode: GOODS_MODE,
+    };
+  }
+
+  private cachedToken: { readonly value: string; readonly expiresAt: number } | null = null;
+  private tokenTask: Promise<string> | null = null;
+
+  /**
+   * 主动查单（/xpay/query_order）：发货前验真的**唯一可信来源**。
+   *
+   * 请求形状必须严格按官方口径，三处错一处就拿不到结果：
+   * ① **`access_token` 与 `pay_sig` 都在 query string 上**，不是请求体字段。
+   *    没有 access_token 时接口稳定返回 `errcode 41001`（缺少 access_token），
+   *    这会让**所有**发货验真失败 —— 用户付了钱、推送也到了，权益却永远发不出去；
+   * ② 请求体只有 `openid` / `env` / `order_id`（注意参数名是 order_id 不是 out_trade_no）；
+   * ③ pay_sig = HMAC-SHA256(appKey, "/xpay/query_order&" + 请求体原文)，
+   *    签名输入必须与真正发出的请求体**逐字节一致**，uri 不带域名。
+   *
+   * @returns paid=false 表示尚未确认支付成功，调用方一律不得发放权益
+   */
+  public async queryOrder(input: {
+    openid: string;
+    outTradeNo: string;
+  }): Promise<QueriedVirtualOrder> {
+    const body = JSON.stringify({
+      openid: input.openid,
+      env: 0,
+      order_id: input.outTradeNo,
+    });
+    const paySig = signPay(QUERY_ORDER_URI, body, this.config.appKey);
+
+    let record = await this.requestQueryOrder(body, await this.accessToken(), paySig);
+    if (isAccessTokenError(record)) {
+      // token 类错误不是「没付款」：换一个 token 重试一次，避免把可自愈的调用打成告警
+      this.cachedToken = null;
+      record = await this.requestQueryOrder(body, await this.accessToken(), paySig);
+    }
+    const errCode = integerOrNull(record.errcode) ?? integerOrNull(record.errCode);
+    if (errCode !== null && errCode !== 0) {
+      throw new AppError(502, "VIRTUAL_PAYMENT_PROVIDER_ERROR", `虚拟支付订单查询失败（${errCode}）`);
+    }
+    return parseQueriedOrder(record);
+  }
+
+  /**
+   * 发一次查单请求。
+   *
+   * token 失效时的重试只发生在调用方（queryOrder）这一层，这里不做重试：
+   * 重试需要重新签名并换 token，混进来会把「网络失败」与「token 失效」两种结局搅在一起。
+   */
+  private async requestQueryOrder(
+    body: string,
+    accessToken: string,
+    paySig: string,
+  ): Promise<Record<string, unknown>> {
+    const query = new URLSearchParams({ access_token: accessToken, pay_sig: paySig });
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(
+        `${this.config.apiBaseUrl}${QUERY_ORDER_URI}?${query.toString()}`,
+        {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body,
+          signal: AbortSignal.timeout(this.config.timeoutMs),
+        },
+      );
+    } catch {
+      throw new AppError(502, "VIRTUAL_PAYMENT_PROVIDER_UNAVAILABLE", "虚拟支付服务暂时不可用");
+    }
+    if (!response.ok) {
+      throw new AppError(502, "VIRTUAL_PAYMENT_PROVIDER_ERROR", "虚拟支付订单查询失败");
+    }
+    return parseResponseRecord(response);
+  }
+
+  /**
+   * 换取 access_token（带进程内缓存与并发去重）。
+   *
+   * 提前 5 分钟过期：token 有效期 7200 秒，等到真正过期再刷，
+   * 会在「正在发货的那一秒」刚好撞上失效，平白多一次重试。
+   */
+  private async accessToken(): Promise<string> {
+    if (this.cachedToken && this.cachedToken.expiresAt > Date.now()) return this.cachedToken.value;
+    if (this.tokenTask) return this.tokenTask;
+    const query = new URLSearchParams({
+      grant_type: "client_credential",
+      appid: this.config.appId,
+      secret: this.config.appSecret,
+    });
+    this.tokenTask = this.requestJson(`${this.config.apiBaseUrl}${ACCESS_TOKEN_URI}?${query.toString()}`, {
+      method: "GET",
+      headers: { accept: "application/json" },
+    }).then((payload) => {
+      const value = typeof payload.access_token === "string" ? payload.access_token : "";
+      const expiresIn = integerOrNull(payload.expires_in) ?? 0;
+      if (!value || expiresIn <= 0) {
+        throw new AppError(502, "VIRTUAL_PAYMENT_PROVIDER_ERROR", "虚拟支付访问令牌获取失败");
+      }
+      this.cachedToken = { value, expiresAt: Date.now() + Math.max(60, expiresIn - 300) * 1_000 };
+      return value;
+    }).finally(() => { this.tokenTask = null; });
+    return this.tokenTask;
+  }
+
+  private async requestJson(url: string, init: RequestInit): Promise<Record<string, unknown>> {
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(url, {
+        ...init,
+        signal: AbortSignal.timeout(this.config.timeoutMs),
+      });
+    } catch {
+      throw new AppError(502, "VIRTUAL_PAYMENT_PROVIDER_UNAVAILABLE", "虚拟支付服务暂时不可用");
+    }
+    if (!response.ok) {
+      throw new AppError(502, "VIRTUAL_PAYMENT_PROVIDER_ERROR", "虚拟支付访问令牌获取失败");
+    }
+    return parseResponseRecord(response);
+  }
+}
+
+/**
+ * 解析查单结果：订单信息在**返回体的 order 对象里**，不在顶层。
+ *
+ * 曾经按顶层 `pay_state` / `actual_price` 取，字段全都对不上官方返回体，
+ * 结果 paid 恒为 false —— fail-closed 的代价是「付了钱永远不发」。
+ * 这里同样坚持 fail-closed：order 缺失或 status 无法识别时不判已支付。
+ */
+function parseQueriedOrder(record: Record<string, unknown>): QueriedVirtualOrder {
+  const order = isRecord(record.order) ? record.order : {};
+  const status = integerOrNull(order.status);
+  const fee = integerOrNull(order.paid_fee) ?? integerOrNull(order.order_fee);
+  const state: VirtualOrderState = status !== null && PAID_STATUS_SET.has(status)
+    ? "PAID"
+    : status === 1
+      ? "UNPAID"
+      : status === 5 || status === 8
+        ? "REFUNDED"
+        : status === 6
+          ? "CLOSED"
+          : "UNKNOWN";
+  return {
+    state,
+    paid: state === "PAID",
+    mchOrderNo: stringOrNull(order.channel_order_id),
+    transactionId: stringOrNull(order.wxpay_order_id) ?? stringOrNull(order.wx_order_id),
+    paidTimeSeconds: integerOrNull(order.paid_time),
+    actualPriceFen: fee === null ? null : fee,
+  };
+}
+
+function isAccessTokenError(record: Record<string, unknown>): boolean {
+  const errCode = integerOrNull(record.errcode) ?? integerOrNull(record.errCode);
+  return errCode !== null && ACCESS_TOKEN_ERROR_CODES.has(errCode);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function parseResponseRecord(response: Response): Promise<Record<string, unknown>> {
+  try {
+    const payload: unknown = await response.json();
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+      return payload as Record<string, unknown>;
+    }
+  } catch {
+    throw new AppError(502, "VIRTUAL_PAYMENT_INVALID_RESPONSE", "虚拟支付返回了无效响应");
+  }
+  throw new AppError(502, "VIRTUAL_PAYMENT_INVALID_RESPONSE", "虚拟支付返回了无效响应");
+}
+
+/**
+ * 按配置创建虚拟支付网关。
+ *
+ * @param appSecret 单独传入而不是塞进 VirtualPayConfig：它属于小程序登录凭据（WECHAT_APP_SECRET），
+ *   与虚拟支付自身的 OfferID/AppKey 是两回事，混进支付配置会让「没配 AppKey」与
+ *   「没配 AppSecret」这两种完全不同的故障在启动时变成同一句报错。
+ */
+export function createVirtualPayGateway(
+  config: VirtualPayConfig,
+  appSecret: string,
+  fetchImplementation: typeof fetch = fetch,
+): VirtualPayGateway {
+  if (!config.enabled) return new UnavailableVirtualPayGateway();
+  return new OfficialVirtualPayGateway({
+    offerId: config.offerId,
+    appKey: config.appKey,
+    appId: config.appId,
+    appSecret,
+    timeoutMs: config.timeoutMs,
+    apiBaseUrl: config.apiBaseUrl,
+  }, fetchImplementation);
+}

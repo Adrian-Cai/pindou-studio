@@ -1,8 +1,0 @@
-.settings-page { padding-top: 16rpx; }
-.settings-group { overflow: hidden; border-radius: var(--radius-card-large); background: var(--color-surface); box-shadow: var(--shadow-card); }
-.settings-item { display: flex; height: 96rpx; align-items: center; padding: 0 32rpx; border-bottom: 1rpx solid var(--color-border); transition: var(--transition-press); }
-.settings-item--last { border-bottom: 0; }
-.settings-item:active { opacity: 0.72; }
-.settings-item__icon { width: 40rpx; height: 40rpx; flex-shrink: 0; margin-right: 20rpx; }
-.settings-item__title { flex: 1; font-size: 28rpx; }
-.settings-item__arrow { color: var(--color-text-secondary); font-size: 44rpx; font-weight: 300; }

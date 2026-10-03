@@ -1,0 +1,180 @@
+page {
+  --color-primary: #12b466;
+  --color-primary-pressed: #0f9f5b;
+  --color-primary-soft: #ecfaf3;
+  --color-bg: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-muted: #fafafa;
+  --color-text: #111111;
+  --color-text-secondary: #666666;
+  --color-text-tertiary: #999999;
+  --color-border: #eeeeee;
+  /* 工具选中态：由底部控制面板组件继承使用 */
+  --tool-active-bg: #F1ECFF;
+  --tool-active-accent: #6F5BFF;
+  --tool-active-border: #7C5CFF;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  page {
+    --color-primary: #39d98a;
+    --color-primary-pressed: #25bc73;
+    --color-primary-soft: #153827;
+    --color-bg: #101419;
+    --color-surface: #1a2028;
+    --color-surface-muted: #232b35;
+    --color-text: #f3f6fa;
+    --color-text-secondary: #b4bfcc;
+    --color-text-tertiary: #91a0ae;
+    --color-border: #35414d;
+    --tool-active-bg: #2d2450;
+    --tool-active-accent: #b09cff;
+    --tool-active-border: #927cff;
+  }
+}
+
+.editor {
+  display: flex;
+  height: 100vh;
+  flex-direction: column;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.editor__body {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.editor__content {
+  display: flex;
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  padding: 16rpx 16rpx calc(40rpx + env(safe-area-inset-bottom));
+}
+
+/* ─── 工作区（画布容器）────────────────────────────────────────── */
+
+.workspace {
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  border: 1rpx solid var(--color-border);
+  border-radius: 12rpx;
+  background: #f7f7f7;
+}
+
+.canvas-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 220ms ease-out;
+}
+
+.canvas-stage--ready {
+  opacity: 1;
+}
+
+.pattern-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #f7f7f7;
+}
+
+.canvas-loading-state {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  box-sizing: border-box;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx;
+  flex-direction: column;
+  background: var(--color-surface-muted);
+  text-align: center;
+}
+
+.canvas-loading-state__spinner {
+  width: 48rpx;
+  height: 48rpx;
+  border: 5rpx solid rgba(18, 180, 102, 0.18);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: editor-loading-spin 0.85s linear infinite;
+}
+
+.canvas-loading-state__title {
+  margin-top: 24rpx;
+  color: var(--color-text);
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 44rpx;
+}
+
+.canvas-loading-state__description {
+  margin-top: 8rpx;
+  color: var(--color-text-secondary);
+  font-size: 24rpx;
+  line-height: 36rpx;
+}
+
+@keyframes editor-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-stage {
+    transition: none;
+  }
+
+  .canvas-loading-state__spinner {
+    animation: none;
+  }
+}
+
+/* 底部控制面板（缩放/信息/工具/调色板/操作）样式见 components/editor-control-panel */
+
+.export-pattern-canvas {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  pointer-events: none;
+}
+
+
+/* ─── 取色 Toast ──────────────────────────────────────────────── */
+
+.editor-toast {
+  position: fixed;
+  bottom: calc(180rpx + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%) translateY(16rpx);
+  z-index: 1000;
+  padding: 12rpx 32rpx;
+  border-radius: 999rpx;
+  background: rgba(30, 30, 30, 0.82);
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 500;
+  line-height: 40rpx;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+
+.editor-toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

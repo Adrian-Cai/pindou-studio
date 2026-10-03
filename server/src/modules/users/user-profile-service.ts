@@ -1,3 +1,14 @@
+/**
+ * 用户资料服务：个人资料读取、昵称/头像更新、隐私偏好、注销账号。
+ *
+ * 职责：围绕 pindou_users 的资料与统计；额度只做「读」（发放与扣减在 quota / payments / downloads）。
+ * 调用方：http 路由层的 /api/me、/api/me/privacy、/api/me/avatar、/api/me/delete。
+ * 关键点：注销是软删除 + 级联软删除（会话吊销、作品、收藏、文件资产），并把 openid 一并清空，
+ *         保证同一微信号可以重新注册；
+ *         云存储文件在数据库事务提交之后才清理，且单个文件失败只记日志不回滚，避免残留阻塞注销；
+ *         隐私项 localOnly 与 cloudSync 互斥，任一置 true 会把另一个置 false；
+ *         统计计数与额度查询并行发起，减少一次往返。
+ */
 import type { Pool, QueryResultRow } from "pg";
 import type { ServerConfig } from "../../config/env";
 import type { AiFileStorage } from "../files/ai-file-storage";
@@ -5,6 +16,7 @@ import type { CoverStorage } from "../files/cover-storage";
 import { unauthorized } from "../../shared/app-error";
 import { nextShanghaiMidnight, shanghaiDate } from "../../shared/shanghai-time";
 import { rollbackTransaction } from "../../shared/transaction";
+import { availableQuota, readQuota } from "../quota/quota-ledger";
 import type { AvatarStorage } from "./avatar-storage";
 
 interface ProfileRow extends QueryResultRow {
@@ -27,11 +39,6 @@ interface UserRow extends QueryResultRow {
   readonly nickname: string | null;
   readonly avatar_url: string | null;
   readonly created_at: Date;
-}
-
-interface QuotaRow extends QueryResultRow {
-  readonly used_today: string;
-  readonly purchased: string;
 }
 
 interface DeletedFileAssetRow extends QueryResultRow {
@@ -63,6 +70,13 @@ export interface CurrentUserResponse {
     readonly purchased: number;
     readonly remaining: number;
     readonly resetsAt: string;
+    readonly aiGeneration: {
+      readonly dailyFree: number;
+      readonly usedToday: number;
+      readonly purchased: number;
+      readonly remaining: number;
+      readonly resetsAt: string;
+    };
   };
   readonly privacy: PrivacyPreferences;
 }
@@ -94,9 +108,8 @@ export interface UserProfileReader {
 
 export interface UserProfileWriter {
   updateNickname(userId: string, nickname: string): Promise<CurrentUser>;
-  updateProfileWithAvatar(
+  updateAvatar(
     userId: string,
-    nickname: string,
     avatarUrl: string,
   ): Promise<AvatarUpdateResult>;
   updatePrivacyPreferences(userId: string, patch: PrivacyPreferencesPatch): Promise<PrivacyPreferences>;
@@ -110,6 +123,7 @@ function nonNegativeInteger(value: string): number {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
+/** 隐私偏好默认值：默认仅本地存储、不云同步，允许服务通知、不做个性化推荐。 */
 const DEFAULT_PRIVACY_PREFERENCES = {
   localOnly: true,
   cloudSync: false,
@@ -146,7 +160,7 @@ export class PostgresUserProfileService implements UserProfileService {
 
   public async getCurrentUser(userId: string): Promise<CurrentUserResponse> {
     const currentTime = this.now();
-    const [profileResult, quotaResult] = await Promise.all([
+    const [profileResult, quota, aiQuota] = await Promise.all([
       this.pool.query<ProfileRow>(
         `SELECT users.id,
                 users.nickname,
@@ -175,30 +189,12 @@ export class PostgresUserProfileService implements UserProfileService {
           LIMIT 1`,
         [userId],
       ),
-      this.pool.query<QuotaRow>(
-        `SELECT COALESCE(
-                  -SUM(amount) FILTER (
-                    WHERE quota_kind = 'standard_download'
-                      AND bucket = 'daily_free' AND quota_date = $2::date AND amount < 0
-                  ),
-                  0
-                )::text AS used_today,
-                  COALESCE(SUM(amount) FILTER (
-                    WHERE quota_kind = 'standard_download' AND bucket = 'purchased'
-                  ), 0)::text AS purchased
-           FROM pindou_quota_transactions
-          WHERE user_id = $1`,
-        [userId, shanghaiDate(currentTime)],
-      ),
+      readQuota(this.pool, userId, "standard_download", shanghaiDate(currentTime), this.quotaConfig.dailyStandardDownloads),
+      readQuota(this.pool, userId, "ai_generation", shanghaiDate(currentTime), this.quotaConfig.dailyAiGenerations),
     ]);
 
     const profile = profileResult.rows[0];
     if (!profile) throw unauthorized("用户不存在或已失效");
-    const quota = quotaResult.rows[0];
-    const usedToday = nonNegativeInteger(quota?.used_today ?? "0");
-    const purchased = nonNegativeInteger(quota?.purchased ?? "0");
-    const dailyRemaining = Math.max(0, this.quotaConfig.dailyStandardDownloads - usedToday);
-
     return {
       user: {
         id: profile.id,
@@ -212,11 +208,18 @@ export class PostgresUserProfileService implements UserProfileService {
         downloadCount: nonNegativeInteger(profile.download_count),
       },
       quota: {
-        dailyFree: this.quotaConfig.dailyStandardDownloads,
-        usedToday,
-        purchased,
-        remaining: dailyRemaining + purchased,
+        dailyFree: quota.dailyFree,
+        usedToday: quota.usedToday,
+        purchased: quota.purchased,
+        remaining: availableQuota(quota),
         resetsAt: nextShanghaiMidnight(currentTime),
+        aiGeneration: {
+          dailyFree: aiQuota.dailyFree,
+          usedToday: aiQuota.usedToday,
+          purchased: aiQuota.purchased,
+          remaining: availableQuota(aiQuota),
+          resetsAt: nextShanghaiMidnight(currentTime),
+        },
       },
       privacy: mapPrivacy(profile),
     };
@@ -239,6 +242,10 @@ export class PostgresUserProfileService implements UserProfileService {
     return mapPrivacy(row);
   }
 
+  /**
+   * 局部更新隐私偏好。事务内先 FOR UPDATE 读当前值，未传的字段保持原值。
+   * localOnly 与 cloudSync 互斥：任一侧被显式置 true，另一侧强制置 false。
+   */
   public async updatePrivacyPreferences(
     userId: string,
     patch: PrivacyPreferencesPatch,
@@ -340,6 +347,7 @@ export class PostgresUserProfileService implements UserProfileService {
           WHERE user_id = $1`,
         [userId, now],
       );
+      await client.query("DELETE FROM pindou_text_image_generation_jobs WHERE user_id = $1", [userId]);
       const files = await client.query<DeletedFileAssetRow>(
         `UPDATE pindou_file_assets
             SET deleted_at = COALESCE(deleted_at, $2)
@@ -358,6 +366,7 @@ export class PostgresUserProfileService implements UserProfileService {
     await this.cleanupDeletedAssets(userId, avatarUrl, deletedAssets);
   }
 
+  /** 清理云存储上的头像、封面与 AI 输入输出文件；未注入 assetCleanup 依赖时整体跳过。 */
   private async cleanupDeletedAssets(
     userId: string,
     avatarUrl: string | null,
@@ -376,6 +385,7 @@ export class PostgresUserProfileService implements UserProfileService {
     }
   }
 
+  /** 单个文件删除：失败只记结构化日志，不向上抛，避免一个文件卡住整个注销流程。 */
   private async removeAsset(
     userId: string,
     fileType: string,
@@ -408,9 +418,9 @@ export class PostgresUserProfileService implements UserProfileService {
     return mapUser(user);
   }
 
-  public async updateProfileWithAvatar(
+  /** 仅替换头像，行锁保证并发替换时旧头像清理指向正确文件。 */
+  public async updateAvatar(
     userId: string,
-    nickname: string,
     avatarUrl: string,
   ): Promise<AvatarUpdateResult> {
     const result = await this.pool.query<UserRow & { readonly previous_avatar_url: string | null }>(
@@ -419,15 +429,14 @@ export class PostgresUserProfileService implements UserProfileService {
            FROM pindou_users
           WHERE id = $1 AND deleted_at IS NULL
           FOR UPDATE
-       ), updated AS (
-         UPDATE pindou_users
-            SET nickname = $2, avatar_url = $3, updated_at = $4
-          WHERE id = $1 AND deleted_at IS NULL
-      RETURNING id, nickname, avatar_url, created_at
        )
-       SELECT updated.*, previous.avatar_url AS previous_avatar_url
-         FROM updated, previous`,
-      [userId, nickname, avatarUrl, this.now()],
+       UPDATE pindou_users
+          SET avatar_url = $2, updated_at = $3
+         FROM previous
+        WHERE pindou_users.id = $1 AND deleted_at IS NULL
+       RETURNING pindou_users.id, nickname, pindou_users.avatar_url, created_at,
+                 previous.avatar_url AS previous_avatar_url`,
+      [userId, avatarUrl, this.now()],
     );
     const user = result.rows[0];
     if (!user) throw unauthorized("用户不存在或已失效");

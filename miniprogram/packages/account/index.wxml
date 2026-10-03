@@ -1,0 +1,64 @@
+<page-layout title="账号与登录" back>
+  <view class="subpage account-page">
+    <!-- ── 账号信息区域 ── -->
+    <view class="account-card">
+      <image class="account-card__avatar" src="{{avatarPath}}" mode="aspectFill" />
+      <view class="account-card__content">
+        <view class="account-card__name-row">
+          <text class="account-card__name">{{accountName}}</text>
+          <view class="account-card__badge">
+            <image class="account-card__badge-check" src="/assets/icons/iconsax/check.svg" mode="aspectFit" />
+            <text>已登录</text>
+          </view>
+        </view>
+        <text class="account-card__desc">微信已登录 · 云端数据已同步</text>
+      </view>
+
+      <!-- 拼豆品牌微装饰点阵 -->
+      <view class="account-card__bead-decor" aria-hidden="true">
+        <view class="bead-row">
+          <text class="bead-dot"></text><text class="bead-dot"></text>
+          <text class="bead-space"></text>
+          <text class="bead-dot"></text><text class="bead-dot"></text>
+        </view>
+        <view class="bead-row">
+          <text class="bead-dot"></text><text class="bead-dot"></text>
+          <text class="bead-dot"></text><text class="bead-dot"></text>
+          <text class="bead-dot"></text>
+        </view>
+        <view class="bead-row">
+          <text class="bead-dot"></text><text class="bead-dot"></text>
+          <text class="bead-dot"></text>
+        </view>
+        <view class="bead-row">
+          <text class="bead-dot"></text>
+        </view>
+      </view>
+    </view>
+
+    <!-- ── 资料管理区域 ── -->
+    <view class="account-section-title">资料管理</view>
+    <view class="account-group ui-card">
+      <view class="account-item" bindtap="openProfileEditor">
+        <image class="account-item__icon account-item__icon--avatar" src="/assets/icons/brand-avatar.svg" mode="aspectFit" />
+        <text class="account-item__title">编辑个人资料</text>
+        <image class="account-item__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      </view>
+      <view class="account-item account-item--last {{accountRefreshing ? 'account-item--disabled' : ''}}" bindtap="refreshAccountData">
+        <image class="account-item__icon {{accountRefreshing ? 'account-item__icon--spin' : ''}}" src="/assets/icons/login/refresh-cw.svg" mode="aspectFit" />
+        <text class="account-item__title">{{accountRefreshing ? '正在刷新…' : '刷新账号数据'}}</text>
+        <image class="account-item__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      </view>
+    </view>
+
+    <!-- ── 账号操作区域 ── -->
+    <view class="account-section-title">账号操作</view>
+    <view class="account-group ui-card">
+      <view class="account-item account-item--last account-item--danger" bindtap="confirmLogout">
+        <image class="account-item__icon" src="/assets/icons/profile-logout.svg" mode="aspectFit" />
+        <text class="account-item__title account-item__title--danger">退出登录</text>
+        <image class="account-item__arrow account-item__arrow--danger" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
+      </view>
+    </view>
+  </view>
+</page-layout>

@@ -1,8 +1,8 @@
 # 一起拼豆吧 · Ai 模式接入设计
 
-> 状态：预研设计，不代表当前已上线能力
+> 状态：CloudBase 混元 Provider 与 Prompt v3 已实现并设为新任务默认，待服务端部署、预发布环境和真机验收
 >
-> 当前标准模式继续使用本地 Standard Pattern EngineAi 模式作为独立上游图像处理能力接入，不替换现有 Pattern Schema
+> 当前标准模式继续使用本地 Standard Pattern Engine；Ai 模式作为独立上游图像处理能力接入，不替换现有 Pattern Schema
 
 ## 1. 目标
 
@@ -21,16 +21,16 @@ Ai 模式解决的问题不是“让模型直接输出最终拼豆格子”，�
 
 ## 2. 模型选择
 
-### 首版建议：Qwen Image 3.0 / 3.0 Pro
+### 当前代码默认模型：腾讯混元 Hy-Image-3.0
 
 适合原因：
 
-- 支持图像生成与图像编辑，可基于用户上传图做 image-to-image
 - 支持参考图片和指令控制，适合“保留主体、减少细节、加强轮廓、控制背景”等拼豆前处理
-- 国内云服务区域接入更适合微信小程序生产环境
-- 后端可以直接调用，不需要让小程序直连模型厂商
+- `generateImage` 云函数通过微信云函数环境内置的 `wx-server-sdk` 调用 `hunyuan-image`，模型 ID 为 `HY-Image-v3.0-I2I-ToB-v1.0.1`
+- 国内云服务接入更适合微信小程序生产环境
+- 服务端通过 `@cloudbase/node-sdk` 调用 `generateImage` 云函数，不需要让小程序直连模型厂商
 
-首版建议默认使用标准档模型，质量不够时再切 Pro，不建议一开始把高成本模型作为唯一模型
+新任务默认使用 Hy-Image-3.0，服务端固定 `revise={ value: false }`，减少不必要的 Prompt 改写等待；云函数使用品牌标识文案“小露拼豆”。
 
 ### Benchmark / 备用：OpenAI GPT-Image-2
 
@@ -42,9 +42,7 @@ Ai 模式解决的问题不是“让模型直接输出最终拼豆格子”，�
 
 ### 首版实现原则
 
-首版只有 Qwen 一个生产实现时，直接使用一个小的 `qwen-image-provider.ts` 模块即可，不提前定义单实现接口、Factory、Plugin Registry 或多层 Adapter
-
-只有第二个生产 Provider 真正接入时，再抽取统一 Provider 接口
+当前只有混元一个生产实现，直接使用一个小的 `hunyuan-image-provider.ts` 模块，不提前定义 Factory、Plugin Registry 或多层 Adapter。
 
 ## 3. AI Prompt 目标
 
@@ -63,11 +61,26 @@ AI 的输出应该针对后续 Pattern Engine，而不是追求摄影级细节
 
 用户首版不需要看到自由 Prompt 输入框产品只暴露少量可控参数，例如：
 
-- 风格：自然 / 卡通 / 极简
+- 风格：Q 版 / 自然 / 卡通 / 极简
 - 细节：低 / 中 / 高
 - 背景：保留 / 简化 / 去除
 
 服务端根据这些参数组装版本化 Prompt
+
+### 3.1 Prompt v3 约束
+
+当前生产模板版本为 `v3`，由服务端生成，客户端不能提交或覆盖 Prompt。模板包含：
+
+- 保留输入图片的主要主体、身份、姿态和核心构图；主体比例按所选风格处理
+- 减少细碎纹理、无关小物体和复杂噪声
+- 强化主体轮廓、明暗关系和主体与背景的色块对比
+- 根据 `kawaii`（独立 Q 版）、`natural`、`cartoon`、`minimal` 选择视觉风格
+- 根据 `low`、`medium`、`high` 控制细节保留程度
+- 根据 `keep`、`simplify`、`remove` 控制背景处理方式
+- 禁止生成拼豆网格、材料标记、施工图、边框、Logo、水印或额外文字
+- 要求输出完整 PNG，供 Standard Pattern Engine 继续处理
+
+Prompt 版本写入 `pindou_ai_generation_jobs.prompt_version`。修改模板必须升级版本，不回写历史任务。
 
 ## 4. 推荐架构
 
@@ -77,7 +90,7 @@ flowchart LR
     MP[微信小程序]
     API[Node API]
     JOB[AI Generation Service]
-    PROVIDER[Qwen Image Provider]
+    PROVIDER[Hunyuan Hy-Image-3.0 Provider]
     FS[文件存储]
     PG[(PostgreSQL)]
     ENGINE[Standard Pattern Engine V2]
@@ -110,7 +123,7 @@ flowchart LR
 - 后续切换异步模型时无需修改客户端业务协议
 - 用户退出页面后仍可以恢复任务状态
 
-小程序不应保持一个很长的 HTTP 请求等待生成完成
+小程序不应保持一个很长的 HTTP 请求等待生成完成。当前客户端首次进入页面立即查询，之后默认每 4 秒查询一次；连续网络失败时按 8 秒、15 秒、30 秒退避，页面隐藏或卸载时清理计时器。
 
 ## 6. 数据库改动
 
@@ -137,7 +150,7 @@ AI 输入图建议设置有限保留期，不建议永久保存所有原图
 | `user_id` | varchar(32) FK | 用户 |
 | `input_file_id` | varchar(32) FK | AI 输入文件 |
 | `output_file_id` | varchar(32) FK NULL | AI 生成结果 |
-| `provider` | varchar(30) | 例如 `qwen` |
+| `provider` | varchar(30) | 当前为 `hunyuan` |
 | `model` | varchar(80) | 实际模型 ID |
 | `status` | varchar(20) | queued / processing / succeeded / failed / canceled |
 | `prompt_version` | varchar(30) | Prompt 模板版本 |
@@ -241,9 +254,12 @@ GET /api/ai/generations/{id}
 {
   "id": "aij_xxx",
   "status": "succeeded",
-  "output": {
-    "fileId": "file_xxx",
-    "url": "https://..."
+  "inputFileId": "file_input_xxx",
+  "outputFile": {
+    "id": "file_output_xxx",
+    "url": "https://api.example.com/api/media/ai/ai_output_xxx.png",
+    "contentType": "image/png",
+    "size": 123456
   }
 }
 ```
@@ -254,9 +270,7 @@ GET /api/ai/generations/{id}
 {
   "id": "aij_xxx",
   "status": "failed",
-  "error": {
-    "code": "AI_GENERATION_FAILED"
-  }
+  "errorCode": "AI_PROVIDER_ERROR"
 }
 ```
 
@@ -288,6 +302,18 @@ AI 模式流程建议：
 → 进入编辑器
 ```
 
+小程序通过 `pindou-ai-generation-session-v1` 保存幂等键、任务 ID、输入文件 ID、原图临时路径、输出临时路径和首页 Pattern Settings。页面返回、切后台或请求丢失后，优先查询已有任务；输出已下载时优先复用本地文件。只有输出下载成功、本地 `createDraft()` 成功、当前草稿写入 AppStore 且成功跳转编辑器后才清理会话。
+
+创建请求失败使用同一幂等键重试；明确失败后重新生成时复用 `inputFileId` 但生成新的幂等键；下载失败只重试下载；本地转换失败只重试 `createDraft()`。这些重试都不会重复消耗 AI 次数。
+
+### 8.1 上线安全门槛
+
+- Hunyuan API Key 只在服务端环境变量中读取；客户端只获得本项目的任务状态和持久化媒体地址。
+- 输入和输出都执行服务端真实格式、大小、尺寸及像素数校验；输出地址必须使用 HTTPS，并由当前 Provider 的受信域名校验通过后以禁止跳转的方式下载。
+- AI 输入上传和任务创建按用户限流；输入、输出默认 24 小时过期，过期任务和孤立输入由定时清理任务软删除并物理清理。
+- AI 输入图片在上传阶段通过微信内容安全审核；混元输出不再经过本项目的微信二次审核，由混元服务商负责其生成结果审核。服务端继续执行输出地址、真实格式、大小、尺寸及像素数校验。
+- 客户端只收到稳定错误码；Provider 原始响应、内部堆栈和敏感配置只进入受控服务端日志，且当前实现日志只记录稳定错误码。
+
 这样编辑器、结果页、作品保存、Pattern Schema、材料清单和下载链路都不需要因为 AI 模式复制一套
 
 ## 9. 服务端模块建议
@@ -297,7 +323,7 @@ AI 模式流程建议：
 ```text
 server/src/modules/ai/
   ai-generation-service.ts
-  qwen-image-provider.ts
+  hunyuan-image-provider.ts
 ```
 
 首版不要新增：
@@ -343,7 +369,7 @@ server/src/modules/ai/
 
 ### Phase A：技术验证
 
-- 用 30–50 张典型图片测试 Qwen Image
+- 用 30–50 张典型图片测试 Hy-Image-3.0
 - 固定 2–3 个 Prompt 模板
 - 对比 Standard 原图直转与 AI 中间图再转的最终拼豆质量
 - 记录生成时间和单图成本
@@ -356,11 +382,13 @@ server/src/modules/ai/
 - 新增创建 / 查询任务 API
 - 不接支付
 
-### Phase C：小程序接入
+### Phase C：小程序接入（已实现，待环境验收）
 
 - 打通 AI 模式真实流程
 - AI 输出继续复用 Standard Pattern Engine 和现有编辑器
 - 加失败、重试、超时 UI
+- 小程序不接触 Provider、Model、Prompt 或 API Key
+- 任务页支持后台恢复、下载复用和本地转换重试
 
 ### Phase D：商业化
 

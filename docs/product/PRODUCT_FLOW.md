@@ -31,7 +31,7 @@
 
 | Tab | 页面 | 职责 |
 | --- | --- | --- |
-| 首页 | `pages/home/index` | 选择图片、生成模式和生成参数，开始新作品 |
+| 首页 | `pages/home/index` | 展示创作入口；从图片或想法进入创作页 |
 | 作品 | `pages/projects/index` | 查看、筛选、打开、编辑、重命名和删除作品 |
 | 我的 | `pages/profile/index` | 账号、统计、收藏、下载记录和设置入口 |
 
@@ -39,16 +39,21 @@
 
 ### 2.2 二级页面
 
-- `pages-sub/editor/index`：编辑拼豆草稿
-- `pages-sub/result/index`：查看作品结果并下载
-- `pages-sub/favorites/index`：收藏列表
-- `pages-sub/downloads/index`：下载记录
-- `pages-sub/recharge/index`：下载次数 / 额度相关展示
-- `pages-sub/payment-success/index`：支付成功展示页，当前支付闭环尚未正式接入
-- `pages-sub/help/index`：使用帮助
-- `pages-sub/feedback/index`：意见反馈
-- `pages-sub/privacy/index`：隐私设置
-- `pages-sub/about/index`：关于我们
+- `packages/editor/index`：编辑拼豆草稿
+- `pages/create/index`：选择图片或描述想法，设置生成方式与参数并开始创作
+- `packages/ai-generation/index`：AI 生成流程、任务恢复和失败重试
+- `packages/result/index`：查看作品结果并下载
+- `packages/account/favorites/index`：收藏列表
+- `packages/account/help/index`：使用帮助
+- `packages/account/feedback/index`：意见反馈
+- `packages/account/privacy/index`：隐私设置
+- `packages/account/about/index`：关于我们
+- `packages/account/settings/index`：帮助、反馈、隐私和关于入口
+- `packages/account/profile-edit/index`：编辑个人资料
+- `packages/payment/recharge/index`：购买 AI 生成次数
+- `packages/payment/orders/index`：当前用户的 AI 生成次数订单列表
+- `packages/payment/payment-success/index`：支付结果展示页，从服务端确认订单和 AI 额度
+- `packages/download/index`：下载记录
 
 ### 2.3 结果页不是四个独立页面
 
@@ -67,8 +72,10 @@
 
 ```text
 首页
-→ 选择“标准模式”
+→ 从图片开始
+→ `pages/create/index`
 → 选择图片
+→ 选择“标准模式”
 → 设置尺寸 / 颜色数
 → 开始生成
 → 生成 PatternDraft
@@ -81,7 +88,9 @@
 
 关键规则：
 
+- `generationMode` 统一为 `standard` 或 `ai`，并随 `PatternDraft`、作品和重新进入编辑器的状态保存恢复
 - 标准模式生成成功后先进入编辑器，不直接进入结果页
+- 标准模式只执行 Standard Pattern Engine，不检查或扣减 AI 额度，不调用 AI 服务
 - 编辑器中的修改必须持续写回当前 `PatternDraft`
 - 点击“保存并查看”时，必须先完成作品持久化，再进入结果页
 - 游客保存到本地；已登录用户默认保存或更新云端作品。仅网络错误时可靠落盘为当前账号的待同步作品，联网后自动补传；业务校验失败必须保留本地作品并明确提示。
@@ -89,18 +98,32 @@
 
 ### 3.2 Ai 模式
 
-Ai 模式当前只保留产品入口和说明，真实 AI 生成链路尚未上线
-
-当前行为：
+Ai 模式生成的是更适合拼豆化的中间图，最终网格仍由现有 Standard Pattern Engine 生成：
 
 ```text
-选择 Ai 模式
-→ 点击开始生成
-→ 明确提示“即将上线”
-→ 不执行标准模式作为伪 AI 结果
+首页
+→ 从图片开始
+→ `pages/create/index`
+→ 选择 Ai 模式
+→ 选择图片
+→ 图片安全检测
+→ 上传 ai_input
+→ 进入 AI 生成页，展示 AI 处理中状态（紫色加载卡片 + 禁用态编辑面板）
+→ AI 生成页创建任务并轮询任务状态
+→ 失败时同一页面原地切换为失败卡片（重新生成 / 返回首页），不跳转独立失败页
+→ 下载服务端持久化的 ai_output
+→ createDraft(aiOutputPath, settings)
+→ 写入当前草稿并在 AI 生成页原地展示结果
+→ 同页启用缩放、工具栏、颜色选择和保存操作
+→ 保存并查看
+→ 结果页
 ```
 
-在真实 AI 能力接入前，不得在产品流程、文案或数据中把 AI 生成描述成已完成能力
+页面可在切后台、返回首页后恢复查询；AI 完成前不能编辑、保存或把临时草稿当作作品，成功后在同一页面启用编辑面板，下载失败和本地转换失败只重试对应阶段，不重新创建 AI 任务。小程序不接触 Provider、Model、Prompt 或 API Key，也不把 AI 输出直接当作拼豆网格。
+
+AI 模式才允许检查 AI 额度、创建 AI 任务和扣减 AI 生成次数；额度不足返回 `USER_AI_QUOTA_EXHAUSTED` 并展示购买入口。标准模式不得进入这些分支。
+
+Ai 模式和文生图仅对已登录用户开放；游客必须先完成显式登录，内容安全检查使用的临时会话不代表用户已登录。
 
 ## 4. 已有作品流程
 
@@ -196,7 +219,8 @@ Ai 模式当前只保留产品入口和说明，真实 AI 生成链路尚未上�
 ├─ 收藏数量 → 收藏列表
 ├─ 下载数量 → 下载记录
 ├─ 账号区域 → 登录 / 账号 / 资料编辑
-├─ 下载次数 / 套餐 → 额度相关入口
+├─ AI 生成次数 / 套餐 → AI 额度相关入口
+├─ 我的订单 → AI 生成次数订单列表
 ├─ 使用帮助
 ├─ 意见反馈
 ├─ 隐私设置

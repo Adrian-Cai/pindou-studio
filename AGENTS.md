@@ -74,6 +74,8 @@
 
 所有微信小程序相关开发必须阅读 docs/frontend/MINI_PROGRAM_RULES.md，并考虑屏幕适配、安全区域、滚动体验、图片加载和弱网络
 
+必须遵守该文档的「7. 分包与主包依赖规范」：`miniprogram/packages/*` 均为分包，主包（`app.ts`、`pages/*`、`services/*`、`components/*`）禁止引用 `packages/` 下的模块或组件，跨分包共用逻辑必须上提到主包
+
 ### 微信小程序页面结构
 
 所有使用自定义导航栏的页面必须遵循统一的导航栏、安全区和滚动规范
@@ -142,3 +144,16 @@
 `代码修改完成 -> lint/test/build/typecheck -> 正常正确性审查 -> ponytail-review -> 修复审查问题 -> 必要时再次 ponytail-review -> 最终提交`
 
 如果当前 Agent/环境无法自动发现该 skill，必须直接读取 `.agents/skills/ponytail-review/SKILL.md` 并按其中规则人工执行，禁止因此跳过审查
+
+## 12. 提交信息规范
+
+提交信息必须使用统一前缀，详细规范见 docs/development/COMMIT_CONVENTION.md
+
+必须遵守：
+
+- 格式：`<type>(<scope>): <简体中文简述>`，标题一行且不加句号
+- type 只能取白名单内的值：feat / fix / refactor / perf / docs / chore / ci / test / release
+- scope 只能取白名单内的值：miniprogram / server / cloudfunctions / ai / works / payment / quota / auth / editor / result / account / ci / git / deps / plan / releases；选不出时可省略括号
+- 一个提交只做一件事
+- 禁止提交无前缀的信息（如「更新」「修复 bug」），禁止英文长句堆砌
+- 本仓库会自动提交并推送到 cnb / origin / wechat，禁止 rebase / force-push 改写已推送历史，确需改写必须先说明风险并取得确认

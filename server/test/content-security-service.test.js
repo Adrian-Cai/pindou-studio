@@ -29,8 +29,27 @@ function createState({ expired = [] } = {}) {
       if (sql.includes("FROM pindou_users")) {
         return { rows: [{ openid_ciphertext: encryptOpenid(OPENID, SECRET) }] };
       }
+      if (sql.includes("SELECT media_sha256") && sql.includes("WHERE id = $1")) {
+        const check = [...checks.values()].find((item) => item.id === values[0]);
+        return {
+          rows: check
+            && check.userId === values[1]
+            && (check.status === "pending" || check.status === "pass")
+            && check.mediaSha256
+            && check.expiresAt > values[2]
+            ? [{ media_sha256: check.mediaSha256 }]
+            : [],
+        };
+      }
       if (sql.includes("INSERT INTO pindou_content_security_checks")) {
-        checks.set(values[3] ?? values[0], { id: values[0], mediaObjectKey: values[7], status: values[4] });
+        checks.set(values[3] ?? values[0], {
+          id: values[0],
+          userId: values[1],
+          mediaObjectKey: values[7],
+          mediaSha256: values[8],
+          status: values[4],
+          expiresAt: values[10],
+        });
         return { rows: [] };
       }
       if (sql.includes("UPDATE pindou_content_security_checks")) {
@@ -45,8 +64,9 @@ function createState({ expired = [] } = {}) {
   const storage = {
     async save() {
       sequence += 1;
+      const objectKey = `content-security/security_${String(sequence).padStart(32, "0")}.png`;
       return {
-        objectKey: `content-security/security_${String(sequence).padStart(32, "0")}.png`,
+        objectKey,
         publicUrl: `https://api.example.com/api/content-security/media/${sequence}.png`,
         contentType: "image/png",
       };
@@ -148,6 +168,23 @@ test("develop media check skips async evidence and cleans passed media", async (
   assert.deepEqual(state.removed, ["content-security/security_00000000000000000000000000000001.png"]);
   assert.equal([...state.checks.values()][0].status, "pass");
   assert.equal([...state.checks.values()][0].mediaObjectKey, null);
+});
+
+test("passed media check can be reused only by its owner with identical bytes", async () => {
+  const state = createState();
+  const service = createService(state, createClient());
+  const result = await service.checkMedia(USER_ID, { buffer: PNG, filename: "source.png", contentType: "image/png" });
+  await service.handleCallback({ appid: "wx-test", Event: "wxa_media_check", trace_id: "trace-media", errcode: 0, result: { suggest: "pass", label: 100 } });
+
+  await service.assertMediaCheck(USER_ID, result.checkId, PNG);
+  await assert.rejects(
+    service.assertMediaCheck("usr_other", result.checkId, PNG),
+    (error) => error.code === "CONTENT_SECURITY_CHECK_INVALID",
+  );
+  await assert.rejects(
+    service.assertMediaCheck(USER_ID, result.checkId, Buffer.from("different")),
+    (error) => error.code === "CONTENT_SECURITY_CHECK_INVALID",
+  );
 });
 
 test("develop risky media check is rejected and cleaned without async submission", async () => {

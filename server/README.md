@@ -24,15 +24,21 @@
 node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
 ```
 
-服务在监听端口前会开启 `READ ONLY` 事务，检查数据库产品、版本、11 张表、字段、索引、外键、CHECK 约束和注释发现任何结构差异时会拒绝启动，不会自动修复数据库
+服务在监听端口前会开启 `READ ONLY` 事务，检查数据库产品、版本、14 张表、字段、索引、外键、CHECK 约束和注释发现任何结构差异时会拒绝启动，不会自动修复数据库
 
-已有数据库部署本版本前，先由 `pindou_*` 表 owner 执行以下迁移，再执行 `npm run db:inspect`：
+已有数据库部署本版本前，先由数据库工具或运维脚本使用 `pindou_*` 表 owner 按编号顺序执行 `sql/` 下的迁移脚本，再执行 `npm run db:inspect`。Jenkins 只负责部署 API，不连接数据库，也不会自动执行 SQL 迁移。`000_schema_migrations.sql` 会创建迁移记录表；如使用 `deploy/migrate.sh`，它会按文件编号和 SHA-256 校验值只执行未记录的迁移，已成功执行且文件未变化的迁移会跳过。**必须用表 owner 或超级用户执行**：迁移含 `ALTER TABLE` / `COMMENT ON` / `CREATE INDEX`，PostgreSQL 只允许 owner 改表，仅有表级 `GRANT` 会报 `ERROR: must be owner of table pindou_*`：
 
-```powershell
-psql "<由运维安全提供的迁移连接>" -v ON_ERROR_STOP=1 -f sql/006_favorites_soft_delete.sql
+```bash
+export DB_HOST="<API 实际使用的数据库地址>"
+export DB_PORT="5432"
+export DB_NAME="<数据库名>"
+export DB_USER="<表 owner 或超级用户>"
+export DB_PASSWORD="<数据库密码>"
+sh deploy/migrate.sh server/sql
+unset DB_PASSWORD
 ```
 
-迁移必须按编号顺序执行；`006_favorites_soft_delete.sql` 会回填历史收藏时间，增加收藏软删除字段与有效收藏时间索引。部署代码前必须先完成该迁移，否则结构校验会阻止服务启动。
+迁移连接必须是 **API 实际使用的那个库**（即 `config/api.env` 中 `DB_HOST` 指向的实例），迁移到别的库不会生效。手工执行时可先导出 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`，再运行 `sh deploy/migrate.sh server/sql`；使用数据库工具手工修改时，也要对准同一数据库并使用 owner 账号。`001` 增加双额度字段、AI 任务表和 AI 套餐并停用历史下载/无限会员套餐；`002` 增加 `palette` 下载类型；`003` 增加微信内容安全审核表；`004` 增加隐私偏好字段；`005` 允许注销账号后清空 OpenID；`006` 回填历史收藏时间并增加收藏软删除字段与有效收藏时间索引；`008` 增加订单用户时间索引；`009` 增加内容安全图片哈希以复用同图检测结果；`011` 下架 AI 精致生成 150 次套餐；`012` 增加 ¥0.10/5 次新人支付联调套餐；`013` 增加混元同步生成结果的临时输出地址字段；`018` 增加支付尝试、支付事件及订单幂等和过期字段。部署代码前必须先完成结构迁移，否则结构校验会阻止服务启动。
 
 健康检查：
 
@@ -76,7 +82,7 @@ Content-Type: application/json
 {"nickname":"拼豆玩家"}
 ```
 
-选择新头像时使用 `wx.uploadFile`，头像和昵称在同一次请求中更新：
+选择新头像时使用 `wx.uploadFile`，只更新头像；昵称使用独立的 `PUT /api/users/me`：
 
 ```http
 POST /api/users/me/avatar
@@ -84,7 +90,6 @@ Authorization: Bearer <token>
 Content-Type: multipart/form-data
 
 file=<JPG、PNG 或 WEBP，最大 2 MB>
-nickname=拼豆玩家
 ```
 
 头像保存在 `AVATAR_STORAGE_DIR`，公开读取地址为 `/api/media/avatars/<随机文件名>`生产环境应把该目录挂载到持久化磁盘，或将 `AvatarStorage` 替换为对象存储实现
@@ -108,7 +113,7 @@ type=cover
 
 收藏接口包括 `PATCH /api/works/:id/favorite` 和 `GET /api/favorites`，只允许操作当前登录用户自己的可用作品。收藏关系使用软删除；重复收藏或取消不会刷新时间，重新收藏会更新 `favoritedAt`，收藏列表按该字段倒序返回。
 
-`GET /api/quota/me` 从额度流水汇总当前用户额度，并按 `Asia/Shanghai` 自然日懒创建每日免费额度流水；数据库中的 `created_at` 仍使用 UTC 时间`GET /api/downloads` 只返回下载记录和作品标题快照，不返回文件 URL
+`GET /api/quota/me` 只读汇总当前用户额度，未发放时预览当日免费额度；实际操作在事务内按 `Asia/Shanghai` 自然日懒创建免费额度流水，已发放的金额以流水为准；数据库中的 `created_at` 仍使用 UTC 时间`GET /api/downloads` 只返回下载记录和作品标题快照，不返回文件 URL
 
 标准下载每日免费 9 次；AI 精致生成每日免费 3 次两者分别使用 `standard_download` 和 `ai_generation`，不会互相消耗
 
@@ -127,7 +132,7 @@ Content-Type: application/json
 
 ## 阶段 5 接口
 
-`GET /api/packages` 公开返回数据库中已启用的套餐创建支付订单需要登录和稳定的 `Idempotency-Key`，请求体只允许包含服务端套餐 ID：
+`GET /api/packages` 公开返回数据库中已启用的 AI 生成次数套餐；创建虚拟支付订单需要登录和稳定的 `Idempotency-Key`，请求体只允许包含服务端套餐 ID：
 
 ```http
 POST /api/payments/create
@@ -135,20 +140,29 @@ Authorization: Bearer <token>
 Idempotency-Key: <一次下单动作的稳定唯一键>
 Content-Type: application/json
 
-{"packageId":"starter"}
+{"packageId":"ai_generation_80"}
 ```
 
-服务端从 `pindou_packages` 读取价格和额度、写入订单快照，再调用微信支付 v3 JSAPI/小程序下单客户端只会收到 `wx.requestPayment` 所需字段，不会收到商户私钥、API v3 密钥、AppSecret 或签名原文
+服务端从 `pindou_packages` 读取价格和额度、写入 5 分钟有效的订单快照，并签发 `wx.requestVirtualPayment` 所需参数。支付事实由服务端查单核实后再发放额度；同一用户最多保留 5 个未完成订单，状态未知的订单继续占用名额。支付尝试和推送事件分别持久化，商户单号不会被覆盖。
 
-`POST /api/payments/notify` 仅使用微信支付请求头和原始请求体完成验签，不读取 Bearer token回调通过平台公钥验签并使用 API v3 密钥解密后，服务端再次校验商户号、AppID、订单号、金额、币种、付款人和支付状态；首次成功在同一事务内把订单改为 `paid` 并写一笔 `purchase_grant`，重复回调只确认成功
+订单页的两个动作走独立端点，都只接受登录用户且按服务端解析的用户 ID 校验归属（不属于本人时回答 404，与「订单不存在」同文案）：
 
-支付环境变量见 `.env.example`支付配置全部缺省时，套餐读取仍可用，创建支付与回调返回 `PAYMENT_NOT_CONFIGURED`；部分配置会被视为配置错误并阻止启动已有用户需要重新登录一次，以便服务端在 `openid_ciphertext` 中保存支付所需的加密身份
+- `POST /api/payments/:orderId/continue`：继续支付一笔待支付订单。不创建新订单、不带幂等键；先查微信再分流 —— 未关单沿用原商户单号重发参数，已关单且未过期签发新的支付尝试，已支付则补发权益并回答 `ORDER_ALREADY_PAID`，查询失败回答 `PAYMENT_STATUS_CONFIRMING` 且订单保留待支付。
+- `POST /api/payments/:orderId/cancel`：取消待支付订单。同样先查微信：已支付不许关单（照常发货），查询失败不关单，确认未支付才本地置 `closed`。虚拟支付没有商户侧关单接口，因此本地关单后若收到迟到的已支付推送，仍会验真并把订单修正回 `paid`。
+
+`POST /api/payments/virtual-notify` 处理小程序虚拟支付推送，必须配置 Token 并验签；加密模式使用 `msg_signature`。推送后仍查询微信事实再修改订单或额度。订单创建 5 分钟后，查单确认未支付或已关闭时会立即在本地关闭；查询失败或状态不明时保留待核实且不能继续支付当前订单。迟到推送经查单确认已支付后仍会补发权益。
+
+`POST /api/payments/notify` 只保留给普通微信支付旧通道的在途订单收尾。
+
+支付环境变量见 [`.env.example`](./.env.example) 和 [`WECHAT_PAYMENT_SETUP.md`](../docs/backend/operations/WECHAT_PAYMENT_SETUP.md)。支付配置全部缺省时，套餐读取仍可用，创建支付与回调返回 `PAYMENT_NOT_CONFIGURED`；部分配置会被视为配置错误并阻止启动。已有用户需要重新登录一次，以便服务端在 `openid_ciphertext` 中保存支付所需的加密身份。
 
 ## 阶段 6 接口
 
-上传 AI 输入图片时复用 `POST /api/files/upload` 并设置 `type=ai_input`随后使用 `Idempotency-Key` 调用 `POST /api/ai/generations`，请求体只包含 `inputFileId`、`style`、`detailLevel` 和 `backgroundMode`；用 `GET /api/ai/generations/:id` 轮询状态
+完整的字段定义、响应示例、状态流转、TokenHub 上游请求结构和本地联调步骤见 [`../docs/backend/AI_GENERATION_API.md`](../docs/backend/AI_GENERATION_API.md)。
 
-服务端调用千问图像 3.0 异步接口，持久化 Provider 任务 ID，并在输出图片下载、格式校验和文件资产落库成功后才扣除一笔 `ai_generation`Provider 失败、超时或无效输出不伪造成功，也不扣额度
+上传 AI 输入图片时复用 `POST /api/files/upload` 并设置 `type=ai_input`随后使用 `Idempotency-Key` 调用 `POST /api/ai/generations`，请求体只包含 `inputFileId`、`style`、`detailLevel` 和 `backgroundMode`；用 `GET /api/ai/generations/:id` 只读查询状态，任务由启动扫描及每 5 秒后台扫描独立推进
+
+新任务由服务端通过 CloudBase `generateImage` 云函数调用混元 `HY-Image-v3.0-I2I-ToB-v1.0.1`，云函数设置品牌标识文案“小露拼豆”。服务端持久化 Provider 请求 ID 和 CloudBase 文件引用，并在下载、格式校验和文件资产落库成功后才扣除一笔 `ai_generation`。切换前已创建的 TokenHub 与 CloudBase 混元任务按原 Provider 快照收尾；ToAPIs 凭据配置已移除，历史 ToAPIs 任务推进时会失败关闭。
 
 ## 可用命令
 
@@ -161,3 +175,6 @@ Content-Type: application/json
 项目暂未引入独立 lint 工具，以避免增加无必要依赖；`typecheck` 负责当前静态检查
 
 小程序 AppID、AppSecret、HTTPS API 地址和微信 request 合法域名配置见 `../docs/backend/operations/WECHAT_LOGIN_SETUP.md`
+
+
+查询与动作边界：`GET /api/orders` 只返回持久化订单状态，对账由已有支付回调及后台定时器执行；创建、继续支付和取消仍执行必要的微信核实。头像上传兼容旧请求中的 `nickname` 字段，但忽略它；旧头像清理失败不影响已提交的新头像。

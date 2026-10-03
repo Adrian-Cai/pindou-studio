@@ -1,36 +1,65 @@
 {
   "pages": [
     "pages/home/index",
+    "pages/create/index",
     "pages/projects/index",
     "pages/profile/index"
   ],
   "subPackages": [
     {
-      "root": "pages-sub",
+      "name": "editor",
+      "root": "packages/editor",
       "pages": [
-        "editor/index",
-        "result/index",
-        "downloads/index",
-        "favorites/index",
-        "help/index",
+        "index"
+      ]
+    },
+    {
+      "name": "ai-generation",
+      "root": "packages/ai-generation",
+      "pages": [
+        "index",
+        "text/index"
+      ]
+    },
+    {
+      "name": "result",
+      "root": "packages/result",
+      "pages": [
+        "index"
+      ]
+    },
+    {
+      "name": "account",
+      "root": "packages/account",
+      "pages": [
+        "index",
         "about/index",
-        "privacy/index",
-        "privacy-document/index",
+        "favorites/index",
         "feedback/index",
-        "recharge/index",
+        "help/index",
+        "privacy-document/index",
+        "privacy/index",
+        "profile-edit/index",
+        "settings/index"
+      ]
+    },
+    {
+      "name": "payment",
+      "root": "packages/payment",
+      "pages": [
+        "orders/index",
         "payment-success/index",
-        "settings/index",
-        "account/index",
-        "profile-edit/index"
+        "recharge/index"
+      ]
+    },
+    {
+      "name": "download",
+      "root": "packages/download",
+      "pages": [
+        "index"
       ]
     }
   ],
-  "preloadRule": {
-    "pages/profile/index": {
-      "network": "all",
-      "packages": ["pages-sub"]
-    }
-  },
   "window": {
     "navigationStyle": "custom",
     "backgroundColor": "#FFFFFF",

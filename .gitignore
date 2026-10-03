@@ -1,13 +1,42 @@
 node_modules/*
 miniprogram_npm/
 server/node_modules/
+cloudfunctions/**/node_modules/
 server/dist/
 server/.env
 server/data/
+.env*.local
 .DS_Store
 *.log
 project.private.config.json
 .pattern-test-build/
 
+# 临时脚本与其输出（一次性排查 / 扫描产物，勿提交）
+.tmp*
+*.tmp
+*-output.txt
+.run-tests-capture.js
+.test-out.txt
+.test-summary.txt
+.tsc-out.txt
+.work-sync-test-build/
+.ai-failure-test-build/
+
 docs/ui/*
 .agents/*
+
+*.codebuddy/
+*.lingma/
+*rules/
+*codebuddy-plugin/
+*.workbuddy/
+*.roo/
+*.payment-test-build/
+*mp-test-output.txt
+*.tmp-fill-*
+*.work-sync-test-build/
+*.auth-store-logout-test-build/
+
+# 编辑器与 AI 工具生成的本地配置 / 规则投射产物
+.mcp.json
+CODEBUDDY.md

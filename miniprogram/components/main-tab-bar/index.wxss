@@ -16,6 +16,8 @@
 
 .main-tab-bar__item {
   display: flex;
+  box-sizing: border-box;
+  height: 100%;
   min-width: 0;
   flex: 1;
   flex-direction: column;
@@ -34,9 +36,19 @@
 }
 
 .main-tab-bar__icon {
+  display: block;
+  flex: 0 0 auto;
   width: 44rpx;
   height: 44rpx;
   margin-bottom: 8rpx;
+}
+
+.main-tab-bar__label {
+  display: block;
+  flex: 0 0 auto;
+  line-height: 36rpx;
+  text-align: center;
+  white-space: nowrap;
 }
 
 @media (prefers-color-scheme: dark) {

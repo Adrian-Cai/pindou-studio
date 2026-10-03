@@ -18,7 +18,6 @@
 | 历史作品详情 | `projects/index.ts` L103，`favorites/index.ts` L88 |
 | 文件导出/下载 | `downloads/index.ts` L86 |
 | 云同步 | `privacy/index.ts` L19 |
-| 反馈提交 | `feedback/index.ts` L58 |
 | 微信支付 | `profile/index.ts` L73，`recharge/index.ts` L22 |
 
 ---
@@ -182,14 +181,14 @@ PatternDraft
 
 **用户操作：**
 - 点击用户卡片登录（toast"账号登录能力待接入"）
-- 查看今日下载额度
-- 点击"获取更多次数"→ 弹出套餐 Sheet
+- 查看 AI 今日剩余额度
+- 点击"购买 AI 生成次数"→ 弹出套餐 Sheet
 - 选择套餐 → 点击支付（toast"支付能力尚未接入"）
 - 导航到各子页面
 
 **当前数据来源：**  
 `appStore.getSnapshot()`（Storage）  
-套餐数据：`DOWNLOAD_PACKAGES`（**硬编码**）
+套餐数据：充值页和个人页调用 `/api/packages`，支付事实以服务端套餐接口为准
 
 **需要后端：**
 
@@ -246,14 +245,11 @@ PatternDraft
 ### 意见反馈（`pages/feedback/index`）
 
 **用户操作：**
-- 选择分类（功能建议/问题反馈/支付问题/体验吐槽）
-- 填写内容（至少 5 字）
-- 填写联系方式
-- 选择截图（最多 5 张，`wx.chooseMedia`）
-- 提交（toast"反馈接口尚未配置"）
+- 点击“联系客服”
+- 通过微信小程序客服会话发送问题描述和截图
 
 **需要后端：**  
-✅ 提交反馈 API + 截图上传
+不需要，小程序客服由微信平台承载
 
 ---
 
@@ -306,10 +302,10 @@ URL 参数：`packageLabel`、`amount`、`quota`（**前端直接传递，无验
 |-----|---------|-------------|---------|
 | `store/app-store.ts` | `wx.getStorageSync('pindou-app-state-v1')` 序列化全量状态 | `currentDraft`、`works[]`、`favoriteIds[]`、`downloadQuota`、`downloadRecords[]`、`privacyPreferences` | 登录后迁移到各对应云端 API；本地 Storage 只保留当前 draft 缓存 |
 | `services/image-service.ts` | `id: 'draft-' + Date.now()` | draft ID | 后端负责生成真实 ID |
-| `config/product.ts` | `DOWNLOAD_PACKAGES` 硬编码套餐 | 套餐价格/次数 | 建议后端下发，便于运营调价 |
-| `pages/profile/index.wxml` | 硬编码显示 `/ 3 次` | 每日免费额度上限 | 后端下发当日额度 |
+| `services/payment-service.ts` | 解析 `/api/packages` | AI 套餐价格/次数 | 服务端数据库为唯一商品事实 |
+| `pages/profile/index.wxml` | 读取 `quota.aiGeneration.dailyFree` | AI 每日免费额度上限 | 后端下发当日额度 |
 | `store/app-store.ts` L23 | `downloadQuota: 3` | 初始额度 | 改为登录后从服务端同步 |
-| `pages/payment-success/index.ts` | 从 URL params 读取 `quota` | 支付后额度变更 | 必须从服务端验证，禁止前端自传 |
+| `pages/payment-success/index.ts` | 重新读取 AI 额度接口 | 支付后额度变更 | 必须从服务端验证，禁止前端自传 |
 
 ---
 
@@ -427,7 +423,7 @@ DownloadRecord（前端已有类型）:
 
 ### UserQuota（下载额度）
 
-**代码来源：** `appStore.state.downloadQuota`（硬编码初始值 3），`profile/index.wxml` "/ 3 次"，`config/profile.ts` `DOWNLOAD_PACKAGES`
+**代码来源：** AI 额度读取用户资料中的 `quota.aiGeneration`，下载额度继续读取 `appStore.state.downloadQuota`；套餐展示读取 `/api/packages`，支付事实以服务端接口为准
 
 ```
 当前：本地整数，无重置逻辑，无扣减逻辑
@@ -446,17 +442,7 @@ DownloadRecord（前端已有类型）:
 
 ### Feedback（用户反馈）
 
-**代码来源：** `feedback/index.ts`，`config/profile.ts` `FEEDBACK_CATEGORIES`
-
-```
-Feedback:
-  category: 'feature' | 'bug' | 'payment' | 'experience'
-  content: string        // 至少 5 字
-  contact?: string       // 手机号或邮箱
-  images?: string[]      // 最多 5 张截图的 URL
-  submittedAt
-  userId?                // 若已登录则关联
-```
+意见反馈页面通过微信小程序客服能力打开客服会话。用户可以在微信客服会话中直接发送问题描述、联系方式和截图，反馈内容由微信平台客服能力承载，小露拼豆服务端不建立反馈数据模型。
 
 ---
 
@@ -470,7 +456,7 @@ Feedback:
 | P0 | GET | `/api/works` | 获取当前用户作品列表 | projects | `{ status?, query?, page? }` | `WorkItem[]` | ✅ |
 | P0 | GET | `/api/works/:id` | 获取作品详情 | projects, favorites, result | — | `WorkItem + cells + materials` | ✅ |
 | P0 | DELETE | `/api/works/:id` | 删除作品 | projects | — | — | ✅ |
-| P0 | POST | `/api/files/upload` | 上传图片/截图 | editor（封面图），feedback（截图） | 文件二进制 | `{ url: string }` | ✅ |
+| P0 | POST | `/api/files/upload` | 上传作品封面/预览图 | editor | 文件二进制 | `{ url: string }` | ✅ |
 | P0 | GET | `/api/quota/me` | 获取当前用户下载额度 | result, downloads, profile, recharge | — | `{ daily, usedToday, purchased, membershipType }` | ✅ |
 | P1 | PATCH | `/api/works/:id/favorite` | 收藏/取消收藏 | result, projects, favorites | `{ favorite: boolean }` | `{ isFavorite }` | ✅ |
 | P1 | GET | `/api/favorites` | 获取收藏列表 | favorites | `{ query?, page? }` | `WorkItem[]` | ✅ |
@@ -478,7 +464,6 @@ Feedback:
 | P1 | POST | `/api/downloads` | 新增下载记录 + 扣除额度 | result（下载按钮） | `{ workId, fileType }` | `{ downloadRecord, remainingQuota }` | ✅ |
 | P1 | POST | `/api/payments/create` | 创建支付订单 | profile, recharge | `{ packageId }` | `{ prepayId, ... }` (微信支付参数) | ✅ |
 | P1 | POST | `/api/payments/notify` | 微信支付回调 | 服务端回调 | 微信签名数据 | — | — |
-| P1 | POST | `/api/feedbacks` | 提交意见反馈 | feedback | `{ category, content, contact?, imageUrls? }` | `{ id }` | ⚠️ 选填 |
 | P2 | PATCH | `/api/works/:id` | 更新作品信息（如重命名） | projects（未来功能） | `{ title? }` | `WorkItem` | ✅ |
 | P2 | GET | `/api/files/download/:workId/:type` | 获取可下载文件的临时 URL | downloads（重新下载） | — | `{ url: string, expiresAt }` | ✅ |
 | P2 | GET | `/api/packages` | 获取套餐列表（后端下发） | profile, recharge | — | `Package[]` | — |
@@ -645,12 +630,11 @@ Response: 204 No Content
 
 上传文件可用于：
 - 作品封面图（editor 保存时上传 sourceImagePath → 获取云端 URL）
-- 反馈截图
 
 ```
 Request: multipart/form-data
   file: binary
-  type: 'cover' | 'feedback'
+  type: 'cover'
 
 Response:
 {
@@ -724,7 +708,7 @@ Response:
 ### POST `/api/payments/create`
 
 ```json
-Request: { "packageId": "starter" }
+Request: { "packageId": "ai_generation_80" }
 Response:
 {
   "orderId": "order_xxx",
@@ -736,21 +720,6 @@ Response:
   "paySign": "..."
 }
 ```
-
-### POST `/api/feedbacks`
-
-```json
-Request:
-{
-  "category": "bug",
-  "content": "反馈内容...",
-  "contact": "user@example.com",
-  "imageUrls": ["https://cdn.example.com/feedback/1.png"]
-}
-Response: { "id": "fb_xxx" }
-```
-
----
 
 ## 10. P2 API
 
@@ -857,19 +826,6 @@ Response: { "id": "fb_xxx" }
 
 ---
 
-### feedbacks 表
-
-```
-为什么需要：
-- 用户反馈持久化（当前完全丢失）
-
-字段：
-  id, user_id (可 null), category, content, contact, image_urls (JSON),
-  submitted_at
-```
-
----
-
 ## 12. 图片与文件存储需求
 
 | 文件类型 | 当前方案 | 建议方案 |
@@ -879,7 +835,6 @@ Response: { "id": "fb_xxx" }
 | 成品图（previewCanvas 导出） | `wx.canvasToTempFilePath` 临时文件 | 下载时生成/上传对象存储 |
 | 施工图（chartCanvas 导出） | 同上 | 同上 |
 | cells 数据（PatternCell[]） | 内存 + Storage JSON | 对象存储 JSON 文件，works 表存 `cells_url` |
-| 反馈截图 | wx 临时路径，从不上传 | 提交时上传对象存储 |
 
 **结论：**
 - 数据库不直接存图片二进制
@@ -972,7 +927,7 @@ GET  /api/generations/:taskId  → 轮询任务状态和结果
 | `profile/index.ts` showLoginNotice() | toast | `wx.login()` → `POST /api/auth/login` |
 | `profile/index.ts` purchase() | toast | `POST /api/payments/create` + 微信支付 |
 | `recharge/index.ts` purchase() | toast | 同上 |
-| `feedback/index.ts` submit() | 假成功弹窗 | `POST /api/feedbacks`（先上传截图） |
+| `feedback/index.wxml` 客服按钮 | 反馈表单与假成功弹窗（已移除） | 原生 `<button open-type="contact">` 打开微信小程序客服 |
 | `privacy/index.ts` changePreference('cloudSync') | toast | `PATCH /api/users/me/privacy` |
 | `downloads/index.ts` redownload() | toast | `GET /api/files/download/:workId/:type` |
 | `payment-success/index.ts` | URL params 决定额度 | 服务端支付回调验证后刷新 `GET /api/quota/me` |
@@ -1065,7 +1020,6 @@ POST /api/payments/notify    — 微信支付回调（HTTPS 必须）
 ### 阶段 6：增强体验
 
 ```
-POST   /api/feedbacks              — 提交反馈
 PATCH  /api/users/me/privacy       — 云同步隐私偏好
 PATCH  /api/works/:id              — 作品重命名
 DELETE /api/users/me               — 账号注销

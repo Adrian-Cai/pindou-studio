@@ -1,0 +1,111 @@
+<page-layout title="AI 生成" back show-main-nav selected-tab="{{selectedTab}}">
+  <view class="ai-generation-page">
+    <!--
+      单页面状态流转：排队 / 生成中 / 失败 / 完成都长在这一个页面里，
+      页面框架（中间主内容区 + 底部编辑面板）不变，
+      只按任务状态原地替换中间主内容卡片，不跳转任何独立失败页/成功页。
+    -->
+
+    <!-- ① 排队中：等待本地并发槽位 -->
+    <view wx:if="{{isQueued}}" class="ai-generation-state">
+      <view class="ai-generation-card">
+        <view class="ai-generation-card__eyebrow">已加入生成队列</view>
+        <view class="ai-generation-card__title">排队中</view>
+        <view class="ai-generation-card__hint">{{queuePosition > 1 ? '前方还有 ' + (queuePosition - 1) + ' 个任务，轮到它会自动开始' : '马上开始生成，可以返回首页继续操作'}}</view>
+        <view class="ai-generation-card__actions">
+          <button class="button-secondary ai-generation-card__action" bindtap="cancelTask">取消生成</button>
+          <button class="button-secondary ai-generation-card__action" bindtap="backHome">返回首页</button>
+        </view>
+      </view>
+      <editor-control-panel
+        ready="{{false}}"
+        width="{{panelWidth}}"
+        height="{{panelHeight}}"
+        color-limit="{{panelColorLimit}}"
+        bead-count="{{panelBeadCount}}"
+      />
+    </view>
+
+    <!-- ② 生成中：紫色加载卡片（进度 + 取消/返回），下方编辑面板全禁用 -->
+    <view wx:elif="{{isGenerating}}" class="ai-generation-state">
+      <generating-preview-card
+        title="AI 正在生成拼豆图"
+        subtitle="正在优化图片细节，请稍候"
+        progress="{{progress}}"
+        tip-text="{{tipText}}"
+        show-actions="{{true}}"
+        bindcancel="cancelTask"
+        bindbackhome="backHome"
+      />
+      <editor-control-panel
+        ready="{{false}}"
+        width="{{panelWidth}}"
+        height="{{panelHeight}}"
+        color-limit="{{panelColorLimit}}"
+        bead-count="{{panelBeadCount}}"
+      />
+    </view>
+
+    <!-- ③ 失败：同一张紫色卡片原地切换为失败态，无进度条/无提示胶囊；
+         缩放、尺寸颜色颗数、编辑工具、色板保持显示但全部禁用 -->
+    <view wx:elif="{{isFailed}}" class="ai-generation-state">
+      <generating-preview-card
+        failed="{{true}}"
+        title="AI 生成失败"
+        subtitle="{{stateDescription}}"
+        primary-text="重新生成"
+        bindretry="retry"
+        bindbackhome="backHome"
+      />
+      <editor-control-panel
+        ready="{{false}}"
+        width="{{panelWidth}}"
+        height="{{panelHeight}}"
+        color-limit="{{panelColorLimit}}"
+        bead-count="{{panelBeadCount}}"
+      />
+    </view>
+
+    <!-- ④ 已完成：同页展示结果，并启用缩放、工具、色板与保存操作 -->
+    <view wx:elif="{{isSucceeded}}" class="ai-generation-state">
+      <view class="ai-generation-disclosure">当前结果由 AI 生成</view>
+      <view class="ai-generation-result-card">
+        <view class="ai-generation-result-card__preview">
+          <canvas
+            wx:if="{{draft}}"
+            id="aiPatternCanvas"
+            class="ai-generation-result-card__canvas"
+            type="2d"
+            style="opacity: {{patternCanvasReady ? 1 : 0}};"
+            aria-label="拼豆图预览"
+          ></canvas>
+          <view wx:if="{{patternRenderError}}" class="ai-generation-result-card__fallback">拼豆图预览失败，请重新生成</view>
+          <view wx:elif="{{!draft}}" class="ai-generation-result-card__fallback">拼豆图结果已生成</view>
+          <view wx:elif="{{!patternCanvasReady}}" class="ai-generation-result-card__fallback">正在绘制拼豆图</view>
+        </view>
+      </view>
+      <editor-control-panel
+        ready="{{editorReady}}"
+        undoable="{{false}}"
+        redoable="{{false}}"
+        active-tool="{{activeTool}}"
+        scale-percent="{{scalePercent}}"
+        can-zoom-out="{{canZoomOut}}"
+        can-zoom-in="{{canZoomIn}}"
+        width="{{panelWidth}}"
+        height="{{panelHeight}}"
+        color-limit="{{panelColorLimit}}"
+        bead-count="{{panelBeadCount}}"
+        palette-colors="{{paletteColors}}"
+        selected-color="{{selectedColor}}"
+        saving="{{saving}}"
+        bind:zoomout="zoomOut"
+        bind:zoomin="zoomIn"
+        bind:toolselect="selectTool"
+        bind:colorselect="selectPaletteColor"
+        bind:regenerate="backHome"
+        bind:save="saveWork"
+      />
+    </view>
+  </view>
+</page-layout>

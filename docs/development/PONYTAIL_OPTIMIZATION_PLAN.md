@@ -25,13 +25,35 @@ Ponytail Review 只检查：
 - YAGNI
 - 可以明显缩短的实现
 
-不用于判断正确性、安全性和性能问题
+不用于判断正确性、安全性和性能问题
+
+---
+
+## 1.5 执行状态总览（2026-09-23 回填）
+
+本计划于 2026-09-08（`5da6e67`）定稿，此后代码陆续落地但文档未同步。下表是 2026-09-23 全量核查的结果，逐项结论也已回填到对应小节。
+
+| 项 | 状态 | 说明 |
+| --- | --- | --- |
+| P0-1 删除空文件 | 已完成 | `TEST_AGENT.md` 已删除 |
+| P0-2 删除单实现接口 | 已完成 | 调用方已直接依赖 concrete service |
+| P0-3 合并所有权查询 | 已完成 | 只保留 `assertWorkOwner` 一个 helper |
+| P0-4 收缩列表分页重复 | 部分完成 | 已抽 `mapListResponse`，SQL 层重复经评估后建议保留 |
+| P0-5 云端保存去重 | 已完成 | 已抽 `persistCloudWork` |
+| P1-1 tabs 去重 | 已完成 | 改用 `tabs[tapIndex]?.id` |
+| P1-2 runtime schema 校验 | 保持现状 | 计划只要求评估，代码未动 |
+| P1-3 update pattern 重验 | 已实现 | 仅在传了 pattern 时才重验 |
+| P1-4 create 幂等流程 | 不做 | 影响面评估后判定收益小于风险 |
+| 日期格式化 | 保持现状 | 基础库兼容性不明确，按计划不动 |
+| 后端小函数收 shared | 已完成 | `transaction` / `date-time` / `app-error` / `identity` 已就位 |
 
 ---
 
 ## 2. 明天优先处理
 
-### P0-1 删除无意义空文件
+### P0-1 删除无意义空文件
+
+> **状态：已完成** —— `TEST_AGENT.md` 已删除，仓库内不再有该文件。
 
 文件：
 
@@ -53,7 +75,9 @@ Ponytail Review 只检查：
 
 ---
 
-### P0-2 删除单实现 Service Interface
+### P0-2 删除单实现 Service Interface
+
+> **状态：已完成** —— `WorkService` 与 `QuotaDownloadService` 两个 interface 均已删除；`src/index.ts`、`src/http/app.ts` 直接依赖 `PostgresWorkService` / `PostgresQuotaDownloadService`，未引入 Repository 或 DI 框架替代。
 
 文件：
 
@@ -90,7 +114,9 @@ Ponytail Review 只检查：
 
 ---
 
-### P0-3 合并 works 所有权查询
+### P0-3 合并 works 所有权查询
+
+> **状态：已完成** —— `throwOwnershipAwareNotFound` 已删除，只保留 `assertWorkOwner(pool, workId, userId)` 一个 helper。
 
 文件：
 
@@ -128,7 +154,9 @@ SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1
 
 ---
 
-### P0-4 收缩作品列表重复分页逻辑
+### P0-4 收缩作品列表重复分页逻辑
+
+> **状态：部分完成** —— 已抽出 `mapListResponse()` 共享 total / page / pageSize / items 转换；conditions、COUNT、SELECT、JOIN、LIMIT/OFFSET 仍两处各写一遍。是否继续见本节末尾评估，结论是停在这里。
 
 文件：
 
@@ -168,15 +196,48 @@ SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1
 
 验证：
 
-- 普通作品列表
-- status 过滤
-- query 搜索
-- 收藏列表
-- 分页 total
+- 普通作品列表
+- status 过滤
+- query 搜索
+- 收藏列表
+- 分页 total
+
+#### 后续评估（2026-09-23）：停在这里，不再往下收
+
+**影响面**
+
+- `GET /api/works` → `works.list()` → `fetchCloudWorks()` → `miniprogram/pages/projects/index.ts`、`miniprogram/store/auth-store.ts`
+- `GET /api/favorites` → `works.listFavorites()` → `fetchCloudFavorites()` → `miniprogram/packages/account/favorites/index.ts`、`miniprogram/store/auth-store.ts`
+- 护栏测试 `server/test/favorites-service.test.js:134-135` **直接断言参数数组内容**（`[userId, %query%]` 与 `[userId, %query%, pageSize, offset]`），改动参数 push 顺序必红
+- 真库分页测试在 `server/test/stage3-database-integration.test.js`，需 `RUN_DATABASE_INTEGRATION=1`，默认 skip
+
+**真正可共享的只有三块（约 15～20 行）**
+
+- 除 `is_favorite` 外的公共 SELECT 列（12 个字段，两侧 `works.` 前缀一致）
+- cover 的 `LEFT JOIN pindou_file_assets files ON ...` 一行
+- 分页参数 push 与 `LIMIT` / `OFFSET` 占位符推算
+
+**看着重复但实质不同，不该合并**
+
+- FROM 主表与 JOIN：收藏侧多一个 `works.user_id = favorites.user_id`，是防跨用户读取的实质条件
+- conditions 基数组：别名与条件数都不同
+- `ORDER BY`：`updated_at` vs `favorited_at`
+- COUNT 的 FROM
+- `is_favorite`：list 用 `EXISTS` 子查询，listFavorites 用 `TRUE` 常量
+
+**风险不在行数，在参数下标**
+
+- `LIMIT $<length-1> OFFSET $<length>` 依赖 `parameters` 数组长度推算
+- list 的 `EXISTS(... favorites.user_id = $1 ...)` 硬编码 userId 永远是 `$1`
+- 拆成常量 / helper 后，「参数顺序必须与 SQL 文本对齐」从肉眼可对照的连续代码，变成跨符号的隐式契约
+
+**结论**：`mapListResponse` 已经吃掉收益最大的部分。最多再抽 cover JOIN 那一行的常量（纯文本替换、零参数耦合），其余不动 —— 省 20 行不值得换一个只有跑起来才暴露的坑。
 
 ---
 
-### P0-5 简化客户端云端作品保存重复代码
+### P0-5 简化客户端云端作品保存重复代码
+
+> **状态：已完成** —— 已抽出文件内部使用的 `persistCloudWork()`（含 token、cover 上传、request 组装、summary 解析），`saveNewCloudWork` / `updateCloudWork` 各剩一行委托，未新建 CloudWorkRepository 或 Client class。
 
 文件：
 
@@ -214,7 +275,9 @@ SELECT user_id, deleted_at FROM pindou_works WHERE id = $1 LIMIT 1
 
 ## 3. 第二优先级优化
 
-### P1-1 项目筛选菜单删除重复数组
+### P1-1 项目筛选菜单删除重复数组
+
+> **状态：已完成** —— `showFilter()` 改用 `tabs[tapIndex]?.id`，硬编码数组已删除。
 
 文件：
 
@@ -251,7 +314,9 @@ const tab = tabs[tapIndex]?.id
 
 ---
 
-### P1-2 评估客户端 Runtime Schema Validation
+### P1-2 评估客户端 Runtime Schema Validation
+
+> **状态：保持现状** —— 按计划只做评估、第一轮不修改。手写校验（`isRecord` / `isFiniteNumber` / `parseWorkSummary` 等）仍在，承担真实 API 边界保护，未引入 schema 依赖。
 
 文件：
 
@@ -284,7 +349,9 @@ const tab = tabs[tapIndex]?.id
 
 ---
 
-### P1-3 评估 works update 的完整 Pattern 重验
+### P1-3 评估 works update 的完整 Pattern 重验
+
+> **状态：已实现** —— `update()` 仅在 `validatedPattern !== undefined` 时重写 `pindou_work_patterns`，派生字段一律 `pattern?.x ?? existing.x`；只改 title / status 不再重新构造和校验整份图案。
 
 文件：
 
@@ -313,7 +380,9 @@ const tab = tabs[tapIndex]?.id
 
 ---
 
-### P1-4 评估 create 的幂等并发流程
+### P1-4 评估 create 的幂等并发流程
+
+> **状态：不做** —— 影响面评估见本节末尾：收益小于风险，且改动会让所有幂等命中走进一条零测试覆盖的分支。
 
 文件：
 
@@ -339,9 +408,26 @@ const tab = tabs[tapIndex]?.id
 
 `INSERT / RETURNING -> 冲突时读取 existing -> 验证请求是否一致`
 
-这项不是明天第一批必改项
-
-风险：中到高
+这项不是明天第一批必改项
+
+风险：中到高
+
+#### 后续评估（2026-09-23）：不做
+
+**先补两个查证到的事实**
+
+- `pindou_works` **没有 `idempotency_key` 列，也没有 `(user_id, idempotency_key)` 唯一索引**；幂等完全靠 `HMAC(userId, key)` 派生确定性 id + `pindou_works.id` 主键唯一（`server/src/db/schema-contract.ts:224`）。数据库层面的保障只有主键这一个
+- `server/test/works-service.test.js:163` 是唯一的幂等单测，但它的 stub 让第二次调用直接命中「existing 分支」，`work-service.ts` 中 `if (!inserted)` 的并发回退分支**零覆盖**；没有并发测试；stage2 / stage3 集成测试不测 works create 幂等，且默认 skip
+
+**计划提出的简化**：删掉开头的 `readWorkDetail()`，改为 INSERT 优先、冲突再读。代价有三条：
+
+- **幂等会在最该生效的时候失效**：删掉前置查询后 cover 校验必须提前（INSERT 需要 `cover_file_id`），于是「幂等键已存在、但 cover 文件已被软删」的重试，从「返回首次结果」退化为 404
+- **重试路径变慢**：幂等命中是高频路径（网络抖动重试），现在一次 SELECT 就返回，改后变成一次 INSERT（撞主键、拿行锁）+ 一次 SELECT，把成本从冷路径搬到了热路径
+- **收益只有**「首次创建少一次 SELECT」，而并发安全性没有任何提升 —— 两条路径都依赖 `ON CONFLICT (id)` + 主键
+
+**最关键的一条**：改完之后，所有幂等命中都会走进那条零测试覆盖的分支。
+
+**结论**：不做。若一定要动，前置条件是先补并发回退分支的单测与一个真库幂等测试 —— 而补测试的成本已经超过省下的那次查询。
 
 ---
 
@@ -422,6 +508,9 @@ const tab = tabs[tapIndex]?.id
 
 ## 6. 建议执行顺序
 
+> 注：以下是 2026-09-08 定稿时的原始计划。2026-09-23 核查后的实际结果见 §1.5 —— Stage 1～4 已完成，
+> Stage 5 中 P1-3 已落地、P1-2 保持现状、P1-4 经评估判定不做。
+
 明天建议严格按下面顺序分阶段执行，每一阶段单独检查：
 
 ### Stage 1：零风险清理
@@ -497,4 +586,22 @@ Ponytail 的判断标准：
 - 不新增第三方依赖
 - 不新增基础框架或通用抽象层
 
-重点不是追求行数，而是确保每一层代码都有当前真实需求支撑
+重点不是追求行数，而是确保每一层代码都有当前真实需求支撑
+
+---
+
+## 9. 文档状态
+
+本计划 2026-09-08（`5da6e67`）定稿后，代码陆续落地但文档一直未同步，读起来会以为全都还没开始。
+2026-09-23 全量核查一次，结论已按项回填到上文各小节，并在 §1.5 给出总览：
+
+- P0 五项 + P1-1 / P1-3 均已落地
+- P0-4 只做到「共享结果转换」这一层，SQL 层重复经评估后建议保留
+- P1-2 按计划仅需评估，代码保持现状
+- P1-4 经影响面评估后判定不做，理由见该节末尾
+
+Ponytail 的判断标准依然适用：
+
+> 优化后代码应该更少、更直接，而不是只是把复杂度换了一个地方
+
+按这个标准，P0-4 与 P1-4 若继续推进，都是「复杂度换了个地方」甚至「换到了更危险的地方」，因此收在这里。

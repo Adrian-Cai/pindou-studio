@@ -14,12 +14,12 @@
 
 | 阶段 | 能力 | 接口 |
 | --- | --- | --- |
-| 1 | 微信登录、当前用户 | `POST /api/auth/login`、`GET/PUT/PATCH /api/users/me`、`POST /api/users/me/avatar` |
+| 1 | 微信登录、会话管理、当前用户 | `POST /api/auth/login`、`DELETE /api/auth/session`、`DELETE /api/auth/sessions`、`GET/PUT/PATCH /api/users/me`、`POST /api/users/me/avatar` |
 | 2 | 封面上传、作品保存与恢复 | `POST /api/files/upload`、`GET /api/media/covers/:filename`、`POST /api/works`、`GET /api/works`、`GET /api/works/:id`、`PUT/PATCH /api/works/:id`、`DELETE /api/works/:id` |
 | 3 | 收藏 | `PATCH /api/works/:id/favorite`、`GET /api/favorites` |
 | 4 | 额度与下载记录 | `GET /api/quota/me`、`GET /api/downloads`、`POST /api/downloads` |
-| 5 | 套餐与支付 | `GET /api/packages`、`POST /api/payments/create`、`POST /api/payments/notify` |
-| 6 | AI 精致生成 | `POST /api/ai/generations`、`GET /api/ai/generations/:id` |
+| 5 | 套餐与支付 | `GET /api/packages`、`GET /api/orders`、`POST /api/payments/create`、`POST /api/payments/notify` |
+| 6 | AI 精致生成与文生图 | `POST /api/ai/generations`、`GET /api/ai/generations/:id`、`POST /api/ai/text-generations`、`GET /api/ai/text-generations/:id`、`GET /api/ai/text-generations?active=true` |
 | 7 | 内容安全审核 | `POST /api/content-security/text`、`POST /api/content-security/media`、`GET/POST /api/wechat/content-security/callback` |
 | 8 | 隐私设置、法律文档和注销 | `GET/PATCH /api/users/me/privacy`、`GET /api/legal-documents/:key`、`DELETE /api/users/me` |
 
@@ -29,7 +29,7 @@
 - 不开发服务端成品图、施工图或材料清单生成
 - 不开发 `GET /api/files/download/:workId/:type`
 - 不永久保存原始上传图片；第一版只上传作品封面/预览图
-- 不开发反馈和公开分享接口
+- 意见反馈通过微信小程序客服会话完成，不开发服务端反馈接口
 
 ### 1.3 内容安全审核
 
@@ -154,6 +154,7 @@ Authorization: Bearer <token>
 | `413` | `FILE_TOO_LARGE` | 上传文件超过限制 |
 | `422` | `UNPROCESSABLE_ENTITY` | 业务校验失败 |
 | `402` | `QUOTA_INSUFFICIENT` | 额度不足，需要充值 |
+| `402` | `USER_AI_QUOTA_EXHAUSTED` | AI 生成额度不足，需要充值 |
 | `429` | `RATE_LIMITED` | 请求过于频繁 |
 | `500` | `INTERNAL_ERROR` | 服务端异常 |
 
@@ -166,6 +167,7 @@ Authorization: Bearer <token>
 ```json
 {
   "schemaVersion": 1,
+  "generationMode": "standard",
   "width": 64,
   "height": 64,
   "settings": {
@@ -182,6 +184,7 @@ Authorization: Bearer <token>
 
 约束：
 
+- `generationMode` 只能为 `standard` 或 `ai`；缺失时仅为兼容历史客户端按 `standard` 处理
 - `cells` 为行优先的一维数组，索引 `index = row * width + column`
 - `cells.length` 必须严格等于 `width * height`
 - `-1` 表示透明/空格；`0` 至 `palette.length - 1` 表示对应颜色
@@ -197,6 +200,7 @@ Authorization: Bearer <token>
 | `id` | 保存时由服务端生成 `workId`；客户端草稿 id 仅可作为幂等键的一部分 |
 | `sourceImagePath` | 不保存；临时文件路径重启后失效 |
 | `createdAt` | 不信任；使用服务端时间 |
+| `generationMode` | 只允许 `standard` / `ai`；保存到作品摘要，作为恢复和重新生成时的模式事实 |
 | `settings.width/height` | 写入 `pattern.width/height` |
 | `settings.colorLimit/brand` | 写入 `pattern.settings` |
 | `cells[].color/colorCode` | 客户端转换为 `palette` + `cells` |
@@ -217,6 +221,7 @@ Authorization: Bearer <token>
   "beadCount": 3840,
   "colorCount": 12,
   "brand": "MARD",
+  "generationMode": "standard",
   "status": "completed",
   "isFavorite": false,
   "createdAt": "2026-08-26T11:00:00Z",
@@ -230,6 +235,7 @@ Authorization: Bearer <token>
 {
   "pattern": {
     "schemaVersion": 1,
+    "generationMode": "standard",
     "width": 64,
     "height": 64,
     "settings": { "colorLimit": 32, "brand": "MARD" },
@@ -278,6 +284,22 @@ Authorization: Bearer <token>
 - `openid` 不返回给小程序；`session_key` 不返回给小程序
 - 重复登录可以创建新会话，但不能创建重复用户
 
+### DELETE `/api/auth/session`
+
+用途：吊销当前 Bearer token 对应的会话。
+
+鉴权：需要；请求不接受查询参数或请求体。
+
+成功返回 `204 No Content`。会话已吊销或 token 已过期时返回 `401`；客户端应将其视为登出已完成。接口通过鉴权后吊销当前 token，后续鉴权请求立即返回 `401`。
+
+### DELETE `/api/auth/sessions`
+
+用途：吊销当前用户的全部设备会话，包含发起请求的当前设备。
+
+鉴权：需要；用户身份只从 Bearer token 推导，请求不接受查询参数或请求体。
+
+成功返回 `204 No Content`。成功后当前 token 也立即失效；小程序应同步清除本地登录态。此接口用于设备丢失或怀疑 token 泄漏时止损。
+
 ### GET `/api/users/me`
 
 用途：获取当前用户资料、基础统计和额度摘要
@@ -323,16 +345,16 @@ Authorization: Bearer <token>
 
 ### POST `/api/users/me/avatar`
 
-用途：上传并替换当前用户头像，同时保存昵称
+用途：仅上传并替换当前用户头像；昵称由 `PUT/PATCH /api/users/me` 更新
 
 鉴权：需要请求使用 `multipart/form-data`：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `file` | binary | 真实格式必须为 JPG、PNG 或 WEBP，最大 2 MB |
-| `nickname` | string | 1～80 个字符 |
+| `nickname` | string | 仅兼容接收旧请求，忽略该字段，不更新昵称 |
 
-服务端生成随机文件名，不信任客户端文件名，并在资料更新成功后安全清理旧头像响应中的 `avatarUrl` 为 `/api/media/avatars/...` 稳定地址，小程序请求层会基于当前环境 API Origin 转换为完整 URL
+仅 `file` 必填。服务端生成随机文件名，不信任客户端文件名，并在资料更新成功后安全清理旧头像；旧文件清理失败只记录日志，不删除新头像或回滚已提交的资料。响应中的 `avatarUrl` 为 `/api/media/avatars/...` 稳定地址，小程序请求层会基于当前环境 API Origin 转换为完整 URL
 
 ### GET `/api/media/avatars/:filename`
 
@@ -342,7 +364,7 @@ Authorization: Bearer <token>
 
 ### POST `/api/files/upload`
 
-用途：上传作品封面/预览图第一版不上传原始图片，不接收反馈截图
+用途：上传作品封面/预览图；第一版不上传原始图片
 
 鉴权：需要
 
@@ -391,6 +413,7 @@ Authorization: Bearer <token>
   "status": "completed",
   "pattern": {
     "schemaVersion": 1,
+    "generationMode": "standard",
     "width": 64,
     "height": 64,
     "settings": {
@@ -411,6 +434,7 @@ Authorization: Bearer <token>
 服务端必须：
 
 - 校验图案结构、尺寸、颜色索引和数组长度
+- 校验 `generationMode`；`standard` 只保存标准算法结果，`ai` 只保存 AI 流程结果
 - 根据 `cells` 重新计算 `beadCount`、`colorCount`，不信任客户端提交的统计值
 - 使用服务端时间写入 `createdAt` 和 `updatedAt`
 - 校验 `coverFileId` 属于当前用户且类型为 `cover`
@@ -508,6 +532,8 @@ Authorization: Bearer <token>
 ### GET `/api/quota/me`
 
 用途：获取当前用户可用下载额度
+
+只读约束：不发放每日额度，不写账本或锁定用户。当日未发放时预览配置中的免费额度；真实业务操作在事务内懒发放。已发放时以流水中的金额和余额为准，与 `GET /api/users/me` 共用账本计算。
 
 鉴权：需要
 
@@ -643,11 +669,60 @@ Authorization: Bearer <token>
 }
 ```
 
-### POST `/api/payments/create`
+### GET `/api/orders`
 
-用途：根据服务端套餐创建微信支付订单
+用途：获取当前用户的 AI 精致生成订单列表
+
+只读约束：列表不调用微信查单、不关单、不发货。状态由已有支付回调与后台对账更新，查询可暂时返回尚待后台核实的 `pending`。
 
 鉴权：需要
+
+查询参数：`page`、`pageSize`，默认 `page=1&pageSize=20`，`page` 最小为 `1`，`pageSize` 范围为 `1` 至 `50`
+
+服务端必须：
+
+- 只使用 Bearer Token 解析出的当前用户 ID，不接受查询参数或请求体中的 `userId`
+- 只查询 `pindou_orders.quota_kind_snapshot = 'ai_generation'` 的订单
+- 使用订单上的套餐名称、额度类型、额度数量、金额和时间快照，不重新读取当前套餐配置
+- 按 `created_at DESC`（同时间再按 `id DESC`）返回
+- 不返回 `openid`、支付签名、微信预支付 ID、微信交易号或其他支付敏感字段
+
+响应 `200`：
+
+```json
+{
+  "total": 1,
+  "page": 1,
+  "pageSize": 20,
+  "pendingCount": 1,
+  "serverTime": "2026-09-10T06:31:05.000Z",
+  "items": [
+    {
+      "id": "order_xxx",
+      "packageId": "ai_generation_80",
+      "packageLabel": "AI 精致生成 80 次",
+      "quotaAmount": 80,
+      "quotaKind": "ai_generation",
+      "priceFen": 1990,
+      "currency": "CNY",
+      "status": "paid",
+      "createdAt": "2026-09-10T06:30:00.000Z",
+      "expiresAt": "2026-09-10T06:35:00.000Z",
+      "paidAt": "2026-09-10T06:31:00.000Z"
+    }
+  ]
+}
+```
+
+- `expiresAt`：订单支付截止时间（下单后 5 分钟）。仅用于客户端倒计时展示，**是否真的过期一律以服务端为准**；`pending` 订单过了这个时间不等于已关闭，服务端还要向微信核实。
+- `pendingCount`：当前用户未完成支付订单数，与 `POST /api/payments/create` 的 5 个上限同口径（不加 `quota_kind` 过滤），用于页面提示「还能再下几单」。
+- `serverTime`：服务端当前时间。客户端用它校准本机时钟偏差后再做倒计时，本机时间不可信。
+
+### POST `/api/payments/create`
+
+用途：根据服务端套餐创建订单并签发小程序虚拟支付参数。
+
+鉴权：需要；请求头必须带该次购买意图的 `Idempotency-Key`。
 
 请求：
 
@@ -660,38 +735,80 @@ Authorization: Bearer <token>
 ```json
 {
   "orderId": "order_xxx",
-  "payment": {
-    "timeStamp": "1724660400",
-    "nonceStr": "nonce_xxx",
-    "package": "prepay_id=wx_xxx",
-    "signType": "RSA",
-    "paySign": "sign_xxx"
-  }
+  "virtual": {
+    "signData": "{...}",
+    "paySig": "...",
+    "signature": "...",
+    "mode": "short_series_goods"
+  },
+  "payment": null
 }
 ```
 
-规则：
+小程序必须原样把 `virtual` 字段交给 `wx.requestVirtualPayment`。服务端从 `pindou_packages` 读取金额和额度并保存订单快照；客户端不能提交金额、额度或套餐名称。
 
-- 服务端根据 `packageId` 读取价格和发放额度，忽略客户端传入的金额、额度、套餐名称
-- 一个订单保存套餐快照，避免套餐之后改价导致无法对账
-- 创建订单不直接增加用户额度；只有验签通过的支付回调可以发放额度
-- 重试创建订单应使用幂等键，避免重复生成待支付订单
+订单在服务端创建时开始 5 分钟有效期。同一幂等键会定位同一业务订单；已确认未支付时重用当前尝试。微信明确返回 `CLOSED` 后，同一个幂等键的重复提交**不再**签发新的支付尝试——那是一次购买意图的重试，意图已经结束，客户端应引导用户重新下单；用户想继续付这笔订单时走 `POST /api/payments/:orderId/continue`，由该入口换一枚新的不可变商户单号。用户主动取消不代表订单失败。用户最多同时有 5 个未完成订单；`PENDING` 和 `UNKNOWN` 都占用名额。
 
-### POST `/api/payments/notify`
+只有服务端通过 `query_order` 核实支付事实后才会把订单改为 `paid` 并在同一事务写入一次 `purchase_grant`。以下 `409` 错误需由客户端区分处理：
 
-用途：接收微信支付服务器回调
+- `MAX_PENDING_ORDERS_REACHED`：已有 5 个未完成支付订单。
+- `PAYMENT_STATUS_CONFIRMING`：微信状态无法确认；保留订单和名额，稍后再试。
+- `ORDER_EXPIRED`：订单已过期或关闭，需开始一次新的购买意图。
+- `ORDER_ALREADY_PAID`：订单已到账；`error.details.orderId` 可用于打开支付结果页。
 
-调用方：微信支付服务器；不是小程序前端调用
+虚拟支付网关没有微信侧主动关单接口。订单创建 5 分钟后，服务端先查询微信：确认未支付或已关闭时立即将支付尝试及本地订单置为 `CLOSED` / `closed` 并释放未完成订单名额；查询失败或状态不明时保留为待核实，但不允许继续支付当前订单。用户需重新下单。若本地关单后收到迟到的发货推送，仍以 `query_order` 确认支付事实，确认已支付则补发权益。
 
-鉴权：微信支付回调签名、证书和通知内容校验
+### POST `/api/payments/:orderId/continue`
 
-处理要求：
+用途：对一笔已存在的 `pending` 订单重新签发虚拟支付参数（订单页「继续支付」）。
 
-- 验证签名、商户号、应用标识、订单号、金额和支付状态
-- 只有首次确认支付成功时，订单从 `pending` 变为 `paid`，并写入一笔带 `orderId`、`quota_kind=ai_generation` 的 `purchase_grant`
-- 重复回调必须返回成功确认，但不得重复增加额度
-- 支付失败、关闭或金额不符不得发放额度
-- 回调处理完成后返回微信要求的成功响应；内部异步任务失败不能造成重复发放
+鉴权：需要。`orderId` 来自路径；服务端按 Bearer Token 解析出的用户 ID 校验归属，不属于当前用户时回答 `404`（不区分「不存在」和「不是你的」，避免订单号被枚举探测）。
+
+请求：无请求体；带查询参数一律 `400`。
+
+响应 `200`：与 `POST /api/payments/create` 相同（`orderId` + `virtual`）。
+
+服务端必须：
+
+- 复用同一张业务订单，**不创建新订单**、不接受幂等键；
+- 先按订单行锁校验归属与状态，再在锁外调用 `query_order` 核实微信事实，最后按结果分流：
+  - 微信未关单且在有效期内 → 沿用原商户单号重新签发 `virtual`；
+  - 微信已关单且订单未过期 → 旧尝试置 `CLOSED`，**为同一张订单签发一枚新的支付尝试（新商户单号）**并重新签发 `virtual`；订单未过期时用户取消一次付款不应导致订单作废。同一订单的尝试数达到 `MAX_PAYMENT_ATTEMPTS_PER_ORDER`（当前 5）后不再签发，按「所有尝试都已关闭」关单并回答 `409 ORDER_EXPIRED`；
+  - 微信已关单且订单已过期 → 关闭支付尝试与订单，回答 `409 ORDER_EXPIRED`；历史尝试仍未结束时回答 `409 PAYMENT_STATUS_CONFIRMING` 并等待对账；
+  - 微信已支付 → 补发权益并回答 `409 ORDER_ALREADY_PAID`；
+  - 订单过期且微信确认未支付或已关闭 → 关闭支付尝试和订单，回答 `409 ORDER_EXPIRED`，用户需创建新订单；
+  - 查单失败或状态无法确认 → `409 PAYMENT_STATUS_CONFIRMING`，支付尝试置 `UNKNOWN`，订单保持 `pending` 并继续占用名额，但不允许继续支付当前订单。
+- 套餐后续下架或改价不阻断继续支付（金额取支付尝试快照），但套餐缺少 `virtual_product_id` 时回答 `409 PACKAGE_NOT_PAYABLE`。
+
+`409` 错误码与 `POST /api/payments/create` 一致：`ORDER_ALREADY_PAID`、`ORDER_EXPIRED`、`PAYMENT_STATUS_CONFIRMING`、`ORDER_NOT_PAYABLE`。
+
+用户在微信面板里取消不算失败：订单继续留在待支付列表，可再次继续支付。
+
+### POST `/api/payments/:orderId/cancel`
+
+用途：用户主动取消一笔 `pending` 订单（订单页「取消订单」）。
+
+鉴权：需要；归属校验与 `continue` 相同。
+
+请求：无请求体；带查询参数一律 `400`。
+
+响应 `200`：`{ "status": "closed" }`。重复取消（或发货轮询已关单）按成功返回。
+
+服务端必须先 `query_order` 再关单：
+
+- 查到已支付 → **不能关单**，照常发货并回答 `409 ORDER_ALREADY_PAID`（用户点取消时可能其实已付款）；
+- 查单失败 → 不关单，回答 `409 PAYMENT_STATUS_CONFIRMING`，订单保持 `pending`；
+- 确认未支付 → 本地置 `closed`。虚拟支付没有商户侧关单接口，若用户仍在某个未关闭的支付面板里完成付款，迟到的发货推送仍会以 `query_order` 验真并把订单修正回 `paid`，钱和权益都不会丢。
+
+### POST `/api/payments/virtual-notify`
+
+用途：接收微信小程序虚拟支付发货、退款等消息推送。
+
+微信先以 GET 验证回调 URL；POST 必须配置 Token 并验证签名。安全模式的加密消息必须验证覆盖密文的 `msg_signature`。缺少 Token 或签名时拒绝处理。
+
+发货与退款推送只作为通知：事件先落库去重，服务端再查微信事实，并校验付款人、金额、订单与支付尝试；不得仅根据推送 Body 发放或扣回额度。重复事件幂等处理。无法核验的事件进入补单或人工排查路径。
+
+`POST /api/payments/notify` 保留给旧微信支付通道的在途订单收尾，不用于小程序虚拟支付新订单。
 
 ## 阶段 6：AI 精致生成
 
@@ -713,7 +830,42 @@ Content-Type: application/json
 }
 ```
 
-服务端固定提示词模板并调用千问图像 3.0 异步接口，不接受客户端 Provider、模型、价格、额度或任意提示词客户端通过 `GET /api/ai/generations/:id` 轮询 `queued`、`processing`、`succeeded`、`failed`、`canceled` 状态成功时响应包含 `outputFile`；失败不扣额度输出文件校验、资产写入、任务成功更新和一笔 `usage_debit` 在受控流程中完成，相同任务不重复扣减
+服务端固定提示词模板并调用腾讯混元 Hy-Image-3.0 接口，不接受客户端 Provider、模型、价格、额度或任意提示词。创建接口先提交 `queued` 任务并返回，Provider 调用不在数据库事务或任务行锁内执行；服务端随后在后台调用同步 Provider，客户端通过 `GET /api/ai/generations/:id` 继续轮询项目任务状态。
+
+当前服务端提示词模板版本为 `v3`。`style` 支持 `kawaii`、`natural`、`cartoon`、`minimal`；Prompt 根据 `style`、`detailLevel` 和 `backgroundMode` 由服务端组合生成，客户端不能传入任意 Prompt；AI 输出是交给 Standard Pattern Engine 的中间图，不是最终拼豆网格。
+
+任务状态：
+
+- `queued`：任务已落库，等待提交混元。
+- `processing`：正在调用混元或下载输出；`provider_request_id` 为空时表示正在提交 Provider，临时失败时仍保持该状态。
+- `succeeded`：输出图片已校验、持久化为 `ai_output`，并已完成一次 AI 额度扣减。
+- `failed`：Provider、输入文件、输出文件或任务处理失败；失败不扣额度，公开响应只返回标准 `failure` 对象。
+- `canceled`：预留状态，当前不提供取消接口。
+
+`GET /api/ai/generations/:id` 只读：不提交或轮询 Provider、不下载输出、不写任务或扣次。服务端启动时及每 5 秒扫描一批待推进任务，复用任务状态机与成功扣次事务；客户端停止轮询不影响服务端推进。重启后继续处理已保存的队列、Provider 请求 ID 或输出地址；提交结果未知且超时的任务失败收口，不自动重复付费提交。
+
+任务成功时响应包含 `outputFile`。混元返回的临时图片地址只在服务端内部使用，服务端必须立即下载并持久化；输出文件校验、资产写入、任务成功更新和一笔 `usage_debit` 在受控流程中完成，相同任务不重复扣减。
+
+任务公开响应不返回 `provider`、`model`、`promptVersion` 或供应商错误字段。失败对象统一使用 `code`、`message`、`category`、`retryable`、`action`；`AllocationQuota.FreeTierOnly` 等供应商诊断只进入受控结构化日志。
+
+小程序端接入约束：
+
+- 图片创作默认提交 `style=kawaii`、`detailLevel=medium`、`backgroundMode=simplify`；历史客户端的 `natural` 任务继续兼容。不提交 Prompt、Provider、Model、价格或额度字段。
+- 输入图片必须先以 `type=ai_input` 上传成功，再创建 AI 任务；上传失败时不创建任务。
+- 首页已经检测过同一张图片时，`type=ai_input` 上传应携带 `securityCheckId`；服务端校验用户、有效期和图片字节一致后复用检测结果，不再次调用微信图片检测。
+- 客户端使用本地保存的 `Idempotency-Key` 重试创建请求；已有任务 ID 时只查询原任务，不重新创建。
+- 任务成功后只下载服务端持久化的 `ai_output` 地址，再交给本地 Standard Pattern Engine；客户端不访问混元临时地址。
+- 任务状态查询由客户端短请求轮询完成，页面隐藏或卸载时停止计时器，重新进入后可继续查询。
+
+AI 安全与生命周期约束：
+
+- `HUNYUAN_IMAGE_API_KEY` 只允许存在服务端环境变量，小程序包、接口响应和日志均不得出现该值。
+- AI 输入和输出在服务端按文件真实字节格式重新校验，不信任扩展名或客户端 MIME；默认单文件不超过 10 MiB、宽高不超过 4096、像素数不超过 16 MP。
+- AI 上传和任务创建按已认证用户限流，默认 10 分钟最多 5 次；多实例部署还必须在网关或共享存储层施加同等限制。
+- 混元输出地址只接受 HTTPS 且主机名位于受信任的 `*.myqcloud.com` 域名下或当前 CloudBase 网关域名，禁止凭据、端口和跳转；服务端下载后才向任务响应暴露自有持久化媒体地址。
+- AI 输入图片只执行一次微信图片内容安全审核；首页已有同图检测结果时由 AI 输入上传校验并复用，旧客户端无检测标识时仍在上传阶段检测。混元生成结果不再调用本项目的微信内容安全接口，由混元服务商负责其生成结果审核。服务端仍校验输出地址、真实图片格式、大小、尺寸及像素数后再持久化。
+- AI 输入、输出文件默认保留 24 小时；过期任务、关联资产和未关联的 AI 输入先软删除，再异步物理清理。注销清理由账号删除事务提交后的物理清理继续负责。
+- Provider 原始错误、内部堆栈、请求内容和配置不会返回客户端；客户端只接收稳定的业务错误码和用户可理解的提示。
 
 ## 6. 不在当前 API 中的接口
 
@@ -722,7 +874,7 @@ Content-Type: application/json
 | 接口 | 原因 |
 | --- | --- |
 | `/api/files/download/:workId/:type` | 第一版由客户端 Canvas 导出并保存相册 |
-| `POST /api/feedbacks` | 反馈属于后续增强阶段 |
+| 意见反馈 | 通过小程序页面的 `<button open-type="contact">` 打开微信客服会话 |
 | 公开作品分享接口 | 当前分享路径仍是首页，不支持他人读取作品 |
 
 ## 7. 前端接入顺序

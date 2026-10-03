@@ -1,8 +1,16 @@
-import { DOWNLOAD_PACKAGES } from '../../config/profile'
+import { normalizeAvatarUrl } from '../../config/api'
 import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
+import {
+  fetchAiGenerationPackages,
+  createPaymentIdempotencyKey,
+  isWechatPaymentCancelled,
+  payForAiGenerationPackage,
+  paymentErrorMessage,
+  type AiGenerationPackage,
+} from '../../services/payment-service'
 
-const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.webp'
+const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.png'
 
 type ProfileSheet = 'none' | 'recharge' | 'login' | 'profile'
 type LoginUiState = 'idle' | 'loading' | 'error'
@@ -15,9 +23,15 @@ interface NicknameInputEvent {
 
 Page({
   data: {
-    packages: DOWNLOAD_PACKAGES,
+    packages: [] as AiGenerationPackage[],
+    packagesLoading: false,
+    packageMessage: '',
     downloadQuota: 0,
     dailyFreeDownloadQuota: DAILY_FREE_DOWNLOAD_QUOTA,
+    aiGenerationQuota: 0,
+    dailyFreeAiGenerationQuota: 0,
+    aiGenerationDailyFreeRemaining: 0,
+    aiQuotaTipsOpen: false,
     avatarPath: DEFAULT_AVATAR_PATH,
     isLoggedIn: false,
     accountName: '拼豆用户',
@@ -33,6 +47,10 @@ Page({
     profileSaving: false,
     profileMessage: '',
     selectedPackage: 0,
+    selectedPackagePrice: '',
+    paymentLoading: false,
+    /** 本次购买的幂等键：支付成功/明确取消前一直复用，避免重复下单。 */
+    paymentIdempotencyKey: '',
   },
 
   authUnsubscribe: undefined as (() => void) | undefined,
@@ -88,11 +106,19 @@ Page({
 
     const downloadQuota = profile?.quota.remaining ?? state.downloadQuota
     const dailyFreeDownloadQuota = profile?.quota.dailyFree ?? DAILY_FREE_DOWNLOAD_QUOTA
-
+    const aiGenerationQuota = profile?.quota.aiGeneration.remaining ?? 0
+    const aiGenerationDailyFreeQuota = profile?.quota.aiGeneration.dailyFree ?? 0
+    const aiGenerationDailyFreeRemaining = Math.max(
+      0,
+      aiGenerationDailyFreeQuota - (profile?.quota.aiGeneration.usedToday ?? 0),
+    )
     this.setData({
       downloadQuota,
       dailyFreeDownloadQuota,
-      avatarPath: DEFAULT_AVATAR_PATH,
+      aiGenerationQuota,
+      dailyFreeAiGenerationQuota: aiGenerationDailyFreeQuota,
+      aiGenerationDailyFreeRemaining,
+      avatarPath: normalizeAvatarUrl(user?.avatarUrl) || DEFAULT_AVATAR_PATH,
       isLoggedIn: hasAuthenticatedUser,
       accountName: user?.nickname?.trim() || '拼豆用户',
       loginUiState: authState.status === 'authenticating'
@@ -134,20 +160,24 @@ Page({
   },
 
   openFavorites() {
-    wx.navigateTo({ url: '/pages-sub/favorites/index' })
+    wx.navigateTo({ url: '/packages/account/favorites/index' })
   },
 
   openDownloads() {
-    wx.navigateTo({ url: '/pages-sub/downloads/index' })
+    wx.navigateTo({ url: '/packages/download/index' })
+  },
+
+  openOrders() {
+    wx.navigateTo({ url: '/packages/payment/orders/index' })
   },
 
   openSettings() {
-    wx.navigateTo({ url: '/pages-sub/settings/index' })
+    wx.navigateTo({ url: '/packages/account/settings/index' })
   },
 
   openUserPanel() {
     if (this.data.isLoggedIn) {
-      wx.navigateTo({ url: '/pages-sub/account/index' })
+      wx.navigateTo({ url: '/packages/account/index' })
       return
     }
     authStore.clearError()
@@ -160,6 +190,7 @@ Page({
     this.getTabBar()?.setData({ hidden: true })
     this.setData({
       activeSheet: sheet,
+      paymentLoading: false,
       loginClosing: false,
       loginAgreementAccepted: sheet === 'login' ? false : this.data.loginAgreementAccepted,
       loginUiState: sheet === 'login' ? 'idle' : this.data.loginUiState,
@@ -169,12 +200,44 @@ Page({
 
   showRechargeSheet() {
     this.showProfileSheet('recharge')
+    void this.refreshPackages()
+  },
+
+  toggleAiQuotaTips() {
+    this.setData({ aiQuotaTipsOpen: !this.data.aiQuotaTipsOpen })
+  },
+
+  closeAiQuotaTips() {
+    this.setData({ aiQuotaTipsOpen: false })
+  },
+
+  keepAiQuotaTipsOpen() {},
+
+  async refreshPackages() {
+    this.setData({ packagesLoading: true, packageMessage: '', selectedPackagePrice: '' })
+    try {
+      const packages = await fetchAiGenerationPackages()
+      this.setData({
+        packages,
+        packagesLoading: false,
+        packageMessage: packages.length > 0 ? '' : '暂无可购买的 AI 生成套餐',
+        selectedPackage: 0,
+        selectedPackagePrice: packages[0]?.price ?? '',
+      })
+    } catch {
+      this.setData({
+        packages: [],
+        packagesLoading: false,
+        packageMessage: '套餐加载失败，请稍后重试',
+        selectedPackagePrice: '',
+      })
+    }
   },
 
   openProfileEditor() {
     const user = authStore.getSnapshot().profile?.user ?? authStore.getSnapshot().user
     this.setData({
-      profileDraftAvatarPath: DEFAULT_AVATAR_PATH,
+      profileDraftAvatarPath: normalizeAvatarUrl(user?.avatarUrl) || DEFAULT_AVATAR_PATH,
       profileDraftNickname: user?.nickname?.trim() || '',
       profileCanSave: Boolean(user?.nickname?.trim()),
       profileSaving: false,
@@ -184,9 +247,11 @@ Page({
   },
 
   hideActiveSheet() {
+    if (this.data.paymentLoading) return
     clearTimeout(this.loginCloseTimer)
     this.setData({
       activeSheet: 'none',
+      paymentLoading: false,
       loginClosing: false,
       loginUiState: 'idle',
       loginMessage: '',
@@ -220,15 +285,44 @@ Page({
   stopPropagation() {},
 
   selectPackage(event: WechatMiniprogram.TouchEvent) {
-    this.setData({ selectedPackage: Number(event.currentTarget.dataset.index) })
+    const selectedPackage = Number(event.currentTarget.dataset.index)
+    this.setData({
+      selectedPackage,
+      selectedPackagePrice: this.data.packages[selectedPackage]?.price ?? '',
+    })
   },
 
-  purchase() {
-    wx.showModal({
-      title: '支付能力尚未接入',
-      content: '下载套餐界面已经完成，待商户号、定价和付费服务协议确认后再接入微信支付',
-      showCancel: false,
-    })
+  async purchase() {
+    const selectedPackage = this.data.packages[this.data.selectedPackage]
+    if (!selectedPackage || this.data.paymentLoading) return
+
+    // 幂等键绑定「这一次购买意图」：同一份 key 要伴随整段流程（含失败重试），
+    // 每次现造一个会让服务端去重形同虚设，重复下单就是重复扣款。
+    const idempotencyKey = this.data.paymentIdempotencyKey || createPaymentIdempotencyKey()
+    this.setData({ paymentLoading: true, paymentIdempotencyKey: idempotencyKey })
+    try {
+      const created = await payForAiGenerationPackage(selectedPackage.id, idempotencyKey)
+      this.setData({ paymentLoading: false, paymentIdempotencyKey: '' })
+      this.hideActiveSheet()
+      wx.navigateTo({
+        url: `/packages/payment/payment-success/index?orderId=${encodeURIComponent(created.orderId)}`,
+      })
+    } catch (error) {
+      if (isWechatPaymentCancelled(error)) {
+        // 用户主动取消：这笔意图结束了，键必须清掉，下次点击是一笔新的购买
+        this.setData({ paymentIdempotencyKey: '' })
+        wx.showToast({ title: '已取消支付', icon: 'none' })
+      } else {
+        // 其余失败保留同一个键，让用户「再试一次」仍然走同一笔，不会被重复扣款
+        wx.showModal({
+          title: '支付未完成',
+          content: paymentErrorMessage(error),
+          showCancel: false,
+        })
+      }
+    } finally {
+      if (this.data.paymentLoading) this.setData({ paymentLoading: false })
+    }
   },
 
   async startWechatLogin() {
@@ -265,7 +359,7 @@ Page({
   openLegalDocument(key: 'user-agreement' | 'privacy-policy') {
     this.preserveSheetOnNextHide = true
     wx.navigateTo({
-      url: `/pages-sub/privacy-document/index?key=${key}`,
+      url: `/packages/account/privacy-document/index?key=${key}`,
       fail: () => {
         this.preserveSheetOnNextHide = false
       },

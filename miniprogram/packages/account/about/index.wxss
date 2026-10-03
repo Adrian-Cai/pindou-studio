@@ -1,0 +1,27 @@
+@import "../../../styles/profile-pages.wxss";
+
+.about-page { text-align: center; }
+.about-logo { width: 172rpx; height: 172rpx; margin-top: 24rpx; border-radius: 28rpx; box-shadow: 0 14rpx 36rpx rgba(18, 180, 102, 0.16); }
+.about-name { margin-top: 24rpx; font-size: 40rpx; font-weight: 600; }
+.about-version { margin-top: 8rpx; color: var(--color-text-secondary); font-size: 28rpx; }
+
+.about-intro { position: relative; margin-top: 36rpx; overflow: hidden; padding: 28rpx 32rpx; border: 0; border-radius: var(--radius-card-large); background: var(--color-primary-surface); box-shadow: var(--shadow-card); text-align: left; }
+.about-intro__title { display: flex; align-items: center; gap: 18rpx; font-size: 30rpx; font-weight: 600; }
+.about-intro__title text { display: flex; width: 40rpx; height: 40rpx; align-items: center; justify-content: center; border-radius: 50%; background: var(--color-primary); color: #fff; font-size: 26rpx; }
+.about-intro__body { max-width: 78%; margin-top: 18rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 44rpx; }
+.about-intro > image { position: absolute; right: 20rpx; bottom: 24rpx; width: 150rpx; height: 110rpx; }
+
+.about-menu { margin-top: 28rpx; padding: 0 32rpx; text-align: left; }
+.about-menu__item { display: flex; height: 94rpx; align-items: center; border-bottom: 1rpx solid var(--color-border); }
+.about-menu__item:last-child { border-bottom: 0; }
+.about-menu__icon { width: 40rpx; height: 40rpx; flex-shrink: 0; margin-right: 24rpx; }
+.about-menu__item view { flex: 1; font-size: 28rpx; }
+.about-menu__arrow { width: 32rpx; height: 32rpx; flex-shrink: 0; }
+.about-menu__meta { flex: 0 0 auto !important; margin-left: 12rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 36rpx; white-space: nowrap; }
+.about-footer { padding: 36rpx 0 8rpx; color: var(--color-text-secondary); font-size: 23rpx; line-height: 40rpx; }
+.about-footer text { color: var(--color-primary); }
+.about-footer image { display: inline-block; width: 24rpx; height: 24rpx; vertical-align: -4rpx; }
+
+@media (max-width: 340px) {
+  .about-intro__body { max-width: 72%; }
+}
