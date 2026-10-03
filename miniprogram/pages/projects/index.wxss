@@ -17,6 +17,9 @@
 .text-task-card__prompt { overflow: hidden; margin-top: 6rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 34rpx; text-overflow: ellipsis; white-space: nowrap; }
 .text-task-card__action { flex-shrink: 0; color: var(--color-primary); font-size: 24rpx; }
 
+.projects-page .segmented { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.projects-page .segmented__item { padding: 0 4rpx; font-size: 24rpx; }
+
 .project-list { display: flex; width: 100%; flex-direction: column; gap: var(--space-3); margin-top: var(--space-3); }
 .project-card { display: flex; box-sizing: border-box; width: 100%; min-width: 0; min-height: 256rpx; align-items: stretch; gap: var(--space-3); padding: var(--space-3); }
 .project-card__cover-wrap { position: relative; width: 208rpx; height: 208rpx; flex: 0 0 208rpx; overflow: hidden; border-radius: var(--radius-media); background: var(--color-surface-muted); }
@@ -32,6 +35,7 @@
 .project-card .status-pill { box-sizing: border-box; height: 36rpx; flex-shrink: 0; padding: 0 12rpx; font-size: 20rpx; line-height: 36rpx; }
 .project-card .status-pill--danger { background: var(--color-danger-soft, #fee2e2); color: var(--color-danger, #ef4444); }
 .project-card__meta { margin-top: 8rpx; color: var(--color-text-secondary); font-size: 24rpx; line-height: 32rpx; white-space: nowrap; }
+.project-card__text-image-prompt { overflow: hidden; text-overflow: ellipsis; }
 .project-card__source-row { display: flex; align-items: center; gap: 14rpx; margin-top: 6rpx; font-size: 22rpx; line-height: 30rpx; }
 .project-card__source-label { color: var(--color-primary); }
 .project-card__source-link { color: var(--color-text-tertiary); text-decoration: underline; }

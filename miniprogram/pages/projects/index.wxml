@@ -3,7 +3,7 @@
     <view class="project-summary ui-card">
       <view class="project-summary__item">
         <image class="project-summary__icon" src="/assets/icons/iconsax/gallery.svg" mode="aspectFit" aria-hidden="true" />
-        <view class="project-summary__content"><view class="project-summary__label">全部作品</view><view class="project-summary__value project-summary__value--green">{{allWorks.length}}</view></view>
+        <view class="project-summary__content"><view class="project-summary__label">全部作品</view><view class="project-summary__value project-summary__value--green">{{allCount}}</view></view>
       </view>
       <view class="project-summary__line"></view>
       <view class="project-summary__item">
@@ -17,7 +17,7 @@
       </view>
     </view>
 
-    <view wx:if="{{textJobs.length}}" class="text-task-list">
+    <view wx:if="{{textJobs.length && activeTab !== 'text'}}" class="text-task-list">
       <view class="text-task-list__title">灵感生成任务</view>
       <view wx:for="{{textJobs}}" wx:key="id" class="text-task-card" data-id="{{item.id}}" bindtap="openTextTask">
         <view class="text-task-card__copy">
@@ -31,7 +31,7 @@
     <view class="search-row">
       <view class="search-box">
         <image class="search-box__icon" src="/assets/icons/iconsax/search.svg" mode="aspectFit" aria-hidden="true" />
-        <input class="search-box__input" placeholder-class="search-box__placeholder" placeholder="搜索作品名称" value="{{query}}" bindinput="changeSearch" />
+          <input class="search-box__input" placeholder-class="search-box__placeholder" placeholder="搜索作品名称或描述" value="{{query}}" bindinput="changeSearch" />
       </view>
       <view class="filter-button" bindtap="showFilter"><image class="filter-button__symbol" src="/assets/icons/iconsax/filter.svg" mode="aspectFit" aria-hidden="true" /><text>筛选</text></view>
     </view>
@@ -46,7 +46,7 @@
       >{{item.label}}</view>
     </view>
 
-    <view wx:if="{{works.length || visibleFailedTextJobs.length}}" class="project-list">
+    <view wx:if="{{works.length || visibleTextImageWorks.length || visibleFailedTextJobs.length}}" class="project-list">
       <view
         class="project-card ui-card"
         wx:for="{{works}}"
@@ -119,6 +119,33 @@
       </view>
 
       <view
+        wx:for="{{visibleTextImageWorks}}"
+        wx:key="id"
+        class="project-card ui-card"
+        data-id="{{item.id}}"
+        bindtap="openTextImageWork"
+        aria-role="button"
+        aria-label="查看文生图作品 {{item.title}}"
+      >
+        <view class="project-card__cover-wrap">
+          <image class="project-card__cover" src="{{item.coverPath}}" data-id="{{item.id}}" mode="aspectFill" binderror="handleTextImageCoverError" />
+        </view>
+        <view class="project-card__body">
+          <view class="project-card__header">
+            <view class="project-card__info">
+              <view class="project-card__title">{{item.title}}</view>
+              <view class="project-card__meta project-card__text-image-prompt">{{item.prompt}}</view>
+              <view class="project-card__date">{{item.updatedText}}</view>
+            </view>
+            <text class="status-pill">文生图</text>
+          </view>
+          <view class="project-card__taskline project-card__text-task-action" catchtap="stopPropagation">
+            <text class="project-card__taskline-link project-card__taskline-link--danger" data-id="{{item.id}}" catchtap="deleteTextImageWork">删除</text>
+          </view>
+        </view>
+      </view>
+
+      <view
         wx:for="{{visibleFailedTextJobs}}"
         wx:key="id"
         class="project-card ui-card"
@@ -140,6 +167,7 @@
           </view>
           <view class="project-card__taskline project-card__text-task-action" catchtap="stopPropagation">
             <text class="project-card__taskline-link" data-id="{{item.id}}" catchtap="openTextTask">重新生成</text>
+            <text class="project-card__taskline-link project-card__taskline-link--danger" data-id="{{item.id}}" catchtap="deleteFailedTextTask">删除</text>
           </view>
         </view>
       </view>
@@ -147,9 +175,9 @@
 
     <view wx:else class="empty-state">
       <image class="empty-state__icon" src="/assets/icons/project-empty.svg" mode="aspectFit" />
-      <view class="empty-state__title">{{loading ? '正在读取作品' : (allWorks.length || failedTextJobs.length ? '没有匹配的作品' : '还没有作品')}}</view>
-      <view class="empty-state__desc">{{loading ? '正在同步云端数据，请稍候' : (allWorks.length || failedTextJobs.length ? '换个关键词或筛选条件试试' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸')}}</view>
-      <button wx:if="{{!loading && !allWorks.length && !failedTextJobs.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
+      <view class="empty-state__title">{{loading ? '正在读取作品' : (allCount || failedTextJobs.length ? '没有匹配的作品' : (activeTab === 'text' ? '还没有文生图作品' : '还没有作品'))}}</view>
+      <view class="empty-state__desc">{{loading ? '正在同步云端数据，请稍候' : (allCount || failedTextJobs.length ? '换个关键词或筛选条件试试' : (activeTab === 'text' ? '生成成功的文生图原图会保存在这里' : '从一张喜欢的图片开始，做出你的第一份拼豆图纸'))}}</view>
+      <button wx:if="{{!loading && !allCount && !failedTextJobs.length}}" class="button-primary empty-state__button" bindtap="createNew">开始制作</button>
     </view>
   </view>
 

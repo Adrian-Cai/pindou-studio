@@ -15,11 +15,11 @@
 | 阶段 | 能力 | 接口 |
 | --- | --- | --- |
 | 1 | 微信登录、会话管理、当前用户 | `POST /api/auth/login`、`DELETE /api/auth/session`、`DELETE /api/auth/sessions`、`GET/PUT/PATCH /api/users/me`、`POST /api/users/me/avatar` |
-| 2 | 封面上传、作品保存与恢复 | `POST /api/files/upload`、`GET /api/media/covers/:filename`、`POST /api/works`、`GET /api/works`、`GET /api/works/:id`、`PUT/PATCH /api/works/:id`、`DELETE /api/works/:id` |
+| 2 | 封面上传、作品保存与恢复 | `POST /api/files/upload`、`GET /api/media/covers/:filename`、`POST /api/works`、`GET /api/works`、`GET /api/works/:id`、`PUT/PATCH /api/works/:id`、`DELETE /api/works/:id`、`POST/GET /api/works/text-images`、`GET/DELETE /api/works/text-images/:id` |
 | 3 | 收藏 | `PATCH /api/works/:id/favorite`、`GET /api/favorites` |
 | 4 | 额度与下载记录 | `GET /api/quota/me`、`GET /api/downloads`、`POST /api/downloads` |
 | 5 | 套餐与支付 | `GET /api/packages`、`GET /api/orders`、`POST /api/payments/create`、`POST /api/payments/notify` |
-| 6 | AI 精致生成与文生图 | `POST /api/ai/generations`、`GET /api/ai/generations/:id`、`POST /api/ai/text-generations`、`GET /api/ai/text-generations/:id`、`GET /api/ai/text-generations?active=true` |
+| 6 | AI 精致生成与文生图 | `POST /api/ai/generations`、`GET /api/ai/generations/:id`、`POST /api/ai/text-generations`、`GET/DELETE /api/ai/text-generations/:id`、`GET /api/ai/text-generations?active=true` |
 | 7 | 内容安全审核 | `POST /api/content-security/text`、`POST /api/content-security/media`、`GET/POST /api/wechat/content-security/callback` |
 | 8 | 隐私设置、法律文档和注销 | `GET/PATCH /api/users/me/privacy`、`GET /api/legal-documents/:key`、`DELETE /api/users/me` |
 
@@ -28,7 +28,7 @@
 - 图片量化继续由小程序 `createDraft()` 在客户端完成
 - 不开发服务端成品图、施工图或材料清单生成
 - 不开发 `GET /api/files/download/:workId/:type`
-- 不永久保存原始上传图片；第一版只上传作品封面/预览图
+- 标准模式不永久保存用户上传的原图；文生图成功生成的原图单独保存为文生图作品
 - 意见反馈通过微信小程序客服会话完成，不开发服务端反馈接口
 
 ### 1.3 内容安全审核

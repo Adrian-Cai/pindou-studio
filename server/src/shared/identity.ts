@@ -7,7 +7,7 @@ import {
 } from "node:crypto";
 
 export function createEntityId(
-  prefix: "usr" | "ses" | "file" | "work" | "dl" | "qt" | "order" | "vpay" | "pa" | "pe" | "aijob" | "txtjob" | "sec",
+  prefix: "usr" | "ses" | "file" | "work" | "dl" | "qt" | "order" | "vpay" | "pa" | "pe" | "aijob" | "txtjob" | "txtwork" | "sec",
 ): string {
   return `${prefix}_${randomBytes(15).toString("base64url")}`;
 }

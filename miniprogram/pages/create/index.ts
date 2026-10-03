@@ -7,7 +7,6 @@ import type { AiGenerationStyle } from '../../services/ai-generation-service'
 import { appStore } from '../../store/app-store'
 import { aiTaskManager } from '../../services/ai-generation-manager'
 import {
-  consumeTextGeneration,
   createTextGeneration,
   fetchTextGenerationOptions,
   fetchTextInspirations,
@@ -16,6 +15,7 @@ import {
   textGenerationFailureMessage,
   type TextGeneration,
 } from '../../services/text-generation-service'
+import { saveTextImageWork } from '../../services/text-image-work-service'
 import {
   clearTextTaskId,
   readInspirationCache,
@@ -108,6 +108,9 @@ Page({
     textTaskError: '',
     textTaskImagePath: '',
     textTaskImageLoading: false,
+    textTaskWorkId: '',
+    textTaskWorkSaving: false,
+    textTaskWorkError: '',
     textTaskConverting: false,
     textSizes: [] as string[],
     textSizeOptions: [] as { value: string; ratio: string; resolution: string; previewWidth: number; previewHeight: number }[],
@@ -303,7 +306,7 @@ Page({
     try {
       const task = await createTextGeneration(prompt, createIdempotencyKey(), this.data.textSize)
       // 换任务即换展示位：先清掉上一张图，避免新任务未出图时还挂着旧结果
-      this.setData({ textTaskImagePath: '', textTaskError: '' })
+      this.setData({ textTaskImagePath: '', textTaskError: '', textTaskWorkId: '', textTaskWorkSaving: false, textTaskWorkError: '' })
       this.applyTextTask(task)
       writeTextTaskId(task.id)
     } catch (error) {
@@ -331,7 +334,40 @@ Page({
       return
     }
     this.stopTextTaskPolling()
-    if (phase === 'succeeded') void this.loadTextTaskImage(task)
+    if (phase === 'succeeded') {
+      void this.saveTextTaskWork(task)
+      void this.loadTextTaskImage(task)
+    }
+  },
+
+  /** 将本页成功任务的原图幂等保存为独立作品；失败时不消费任务，保留手动重试入口。 */
+  async saveTextTaskWork(task: TextGeneration) {
+    if (task.status !== 'succeeded' || this.data.textTaskWorkId || this.data.textTaskWorkSaving) return
+    this.setData({ textTaskWorkSaving: true, textTaskWorkError: '' })
+    try {
+      const work = await saveTextImageWork(task.id)
+      if (this._textTaskId !== task.id) return
+      this.setData({ textTaskWorkId: work.id, textTaskWorkError: '' })
+    } catch (error) {
+      if (this._textTaskId === task.id) {
+        this.setData({ textTaskWorkError: error instanceof Error ? error.message : '原图保存失败，请重试' })
+      }
+    } finally {
+      if (this._textTaskId === task.id) this.setData({ textTaskWorkSaving: false })
+    }
+  },
+
+  async retrySaveTextTask() {
+    const jobId = this._textTaskId
+    if (!jobId || this.data.textTaskWorkSaving) return
+    try {
+      const task = await getTextGeneration(jobId)
+      if (this._textTaskId === jobId) await this.saveTextTaskWork(task)
+    } catch (error) {
+      if (this._textTaskId === jobId) {
+        this.setData({ textTaskWorkError: error instanceof Error ? error.message : '原图保存失败，请重试' })
+      }
+    }
   },
 
   /** 只读取不创建：任务过期或被清理时回到空展示位，不打扰用户。 */
@@ -403,6 +439,9 @@ Page({
       textTaskError: '',
       textTaskImagePath: '',
       textTaskImageLoading: false,
+      textTaskWorkId: '',
+      textTaskWorkSaving: false,
+      textTaskWorkError: '',
     })
   },
 
@@ -439,7 +478,7 @@ Page({
     this.setData({ creatingText: true })
     try {
       const task = await createTextGeneration(prompt, createIdempotencyKey(), size)
-      this.setData({ textTaskImagePath: '', textTaskError: '' })
+      this.setData({ textTaskImagePath: '', textTaskError: '', textTaskWorkId: '', textTaskWorkSaving: false, textTaskWorkError: '' })
       this.applyTextTask(task)
       writeTextTaskId(task.id)
     } catch (error) {
@@ -452,8 +491,8 @@ Page({
   /** 确认参考图：走与独立结果页一致的标准拼豆转换与草稿落地。 */
   async createPatternFromTextTask() {
     const source = this.data.textTaskImagePath
-    if (this.data.textTaskPhase !== 'succeeded' || !source || this.data.textTaskConverting) return
-    const jobId = this._textTaskId
+    if (this.data.textTaskPhase !== 'succeeded' || !source || !this.data.textTaskWorkId
+      || this.data.textTaskWorkSaving || this.data.textTaskConverting) return
     const sourcePrompt = this.data.textTaskPrompt
     this.setData({ textTaskConverting: true })
     wx.showLoading({ title: '正在生成拼豆图', mask: true })
@@ -465,11 +504,6 @@ Page({
       }
       await appStore.saveLocalDraft(draft, false)
       await appStore.setCurrentDraft(draft)
-      try {
-        await consumeTextGeneration(jobId)
-      } catch (error) {
-        console.warn('文生图任务已生成草稿，但恢复任务标记失败', error)
-      }
       wx.navigateTo({ url: '/packages/editor/index' })
     } catch (error) {
       console.error('文生图参考图转拼豆失败', error)

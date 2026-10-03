@@ -14,6 +14,7 @@
 .text-generation-card__state--failed { min-height: 280rpx; }
 .text-generation-card__result { display: flex; flex-direction: column; align-items: center; padding-top: 28rpx; }
 .text-generation-card__result-note { margin-top: 20rpx; color: #6f7e75; font-size: 24rpx; line-height: 1.5; text-align: center; }
+.text-generation-card__save-error { margin-top: 18rpx; color: #c64c48; font-size: 24rpx; line-height: 1.5; text-align: center; }
 .text-generation-card__button { width: 100%; margin-top: 28rpx; }
 .text-generation-card__button::after { border: 0; }
 .text-generation-card__error { margin-top: 22rpx; color: #c64c48; font-size: 24rpx; line-height: 1.5; }

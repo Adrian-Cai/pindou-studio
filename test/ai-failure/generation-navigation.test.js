@@ -8,6 +8,7 @@ const { aiTaskManager } = require(path.join(compiledRoot, 'services/ai-generatio
 const aiTaskStore = require(path.join(compiledRoot, 'services/ai-task-store.js'))
 const imageService = require(path.join(compiledRoot, 'services/image-service.js'))
 const textService = require(path.join(compiledRoot, 'services/text-generation-service.js'))
+const textImageWorkService = require(path.join(compiledRoot, 'services/text-image-work-service.js'))
 const { appStore } = require(path.join(compiledRoot, 'store/app-store.js'))
 const { authStore } = require(path.join(compiledRoot, 'store/auth-store.js'))
 
@@ -156,6 +157,57 @@ test('文生图尺寸按参考顺序展示比例与分辨率，点选后立即�
   assert.match(markup, /item\.ratio/)
   assert.match(markup, /item\.resolution/)
   assert.match(styles, /\.text-size-options\s*\{[^}]*flex-wrap:\s*nowrap/)
+})
+
+test('创作页文生图成功后自动保存原图作品，再允许转换拼豆图', async (t) => {
+  const { home, calls } = setup(t)
+  const sourceJobId = 'txtjob_0123456789abcdefghij'
+  const task = { id: sourceJobId, status: 'succeeded', prompt: '一只橘猫', size: '1024x1024', outputFile: { url: '/api/media/ai/output.png' } }
+  const savedJobs = []
+  t.mock.method(textImageWorkService, 'saveTextImageWork', async (jobId) => {
+    savedJobs.push(jobId)
+    return { id: 'txtwork_0123456789abcdefghij', coverUrl: 'https://cdn.example/original.png' }
+  })
+  t.mock.method(textService, 'loadTextGenerationImage', async () => '/tmp/text-image.png')
+  t.mock.method(imageService, 'createDraft', async () => ({ id: 'draft-text', settings: {}, cells: [] }))
+  t.mock.method(appStore, 'saveLocalDraft', async () => {})
+  home.applyTextTask(task)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(savedJobs, [sourceJobId])
+  assert.equal(home.data.textTaskWorkId, 'txtwork_0123456789abcdefghij')
+  assert.equal(home.data.textTaskImagePath, '/tmp/text-image.png')
+  await home.createPatternFromTextTask()
+  assert.equal(calls.drafts.length, 1)
+  assert.equal(calls.drafts[0].creationSource, 'text')
+  assert.deepEqual(calls.navigation, ['/packages/editor/index'])
+})
+
+test('创作页原图作品保存失败时保留任务，转换前可重试保存', async (t) => {
+  const { home, calls } = setup(t)
+  const sourceJobId = 'txtjob_0123456789abcdefghij'
+  const task = { id: sourceJobId, status: 'succeeded', prompt: '一只橘猫', size: '1024x1024', outputFile: { url: '/api/media/ai/output.png' } }
+  let attempts = 0
+  t.mock.method(textImageWorkService, 'saveTextImageWork', async () => {
+    attempts += 1
+    if (attempts === 1) throw new Error('保存失败，请重试')
+    return { id: 'txtwork_0123456789abcdefghij', coverUrl: 'https://cdn.example/original.png' }
+  })
+  t.mock.method(textService, 'loadTextGenerationImage', async () => '/tmp/text-image.png')
+  t.mock.method(textService, 'getTextGeneration', async () => task)
+  t.mock.method(imageService, 'createDraft', async () => ({ id: 'draft-text', settings: {}, cells: [] }))
+  t.mock.method(appStore, 'saveLocalDraft', async () => {})
+  home.applyTextTask(task)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(home.data.textTaskWorkError, '保存失败，请重试')
+
+  await home.createPatternFromTextTask()
+  assert.equal(calls.drafts.length, 0)
+  await home.retrySaveTextTask()
+  assert.equal(attempts, 2)
+  assert.equal(home.data.textTaskWorkId, 'txtwork_0123456789abcdefghij')
+  await home.createPatternFromTextTask()
+  assert.equal(calls.drafts.length, 1)
 })
 
 function setupDetail(t, from = 'home', status = 'processing') {
