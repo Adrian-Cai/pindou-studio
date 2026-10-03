@@ -68,6 +68,10 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 统一封装 wx.request：2xx 原样返回业务数据，其他状态转换为 ApiError，
+ * 让页面只处理稳定的 code/message/requestId，而不依赖微信原始响应结构。
+ */
 export function apiRequest<T>(options: ApiRequestOptions): Promise<T> {
   let url: string
   try {
@@ -105,6 +109,7 @@ export function apiRequest<T>(options: ApiRequestOptions): Promise<T> {
   })
 }
 
+/** 上传接口返回的是 JSON 字符串，需要先解析成功，再按 HTTP 状态决定 resolve 或 reject。 */
 export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
   let url: string
   try {
@@ -155,6 +160,7 @@ export function apiUploadFile<T>(options: ApiUploadOptions): Promise<T> {
   })
 }
 
+/** 兼容非标准错误响应，并保留 requestId，便于根据服务端日志定位一次具体请求。 */
 function createApiError(statusCode: number, value: unknown): ApiError {
   const body = isRecord(value) ? value as ApiErrorBody : {}
   const error = body.error
