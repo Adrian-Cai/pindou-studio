@@ -103,8 +103,10 @@ test('文生图尺寸校验、持久化与 Provider 传递使用同一白名单'
   const { validateCreateTextImageGenerationBody } = require('../dist/http/request-validation')
   const { TEXT_IMAGE_SIZES } = require('../dist/modules/ai/text-image-options')
   const cloudSource = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../cloudfunctions/generateImage/index.js'), 'utf8')
+  assert.deepEqual(TEXT_IMAGE_SIZES, ['1024x1024', '1280x720', '720x1280'])
   assert.deepEqual(TEXT_IMAGE_SIZES, cloudSource.match(/const ALLOWED_SIZES = \[(.+)\]/)[1].match(/'([^']+)'/g).map(size => size.slice(1, -1)))
   assert.throws(() => validateCreateTextImageGenerationBody({ prompt: '猫', size: '1920x1080' }))
+  assert.throws(() => validateCreateTextImageGenerationBody({ prompt: '猫', size: '1280x1280' }))
   assert.throws(() => validateCreateTextImageGenerationBody({ prompt: '猫', size: null }))
   assert.equal(validateCreateTextImageGenerationBody({ prompt: '猫' }).size, '1024x1024')
   for (const size of TEXT_IMAGE_SIZES) {

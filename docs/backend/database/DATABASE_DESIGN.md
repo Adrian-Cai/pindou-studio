@@ -95,6 +95,7 @@ pindou_users
 | `pindou_file_assets` | 文件资产表 | 保存封面图片在对象存储中的地址和元数据 |
 | `pindou_works` | 作品主表 | 保存作品归属、标题、封面、尺寸和统计摘要 |
 | `pindou_work_patterns` | 作品图案表 | 保存作品完整的颜色表与网格索引数据 |
+| `pindou_text_image_works` | 文生图作品表 | 保存文生图原图与提示词，不包含拼豆网格 |
 | `pindou_favorites` | 收藏关系表 | 记录哪个用户收藏了哪个作品 |
 | `pindou_download_records` | 下载记录表 | 记录用户导出了哪个作品、哪种类型和是否消耗额度 |
 | `pindou_quota_transactions` | 额度流水表 | 记录免费额度、购买额度、下载扣减、退款和人工调整 |
@@ -203,6 +204,22 @@ pindou_users
 文生图任务表保存用户提示词、服务端模型快照、任务状态、短期输出文件引用及恢复时间。提示词最多 500 字；任务成功时复用 AI 输出文件资产并以幂等流水扣除一次 `ai_generation` 额度，失败不扣。未消费任务及输出默认 24 小时后清理。
 
 索引：`(user_id, updated_at DESC)`、`(user_id, status, updated_at DESC)`；标题搜索按数据库能力增加全文或前缀索引
+
+### 3.4.2 `pindou_text_image_works`
+
+成功的文生图原图通过独立记录作为作品长期保存，不创建虚假的拼豆图案。`source_job_id` 唯一，保证一次任务最多关联一条作品；作品删除后保留软删除记录以阻止同一任务重新生成副本。原图文件作为 `pindou_file_assets` 的 `cover` 类型资产保存，删除作品时同步停用资产并清理对象文件。
+
+| 字段 | 类型建议 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | varchar(32) | PK | 文生图作品编号 |
+| `user_id` | varchar(32) | FK, NOT NULL | 作品所有者 |
+| `source_job_id` | varchar(32) | NOT NULL, UNIQUE | 来源文生图任务；不设任务外键，以便短期任务过期清理后作品继续存在 |
+| `image_file_id` | varchar(32) | FK, NOT NULL | 持久化原图的文件资产 |
+| `prompt` | varchar(500) | NOT NULL | 用户提交的画面描述 |
+| `created_at` / `updated_at` | timestamptz | NOT NULL | 创建与修改时间 |
+| `deleted_at` | timestamptz | NULL | 软删除时间 |
+
+列表索引：`(user_id, created_at DESC) WHERE deleted_at IS NULL`。迁移：`server/sql/023_text_image_works.sql`。
 
 ### 3.5 `pindou_work_patterns`
 

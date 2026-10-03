@@ -30,7 +30,7 @@ Ai 模式解决的问题不是“让模型直接输出最终拼豆格子”，�
 - 国内云服务接入更适合微信小程序生产环境
 - 服务端通过 `@cloudbase/node-sdk` 调用 `generateImage` 云函数，不需要让小程序直连模型厂商
 
-新任务默认使用 Hy-Image-3.0，服务端固定 `revise={ value: false }`，减少不必要的 Prompt 改写等待；云函数使用品牌标识文案“小露拼豆”。
+新任务默认使用 Hy-Image-3.0，服务端固定 `revise={ value: false }`，减少不必要的 Prompt 改写等待；云函数使用「AI生成」作为显式标识文案。
 
 ### Benchmark / 备用：OpenAI GPT-Image-2
 

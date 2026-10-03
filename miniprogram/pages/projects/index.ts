@@ -18,7 +18,12 @@ import {
   renameCloudWork,
 } from '../../services/work-service'
 import { appStore, LocalStorageError } from '../../store/app-store'
-import { fetchRecoverableTextGenerations, type TextGeneration } from '../../services/text-generation-service'
+import { deleteFailedTextGeneration, fetchRecoverableTextGenerations, type TextGeneration } from '../../services/text-generation-service'
+import {
+  deleteTextImageWork as deleteCloudTextImageWork,
+  fetchTextImageWorks,
+  type TextImageWork,
+} from '../../services/text-image-work-service'
 import { checkTextContent } from '../../services/content-security-service'
 import {
   aiTaskManager,
@@ -26,7 +31,7 @@ import {
   retryActionLabel,
 } from '../../services/ai-generation-manager'
 
-type ProjectTab = 'all' | 'recent' | 'draft' | 'completed'
+type ProjectTab = 'all' | 'recent' | 'draft' | 'completed' | 'text'
 type WorkView = WorkItem & {
   updatedText: string
   dimensions: string
@@ -47,11 +52,13 @@ type FailedTextTaskView = Pick<TextGeneration, 'id' | 'prompt' | 'updatedAt'> & 
   coverPath: string
   updatedText: string
 }
+type TextImageWorkView = TextImageWork & { coverPath: string; updatedText: string }
 const tabs = [
   { id: 'all', label: '全部' },
   { id: 'recent', label: '最近' },
   { id: 'draft', label: '草稿' },
   { id: 'completed', label: '已完成' },
+  { id: 'text', label: '文生图' },
 ] as const
 // 封面加载失败时的占位图
 const COVER_FALLBACK_PATH = '/assets/icons/image-upload.svg'
@@ -66,6 +73,9 @@ Page({
     textJobs: [] as TextGeneration[],
     failedTextJobs: [] as FailedTextTaskView[],
     visibleFailedTextJobs: [] as FailedTextTaskView[],
+    textImageWorks: [] as TextImageWorkView[],
+    visibleTextImageWorks: [] as TextImageWorkView[],
+    allCount: 0,
     recentCount: 0,
     draftCount: 0,
     loading: false,
@@ -102,15 +112,16 @@ Page({
   async refreshWorks() {
     // 未登录时没有云端列表可拉，直接渲染本地缓存
     if (!hasCloudSession()) {
-      this.setData({ textJobs: [], failedTextJobs: [], visibleFailedTextJobs: [] })
+      this.setData({ textJobs: [], failedTextJobs: [], visibleFailedTextJobs: [], textImageWorks: [], visibleTextImageWorks: [] })
       this.refreshVisibleWorks()
       return
     }
     this.setData({ loading: true })
     try {
-      const [worksResult, textJobsResult] = await Promise.allSettled([
+      const [worksResult, textJobsResult, textImageWorksResult] = await Promise.allSettled([
         fetchCloudWorks(),
         fetchRecoverableTextGenerations(),
+        fetchTextImageWorks(),
       ])
       if (textJobsResult.status === 'fulfilled') {
         const failedTextJobs = textJobsResult.value
@@ -125,6 +136,14 @@ Page({
           failedTextJobs,
         })
       } else console.warn('读取文生图恢复任务失败', textJobsResult.reason)
+      if (textImageWorksResult.status === 'fulfilled') {
+        const textImageWorks = textImageWorksResult.value.items.map((work) => ({
+          ...work,
+          coverPath: work.coverUrl,
+          updatedText: formatDateTime(Date.parse(work.updatedAt)),
+        }))
+        this.setData({ textImageWorks })
+      } else console.warn('读取文生图作品失败', textImageWorksResult.reason)
       if (worksResult.status === 'rejected') {
         // 这里是**网络/接口**失败，本地缓存还在，按「加载失败」提示
         console.error('读取云端作品失败', worksResult.reason)
@@ -184,7 +203,9 @@ Page({
 
     this.setData({
       allWorks,
-      recentCount: allWorks.filter((work) => isRecent(work.updatedAt)).length,
+      allCount: allWorks.length + this.data.textImageWorks.length,
+      recentCount: allWorks.filter((work) => isRecent(work.updatedAt)).length
+        + this.data.textImageWorks.filter((work) => isRecent(Date.parse(work.updatedAt))).length,
       draftCount: allWorks.filter((work) => work.isDraft).length,
     }, () => this.applyFilters())
   },
@@ -200,6 +221,15 @@ Page({
     this.setData({ allWorks }, () => this.applyFilters())
   },
 
+  handleTextImageCoverError(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    const textImageWorks = this.data.textImageWorks.map((work) => work.id === id
+      ? { ...work, coverPath: COVER_FALLBACK_PATH }
+      : work)
+    this.setData({ textImageWorks }, () => this.applyFilters())
+  },
+
   changeSearch(event: WechatMiniprogram.Input) {
     this.setData({ query: event.detail.value }, () => this.applyFilters())
   },
@@ -213,22 +243,29 @@ Page({
     const activeTab = this.data.activeTab
     const works = this.data.allWorks.filter((work) => {
       if (query && !work.title.toLowerCase().includes(query)) return false
+      if (activeTab === 'text') return false
       if (activeTab === 'recent') return isRecent(work.updatedAt)
       if (activeTab === 'draft') return work.isDraft
       if (activeTab === 'completed') return !work.isDraft
       return true
     })
     const failedTextJobs = this.data.failedTextJobs.filter((task) => {
-      if (activeTab === 'draft' || activeTab === 'completed') return false
+      if (activeTab === 'draft' || activeTab === 'completed' || activeTab === 'text') return false
       if (query && !task.prompt.toLowerCase().includes(query) && !'文生图创作'.includes(query)) return false
       return activeTab !== 'recent' || isRecent(Date.parse(task.updatedAt))
     })
-    this.setData({ works, visibleFailedTextJobs: failedTextJobs })
+    const visibleTextImageWorks = this.data.textImageWorks.filter((work) => {
+      if (query && !work.prompt.toLowerCase().includes(query) && !work.title.toLowerCase().includes(query)) return false
+      if (activeTab === 'draft') return false
+      if (activeTab === 'recent') return isRecent(Date.parse(work.updatedAt))
+      return activeTab === 'all' || activeTab === 'completed' || activeTab === 'text'
+    })
+    this.setData({ works, visibleFailedTextJobs: failedTextJobs, visibleTextImageWorks })
   },
 
   showFilter() {
     wx.showActionSheet({
-      itemList: ['全部作品', '最近更新', '仅看草稿', '仅看已完成'],
+      itemList: ['全部作品', '最近更新', '仅看草稿', '仅看已完成', '仅看文生图'],
       success: ({ tapIndex }) => {
         const tab = tabs[tapIndex]?.id
         if (!tab) return
@@ -250,6 +287,68 @@ Page({
     const id = String(event.currentTarget.dataset.id ?? '')
     if (!id) return
     wx.navigateTo({ url: `/packages/ai-generation/text/index?taskId=${encodeURIComponent(id)}&from=projects` })
+  },
+
+  openTextImageWork(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    if (!id) return
+    wx.navigateTo({ url: `/packages/ai-generation/text/index?workId=${encodeURIComponent(id)}&from=projects` })
+  },
+
+  deleteFailedTextTask(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    const task = this.data.failedTextJobs.find((item) => item.id === id)
+    if (!task) return
+    wx.showModal({
+      title: '删除失败记录？',
+      content: '删除后无法恢复这条文生图任务，AI 额度流水不会改变。',
+      cancelText: '保留',
+      confirmText: '删除',
+      confirmColor: '#e5484d',
+      success: ({ confirm }) => {
+        if (!confirm) return
+        void this.removeFailedTextTask(id)
+      },
+    })
+  },
+
+  async removeFailedTextTask(id: string) {
+    try {
+      await deleteFailedTextGeneration(id)
+      await this.refreshWorks()
+      wx.showToast({ title: '已删除', icon: 'success' })
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : '删除失败，请重试', icon: 'none' })
+    }
+  },
+
+  deleteTextImageWork(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id ?? '')
+    const work = this.data.textImageWorks.find((item) => item.id === id)
+    if (!work) return
+    wx.showModal({
+      title: '删除文生图作品？',
+      content: '删除后无法恢复这张原图。',
+      cancelText: '取消',
+      confirmText: '删除',
+      confirmColor: '#e5484d',
+      success: ({ confirm }) => {
+        if (!confirm) return
+        void this.removeTextImageWork(id)
+      },
+    })
+  },
+
+  async removeTextImageWork(id: string) {
+    try {
+      await deleteCloudTextImageWork(id)
+      this.setData({ textImageWorks: this.data.textImageWorks.filter((work) => work.id !== id) }, () => {
+        this.refreshVisibleWorks()
+      })
+      wx.showToast({ title: '已删除', icon: 'success' })
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : '删除失败，请重试', icon: 'none' })
+    }
   },
 
   async showSourcePrompt(event: WechatMiniprogram.TouchEvent) {

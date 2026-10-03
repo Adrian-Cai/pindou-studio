@@ -225,3 +225,13 @@ export function validateCreateTextImageGenerationBody(body: Record<string, unkno
   if (!TEXT_IMAGE_SIZES.includes(size as TextImageSize)) throw invalidArgument('图片尺寸不受支持');
   return { prompt, size: size as TextImageSize };
 }
+
+/** 只接受服务端已登记的文生图任务 ID，不接受客户端指定作品或图片数据。 */
+export function validateCreateTextImageWorkBody(body: Record<string, unknown>): { readonly sourceJobId: string } {
+  const keys = Object.keys(body);
+  if (keys.length !== 1 || keys[0] !== "sourceJobId"
+    || typeof body.sourceJobId !== "string" || !/^txtjob_[A-Za-z0-9_-]{20}$/u.test(body.sourceJobId)) {
+    throw invalidArgument("文生图作品保存请求必须包含合法的 sourceJobId");
+  }
+  return { sourceJobId: body.sourceJobId };
+}

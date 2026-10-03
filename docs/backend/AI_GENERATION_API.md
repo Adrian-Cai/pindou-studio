@@ -16,7 +16,7 @@
 
 - Provider：`hunyuan`
 - 模型：`HY-Image-v3.0-I2I-ToB-v1.0.1`
-- 云函数文字标识：`小露拼豆`
+- 云函数文字标识：`AI生成`
 - Prompt 模板版本：`v3`
 - 输入/输出文件默认保留：24 小时
 - 默认本地服务地址：`http://127.0.0.1:4000`
@@ -408,7 +408,7 @@ await app.callFunction({
 });
 ```
 
-云函数用 `cloud.ai().createImageModel("hunyuan-image")` 调用固定模型 `HY-Image-v3.0-I2I-ToB-v1.0.1`，并设置 `footnote: "小露拼豆"`。函数将生成图片保存到 CloudBase 存储并返回 `fileID`、文件类型、字节数和请求 ID。服务端通过 `downloadFile` 读取字节，按真实文件内容校验后持久化到项目 AI 文件存储；CloudBase 临时 `fileID` 不会返回给小程序。
+云函数用 `cloud.ai().createImageModel("hunyuan-image")` 调用固定模型 `HY-Image-v3.0-I2I-ToB-v1.0.1`，并设置 `footnote: "AI生成"`。函数将生成图片保存到 CloudBase 存储并返回 `fileID`、文件类型、字节数和请求 ID。服务端通过 `downloadFile` 读取字节，按真实文件内容校验后持久化到项目 AI 文件存储；CloudBase 临时 `fileID` 不会返回给小程序。
 
 项目自己的任务接口仍保留 `queued -> processing -> succeeded/failed` 状态，避免小程序等待长 HTTP 请求。输出图持久化且任务成功更新后，才扣一次额度。
 
@@ -502,9 +502,10 @@ Content-Type: application/json
 GET /api/ai/text-generations/{id}
 GET /api/ai/text-generations?active=true
 POST /api/ai/text-generations/{id}/consume
+DELETE /api/ai/text-generations/{id}
 ```
 
-查询和恢复列表均要求 Bearer Token 并校验任务归属。恢复列表包含未消费、未过期的排队中、处理中、成功和失败任务；小程序确认将成功参考图转换为本地拼豆草稿后调用 `consume`，避免列表重复展示。失败任务可使用新的幂等键提交相同描述重试。
+查询、恢复、消费和删除均要求 Bearer Token 并校验任务归属。恢复列表包含未消费、未过期的排队中、处理中、成功和失败任务。仅失败任务可删除；删除会清理任务和临时输出文件，不修改额度流水。失败任务也可使用新的幂等键提交相同描述重试。
 
 ### 12.3 状态、额度与作品保存
 
@@ -512,7 +513,21 @@ POST /api/ai/text-generations/{id}/consume
 queued → processing → succeeded / failed
 ```
 
-生成参考图并通过服务端格式、大小、尺寸校验后才扣 1 次 `ai_generation` 额度；失败不扣。AI 输出文件和未消费任务默认保留 24 小时。客户端随后使用现有标准拼豆引擎转换，不再发起第二次 AI 调用。保存作品时，`creationSource=text` 和 `sourcePrompt` 与封面、图案在现有作品事务中写入；作品详情返回 `sourcePrompt`，摘要返回 `creationSource`。历史作品由迁移默认标记为图片来源。
+生成参考图并通过服务端格式、大小、尺寸校验后才扣 1 次 `ai_generation` 额度；失败不扣。成功后客户端调用下列接口，服务端将原图复制到长期封面文件存储并标记任务已消费。作品保存失败时不标记任务已消费，客户端可重试；每个任务至多创建一条作品。未保存任务及中间输出默认保留 24 小时。
+
+```http
+POST /api/works/text-images
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"sourceJobId":"txtjob_..."}
+
+GET /api/works/text-images?page=1&pageSize=20
+GET /api/works/text-images/{workId}
+DELETE /api/works/text-images/{workId}
+```
+
+文生图作品只保存原图和描述，不含拼豆网格；作品列表「文生图」筛选仅返回这些记录，「全部」也包含这些记录。删除作品会软删除记录并清理持久图片。小程序从文生图作品详情生成拼豆草稿后，拼豆图仍走既有标准引擎与普通作品保存流程，不再消费或重建文生图作品。
 
 ### 12.4 尺寸配置与 AI 灵感
 
@@ -521,7 +536,7 @@ GET /api/ai/text-generation-options   # 返回 { sizes, defaultSize, cost }
 GET /api/ai/text-inspirations         # 返回 { items: [{ title, prompt } x3] }
 ```
 
-`text-generation-options` 只返回服务端白名单尺寸与单次扣费次数，客户端不自建尺寸白名单。`text-inspirations` 复用登录态、`aiRateLimiter`（默认 5 次 / 10 分钟，key `{userId}:text-inspiration`）和文本内容安全检查，**不扣用户 AI 额度**。
+`text-generation-options` 只返回服务端白名单尺寸与单次扣费次数，客户端不自建尺寸白名单；当前尺寸需满足 CloudBase 模型的边长范围及面积不超过 `1024×1024`，所以仅开放 `1024x1024`、`1280x720`、`720x1280`。`text-inspirations` 复用登录态、`aiRateLimiter`（默认 5 次 / 10 分钟，key `{userId}:text-inspiration`）和文本内容安全检查，**不扣用户 AI 额度**。
 
 灵感由 `generateImage` 云函数走 CloudBase `cloudbase/hy3` 文本模型生成（服务端持有密钥，客户端不接触）。这是全链路唯一「不扣用户额度、却真实消耗 token」的调用，成本口径：
 
@@ -532,4 +547,4 @@ GET /api/ai/text-inspirations         # 返回 { items: [{ title, prompt } x3] }
 
 ### 12.5 数据库迁移
 
-部署前执行 `server/sql/019_text_image_generation.sql`，新增 `pindou_text_image_generation_jobs`，并为 `pindou_works` 增加 `creation_source`、`source_prompt`。任务提示词不进入日志；过期任务清理时连同中间输出一起删除。
+部署前按顺序确认 `server/sql/019_text_image_generation.sql`、`server/sql/022_text_image_size.sql` 和 `server/sql/023_text_image_works.sql` 已执行。`023` 新增 `pindou_text_image_works`，独立保存长期文生图原图。任务提示词不进入日志；未保存的过期任务清理时连同中间输出一起删除。

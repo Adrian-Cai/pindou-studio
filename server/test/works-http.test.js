@@ -86,6 +86,64 @@ test("cover upload authenticates and accepts only type=cover", async () => {
   });
 });
 
+test("text image artwork endpoints authenticate and scope every operation to the current user", async () => {
+  const calls = [];
+  const savedWork = {
+    id: "txtwork_0123456789abcdefghij",
+    title: "文生图作品",
+    prompt: "一只橘猫",
+    coverUrl: "https://cdn.example/original.png",
+    width: 1024,
+    height: 1024,
+    createdAt: "2026-10-03T00:00:00.000Z",
+    updatedAt: "2026-10-03T00:00:00.000Z",
+  };
+  await withApplication(dependencies({
+    authenticator: {
+      async authenticate(authorization) {
+        if (authorization !== "Bearer token") throw new AppError(401, "UNAUTHORIZED", "请先登录");
+        return { id: "usr_current" };
+      },
+    },
+    textImageWorks: {
+      async create(userId, sourceJobId) { calls.push(["create", userId, sourceJobId]); return savedWork; },
+      async list(options) { calls.push(["list", options]); return { total: 1, page: options.page, pageSize: options.pageSize, items: [savedWork] }; },
+      async get(userId, id) { calls.push(["get", userId, id]); return savedWork; },
+      async delete(userId, id) { calls.push(["delete", userId, id]); },
+    },
+    textGenerations: { async deleteFailed(userId, id) { calls.push(["deleteFailed", userId, id]); } },
+  }), async (baseUrl) => {
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    const sourceJobId = "txtjob_0123456789abcdefghij";
+    const create = await fetch(`${baseUrl}/api/works/text-images`, {
+      method: "POST", headers, body: JSON.stringify({ sourceJobId }),
+    });
+    assert.equal(create.status, 201);
+    assert.equal((await create.json()).id, savedWork.id);
+
+    const list = await fetch(`${baseUrl}/api/works/text-images?page=2&pageSize=10`, { headers });
+    assert.equal(list.status, 200);
+    assert.equal((await list.json()).items[0].id, savedWork.id);
+    const detail = await fetch(`${baseUrl}/api/works/text-images/${savedWork.id}`, { headers });
+    assert.equal(detail.status, 200);
+    const remove = await fetch(`${baseUrl}/api/works/text-images/${savedWork.id}`, { method: "DELETE", headers });
+    assert.equal(remove.status, 204);
+    const removeFailedJob = await fetch(`${baseUrl}/api/ai/text-generations/${sourceJobId}`, { method: "DELETE", headers });
+    assert.equal(removeFailedJob.status, 204);
+
+    assert.deepEqual(calls, [
+      ["create", "usr_current", sourceJobId],
+      ["list", { userId: "usr_current", page: 2, pageSize: 10 }],
+      ["get", "usr_current", savedWork.id],
+      ["delete", "usr_current", savedWork.id],
+      ["deleteFailed", "usr_current", sourceJobId],
+    ]);
+
+    const unauthenticated = await fetch(`${baseUrl}/api/works/text-images`);
+    assert.equal(unauthenticated.status, 401);
+  });
+});
+
 test("AI input upload reuses the matching completed content-security check", async () => {
   const calls = [];
   await withApplication(dependencies({

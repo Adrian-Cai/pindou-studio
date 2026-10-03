@@ -169,6 +169,46 @@ export class PostgresTextImageGenerationService {
     if ((result.rowCount ?? 0) === 0) throw notFound("文生图结果不存在或尚未完成");
   }
 
+  public async deleteFailed(userId: string, jobId: string): Promise<void> {
+    const client = await this.pool.connect();
+    let outputObjectKey: string | null = null;
+    let outputFileId: string | null = null;
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<TextJobRow>(
+        `SELECT jobs.*, files.object_key AS output_object_key
+           FROM pindou_text_image_generation_jobs jobs
+           LEFT JOIN pindou_file_assets files ON files.id = jobs.output_file_id
+          WHERE jobs.id = $1 AND jobs.user_id = $2
+          FOR UPDATE OF jobs`,
+        [jobId, userId],
+      );
+      const job = result.rows[0];
+      if (!job) throw notFound("文生图任务不存在");
+      if (job.status !== "failed") {
+        throw new AppError(409, "TEXT_GENERATION_NOT_FAILED", "只有生成失败的任务可以删除");
+      }
+      outputObjectKey = job.output_object_key ?? null;
+      outputFileId = job.output_file_id;
+      await client.query("DELETE FROM pindou_text_image_generation_jobs WHERE id = $1 AND user_id = $2", [jobId, userId]);
+      if (outputFileId) await client.query("DELETE FROM pindou_file_assets WHERE id = $1 AND user_id = $2", [outputFileId, userId]);
+      await client.query("COMMIT");
+    } catch (error: unknown) {
+      await rollbackTransaction(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+    if (outputObjectKey) {
+      try {
+        await this.storage.remove(outputObjectKey);
+      } catch (error: unknown) {
+        console.error(JSON.stringify({ event: "failed_text_generation_file_cleanup_failed", userId, jobId,
+          message: error instanceof Error ? error.message : String(error) }));
+      }
+    }
+  }
+
   public async processQueued(limit = 5): Promise<void> {
     const result = await this.pool.query<{ readonly id: string }>(
       `SELECT id FROM pindou_text_image_generation_jobs

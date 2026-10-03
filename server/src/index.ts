@@ -30,6 +30,7 @@ import { PostgresPaymentService } from "./modules/payments/payment-service";
 import { createWeChatPaymentGateway } from "./modules/payments/wechat-pay-client";
 import { createVirtualPayGateway } from "./modules/payments/virtual-pay-client";
 import { PostgresWorkService } from "./modules/works/work-service";
+import { PostgresTextImageWorkService } from "./modules/works/text-image-work-service";
 import { FileSystemContentSecurityMediaStorage } from "./modules/content-security/media-storage";
 import { OfficialWeChatContentSecurityClient } from "./modules/content-security/wechat-client";
 import { PostgresContentSecurityService } from "./modules/content-security/content-security-service";
@@ -187,6 +188,7 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         virtualPayPush: config.virtualPayPush,
         aiGenerations,
         textGenerations,
+        textImageWorks: new PostgresTextImageWorkService(pool, covers, aiFiles),
         capabilities: {
           wechatPay: paymentGateway.configured,
           aiGeneration: defaultAiProvider.configured,

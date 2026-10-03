@@ -50,14 +50,33 @@ interface CoordinateTick {
   end: boolean
 }
 
-function buildCoordinateTicks(size: number): CoordinateTick[] {
+interface PanGestureStart {
+  clientX: number
+  clientY: number
+  panX: number
+  panY: number
+}
+
+function clampPanOffset(offset: number, viewportSize: number, scalePercent: number): number {
+  // 缩放以画布中心为锚点，位移限制在图案仍覆盖视口的范围内。
+  const maxOffset = Math.max(0, viewportSize * (scalePercent / 100 - 1) / 2)
+  return Math.max(-maxOffset, Math.min(maxOffset, offset))
+}
+
+function buildCoordinateTicks(size: number, otherSize: number): CoordinateTick[] {
   const count = Math.max(1, Math.floor(size))
+  // 图纸会在正方形画布中等比适配；短边两侧留白，坐标刻度需跟随实际网格边界。
+  const extent = Math.min(size, otherSize) / size
+  const offset = (1 - extent) / 2
   return Array.from({ length: count }, (_, index) => {
     const coordinate = index + 1
     const label = coordinate === 1 || coordinate % 10 === 0 || coordinate === count
+    const position = count === 1
+      ? offset + extent / 2
+      : offset + (index / (count - 1)) * extent
     return {
       coordinate,
-      position: `${count === 1 ? 50 : (index / (count - 1)) * 100}%`,
+      position: `${position * 100}%`,
       label: label ? String(coordinate) : '',
       major: label,
       start: index === 0,
@@ -93,12 +112,13 @@ Page({
     draft: null as PatternDraft | null,
     editorReady: false,
     patternPreviewPath: '',
-    patternPreviewReady: false,
     patternRenderError: false,
     rulerColumns: [] as CoordinateTick[],
     rulerRows: [] as CoordinateTick[],
     activeTool: 'pencil',
     scalePercent: 100,
+    panX: 0,
+    panY: 0,
     canZoomOut: false,
     canZoomIn: true,
     paletteColors: [] as string[],
@@ -116,6 +136,9 @@ Page({
   _unsubscribe: null as (() => void) | null,
   _visible: false,
   _previewRenderId: 0,
+  _boardWidth: 0,
+  _boardHeight: 0,
+  _panGesture: null as PanGestureStart | null,
 
   onLoad(query?: Record<string, string | undefined>) {
     const from: TaskFrom = query?.from === 'projects' ? 'projects' : 'home'
@@ -144,12 +167,15 @@ Page({
 
   onHide() {
     this._visible = false
+    this._previewRenderId += 1
+    this._panGesture = null
     this.unsubscribe()
   },
 
   onUnload() {
     this._visible = false
     this._previewRenderId += 1
+    this._panGesture = null
     this.unsubscribe()
   },
 
@@ -207,8 +233,9 @@ Page({
         paletteColors: [],
         selectedColor: '',
         patternPreviewPath: '',
-        patternPreviewReady: false,
         patternRenderError: false,
+        panX: 0,
+        panY: 0,
       }),
     })
   },
@@ -228,10 +255,11 @@ Page({
       draft,
       editorReady: true,
       patternPreviewPath: '',
-      patternPreviewReady: false,
       patternRenderError: false,
-      rulerColumns: buildCoordinateTicks(draft.settings.width),
-      rulerRows: buildCoordinateTicks(draft.settings.height),
+      panX: draftChanged ? 0 : this.data.panX,
+      panY: draftChanged ? 0 : this.data.panY,
+      rulerColumns: buildCoordinateTicks(draft.settings.width, draft.settings.height),
+      rulerRows: buildCoordinateTicks(draft.settings.height, draft.settings.width),
       paletteColors,
       selectedColor,
     }, () => this.renderPatternPreview())
@@ -283,23 +311,60 @@ Page({
     const next = Math.min(300, this.data.scalePercent + 20)
     this.setData({
       scalePercent: next,
+      panX: clampPanOffset(this.data.panX, this._boardWidth, next),
+      panY: clampPanOffset(this.data.panY, this._boardHeight, next),
       canZoomIn: next < 300,
       canZoomOut: next > 100,
-    }, () => this.renderPatternPreview())
+    })
   },
 
   zoomOut() {
     const next = Math.max(100, this.data.scalePercent - 20)
     this.setData({
       scalePercent: next,
+      panX: clampPanOffset(this.data.panX, this._boardWidth, next),
+      panY: clampPanOffset(this.data.panY, this._boardHeight, next),
       canZoomIn: next < 300,
       canZoomOut: next > 100,
-    }, () => this.renderPatternPreview())
+    })
+  },
+
+  panStart(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.scalePercent <= 100 || event.touches.length !== 1) {
+      this._panGesture = null
+      return
+    }
+    const touch = event.touches[0]
+    this._panGesture = {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      panX: this.data.panX,
+      panY: this.data.panY,
+    }
+  },
+
+  panMove(event: WechatMiniprogram.TouchEvent) {
+    const start = this._panGesture
+    if (!start) return
+    if (event.touches.length !== 1) {
+      this._panGesture = null
+      return
+    }
+    const touch = event.touches[0]
+    this.setData({
+      panX: clampPanOffset(start.panX + touch.clientX - start.clientX, this._boardWidth, this.data.scalePercent),
+      panY: clampPanOffset(start.panY + touch.clientY - start.clientY, this._boardHeight, this.data.scalePercent),
+    })
+  },
+
+  panEnd() {
+    this._panGesture = null
   },
 
   renderPatternPreview() {
     const draft = this.data.draft
     if (!draft) return
+    // 图片导出异步返回；丢弃切页、任务状态变化或新绘制后才返回的旧结果。
     const renderId = ++this._previewRenderId
     wx.createSelectorQuery()
       .in(this)
@@ -311,6 +376,8 @@ Page({
           if (renderId === this._previewRenderId) this.setData({ patternRenderError: true })
           return
         }
+        this._boardWidth = result.width
+        this._boardHeight = result.height
         const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
         loadPatternRenderer()
           .then(({ drawPatternOnCanvas }) => {
@@ -319,10 +386,7 @@ Page({
             const height = Math.round(result.height * pixelRatio)
             const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })
             const context = canvas.getContext('2d') as PatternCanvasContext
-            const scale = this.data.scalePercent / 100
             context.scale(pixelRatio, pixelRatio)
-            context.translate(result.width * (1 - scale) / 2, result.height * (1 - scale) / 2)
-            context.scale(scale, scale)
             drawPatternOnCanvas(context, result.width, result.height, draft, true)
             wx.canvasToTempFilePath({
               canvas: canvas as unknown as WechatMiniprogram.IAnyObject,
@@ -333,7 +397,7 @@ Page({
               destHeight: height,
               success: ({ tempFilePath }) => {
                 if (renderId !== this._previewRenderId) return
-                this.setData({ patternPreviewPath: tempFilePath, patternPreviewReady: true, patternRenderError: false })
+                this.setData({ patternPreviewPath: tempFilePath, patternRenderError: false })
               },
               fail: (error) => {
                 if (renderId !== this._previewRenderId) return

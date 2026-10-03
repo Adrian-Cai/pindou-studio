@@ -12,7 +12,7 @@ import { ApiError } from './http-client'
 
 export const HUNYUAN_IMAGE_FUNCTION_NAME = 'generateImage'
 
-export type HunyuanImageSize = '1024x1024' | '1280x720' | '720x1280' | '1280x1280'
+export type HunyuanImageSize = '1024x1024' | '1280x720' | '720x1280'
 
 export interface GenerateHunyuanImageInput {
   prompt: string

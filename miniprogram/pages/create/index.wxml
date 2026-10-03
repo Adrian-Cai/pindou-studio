@@ -167,9 +167,15 @@
               <button wx:if="{{!textTaskImageLoading}}" class="button-secondary text-result__action text-result__retry" bindtap="refreshTextTask" aria-label="重新读取灵感图">重新读取</button>
             </view>
             <view class="text-result__meta">{{textTaskSize}} · 确认后会使用标准拼豆转换</view>
+            <view wx:if="{{textTaskWorkSaving}}" class="text-result__meta">正在把原图保存到作品…</view>
+            <view wx:elif="{{textTaskWorkId}}" class="text-result__meta">原图已保存到作品中</view>
+            <view wx:if="{{textTaskWorkError}}" class="text-result__state-desc text-result__save-error">
+              {{textTaskWorkError}}
+              <button class="button-secondary text-result__action text-result__retry" bindtap="retrySaveTextTask" disabled="{{textTaskWorkSaving}}">重试保存</button>
+            </view>
             <view class="text-result__actions">
               <button class="button-secondary text-result__action" bindtap="retryTextGeneration" disabled="{{textTaskConverting}}" aria-label="重新生成灵感图">重新生成</button>
-              <button class="button-primary text-result__action" bindtap="createPatternFromTextTask" loading="{{textTaskConverting}}" disabled="{{textTaskConverting || !textTaskImagePath}}" aria-label="生成拼豆图">生成拼豆图</button>
+              <button class="button-primary text-result__action" bindtap="createPatternFromTextTask" loading="{{textTaskConverting}}" disabled="{{textTaskConverting || !textTaskImagePath || !textTaskWorkId || textTaskWorkSaving}}" aria-label="生成拼豆图">生成拼豆图</button>
             </view>
           </block>
         </view>

@@ -62,6 +62,17 @@ export async function consumeTextGeneration(jobId: string): Promise<void> {
   })
 }
 
+/** 删除一条失败文生图任务及其临时输出；服务端会校验任务归属和失败状态。 */
+export async function deleteFailedTextGeneration(jobId: string): Promise<void> {
+  assertJobId(jobId)
+  const session = requireLoggedInSession()
+  await apiRequest<unknown>({
+    path: `/api/ai/text-generations/${encodeURIComponent(jobId)}`,
+    method: 'DELETE',
+    token: session.token,
+  })
+}
+
 function parseTextGeneration(value: unknown): TextGeneration {
   if (!isRecord(value)
     || typeof value.id !== 'string'

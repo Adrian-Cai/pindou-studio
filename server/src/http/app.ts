@@ -17,6 +17,7 @@ import {
   validateContentSecurityTextBody,
   validateCreateAiGenerationBody,
   validateCreateTextImageGenerationBody,
+  validateCreateTextImageWorkBody,
   validateCreatePaymentBody,
   validateDownloadBody,
   validateFavoriteBody,
@@ -33,6 +34,8 @@ import {
   REFUND_EVENT,
   aiGenerationId,
   textImageGenerationId,
+  textImageWorkId,
+  textImageWorkListOptions,
   textImageGenerationConsumeId,
   downloadListOptions,
   errorPayload,
@@ -301,6 +304,36 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/works/text-images") {
+        if (url.searchParams.size > 0) throw invalidArgument("文生图作品保存接口不接受查询参数");
+        if (!dependencies.textImageWorks) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图作品服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        const body = validateCreateTextImageWorkBody(await readJsonObject(request));
+        sendJson(response, 201, await dependencies.textImageWorks.create(currentUser.id, body.sourceJobId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/works/text-images") {
+        if (!dependencies.textImageWorks) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图作品服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        sendJson(response, 200, await dependencies.textImageWorks.list(textImageWorkListOptions(url, currentUser.id)));
+        return;
+      }
+
+      const requestedTextImageWorkId = textImageWorkId(url.pathname);
+      if (requestedTextImageWorkId && (request.method === "GET" || request.method === "DELETE")) {
+        if (url.searchParams.size > 0) throw invalidArgument("文生图作品操作接口不接受查询参数");
+        if (!dependencies.textImageWorks) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图作品服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        if (request.method === "GET") {
+          sendJson(response, 200, await dependencies.textImageWorks.get(currentUser.id, requestedTextImageWorkId));
+        } else {
+          await dependencies.textImageWorks.delete(currentUser.id, requestedTextImageWorkId);
+          sendNoContent(response);
+        }
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/works") {
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         sendJson(response, 200, await dependencies.works.list(listOptions(url, currentUser.id)));
@@ -407,6 +440,14 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       }
 
       const requestedTextGenerationId = textImageGenerationId(url.pathname);
+      if (request.method === "DELETE" && requestedTextGenerationId) {
+        if (url.searchParams.size > 0) throw invalidArgument("文生图任务接口不接受查询参数");
+        if (!dependencies.textGenerations) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图服务暂未开放");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        await dependencies.textGenerations.deleteFailed(currentUser.id, requestedTextGenerationId);
+        sendNoContent(response);
+        return;
+      }
       if (request.method === "GET" && requestedTextGenerationId) {
         if (url.searchParams.size > 0) throw invalidArgument("文生图任务接口不接受查询参数");
         if (!dependencies.textGenerations) throw new AppError(503, "AI_SERVICE_UNAVAILABLE", "文生图服务暂未开放");

@@ -12,7 +12,7 @@
 
 ## 1. 当前数据库概览
 
-项目当前使用一套 PostgreSQL 业务数据库，核心包含 12 张业务表，另有 1 张仅供部署使用的迁移记录表：
+项目当前使用一套 PostgreSQL 业务数据库，核心包含 14 张业务表，另有 1 张仅供部署使用的迁移记录表：
 
 | 表名 | 用途 |
 | --- | --- |
@@ -21,12 +21,14 @@
 | `pindou_file_assets` | 文件/封面资产 |
 | `pindou_works` | 作品摘要 |
 | `pindou_work_patterns` | 作品完整图案 |
+| `pindou_text_image_works` | 文生图原图作品 |
 | `pindou_favorites` | 收藏关系 |
 | `pindou_download_records` | 下载记录 |
 | `pindou_quota_transactions` | 下载/购买等额度流水 |
 | `pindou_packages` | 可购买套餐 |
 | `pindou_orders` | 支付订单 |
 | `pindou_ai_generation_jobs` | AI 精致生成任务与状态机 |
+| `pindou_text_image_generation_jobs` | 文生图任务与短期恢复状态 |
 | `pindou_content_security_checks` | 微信内容安全审核任务与回调状态 |
 
 `pindou_schema_migrations` 不是业务表，不参与 API 业务查询。它记录迁移编号、文件名、文件 SHA-256 和成功执行时间；Schema Inspector 会明确忽略这张运维元数据表。
@@ -47,6 +49,8 @@ pindou_users
   ├── pindou_works ─── pindou_work_patterns
   │      ├── pindou_favorites
   │      └── pindou_download_records ─── pindou_quota_transactions
+  ├── pindou_text_image_works ─── pindou_file_assets
+  ├── pindou_text_image_generation_jobs ─── pindou_file_assets
   ├── pindou_quota_transactions
   ├── pindou_orders ─── pindou_packages
   ├── pindou_ai_generation_jobs ─── pindou_file_assets
@@ -69,6 +73,22 @@ pindou_users
 | `media_object_key` | `varchar(512)` | 是 | 临时审核图片对象键 |
 | `created_at` / `updated_at` | `timestamptz` | 否 | 创建和更新时间 |
 | `expires_at` | `timestamptz` | 是 | 临时记录过期时间 |
+
+## 3.12 `pindou_text_image_works`
+
+独立保存已经生成成功的文生图原图和描述，不保存拼豆图案。来源任务 ID 有唯一约束；来源任务可在 24 小时后清理，作品继续保留。
+
+| 字段 | PostgreSQL 类型 | 可空 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `varchar(32)` | 否 | 文生图作品 ID，主键 |
+| `user_id` | `varchar(32)` | 否 | 所有者，关联 `pindou_users.id` |
+| `source_job_id` | `varchar(32)` | 否 | 唯一来源文生图任务 ID；不设任务外键 |
+| `image_file_id` | `varchar(32)` | 否 | 长期保存原图的 `pindou_file_assets.id` |
+| `prompt` | `varchar(500)` | 否 | 用户提交的画面描述 |
+| `created_at` / `updated_at` | `timestamptz` | 否 | 创建和更新时间 |
+| `deleted_at` | `timestamptz` | 是 | 作品删除时间 |
+
+迁移文件：`server/sql/023_text_image_works.sql`。
 
 ## 2. `pindou_users`
 

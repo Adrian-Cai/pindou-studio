@@ -71,26 +71,38 @@
       <view class="ai-generation-disclosure">当前结果由 AI 生成</view>
       <view class="ai-generation-result-card">
         <view class="ai-generation-result-card__preview">
-          <view class="ai-generation-result-card__coordinate-grid">
+          <view
+            class="ai-generation-result-card__coordinate-grid"
+          >
             <view class="ai-generation-result-card__coordinate-corner"></view>
             <view class="ai-generation-result-card__ruler ai-generation-result-card__ruler--top">
               <view
-                wx:for="{{rulerColumns}}"
-                wx:key="coordinate"
-                class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
-                style="left: {{item.position}};"
+                class="ai-generation-result-card__ruler-ticks"
+                style="transform: translateX({{panX}}px) scaleX({{scalePercent / 100}});"
               >
-                <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label">{{item.label}}</text>
+                <view
+                  wx:for="{{rulerColumns}}"
+                  wx:key="coordinate"
+                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
+                  style="left: {{item.position}};"
+                >
+                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label">{{item.label}}</text>
+                </view>
               </view>
             </view>
             <view class="ai-generation-result-card__ruler ai-generation-result-card__ruler--left">
               <view
-                wx:for="{{rulerRows}}"
-                wx:key="coordinate"
-                class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
-                style="top: {{item.position}};"
+                class="ai-generation-result-card__ruler-ticks"
+                style="transform: translateY({{panY}}px) scaleY({{scalePercent / 100}});"
               >
-                <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label">{{item.label}}</text>
+                <view
+                  wx:for="{{rulerRows}}"
+                  wx:key="coordinate"
+                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
+                  style="top: {{item.position}};"
+                >
+                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label">{{item.label}}</text>
+                </view>
               </view>
             </view>
             <view class="ai-generation-result-card__board">
@@ -99,13 +111,23 @@
                 class="ai-generation-result-card__image"
                 src="{{patternPreviewPath}}"
                 mode="scaleToFill"
+                style="transform: translate({{panX}}px, {{panY}}px) scale({{scalePercent / 100}});"
                 aria-label="拼豆图预览"
               />
+              <view
+                wx:if="{{scalePercent > 100}}"
+                class="ai-generation-result-card__pan-area"
+                bindtouchstart="panStart"
+                catchtouchmove="panMove"
+                bindtouchend="panEnd"
+                bindtouchcancel="panEnd"
+                aria-hidden="true"
+              ></view>
             </view>
           </view>
           <view wx:if="{{patternRenderError}}" class="ai-generation-result-card__fallback">拼豆图预览失败，请重新生成</view>
           <view wx:elif="{{!draft}}" class="ai-generation-result-card__fallback">拼豆图结果已生成</view>
-          <view wx:elif="{{!patternPreviewReady}}" class="ai-generation-result-card__fallback">正在绘制拼豆图</view>
+          <view wx:elif="{{!patternPreviewPath}}" class="ai-generation-result-card__fallback">正在绘制拼豆图</view>
         </view>
       </view>
       <editor-control-panel

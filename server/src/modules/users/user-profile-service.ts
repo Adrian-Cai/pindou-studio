@@ -171,9 +171,12 @@ export class PostgresUserProfileService implements UserProfileService {
                 users.privacy_cloud_sync,
                 users.privacy_service_notices,
                 users.privacy_personalized_recommendations,
-                (SELECT COUNT(*)
-                   FROM pindou_works works
-                  WHERE works.user_id = users.id AND works.deleted_at IS NULL) AS work_count,
+                ((SELECT COUNT(*)
+                    FROM pindou_works works
+                   WHERE works.user_id = users.id AND works.deleted_at IS NULL)
+                 + (SELECT COUNT(*)
+                      FROM pindou_text_image_works works
+                     WHERE works.user_id = users.id AND works.deleted_at IS NULL)) AS work_count,
                 (SELECT COUNT(*)
                    FROM pindou_favorites favorites
                    JOIN pindou_works works
@@ -337,6 +340,12 @@ export class PostgresUserProfileService implements UserProfileService {
       );
       await client.query(
         `UPDATE pindou_works
+            SET deleted_at = COALESCE(deleted_at, $2), updated_at = $2
+          WHERE user_id = $1`,
+        [userId, now],
+      );
+      await client.query(
+        `UPDATE pindou_text_image_works
             SET deleted_at = COALESCE(deleted_at, $2), updated_at = $2
           WHERE user_id = $1`,
         [userId, now],

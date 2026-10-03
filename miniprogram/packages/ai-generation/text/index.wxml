@@ -6,36 +6,41 @@
       <view class="text-generation-page__desc">AI 会先生成一张参考图，再由拼豆引擎转换成可编辑图纸。</view>
     </view>
 
-    <view wx:if="{{task}}" class="text-generation-card">
+    <view wx:if="{{task || hasSavedWork}}" class="text-generation-card">
       <view class="text-generation-card__prompt-label">你的描述</view>
-      <view class="text-generation-card__prompt">{{task.prompt}}</view>
+      <view class="text-generation-card__prompt">{{displayPrompt}}</view>
       <image wx:if="{{referenceImagePath}}" class="text-generation-card__image" src="{{referenceImagePath}}" data-src="{{referenceImagePath}}" mode="aspectFit" binderror="handleReferenceImageError" aria-label="生成的参考图" />
 
       <view wx:if="{{loading && !referenceImagePath}}" class="text-generation-card__state text-generation-card__state--loading">
-        <view class="text-generation-card__state-title">{{task.status === 'queued' ? '正在排队' : '正在生成参考图'}}</view>
-        <view class="text-generation-card__state-desc">可以离开页面，之后从“作品”继续</view>
+        <view class="text-generation-card__state-title">{{task ? (task.status === 'queued' ? '正在排队' : '正在生成参考图') : '正在读取文生图作品'}}</view>
+        <view class="text-generation-card__state-desc">{{task ? '可以离开页面，之后从“作品”继续' : '原图已保存在作品中'}}</view>
       </view>
 
-      <view wx:elif="{{task.status === 'failed'}}" class="text-generation-card__state text-generation-card__state--failed">
+      <view wx:elif="{{task && task.status === 'failed'}}" class="text-generation-card__state text-generation-card__state--failed">
         <view class="text-generation-card__state-title">参考图生成失败</view>
         <view class="text-generation-card__state-desc">{{errorMessage || '请稍后重试，失败不会扣除 AI 额度。'}}</view>
         <button class="button-primary text-generation-card__button" loading="{{loading}}" bindtap="retry">重新生成</button>
       </view>
 
       <view wx:elif="{{referenceImagePath}}" class="text-generation-card__result">
-        <view class="text-generation-card__result-note">参考图已生成，确认后会使用标准拼豆转换</view>
-        <button class="button-primary text-generation-card__button" loading="{{converting}}" disabled="{{converting}}" bindtap="createPattern">生成拼豆图</button>
+        <view wx:if="{{savingWork}}" class="text-generation-card__result-note">正在保存到作品…</view>
+        <view wx:elif="{{savedWorkId}}" class="text-generation-card__result-note">原图已保存到作品，确认后会使用标准拼豆转换</view>
+        <view wx:if="{{saveErrorMessage}}" class="text-generation-card__save-error">
+          {{saveErrorMessage}}
+          <text class="text-generation-card__retry" bindtap="retrySaveWork">重试保存</text>
+        </view>
+        <button wx:if="{{savedWorkId}}" class="button-primary text-generation-card__button" loading="{{converting}}" disabled="{{converting || savingWork}}" bindtap="createPattern">生成拼豆图</button>
       </view>
 
-      <view wx:if="{{errorMessage && task.status !== 'failed'}}" class="text-generation-card__error">
+      <view wx:if="{{errorMessage && (!task || task.status !== 'failed')}}" class="text-generation-card__error">
         {{errorMessage}}
-        <text class="text-generation-card__retry" bindtap="refreshTask">重新读取</text>
+        <text class="text-generation-card__retry" bindtap="refreshCurrent">重新读取</text>
       </view>
     </view>
 
     <view wx:else class="text-generation-card text-generation-card--empty">
-      <view class="text-generation-card__state-title">没有找到这条任务</view>
-      <view class="text-generation-card__state-desc">返回首页输入描述，开始新的创作。</view>
+      <view class="text-generation-card__state-title">{{loading ? '正在读取' : '没有找到这条文生图记录'}}</view>
+      <view class="text-generation-card__state-desc">返回作品集或首页继续创作。</view>
       <button class="button-primary text-generation-card__button" bindtap="goBack">返回</button>
     </view>
   </view>

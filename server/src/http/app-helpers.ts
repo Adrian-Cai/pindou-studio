@@ -12,6 +12,7 @@ import type { AiFileStorage } from "../modules/files/ai-file-storage";
 import type { ContentSecurityService } from "../modules/content-security/content-security-service";
 import type { PostgresAiGenerationService } from "../modules/ai/ai-generation-service";
 import type { PostgresTextImageGenerationService } from "../modules/ai/text-image-generation-service";
+import type { PostgresTextImageWorkService } from "../modules/works/text-image-work-service";
 import type { DownloadListOptions, PostgresQuotaDownloadService } from "../modules/downloads/quota-download-service";
 import type { OrderListOptions, PaymentService } from "../modules/payments/payment-service";
 import type {
@@ -289,6 +290,7 @@ export interface HttpApplicationDependencies {
   readonly aiRateLimiter?: InMemoryRateLimiter;
   readonly aiGenerations: PostgresAiGenerationService;
   readonly textGenerations?: PostgresTextImageGenerationService;
+  readonly textImageWorks?: PostgresTextImageWorkService;
   /** 作品标题保存前必须经过内容安全校验；缺失时应 fail closed */
   readonly contentSecurity: ContentSecurityService;
   readonly contentSecurityMediaMaximumBytes?: number;
@@ -346,6 +348,18 @@ function listOptions(url: URL, userId: string): { userId: string; status?: WorkS
   const query = url.searchParams.get("query")?.trim() || undefined;
   if (query && Array.from(query).length > 120) throw invalidArgument("query 不能超过 120 个字符");
   return { userId, page, pageSize, ...(statusValue ? { status: statusValue } : {}), ...(query ? { query } : {}) };
+}
+
+function textImageWorkListOptions(url: URL, userId: string): { userId: string; page: number; pageSize: number } {
+  for (const key of url.searchParams.keys()) {
+    if (key !== "page" && key !== "pageSize") throw invalidArgument("文生图作品列表包含不支持的查询参数");
+    if (url.searchParams.getAll(key).length > 1) throw invalidArgument(`查询参数 ${key} 不能重复`);
+  }
+  return {
+    userId,
+    page: positiveQueryInteger(url.searchParams.get("page"), 1, 1_000_000, "page"),
+    pageSize: positiveQueryInteger(url.searchParams.get("pageSize"), 20, 50, "pageSize"),
+  };
 }
 
 function favoriteListOptions(url: URL, userId: string): FavoriteListOptions {
@@ -422,6 +436,11 @@ function textImageGenerationId(pathname: string): string | null {
   return match?.[1] ?? null;
 }
 
+function textImageWorkId(pathname: string): string | null {
+  const match = pathname.match(/^\/api\/works\/text-images\/([^/]+)$/u);
+  return match?.[1] ?? null;
+}
+
 function textImageGenerationConsumeId(pathname: string): string | null {
   const match = pathname.match(/^\/api\/ai\/text-generations\/([^/]+)\/consume$/u);
   return match?.[1] ?? null;
@@ -458,7 +477,7 @@ function hasRequestBody(request: IncomingMessage): boolean {
   return request.headers["transfer-encoding"] !== undefined;
 }
 
-export { requestId, sendJson, sendRaw, parseDeliveryNotification, parseEventName, parseRefundNotification, parseIosRefundQuery, sendImage, errorPayload, sendText, requireContentSecurity, wechatPaymentHeaders, listOptions, favoriteListOptions, downloadListOptions, orderListOptions, positiveQueryInteger, workId, favoriteWorkId, aiGenerationId, textImageGenerationId, textImageGenerationConsumeId, paymentOrderAction, sendNoContent, hasRequestBody };
+export { requestId, sendJson, sendRaw, parseDeliveryNotification, parseEventName, parseRefundNotification, parseIosRefundQuery, sendImage, errorPayload, sendText, requireContentSecurity, wechatPaymentHeaders, listOptions, textImageWorkListOptions, favoriteListOptions, downloadListOptions, orderListOptions, positiveQueryInteger, workId, favoriteWorkId, aiGenerationId, textImageGenerationId, textImageWorkId, textImageGenerationConsumeId, paymentOrderAction, sendNoContent, hasRequestBody };
 
 /** 上传头像；旧 nickname 字段仅兼容接收，昵称通过独立资料接口更新。 */
 export async function uploadCurrentUserAvatar(
