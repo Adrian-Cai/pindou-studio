@@ -36,7 +36,7 @@ type TextTaskPhase = 'idle' | 'pending' | 'succeeded' | 'failed'
 const TEXT_TASK_POLL_INTERVAL_MS = 2_000
 /** 「换一换」连点冷却：灵感单次都要真实调用文本模型，防止误触重复消耗 token。 */
 const INSPIRATION_COOLDOWN_MS = 3_000
-const TEXT_IMAGE_SIZE_ORDER = ['1024x1024', '1280x1280', '1280x720', '720x1280']
+const TEXT_IMAGE_SIZE_ORDER = ['1024x1024', '1280x720', '720x1280']
 let currentUploadRequestId = 0
 
 interface GenerationModeOption {

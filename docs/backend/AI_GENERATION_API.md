@@ -536,7 +536,7 @@ GET /api/ai/text-generation-options   # 返回 { sizes, defaultSize, cost }
 GET /api/ai/text-inspirations         # 返回 { items: [{ title, prompt } x3] }
 ```
 
-`text-generation-options` 只返回服务端白名单尺寸与单次扣费次数，客户端不自建尺寸白名单。`text-inspirations` 复用登录态、`aiRateLimiter`（默认 5 次 / 10 分钟，key `{userId}:text-inspiration`）和文本内容安全检查，**不扣用户 AI 额度**。
+`text-generation-options` 只返回服务端白名单尺寸与单次扣费次数，客户端不自建尺寸白名单；当前尺寸需满足 CloudBase 模型的边长范围及面积不超过 `1024×1024`，所以仅开放 `1024x1024`、`1280x720`、`720x1280`。`text-inspirations` 复用登录态、`aiRateLimiter`（默认 5 次 / 10 分钟，key `{userId}:text-inspiration`）和文本内容安全检查，**不扣用户 AI 额度**。
 
 灵感由 `generateImage` 云函数走 CloudBase `cloudbase/hy3` 文本模型生成（服务端持有密钥，客户端不接触）。这是全链路唯一「不扣用户额度、却真实消耗 token」的调用，成本口径：
 

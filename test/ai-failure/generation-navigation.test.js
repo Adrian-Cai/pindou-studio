@@ -129,7 +129,7 @@ test('文生图防重复提交，传递尺寸，创建失败保留描述', async
 test('文生图尺寸按参考顺序展示比例与分辨率，点选后立即生效', async (t) => {
   const { home } = setup(t)
   t.mock.method(textService, 'fetchTextGenerationOptions', async () => ({
-    sizes: ['1024x1024', '1280x720', '720x1280', '1280x1280'],
+    sizes: ['1024x1024', '1280x720', '720x1280'],
     defaultSize: '1024x1024',
     cost: 1,
   }))
@@ -139,10 +139,9 @@ test('文生图尺寸按参考顺序展示比例与分辨率，点选后立即�
   home._visible = true
   await home.loadTextMode()
 
-  assert.deepEqual(home.data.textSizes, ['1024x1024', '1280x1280', '1280x720', '720x1280'])
+  assert.deepEqual(home.data.textSizes, ['1024x1024', '1280x720', '720x1280'])
   assert.deepEqual(home.data.textSizeOptions.map(({ value, ratio, resolution }) => [value, ratio, resolution]), [
     ['1024x1024', '1:1', '1024²'],
-    ['1280x1280', '1:1', '1280²'],
     ['1280x720', '16:9', '1280×720'],
     ['720x1280', '9:16', '720×1280'],
   ])
