@@ -70,10 +70,7 @@ interface FavoriteUpdateResponse {
   favoritedAt: string | null
 }
 
-/**
- * 当前是否已登录且 token 未过期。
- * @returns 有有效会话返回 true
- */
+/** 仅把未过期的本地会话视为可用；真正的身份与作品归属仍由服务端校验。 */
 export function hasCloudSession(): boolean {
   const session = loadAuthSession()
   return Boolean(session && !isAuthSessionExpired(session))
@@ -174,9 +171,8 @@ export async function fetchCloudFavorites(options: {
 }
 
 /**
- * 设置/取消某作品的云端收藏状态。
- * @param workId 作品 id
- * @param favorite true 收藏，false 取消
+ * 客户端只提交目标收藏状态，不自行维护收藏时间；服务端负责软删除或恢复收藏关系。
+ * 返回值会被严格校验，避免接口异常时页面误显示为已收藏。
  */
 export async function setCloudFavorite(workId: string, favorite: boolean): Promise<FavoriteUpdateResponse> {
   const response = await apiRequest<unknown>({
@@ -209,7 +205,7 @@ export async function deleteCloudWork(workId: string): Promise<void> {
 }
 
 /**
- * 把云端摘要（作品或收藏）转成本地统一列表项 WorkItem，封面 URL 做归一化。
+ * 把云端摘要转成 WorkItem：封面 URL 归一化、ISO 时间转毫秒，并保留收藏时间语义。
  * @param summary 云端作品摘要或收藏摘要
  */
 export function cloudSummaryToWorkItem(summary: CloudWorkSummary | CloudFavoriteSummary): WorkItem {
@@ -260,8 +256,8 @@ export function cloudDetailToDraft(detail: CloudWorkDetail): PatternDraft {
 }
 
 /**
- * 把本地草稿转成云端持久化结构：去重建调色板（palette），每格只存调色板下标，透明格记 -1。
- * 同时校验网格数据完整（cells 数 = width*height），不完整直接抛错。
+ * 把本地草稿转成云端持久化结构：调色板按色号与颜色值去重，cells 保存索引，透明格用 -1 表示。
+ * 网格尺寸不符时拒绝保存。
  * @param draft 本地图纸草稿
  */
 export function draftToPersistedPattern(draft: PatternDraft): PersistedPattern {
@@ -314,12 +310,13 @@ async function persistCloudWork(input: {
   if (input.draft.creationSource === 'text' && !input.draft.sourcePrompt?.trim()) {
     throw new ApiError('文字创作描述缺失，无法保存作品', { code: 'INVALID_PATTERN' })
   }
+  // 后端作品只引用受所有权校验的文件资产 ID，因此必须先上传封面，再创建或更新作品。
   const coverFileId = await uploadCover(token, input.coverPath)
   const response = await apiRequest<unknown>({
     path: isNew ? '/api/works' : `/api/works/${encodeURIComponent(input.workId)}`,
     method: isNew ? 'POST' : 'PUT',
     token,
-    // 新建作品带幂等键，重复提交不会产生多个副本
+    // 草稿 ID 在创建重试期间保持稳定，避免弱网下重复生成云端作品。
     ...(isNew ? { headers: { 'Idempotency-Key': `create-${input.draft.id}` } } : {}),
     data: {
       title: input.title,
