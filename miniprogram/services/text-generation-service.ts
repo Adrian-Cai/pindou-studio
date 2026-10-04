@@ -126,7 +126,7 @@ export async function fetchTextGenerationOptions(): Promise<{ sizes: string[]; d
 export async function fetchTextInspirations(): Promise<{ title: string; prompt: string }[]> {
   const session = requireLoggedInSession()
   const result = await apiRequest<unknown>({ path: '/api/ai/text-inspirations', token: session.token, timeoutMs: 35_000 })
-  if (!isRecord(result) || !Array.isArray(result.items) || result.items.length !== 3) throw invalidResponse()
+  if (!isRecord(result) || !Array.isArray(result.items) || result.items.length !== 5) throw invalidResponse()
   return result.items.map(value => {
     if (!isRecord(value) || typeof value.title !== 'string' || !value.title.trim()
       || typeof value.prompt !== 'string' || !value.prompt.trim() || Array.from(value.prompt).length > 500) throw invalidResponse()

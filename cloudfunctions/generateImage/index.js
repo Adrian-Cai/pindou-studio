@@ -103,13 +103,13 @@ async function generateInspirations() {
   try {
     const response = await cloud.ai().createModel('cloudbase').generateText({
       model: 'hy3',
-      messages: [{ role: 'user', content: '请提供3个不同主题的中文文生图创意，画面简洁、主体鲜明，适合后续制作拼豆。仅输出JSON数组，每项包含title（2到8字）和prompt（30到100字，描述主体、场景、风格和配色）。不包含真实人物、商标、暴力、色情或违法内容。每次给出新的创意。' }],
+      messages: [{ role: 'user', content: '一次提供5个主题明显不同、适合制作拼豆图的中文文生图创意。每个创意突出主要主体，使用简洁构图、清晰轮廓、少量易区分的纯色色块和简洁背景；避免细碎纹理、细线、密集小物件、复杂渐变。仅输出JSON数组，每项包含title（2到8字）和prompt（30到100字，描述主体、场景、风格和配色）；不要输出数组以外的文字，不要重复创意。不包含真实人物、商标、暴力、色情或违法内容。' }],
     })
     // 灵感是唯一「不扣用户额度、但真实消耗 token」的调用：按次记录用量，便于成本对账。
     console.log('[generateImage] inspirations usage', describeTokenUsage(response))
     if (response.error) throw new Error('AI 灵感生成失败')
     const items = JSON.parse(response.text.trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))
-    if (!Array.isArray(items) || items.length !== 3 || items.some(item =>
+    if (!Array.isArray(items) || items.length !== 5 || items.some(item =>
       !item || typeof item.title !== 'string' || !item.title.trim() || Array.from(item.title).length > 12
       || typeof item.prompt !== 'string' || !item.prompt.trim() || Array.from(item.prompt).length > 500)) {
       throw new Error('AI 灵感格式异常')

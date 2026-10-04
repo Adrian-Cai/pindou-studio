@@ -7,7 +7,7 @@
  *       缓存不可用只应导致多请求一次，绝不能让页面报错。
  */
 
-const INSPIRATION_CACHE_KEY = 'pindou-text-inspirations-v1'
+const INSPIRATION_CACHE_KEY = 'pindou-text-inspirations-v2'
 const TEXT_TASK_KEY = 'pindou-text-generation-task-v1'
 
 /** 灵感缓存有效期：半天内重复进入页面直接复用，点「换一换」才强制刷新。 */

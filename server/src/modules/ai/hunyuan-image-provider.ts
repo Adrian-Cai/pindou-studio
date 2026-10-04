@@ -41,6 +41,11 @@ import type { TextImageSize } from './text-image-options';
 
 type JsonObject = Record<string, unknown>;
 
+const TEXT_IMAGE_BEAD_GUIDANCE = `请按用户描述生成适合后续制作为拼豆图的简洁插画，突出主要主体，轮廓清楚闭合，主体与背景分离明显。
+主体以约 8–12 种易区分的纯色大色块表现，背景简洁；优先保留主体的标志性特征。
+避免照片质感、细线、细碎纹理、小物件、复杂阴影、渐变和透明叠色，缩小后主体仍要容易辨认。
+只生成完整原始插画，不绘制拼豆、网格、格点、文字、标签、边框或水印。`;
+
 interface HunyuanImageModel {
   generateImage(input: Record<string, unknown>): Promise<unknown>;
   downloadFile?(fileId: string): Promise<Buffer>;
@@ -90,7 +95,7 @@ export class HunyuanImageProvider implements AiGenerationProvider {
     const app = cloudbase.init({ env: config.environmentId, accessKey: config.apiKey, timeout: 30_000 });
     const response = await app.callFunction({ name: 'generateImage', data: { action: 'inspirations' } });
     const body = object(response.result);
-    if (!Array.isArray(body?.items) || body.items.length !== 3) throw new AppError(503, 'AI_INSPIRATION_UNAVAILABLE', 'AI 灵感暂时不可用，请稍后换一换');
+    if (!Array.isArray(body?.items) || body.items.length !== 5) throw new AppError(503, 'AI_INSPIRATION_UNAVAILABLE', 'AI 灵感暂时不可用，请稍后换一换');
     return body.items.map(value => {
       const item = object(value);
       const title = string(item?.title);
@@ -107,7 +112,7 @@ export class HunyuanImageProvider implements AiGenerationProvider {
     try {
       response = await this.imageModel.generateImage({
         model: HUNYUAN_TEXT_IMAGE_MODEL,
-        prompt,
+        prompt: `${prompt.trim()}\n\n${TEXT_IMAGE_BEAD_GUIDANCE}`,
         images: [],
         size,
         revise: { value: true },
