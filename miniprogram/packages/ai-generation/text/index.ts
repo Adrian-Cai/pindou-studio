@@ -24,6 +24,7 @@ Page({
   data: {
     selectedTab: 0,
     taskId: '',
+    isSavedWorkDetail: false,
     task: null as TextGeneration | null,
     hasSavedWork: false,
     savedWorkId: '',
@@ -49,6 +50,7 @@ Page({
     this._workId = query?.workId ?? ''
     this.setData({
       taskId: this._taskId,
+      isSavedWorkDetail: Boolean(this._workId),
       hasSavedWork: Boolean(this._workId),
       savedWorkId: this._workId,
       selectedTab: query?.from === 'projects' ? 1 : 0,
@@ -240,5 +242,22 @@ Page({
   refreshCurrent() {
     if (this._taskId) void this.refreshTask()
     else if (this._workId) void this.refreshSavedWork()
+  },
+
+  copyPrompt() {
+    const prompt = this.data.displayPrompt
+    if (!prompt) return
+    wx.setClipboardData({
+      data: prompt,
+      success: () => wx.showToast({ title: '提示词已复制', icon: 'success' }),
+      fail: (error) => {
+        console.error('复制提示词失败', error)
+        const errorMessage = error.errMsg || ''
+        const title = /api scope is not declared in the privacy agreement/i.test(errorMessage)
+          ? '请完善小程序剪贴板隐私指引'
+          : '复制失败，请重试'
+        wx.showToast({ title, icon: 'none' })
+      },
+    })
   },
 })

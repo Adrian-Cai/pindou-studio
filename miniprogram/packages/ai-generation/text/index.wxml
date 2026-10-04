@@ -1,13 +1,16 @@
 <page-layout title="从想法开始" back show-main-nav selected-tab="{{selectedTab}}">
   <view class="text-generation-page">
-    <view class="text-generation-page__intro">
+    <view wx:if="{{!isSavedWorkDetail}}" class="text-generation-page__intro">
       <view class="text-generation-page__eyebrow">灵感工坊 · 文生图</view>
       <view class="text-generation-page__title">把想法变成拼豆作品</view>
       <view class="text-generation-page__desc">AI 会先生成一张参考图，再由拼豆引擎转换成可编辑图纸。</view>
     </view>
 
     <view wx:if="{{task || hasSavedWork}}" class="text-generation-card">
-      <view class="text-generation-card__prompt-label">你的描述</view>
+      <view class="text-generation-card__prompt-header">
+        <view class="text-generation-card__prompt-label">提示词</view>
+        <button wx:if="{{displayPrompt}}" class="text-generation-card__copy" bindtap="copyPrompt">复制提示词</button>
+      </view>
       <view class="text-generation-card__prompt">{{displayPrompt}}</view>
       <image wx:if="{{referenceImagePath}}" class="text-generation-card__image" src="{{referenceImagePath}}" data-src="{{referenceImagePath}}" mode="aspectFit" binderror="handleReferenceImageError" aria-label="生成的参考图" />
 

@@ -4,8 +4,11 @@
 .text-generation-page__title { margin-top: 12rpx; color: #17211d; font-size: 40rpx; font-weight: 700; line-height: 1.35; }
 .text-generation-page__desc { margin-top: 12rpx; color: #77817c; font-size: 26rpx; line-height: 1.6; }
 .text-generation-card { padding: 32rpx; border: 1rpx solid #e7f1eb; border-radius: 28rpx; background: #fff; box-shadow: 0 12rpx 36rpx rgba(28, 83, 57, .06); }
+.text-generation-card__prompt-header { display: flex; align-items: center; justify-content: space-between; }
 .text-generation-card__prompt-label { color: #7f8b84; font-size: 23rpx; }
 .text-generation-card__prompt { margin-top: 10rpx; color: #202923; font-size: 28rpx; line-height: 1.65; word-break: break-all; }
+.text-generation-card__copy { display: flex; min-width: 176rpx; min-height: 88rpx; align-items: center; justify-content: center; margin: 0; padding: 0 18rpx; border-radius: 20rpx; background: rgba(17, 168, 106, .08); color: #11a86a; font-size: 24rpx; line-height: 1; }
+.text-generation-card__copy::after { border: 0; }
 .text-generation-card__image { display: block; width: 100%; height: 680rpx; margin-top: 28rpx; border-radius: 20rpx; background: #f6f8f6; }
 .text-generation-card__state { display: flex; min-height: 380rpx; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .text-generation-card__state--loading { min-height: 0; }
