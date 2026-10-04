@@ -121,10 +121,8 @@
         <view class="text-prompt-card__footer"><text>最多 500 字</text><text>{{promptLength}} / 500</text></view>
       </view>
       <view class="text-card">
-        <view class="text-card__heading"><view class="text-card__title"><image class="text-card__icon" src="/assets/icons/mode-ai-sparkle.svg" mode="aspectFit" /><text>AI 灵感</text></view><button class="text-action" bindtap="refreshInspirations" disabled="{{inspirationLoading}}" loading="{{inspirationLoading}}">换一换</button></view>
-        <view wx:if="{{inspirationLoading}}" class="text-status" aria-role="status">AI 正在寻找新灵感…</view>
-        <view wx:elif="{{inspirationError}}" class="text-status" aria-role="alert">{{inspirationError}}</view>
-        <view wx:else class="text-inspirations"><button wx:for="{{inspirations}}" wx:key="prompt" class="text-inspiration" data-index="{{index}}" bindtap="useInspiration" disabled="{{creatingText}}">{{item.title}}</button></view>
+        <view class="text-card__heading"><view class="text-card__title"><image class="text-card__icon" src="/assets/icons/mode-ai-sparkle.svg" mode="aspectFit" /><text>AI 灵感</text></view></view>
+        <view class="text-inspirations"><button wx:for="{{inspirations}}" wx:key="prompt" class="text-inspiration" data-index="{{index}}" bindtap="useInspiration" disabled="{{creatingText}}">{{item.title}}</button></view>
       </view>
       <view class="text-card text-size-selector" role="group" aria-label="图片尺寸">
         <view class="text-card__heading">

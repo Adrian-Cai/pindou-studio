@@ -1,4 +1,5 @@
 import { DEFAULT_PATTERN_SETTINGS } from '../../config/product'
+import { TEXT_INSPIRATIONS } from '../../config/text-inspirations'
 import { chooseSourceImage, createDraft, persistImage, prepareImageForContentSecurity } from '../../services/image-service'
 import { checkImageContent } from '../../services/content-security-service'
 import { ApiError } from '../../services/http-client'
@@ -9,7 +10,6 @@ import { aiTaskManager } from '../../services/ai-generation-manager'
 import {
   createTextGeneration,
   fetchTextGenerationOptions,
-  fetchTextInspirations,
   getTextGeneration,
   loadTextGenerationImage,
   textGenerationFailureMessage,
@@ -18,9 +18,7 @@ import {
 import { saveTextImageWork } from '../../services/text-image-work-service'
 import {
   clearTextTaskId,
-  readInspirationCache,
   readTextTaskId,
-  writeInspirationCache,
   writeTextTaskId,
 } from '../../services/text-generation-store'
 import { authStore } from '../../store/auth-store'
@@ -34,8 +32,6 @@ type TextTaskPhase = 'idle' | 'pending' | 'succeeded' | 'failed'
 
 /** 服务端没有精确进度，按固定间隔轮询任务状态。 */
 const TEXT_TASK_POLL_INTERVAL_MS = 2_000
-/** 「换一换」连点冷却：灵感单次都要真实调用文本模型，防止误触重复消耗 token。 */
-const INSPIRATION_COOLDOWN_MS = 3_000
 const TEXT_IMAGE_SIZE_ORDER = ['1024x1024', '1280x720', '720x1280']
 let currentUploadRequestId = 0
 
@@ -96,9 +92,7 @@ Page({
     prompt: '',
     promptLength: 0,
     creatingText: false,
-    inspirations: [] as { title: string; prompt: string }[],
-    inspirationLoading: false,
-    inspirationError: '',
+    inspirations: TEXT_INSPIRATIONS,
     /** 灵感图在本页的展示状态：不再跳转独立结果页，原地渲染生成结果。 */
     textTaskPhase: 'idle' as TextTaskPhase,
     textTaskStatusText: '',
@@ -147,8 +141,6 @@ Page({
   _textTaskId: '',
   _textTaskTimer: 0 as ReturnType<typeof setTimeout>,
   _textTaskBusy: false,
-  /** 上次灵感真实生成的时间，用于「换一换」冷却与缓存有效期判断 */
-  _inspirationFetchedAt: 0,
 
   onLoad(query: { source?: string }) {
     if (query.source === 'text') this.setData({ creationSource: 'text' })
@@ -184,9 +176,6 @@ Page({
   },
 
   async loadTextMode() {
-    // 灵感每次都要真实调用文本模型：先吃本地缓存，只有缓存缺失/过期才请求，
-    // 避免「每次进入创作页都烧一次 token」。
-    if (!this.applyCachedInspirations()) void this.refreshInspirations()
     void this.restoreTextTask()
     void authStore.refreshAiQuota().then(quota => {
       if (this._visible) this.setData({ aiRemaining: quota?.aiGeneration.remaining ?? null })
@@ -214,35 +203,6 @@ Page({
       if (this._visible) this.setData({ textOptionsError: '尺寸配置读取失败，点击重试', textSizes: [], textSizeOptions: [] })
     } finally {
       if (this._visible) this.setData({ textOptionsLoading: false })
-    }
-  },
-
-  /** 用本地缓存的灵感填充页面；缓存缺失或过期时返回 false，由调用方请求真实 AI。 */
-  applyCachedInspirations(): boolean {
-    const cached = readInspirationCache()
-    if (!cached) return false
-    this._inspirationFetchedAt = cached.fetchedAt
-    this.setData({ inspirations: cached.items, inspirationError: '' })
-    return true
-  },
-
-  async refreshInspirations() {
-    if (this.data.inspirationLoading) return
-    // 连点冷却：灵感单次都要真实消耗 token，刚换过就先复用当前结果
-    if (this.data.inspirations.length && Date.now() - this._inspirationFetchedAt < INSPIRATION_COOLDOWN_MS) {
-      wx.showToast({ title: '刚换过灵感，稍后再试', icon: 'none' })
-      return
-    }
-    this.setData({ inspirationLoading: true, inspirationError: '' })
-    try {
-      const inspirations = await fetchTextInspirations()
-      this._inspirationFetchedAt = Date.now()
-      writeInspirationCache(inspirations)
-      if (this._visible) this.setData({ inspirations })
-    } catch (error) {
-      if (this._visible) this.setData({ inspirationError: error instanceof Error ? error.message : '灵感获取失败，请点击换一换重试' })
-    } finally {
-      this.setData({ inspirationLoading: false })
     }
   },
 

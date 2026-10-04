@@ -122,18 +122,6 @@ export async function fetchTextGenerationOptions(): Promise<{ sizes: string[]; d
   return { sizes: result.sizes as string[], defaultSize: result.defaultSize, cost: result.cost }
 }
 
-/** 每次进入或换一换均请求真实 AI，不提供静态替代结果。 */
-export async function fetchTextInspirations(): Promise<{ title: string; prompt: string }[]> {
-  const session = requireLoggedInSession()
-  const result = await apiRequest<unknown>({ path: '/api/ai/text-inspirations', token: session.token, timeoutMs: 35_000 })
-  if (!isRecord(result) || !Array.isArray(result.items) || result.items.length !== 5) throw invalidResponse()
-  return result.items.map(value => {
-    if (!isRecord(value) || typeof value.title !== 'string' || !value.title.trim()
-      || typeof value.prompt !== 'string' || !value.prompt.trim() || Array.from(value.prompt).length > 500) throw invalidResponse()
-    return { title: value.title, prompt: value.prompt }
-  })
-}
-
 function assertJobId(jobId: string): void {
   if (!/^txtjob_[A-Za-z0-9_-]{20}$/u.test(jobId)) throw new ApiError('文生图任务编号无效', { code: 'INVALID_ARGUMENT' })
 }
