@@ -1,7 +1,3 @@
-import { DEFAULT_PATTERN_SETTINGS } from '../../../config/product'
-import type { PatternDraft } from '../../../models/pattern'
-import { appStore } from '../../../store/app-store'
-import { createDraft } from '../../../services/image-service'
 import { createIdempotencyKey } from '../../../services/ai-task-store'
 import {
   createTextGeneration,
@@ -32,8 +28,8 @@ Page({
     referenceImagePath: '',
     loading: true,
     savingWork: false,
+    savingImage: false,
     saveErrorMessage: '',
-    converting: false,
     errorMessage: '',
   },
 
@@ -191,34 +187,45 @@ Page({
     }
   },
 
-  async createPattern() {
-    const task = this.data.task
+  async saveToAlbum() {
     const savedWorkId = this.data.savedWorkId
-    if ((!task && !savedWorkId) || (task && task.status !== 'succeeded')
-      || !this.data.referenceImagePath || !savedWorkId || this.data.savingWork || this.data.converting) return
-    this.setData({ converting: true })
-    wx.showLoading({ title: '正在生成拼豆图', mask: true })
+    if (!savedWorkId || !this.data.referenceImagePath || this.data.savingWork || this.data.savingImage) return
+    this.setData({ savingImage: true })
     try {
       let source = this.data.referenceImagePath
       if (this._workId) {
         const savedWork = this._savedImageWork ?? await fetchTextImageWork(savedWorkId)
         source = this._workImagePath || await loadTextImageWorkImage(savedWork)
+        this._savedImageWork = savedWork
         this._workImagePath = source
       }
-      const draft: PatternDraft = {
-        ...await createDraft(source, DEFAULT_PATTERN_SETTINGS, 'standard'),
-        creationSource: 'text',
-        sourcePrompt: task?.prompt ?? this.data.displayPrompt,
-      }
-      await appStore.saveLocalDraft(draft, false)
-      await appStore.setCurrentDraft(draft)
-      wx.redirectTo({ url: '/packages/editor/index' })
+      await new Promise<void>((resolve, reject) => {
+        wx.saveImageToPhotosAlbum({
+          filePath: source,
+          success: () => resolve(),
+          fail: (error) => reject(new Error(error.errMsg || '保存失败')),
+        })
+      })
+      wx.showToast({ title: '已保存到相册', icon: 'success' })
     } catch (error) {
-      console.error('文生图参考图转拼豆失败', error)
-      wx.showToast({ title: error instanceof Error ? error.message : '拼豆图生成失败，请重试', icon: 'none' })
+      const message = error instanceof Error ? error.message : ''
+      console.error('保存文生图原图失败', error)
+      if (/cancel/i.test(message)) {
+        wx.showToast({ title: '已取消保存', icon: 'none' })
+      } else if (/auth|authorize|permission|deny/i.test(message)) {
+        wx.showModal({
+          title: '需要相册权限',
+          content: '允许访问相册后，才能保存这张原图。',
+          confirmText: '去设置',
+          success: (result) => {
+            if (result.confirm) wx.openSetting({})
+          },
+        })
+      } else {
+        wx.showToast({ title: message || '保存失败，请重试', icon: 'none' })
+      }
     } finally {
-      wx.hideLoading()
-      this.setData({ converting: false })
+      this.setData({ savingImage: false })
     }
   },
 

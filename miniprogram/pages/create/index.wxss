@@ -308,6 +308,7 @@ page {
 
 .ai-style-cards {
   display: flex;
+  width: 100%;
   gap: 12rpx;
   margin-top: 16rpx;
 }
@@ -316,12 +317,12 @@ page {
   position: relative;
   display: flex;
   min-width: 0;
-  height: 88rpx;
+  height: 72rpx;
   flex: 1;
   align-items: center;
-  justify-content: center;
-  gap: 6rpx;
-  padding: 0 8rpx;
+  justify-content: flex-start;
+  gap: 8rpx;
+  padding: 0 12rpx;
   border-radius: var(--radius-card-small);
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
@@ -341,14 +342,14 @@ page {
 }
 
 .ai-style-option__icon {
-  width: 40rpx;
-  height: 40rpx;
-  flex: 0 0 40rpx;
+  width: 48rpx;
+  height: 48rpx;
+  flex: 0 0 48rpx;
 }
 
 .ai-style-option__label {
   overflow: hidden;
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 600;
   line-height: 32rpx;
   text-overflow: ellipsis;
@@ -357,11 +358,11 @@ page {
 
 .ai-style-option__check {
   position: absolute;
-  top: 6rpx;
-  right: 6rpx;
+  top: 4rpx;
+  right: 4rpx;
   display: flex;
-  width: 32rpx;
-  height: 32rpx;
+  width: 24rpx;
+  height: 24rpx;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
@@ -369,8 +370,8 @@ page {
 }
 
 .ai-style-option__check image {
-  width: 24rpx;
-  height: 24rpx;
+  width: 18rpx;
+  height: 18rpx;
   filter: brightness(0) invert(1);
 }
 

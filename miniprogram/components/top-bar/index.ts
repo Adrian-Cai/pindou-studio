@@ -8,7 +8,7 @@ Component({
     actionText: { type: String, value: '' },
     actionType: { type: String, value: 'text' },
     home: { type: Boolean, value: false },
-    backInsetRpx: { type: Number, value: 32 },
+    backInsetRpx: { type: Number, value: 40 },
     navigationBarHeight: {
       type: Number,
       value: 0,

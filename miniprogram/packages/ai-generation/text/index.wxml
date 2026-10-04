@@ -27,12 +27,12 @@
 
       <view wx:elif="{{referenceImagePath}}" class="text-generation-card__result">
         <view wx:if="{{savingWork}}" class="text-generation-card__result-note">正在保存到作品…</view>
-        <view wx:elif="{{savedWorkId}}" class="text-generation-card__result-note">原图已保存到作品，确认后会使用标准拼豆转换</view>
+        <view wx:elif="{{savedWorkId}}" class="text-generation-card__result-note">原图已保存到作品，可保存到手机相册</view>
         <view wx:if="{{saveErrorMessage}}" class="text-generation-card__save-error">
           {{saveErrorMessage}}
           <text class="text-generation-card__retry" bindtap="retrySaveWork">重试保存</text>
         </view>
-        <button wx:if="{{savedWorkId}}" class="button-primary text-generation-card__button" loading="{{converting}}" disabled="{{converting || savingWork}}" bindtap="createPattern">生成拼豆图</button>
+        <button wx:if="{{savedWorkId}}" class="button-primary text-generation-card__button" loading="{{savingImage}}" disabled="{{savingImage || savingWork}}" bindtap="saveToAlbum">保存到本地</button>
       </view>
 
       <view wx:if="{{errorMessage && (!task || task.status !== 'failed')}}" class="text-generation-card__error">
