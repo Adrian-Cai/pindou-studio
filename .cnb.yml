@@ -23,6 +23,10 @@ master:
             cd server
             npm ci
             npm run build
+            # 云函数与依赖仓库的静态守卫（不依赖数据库）：本仓库的云函数依赖树
+            # 不经过构建流水线，只在微信侧人工安装，靠这些用例拦住 lock 漂移与
+            # 许可证回退，避免平台 SCA 扫描看到的树和线上实际的树不一致。
+            npm run test:static
             files=""
             for f in test/*.test.js; do
               case "$f" in
