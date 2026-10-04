@@ -73,9 +73,6 @@
             <button class="order-card__action order-card__action--secondary" data-id="{{item.id}}" bindtap="cancelOrder">取消订单</button>
             <button class="order-card__action order-card__action--primary" data-id="{{item.id}}" bindtap="continuePayment">继续支付</button>
           </view>
-          <view wx:elif="{{item.canRepurchase}}" class="order-card__actions order-card__actions--single">
-            <button class="order-card__action order-card__action--secondary" data-id="{{item.id}}" bindtap="repurchase">重新购买</button>
-          </view>
         </view>
       </view>
 

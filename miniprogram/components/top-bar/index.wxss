@@ -88,8 +88,17 @@
   position: relative;
   margin: 0;
   overflow: visible;
+  border: 0;
+  border-radius: var(--radius-card-small);
+  box-shadow: var(--shadow-ghost);
   font-family: var(--font-heading);
   text-align: left;
+  transition: var(--transition-press);
+}
+
+.top-bar__back:active {
+  background: var(--strong-overlay);
+  transform: scale(0.97);
 }
 
 .top-bar__back-icon {
