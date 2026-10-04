@@ -428,22 +428,6 @@ page {
   border-top: 2rpx solid var(--color-border);
 }
 
-.setting-options__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-  margin-bottom: 28rpx;
-}
-
-.setting-options__current {
-  flex-shrink: 0;
-  color: var(--color-primary);
-  font-size: 24rpx;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 .option-group__heading {
   display: flex;
   align-items: center;
@@ -468,6 +452,10 @@ page {
   color: var(--color-text-secondary);
   font-size: 20rpx;
   line-height: 30rpx;
+}
+
+.option-group__hint {
+  transform: translateY(6rpx);
 }
 
 .setting-options__divider {

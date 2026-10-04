@@ -78,10 +78,6 @@
       </view>
 
       <view class="setting-options">
-        <view class="setting-options__header">
-          <view class="section-label">图纸参数</view>
-          <text class="setting-options__current">{{settings.width}}×{{settings.height}} · {{settings.colorLimit}}色</text>
-        </view>
         <view class="option-group">
           <view class="option-group__heading">
             <image class="option-group__icon" src="/assets/icons/iconsax/element.svg" mode="aspectFit" aria-hidden="true" />
