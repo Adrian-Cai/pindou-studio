@@ -71,18 +71,26 @@ Page({
     this.setData({ packagesLoading: true, packageMessage: '' })
     try {
       const packages = await fetchAiGenerationPackages()
+      const currentPackageId = this.data.packages[this.data.selected]?.id
+      const currentSelection = currentPackageId
+        ? packages.findIndex((item) => item.id === currentPackageId)
+        : -1
       // 从订单页「重新购买」带进来的套餐只做预选：它不携带任何旧订单语义，
       // 找不到或没带就回落到第一个套餐，不打断正常购买流程。
       const preselected = this.preselectPackageId
         ? packages.findIndex((item) => item.id === this.preselectPackageId)
         : -1
-      const selected = preselected >= 0 ? preselected : 0
+      const selected = currentSelection >= 0 ? currentSelection : preselected >= 0 ? preselected : 0
+      const selectedPackage = packages[selected]
+      const preservePaymentAttempt = selectedPackage?.id === this.data.paymentIdempotencyPackageId
       this.setData({
         packages,
         packagesLoading: false,
         packageMessage: packages.length > 0 ? '' : '暂无可购买的 AI 生成套餐',
         selected,
-        selectedPrice: packages[selected]?.price ?? '',
+        selectedPrice: selectedPackage?.price ?? '',
+        paymentIdempotencyKey: preservePaymentAttempt ? this.data.paymentIdempotencyKey : '',
+        paymentIdempotencyPackageId: preservePaymentAttempt ? this.data.paymentIdempotencyPackageId : '',
       })
     } catch {
       this.setData({
@@ -115,7 +123,9 @@ Page({
     if (!selectedPackage || this.data.paymentLoading) return
 
     // 同一套餐的取消与重试复用业务订单幂等键；服务端仅在微信确认前一尝试已关闭后才签发新尝试。
-    const idempotencyKey = this.data.paymentIdempotencyKey || createPaymentIdempotencyKey()
+    const idempotencyKey = selectedPackage.id === this.data.paymentIdempotencyPackageId
+      ? this.data.paymentIdempotencyKey || createPaymentIdempotencyKey()
+      : createPaymentIdempotencyKey()
     this.setData({
       paymentLoading: true,
       paymentIdempotencyKey: idempotencyKey,
