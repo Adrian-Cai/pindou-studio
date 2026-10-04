@@ -173,10 +173,6 @@
               {{textTaskWorkError}}
               <button class="button-secondary text-result__action text-result__retry" bindtap="retrySaveTextTask" disabled="{{textTaskWorkSaving}}">重试保存</button>
             </view>
-            <view class="text-result__actions">
-              <button class="button-secondary text-result__action" bindtap="retryTextGeneration" disabled="{{textTaskConverting}}" aria-label="重新生成灵感图">重新生成</button>
-              <button class="button-primary text-result__action" bindtap="createPatternFromTextTask" loading="{{textTaskConverting}}" disabled="{{textTaskConverting || !textTaskImagePath || !textTaskWorkId || textTaskWorkSaving}}" aria-label="生成拼豆图">生成拼豆图</button>
-            </view>
           </block>
         </view>
         <view class="text-cost">成功扣 {{textCost}} 次 · 失败不扣费 · {{aiRemaining === null ? '额度读取中' : '剩余 ' + aiRemaining + ' 次'}}</view>
