@@ -1,12 +1,7 @@
 .ai-generation-page {
   box-sizing: border-box;
-  padding: 32rpx;
+  padding: 0 32rpx 32rpx;
   --color-ai-text: #7c5cfc;
-}
-
-/* 各状态共用的中间主内容区：状态切换只替换这里，页面框架不动 */
-.ai-generation-state {
-  margin-top: 24rpx;
 }
 
 .ai-generation-card {
@@ -120,7 +115,7 @@
   transform-origin: center;
 }
 
-.ai-generation-result-card__ruler--top {
+  .ai-generation-result-card__ruler--top {
   position: absolute;
   top: 0;
   right: 0;

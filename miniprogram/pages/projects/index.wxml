@@ -17,17 +17,6 @@
       </view>
     </view>
 
-    <view wx:if="{{textJobs.length && activeTab !== 'text'}}" class="text-task-list">
-      <view class="text-task-list__title">灵感生成任务</view>
-      <view wx:for="{{textJobs}}" wx:key="id" class="text-task-card" data-id="{{item.id}}" bindtap="openTextTask">
-        <view class="text-task-card__copy">
-          <view class="text-task-card__status">{{item.status === 'queued' ? '等待生成' : (item.status === 'processing' ? '正在生成参考图' : (item.status === 'succeeded' ? '参考图已就绪' : '生成失败'))}}</view>
-          <view class="text-task-card__prompt">{{item.prompt}}</view>
-        </view>
-        <text class="text-task-card__action">{{item.status === 'succeeded' ? '继续' : (item.status === 'failed' ? '重试' : '查看')}}</text>
-      </view>
-    </view>
-
     <view class="search-row">
       <view class="search-box">
         <image class="search-box__icon" src="/assets/icons/iconsax/search.svg" mode="aspectFit" aria-hidden="true" />

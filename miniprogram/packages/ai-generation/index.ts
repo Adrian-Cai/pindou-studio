@@ -45,6 +45,7 @@ interface CoordinateTick {
   coordinate: number
   position: string
   label: string
+  major: boolean
   start: boolean
   end: boolean
 }
@@ -77,6 +78,7 @@ function buildCoordinateTicks(size: number, otherSize: number): CoordinateTick[]
       coordinate,
       position: `${position * 100}%`,
       label: label ? String(coordinate) : '',
+      major: label,
       start: index === 0,
       end: index === count - 1,
     }
