@@ -316,11 +316,11 @@ page {
   position: relative;
   display: flex;
   min-width: 0;
-  height: 108rpx;
+  height: 88rpx;
   flex: 1;
   align-items: center;
   justify-content: center;
-  gap: 10rpx;
+  gap: 6rpx;
   padding: 0 8rpx;
   border-radius: var(--radius-card-small);
   background: var(--color-surface);
@@ -341,14 +341,14 @@ page {
 }
 
 .ai-style-option__icon {
-  width: 52rpx;
-  height: 52rpx;
-  flex: 0 0 52rpx;
+  width: 40rpx;
+  height: 40rpx;
+  flex: 0 0 40rpx;
 }
 
 .ai-style-option__label {
   overflow: hidden;
-  font-size: 24rpx;
+  font-size: 22rpx;
   font-weight: 600;
   line-height: 32rpx;
   text-overflow: ellipsis;
