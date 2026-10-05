@@ -14,7 +14,7 @@
       aria-hidden="true"
     />
     <view class="generating-card__title">{{title}}</view>
-    <view class="generating-card__subtitle">{{subtitle}}</view>
+    <view wx:if="{{subtitle}}" class="generating-card__subtitle">{{subtitle}}</view>
 
     <view class="generating-card__progress-wrap" wx:if="{{!failed}}">
       <view class="generating-card__beads">

@@ -30,7 +30,7 @@
     <view wx:elif="{{isGenerating}}" class="ai-generation-state">
       <generating-preview-card
         title="AI 正在生成拼豆图"
-        subtitle="正在优化图片细节，请稍候"
+        subtitle=""
         progress="{{progress}}"
         tip-texts="{{tipTexts}}"
         show-actions="{{true}}"

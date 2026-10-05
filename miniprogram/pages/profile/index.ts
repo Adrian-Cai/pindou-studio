@@ -1,7 +1,6 @@
 import { normalizeAvatarUrl } from '../../config/api'
 import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
-import { copyPageShareLink } from '../../services/share-service'
 import {
   fetchAiGenerationPackages,
   createPaymentIdempotencyKey,
@@ -82,14 +81,16 @@ Page({
     }
   },
 
-  copyShareLink() {
-    void copyPageShareLink('profile')
-  },
-
   onShareAppMessage() {
     return {
       title: '一起体验拼豆创作',
       path: '/pages/profile/index',
+    }
+  },
+
+  onShareTimeline() {
+    return {
+      title: '一起体验拼豆创作',
     }
   },
 

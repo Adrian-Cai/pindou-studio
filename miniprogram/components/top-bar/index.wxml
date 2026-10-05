@@ -23,7 +23,7 @@
       wx:if="{{actionText}}"
       class="top-bar__action {{actionType === 'more' ? 'top-bar__action--more' : ''}}"
       bindtap="handleAction"
-      aria-label="{{actionText}}"
+      aria-label="{{actionType === 'more' ? '更多操作' : actionText}}"
     >{{actionText}}</button>
     <view wx:elif="{{!home}}" class="top-bar__side"></view>
   </view>
