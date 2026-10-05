@@ -33,6 +33,7 @@ import { PostgresWorkService } from "./modules/works/work-service";
 import { PostgresTextImageWorkService } from "./modules/works/text-image-work-service";
 import { FileSystemContentSecurityMediaStorage } from "./modules/content-security/media-storage";
 import { OfficialWeChatContentSecurityClient } from "./modules/content-security/wechat-client";
+import { OfficialWeChatUrlLinkClient } from "./modules/wechat/url-link-client";
 import { PostgresContentSecurityService } from "./modules/content-security/content-security-service";
 
 export interface RunningApplication {
@@ -184,6 +185,11 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
         aiFileMaximumBytes: config.aiFiles.maximumBytes,
         aiRateLimiter,
         contentSecurity,
+        urlLinks: new OfficialWeChatUrlLinkClient(
+          config.wechat.appId,
+          config.wechat.appSecret,
+          config.wechat.timeoutMs,
+        ),
         contentSecurityMediaMaximumBytes: config.contentSecurity.mediaMaximumBytes,
         virtualPayPush: config.virtualPayPush,
         aiGenerations,

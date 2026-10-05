@@ -28,10 +28,10 @@ Component({
       type: Number,
       value: 60,
     },
-    /** 底部提示文本 */
-    tipText: {
-      type: String,
-      value: '正在为你优化图片细节，生成完成后即可开始编辑',
+    /** 底部轮播提示 */
+    tipTexts: {
+      type: Array,
+      value: [],
     },
     /** 是否展示底部提示条 */
     showTip: {

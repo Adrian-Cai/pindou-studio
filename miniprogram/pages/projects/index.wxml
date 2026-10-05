@@ -1,4 +1,4 @@
-<page-layout title="我的作品" showMainNav="{{showPageNav}}" selectedTab="1">
+<page-layout title="我的作品" showMainNav="{{showPageNav}}" selectedTab="1" actionText="复制" actionType="more" bind:action="copyShareLink">
   <view class="subpage projects-page">
     <view class="project-summary ui-card">
       <view class="project-summary__item">

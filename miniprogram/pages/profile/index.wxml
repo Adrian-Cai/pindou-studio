@@ -1,4 +1,4 @@
-<page-layout title="我的" showMainNav selectedTab="2">
+<page-layout title="我的" showMainNav selectedTab="2" actionText="复制" actionType="more" bind:action="copyShareLink">
   <!-- ── 未登录状态 ── -->
   <view wx:if="{{!isLoggedIn}}" class="profile-page profile-guest">
     <view class="guest-body">

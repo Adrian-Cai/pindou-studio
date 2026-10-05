@@ -19,11 +19,13 @@ import {
   validateCreateTextImageGenerationBody,
   validateCreateTextImageWorkBody,
   validateCreatePaymentBody,
+  validateCreateShareLinkBody,
   validateDownloadBody,
   validateFavoriteBody,
   validateLoginBody,
   validateNicknameBody,
   validatePrivacyPatch,
+  validateQueryShareLinkBody,
   validateWorkBody,
   validateWorkUpdateBody,
 } from "./request-validation";
@@ -52,6 +54,7 @@ import {
   positiveQueryInteger,
   requestId,
   requireContentSecurity,
+  requireWeChatUrlLinks,
   sendImage,
   sendJson,
   sendNoContent,
@@ -337,6 +340,20 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       if (request.method === "GET" && url.pathname === "/api/works") {
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
         sendJson(response, 200, await dependencies.works.list(listOptions(url, currentUser.id)));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/share-links") {
+        if (url.searchParams.size > 0) throw invalidArgument("分享链接接口不接受查询参数");
+        const page = validateCreateShareLinkBody(await readJsonObject(request));
+        sendJson(response, 201, await requireWeChatUrlLinks(dependencies).generate(page));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/share-links/query") {
+        if (url.searchParams.size > 0) throw invalidArgument("分享链接查询接口不接受查询参数");
+        const urlLink = validateQueryShareLinkBody(await readJsonObject(request));
+        sendJson(response, 200, await requireWeChatUrlLinks(dependencies).query(urlLink));
         return;
       }
 

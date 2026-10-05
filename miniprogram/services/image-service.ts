@@ -31,15 +31,16 @@ export class ImageDecodeError extends ApiError {
 
 /**
  * 调起相册/相机选图，并做格式校验，返回临时路径；用户取消返回 null。
+ * @param sourceType 指定打开相册或相机，避免系统来源菜单压暗页面。
  * @returns 选中的原图临时路径，或 null（取消/无图）
  */
-export async function chooseSourceImage(): Promise<string | null> {
+export async function chooseSourceImage(sourceType: 'album' | 'camera'): Promise<string | null> {
   let result: WechatMiniprogram.ChooseImageSuccessCallbackResult
   try {
     result = await wx.chooseImage({
       count: 1,
       sizeType: ['original'],
-      sourceType: ['album', 'camera'],
+      sourceType: [sourceType],
     })
   } catch (error) {
     if (isImagePickerCancel(error)) return null

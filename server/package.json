@@ -1,6 +1,6 @@
 {
   "name": "@pindou-studio/server",
-  "version": "0.22.6",
+  "version": "0.22.7",
   "private": true,
   "description": "拼豆工作室后端服务",
   "main": "dist/index.js",

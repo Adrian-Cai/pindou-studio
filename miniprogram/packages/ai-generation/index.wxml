@@ -32,7 +32,7 @@
         title="AI 正在生成拼豆图"
         subtitle="正在优化图片细节，请稍候"
         progress="{{progress}}"
-        tip-text="{{tipText}}"
+        tip-texts="{{tipTexts}}"
         show-actions="{{true}}"
         bindcancel="cancelTask"
         bindbackhome="backHome"

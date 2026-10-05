@@ -119,6 +119,7 @@ Page({
     sizeOptions: [32, 48, 64, 96, 128],
     colorOptions: [16, 32, 64, 96],
     choosing: false,
+    imageSourcePickerVisible: false,
     generating: false,
     /** AI 任务入队中的防抖标记：不阻塞页面，只挡住重复点击 */
     submitting: false,
@@ -152,6 +153,7 @@ Page({
     this.setData({
       generating: false,
       submitting: false,
+      imageSourcePickerVisible: false,
     })
     if (this.data.creationSource === 'text') void this.loadTextMode()
   },
@@ -492,13 +494,27 @@ Page({
     this.setData({ generationTipsOpen: !this.data.generationTipsOpen })
   },
 
-  async chooseImage() {
+  chooseImage() {
     if (this.data.choosing || this.data.uploadStatus === 'uploading' || this.data.uploadStatus === 'checking') return
-    this.setData({ choosing: true })
+    this.setData({ imageSourcePickerVisible: true })
+  },
+
+  hideImageSourcePicker() {
+    this.setData({ imageSourcePickerVisible: false })
+  },
+
+  async chooseImageFromSource(event: WechatMiniprogram.TouchEvent) {
+    const sourceType = event.currentTarget.dataset.sourceType
+    if (sourceType !== 'album' && sourceType !== 'camera') return
+    if (this.data.choosing || this.data.uploadStatus === 'uploading' || this.data.uploadStatus === 'checking') return
+
+    await new Promise<void>((resolve) => {
+      this.setData({ imageSourcePickerVisible: false, choosing: true }, resolve)
+    })
 
     let sourceImagePath: string | null = null
     try {
-      sourceImagePath = await chooseSourceImage()
+      sourceImagePath = await chooseSourceImage(sourceType)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (!message.toLowerCase().includes('cancel')) {

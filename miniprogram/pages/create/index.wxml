@@ -176,3 +176,13 @@
     </view>
   </view>
 </page-layout>
+
+<view wx:if="{{imageSourcePickerVisible}}" class="image-source-picker" bindtap="hideImageSourcePicker">
+  <view class="image-source-picker__panel" role="dialog" aria-label="选择图片来源">
+    <view class="image-source-picker__actions">
+      <button class="image-source-picker__option" data-source-type="camera" catchtap="chooseImageFromSource">拍摄</button>
+      <button class="image-source-picker__option image-source-picker__option--divider" data-source-type="album" catchtap="chooseImageFromSource">从手机相册选择</button>
+    </view>
+    <button class="image-source-picker__cancel" catchtap="hideImageSourcePicker">取消</button>
+  </view>
+</view>

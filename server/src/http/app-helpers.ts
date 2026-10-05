@@ -10,6 +10,7 @@ import type { FileAssetService } from "../modules/files/file-asset-service";
 import type { CoverStorage } from "../modules/files/cover-storage";
 import type { AiFileStorage } from "../modules/files/ai-file-storage";
 import type { ContentSecurityService } from "../modules/content-security/content-security-service";
+import type { WeChatUrlLinkClient } from "../modules/wechat/url-link-client";
 import type { PostgresAiGenerationService } from "../modules/ai/ai-generation-service";
 import type { PostgresTextImageGenerationService } from "../modules/ai/text-image-generation-service";
 import type { PostgresTextImageWorkService } from "../modules/works/text-image-work-service";
@@ -293,6 +294,7 @@ export interface HttpApplicationDependencies {
   readonly textImageWorks?: PostgresTextImageWorkService;
   /** 作品标题保存前必须经过内容安全校验；缺失时应 fail closed */
   readonly contentSecurity: ContentSecurityService;
+  readonly urlLinks?: WeChatUrlLinkClient;
   readonly contentSecurityMediaMaximumBytes?: number;
   /**
    * 虚拟支付消息推送的凭据（MP 后台「消息推送配置」里填的 Token / EncodingAESKey）。
@@ -321,6 +323,13 @@ function requireContentSecurity(dependencies: HttpApplicationDependencies): Cont
     throw new AppError(503, "CONTENT_SECURITY_NOT_CONFIGURED", "内容安全服务尚未配置");
   }
   return dependencies.contentSecurity;
+}
+
+function requireWeChatUrlLinks(dependencies: HttpApplicationDependencies): WeChatUrlLinkClient {
+  if (!dependencies.urlLinks) {
+    throw new AppError(503, "WECHAT_URL_LINK_NOT_CONFIGURED", "分享链接服务尚未配置");
+  }
+  return dependencies.urlLinks;
 }
 
 function wechatPaymentHeaders(request: IncomingMessage): Readonly<Record<string, string | undefined>> {
@@ -477,7 +486,7 @@ function hasRequestBody(request: IncomingMessage): boolean {
   return request.headers["transfer-encoding"] !== undefined;
 }
 
-export { requestId, sendJson, sendRaw, parseDeliveryNotification, parseEventName, parseRefundNotification, parseIosRefundQuery, sendImage, errorPayload, sendText, requireContentSecurity, wechatPaymentHeaders, listOptions, textImageWorkListOptions, favoriteListOptions, downloadListOptions, orderListOptions, positiveQueryInteger, workId, favoriteWorkId, aiGenerationId, textImageGenerationId, textImageWorkId, textImageGenerationConsumeId, paymentOrderAction, sendNoContent, hasRequestBody };
+export { requestId, sendJson, sendRaw, parseDeliveryNotification, parseEventName, parseRefundNotification, parseIosRefundQuery, sendImage, errorPayload, sendText, requireContentSecurity, requireWeChatUrlLinks, wechatPaymentHeaders, listOptions, textImageWorkListOptions, favoriteListOptions, downloadListOptions, orderListOptions, positiveQueryInteger, workId, favoriteWorkId, aiGenerationId, textImageGenerationId, textImageWorkId, textImageGenerationConsumeId, paymentOrderAction, sendNoContent, hasRequestBody };
 
 /** 上传头像；旧 nickname 字段仅兼容接收，昵称通过独立资料接口更新。 */
 export async function uploadCurrentUserAvatar(

@@ -27,6 +27,36 @@ export function validateContentSecurityTextBody(body: Record<string, unknown>): 
   return body.content;
 }
 
+export function validateCreateShareLinkBody(body: Record<string, unknown>): "home" | "projects" | "profile" {
+  if (Object.keys(body).length !== 1 || (body.page !== "home" && body.page !== "projects" && body.page !== "profile")) {
+    throw invalidArgument("分享链接页面只能是 home、projects 或 profile");
+  }
+  return body.page;
+}
+
+export function validateQueryShareLinkBody(body: Record<string, unknown>): string {
+  if (Object.keys(body).length !== 1 || typeof body.urlLink !== "string") {
+    throw invalidArgument("请求体只能包含字符串字段 urlLink");
+  }
+  const value = body.urlLink.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw invalidArgument("urlLink 格式无效");
+  }
+  if (
+    value.length > 2048
+    || parsed.protocol !== "https:"
+    || parsed.hostname !== "wxaurl.cn"
+    || !parsed.pathname || parsed.pathname === "/"
+    || parsed.username || parsed.password || parsed.port || parsed.hash
+  ) {
+    throw invalidArgument("urlLink 必须是微信生成的 HTTPS URL Link");
+  }
+  return value;
+}
+
 export function validateNicknameBody(body: Record<string, unknown>): string {
   const keys = Object.keys(body);
   if (keys.length !== 1 || keys[0] !== "nickname" || typeof body.nickname !== "string") {

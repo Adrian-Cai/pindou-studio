@@ -1,4 +1,4 @@
-<page-layout title="小露拼豆" home show-main-nav selected-tab="{{0}}">
+<page-layout title="小露拼豆" home show-main-nav selected-tab="{{0}}" actionText="复制" actionType="more" bind:action="copyShareLink">
   <view class="home-page">
     <image class="home-hero" src="/assets/samples/home-hero-banner.jpg" mode="widthFix" aria-label="小露拼豆：让脑海里的灵感，变成拼豆作品" />
 

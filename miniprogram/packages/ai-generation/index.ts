@@ -94,7 +94,10 @@ const GENERATING_STATUSES: ReadonlySet<AiTaskStatus> = new Set<AiTaskStatus>([
   'converting',
 ])
 
-const DEFAULT_TIP = '正在为你优化图片细节，生成完成后即可开始编辑'
+const GENERATION_TIPS = [
+  '正在为你优化图片细节',
+  '生成完成后即可开始编辑',
+]
 
 Page({
   data: {
@@ -107,7 +110,7 @@ Page({
     queuePosition: 0,
     stateTitle: '',
     stateDescription: '',
-    tipText: DEFAULT_TIP,
+    tipTexts: GENERATION_TIPS,
     /** 成功态在当前页面直接展示结果，编辑面板随草稿就绪切换为可用。 */
     draft: null as PatternDraft | null,
     editorReady: false,
@@ -221,7 +224,7 @@ Page({
       queuePosition: view.queuePosition,
       stateTitle: view.stateTitle,
       stateDescription: view.stateDescription,
-      tipText: DEFAULT_TIP,
+      tipTexts: GENERATION_TIPS,
       panelWidth: view.width,
       panelHeight: view.height,
       panelColorLimit: view.colorLimit,

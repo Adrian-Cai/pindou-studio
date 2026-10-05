@@ -25,6 +25,7 @@ import {
   type TextImageWork,
 } from '../../services/text-image-work-service'
 import { checkTextContent } from '../../services/content-security-service'
+import { copyPageShareLink } from '../../services/share-service'
 import {
   aiTaskManager,
   canRetryTask,
@@ -89,6 +90,17 @@ Page({
   },
 
   _unsubscribeAiTask: null as (() => void) | null,
+
+  copyShareLink() {
+    void copyPageShareLink('projects')
+  },
+
+  onShareAppMessage() {
+    return {
+      title: '来看看我做的拼豆作品',
+      path: '/pages/projects/index',
+    }
+  },
 
   onShow() {
     this.getTabBar()?.setData({ selected: 1, hidden: Boolean(this.data.renameWorkId) })

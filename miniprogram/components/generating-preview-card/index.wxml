@@ -32,9 +32,13 @@
   </view>
 
   <view class="generating-card__foot">
-    <view class="generating-card__tip-capsule" wx:if="{{!failed && showTip && tipText}}">
+    <view class="generating-card__tip-capsule" wx:if="{{!failed && showTip && tipTexts.length}}">
       <view class="generating-card__tip-icon" aria-hidden="true"></view>
-      <text class="generating-card__tip-text">{{tipText}}</text>
+      <swiper class="generating-card__tip-swiper" vertical autoplay circular interval="3200" duration="400">
+        <swiper-item wx:for="{{tipTexts}}" wx:key="*this" class="generating-card__tip-slide">
+          <text class="generating-card__tip-text">{{item}}</text>
+        </swiper-item>
+      </swiper>
     </view>
 
     <view class="generating-card__actions" wx:if="{{showActions || failed}}">
