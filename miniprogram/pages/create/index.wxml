@@ -65,12 +65,12 @@
           <view class="section-label ai-example-heading">效果示例</view>
           <view class="ai-example-card">
             <view class="ai-example-card__item">
-              <image class="ai-example-card__image" src="/assets/samples/home-ai-source.jpg" mode="aspectFill" aria-label="AI 风格转换原图" />
+              <image class="ai-example-card__image" src="/assets/samples/home-ai-source.jpg" mode="widthFix" aria-label="AI 风格转换原图" />
               <text class="ai-example-card__label">原图</text>
             </view>
             <image class="ai-example-card__arrow" src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
             <view wx:for="{{aiStyles}}" wx:for-item="styleItem" wx:key="id" wx:if="{{aiStyle === styleItem.id}}" class="ai-example-card__item">
-              <image class="ai-example-card__image" src="{{styleItem.exampleImage}}" mode="aspectFill" aria-label="{{styleItem.label}}效果示例" />
+              <image class="ai-example-card__image" src="{{styleItem.exampleImage}}" mode="widthFix" aria-label="{{styleItem.label}}效果示例" />
               <text class="ai-example-card__label">{{styleItem.label}}效果</text>
             </view>
           </view>
