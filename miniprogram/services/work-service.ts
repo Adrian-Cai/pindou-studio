@@ -94,13 +94,13 @@ export async function saveNewCloudWork(
  * 覆盖更新已存在的云端作品。
  * @param workId 目标作品 id
  * @param draft 新图纸草稿
- * @param coverPath 新封面图本地路径
+ * @param coverPath 有新原图时传本地路径；缺省时保留云端原封面
  * @param title 新标题
  */
 export async function updateCloudWork(
   workId: string,
   draft: PatternDraft,
-  coverPath: string,
+  coverPath: string | undefined,
   title: string,
 ): Promise<CloudWorkSummary> {
   return persistCloudWork({ workId, draft, coverPath, title })
@@ -296,7 +296,7 @@ async function uploadCover(token: string, filePath: string): Promise<string> {
 async function persistCloudWork(input: {
   readonly workId?: string
   readonly draft: PatternDraft
-  readonly coverPath: string
+  readonly coverPath?: string
   readonly title: string
 }): Promise<CloudWorkSummary> {
   const token = requireToken()
@@ -310,8 +310,9 @@ async function persistCloudWork(input: {
   if (input.draft.creationSource === 'text' && !input.draft.sourcePrompt?.trim()) {
     throw new ApiError('文字创作描述缺失，无法保存作品', { code: 'INVALID_PATTERN' })
   }
-  // 后端作品只引用受所有权校验的文件资产 ID，因此必须先上传封面，再创建或更新作品。
-  const coverFileId = await uploadCover(token, input.coverPath)
+  // 新作品必须上传封面；旧作品没有原图路径时由服务端沿用已有封面。
+  if (isNew && !input.coverPath) throw new ApiError('作品原图缺失，无法保存', { code: 'INVALID_PATTERN' })
+  const coverFileId = input.coverPath ? await uploadCover(token, input.coverPath) : undefined
   const response = await apiRequest<unknown>({
     path: isNew ? '/api/works' : `/api/works/${encodeURIComponent(input.workId)}`,
     method: isNew ? 'POST' : 'PUT',
@@ -320,7 +321,7 @@ async function persistCloudWork(input: {
     ...(isNew ? { headers: { 'Idempotency-Key': `create-${input.draft.id}` } } : {}),
     data: {
       title: input.title,
-      coverFileId,
+      ...(coverFileId ? { coverFileId } : {}),
       status: 'completed',
       creationSource: input.draft.creationSource ?? 'image',
       sourcePrompt: input.draft.creationSource === 'text' ? input.draft.sourcePrompt : null,

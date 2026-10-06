@@ -1,16 +1,16 @@
 ﻿/**
  * 编辑器绘制与坐标换算服务：把 PatternDraft 画到 2d canvas，并处理屏幕↔格子坐标、视图变换、连通域填充。
  *
- * 职责：提供 drawPatternViewport（按当前缩放/平移只画可见格，性能友好）、drawPatternOnCanvas（整图绘制，用于封面）、
+ * 职责：提供 drawPatternViewport（按当前缩放/平移只画可见格，性能友好）、
  *       计算适配尺寸 calculateFittedImageSize、缩放锚点 scaleAroundViewportPoint、平移边界 clampViewTranslation、
  *       屏幕触点转格子 screenPointToGridCell、油漆桶 fillConnectedCells；不负责手势状态机（在 editor 页）。
  * 调用方：packages/editor/index.ts（编辑器页）。
  * 关键点：所有绘制用「拼豆圆点」风格（带阴影/高光）；坐标换算以 viewport 中心为原点，scale/translate 描述图片相对中心的位置。
  */
 import type { PatternCell, PatternDraft } from '../../../models/pattern'
-import { drawPatternOnCanvas, type PatternCanvasContext } from './pattern-renderer'
+import type { PatternCanvasContext } from './pattern-renderer'
 
-export { drawPatternOnCanvas, type PatternCanvasContext } from './pattern-renderer'
+export type { PatternCanvasContext } from './pattern-renderer'
 
 /** 鐭╁舰浣嶇疆涓庡昂瀵革紙CSS 鍍忕礌锛?*/
 export interface CanvasRect {
@@ -40,48 +40,6 @@ export interface GridCell {
   row: number
   column: number
   index: number
-}
-
-/**
- * 在离屏导出画布上整图重绘并导出封面 PNG 临时路径，供保存作品时上传。
- * @param draft 图纸草稿
- * @param component 当前页实例（用于 createSelectorQuery 的 .in）
- * @returns 封面图临时文件路径
- */
-export function exportPatternCoverImage(
-  draft: PatternDraft,
-  component: WechatMiniprogram.Page.TrivialInstance,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    wx.createSelectorQuery()
-      .in(component)
-      .select('#exportPatternCanvas')
-      .fields({ node: true, size: true })
-      .exec((results) => {
-        const result = results[0] as {
-          node?: { width: number; height: number; getContext(type: '2d'): PatternCanvasContext }
-          width?: number
-          height?: number
-        } | undefined
-        if (!result?.node || !result.width || !result.height) {
-          reject(new Error('封面画布尚未准备好'))
-          return
-        }
-        result.node.width = Math.round(result.width)
-        result.node.height = Math.round(result.height)
-        drawPatternOnCanvas(result.node.getContext('2d'), result.width, result.height, draft)
-        wx.canvasToTempFilePath(
-          {
-            canvas: result.node as unknown as WechatMiniprogram.Canvas,
-            fileType: 'png',
-            quality: 1,
-            success: ({ tempFilePath }) => resolve(tempFilePath),
-            fail: (error) => reject(new Error(error.errMsg || '封面生成失败')),
-          },
-          component,
-        )
-      })
-  })
 }
 
 /** 鍦ㄥ浐瀹?viewport Canvas 鍐呮寜褰撳墠瑙嗗浘鍙樻崲缁樺埗锛屼粎閬嶅巻鍙 grid cell銆?*/

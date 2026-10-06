@@ -143,14 +143,6 @@ page {
 
 /* 底部控制面板（缩放/信息/工具/调色板/操作）样式见 components/editor-control-panel */
 
-.export-pattern-canvas {
-  position: fixed;
-  top: 0;
-  left: -10000px;
-  pointer-events: none;
-}
-
-
 /* ─── 取色 Toast ──────────────────────────────────────────────── */
 
 .editor-toast {

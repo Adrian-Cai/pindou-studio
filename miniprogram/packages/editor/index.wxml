@@ -63,14 +63,6 @@
     </view>
   </view>
 
-  <canvas
-    wx:if="{{draft}}"
-    id="exportPatternCanvas"
-    class="export-pattern-canvas"
-    type="2d"
-    style="width: {{draft.settings.width >= draft.settings.height ? 640 : 640 * draft.settings.width / draft.settings.height}}px; height: {{draft.settings.height >= draft.settings.width ? 640 : 640 * draft.settings.height / draft.settings.width}}px;"
-  ></canvas>
-
   <!-- 取色成功 Toast -->
   <view class="editor-toast {{toast.visible ? 'editor-toast--visible' : ''}}">{{toast.message}}</view>
 </view>

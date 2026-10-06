@@ -169,6 +169,8 @@ export interface WorkItem {
   /** pending / failed 作品归属的账号；游客作品不带该字段。 */
   ownerId?: string
   syncError?: string
+  /** 云端作品编辑后离线保存，补传时更新原作品。 */
+  pendingCloudUpdate?: boolean
   /** @deprecated 使用 syncStatus 判断，保留以兼容旧缓存。 */
   isCloud?: boolean
   createdAt?: number

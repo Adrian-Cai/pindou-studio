@@ -208,16 +208,15 @@ export async function createDraft(
  * 把临时图片复制到永久目录（wx.env.USER_DATA_PATH），避免 App 重启后临时路径失效。
  * 复制失败时回退原路径——退化成本地的旧行为，不该让用户连生成都发起不了。
  * @param sourceImagePath 待永久化的图片路径
+ * @param directory 存储目录；标准作品使用独立目录，避免被 AI 任务清理误删
  * @returns 可长期使用的图片路径
  */
-export async function persistImage(sourceImagePath: string): Promise<string> {
+export async function persistImage(sourceImagePath: string, directory = aiImageDirectoryPath()): Promise<string> {
   const source = sourceImagePath.trim()
   if (!source) return sourceImagePath
-  const userPath = wx.env.USER_DATA_PATH
-  if (source.startsWith(userPath)) return source
+  if (source.startsWith(`${directory}/`)) return source
 
-  // 目录名与清理逻辑共用同一个常量，避免两边各写一份导致孤儿文件扫不到
-  const directory = aiImageDirectoryPath()
+  // AI 图片使用 AI 任务目录；标准作品放独立目录，避免任务清理误删仍在用的原图。
   const target = `${directory}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}${imageExtension(source)}`
   try {
     ensureDirectory(directory)
@@ -226,6 +225,16 @@ export async function persistImage(sourceImagePath: string): Promise<string> {
   } catch (error) {
     console.warn('图片永久化失败，回退使用原路径', error)
     return source
+  }
+}
+
+/** 作品不再引用本机原图时，清理独立目录中的副本。 */
+export function removePersistedWorkImage(filePath: string): void {
+  if (!filePath.startsWith(`${wx.env.USER_DATA_PATH}/pindou-work-images/`)) return
+  try {
+    wx.getFileSystemManager().unlinkSync(filePath)
+  } catch {
+    // 文件已不存在或暂时无法删除时，不影响作品保存与删除。
   }
 }
 

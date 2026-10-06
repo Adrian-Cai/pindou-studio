@@ -25,6 +25,7 @@ import {
   type TextImageWork,
 } from '../../services/text-image-work-service'
 import { checkTextContent } from '../../services/content-security-service'
+import { removePersistedWorkImage } from '../../services/image-service'
 import {
   aiTaskManager,
   canRetryTask,
@@ -598,8 +599,12 @@ Page({
   async persistDelete(id: string, isCloud: boolean) {
     wx.showLoading({ title: '正在删除', mask: true })
     try {
+      const coverPath = appStore.getSnapshot().works.find((work) => work.id === id)?.coverPath ?? ''
       if (isCloud) await deleteCloudWork(id)
       await appStore.deleteWork(id)
+      if (coverPath && !appStore.getSnapshot().works.some((work) => work.coverPath === coverPath)) {
+        removePersistedWorkImage(coverPath)
+      }
       this.refreshVisibleWorks()
     } catch (error) {
       console.error('删除作品失败', error)

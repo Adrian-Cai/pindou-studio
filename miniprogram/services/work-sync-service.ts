@@ -1,8 +1,8 @@
 import type { PatternDraft, WorkItem } from '../models/pattern'
 import { appStore } from '../store/app-store'
 import { checkImageContent } from './content-security-service'
-import { prepareImageForContentSecurity } from './image-service'
-import { cloudSummaryToWorkItem, hasCloudSession, saveNewCloudWork, setCloudFavorite } from './work-service'
+import { prepareImageForContentSecurity, removePersistedWorkImage } from './image-service'
+import { cloudSummaryToWorkItem, hasCloudSession, saveNewCloudWork, setCloudFavorite, updateCloudWork } from './work-service'
 import { ApiError } from './http-client'
 
 export interface WorkSyncResult { uploaded: number; skipped: number; failed: number }
@@ -23,14 +23,23 @@ async function performSync(userId: string): Promise<WorkSyncResult> {
     if (!draft) { await appStore.markSyncStatus(work.id, 'failed', '作品图案数据不完整，请重新编辑后重试'); skipped += 1; continue }
     try {
       await appStore.markSyncStatus(work.id, 'pending')
-      await checkImageContent(await prepareImageForContentSecurity(work.coverPath))
-      const summary = await saveNewCloudWork(draft, work.coverPath, work.title)
-      const favorite = appStore.getSnapshot().favoriteIds.includes(work.id) ? await setCloudFavorite(summary.id, true) : null
+      const sourcePath = draft.sourceImagePath || (work.pendingCloudUpdate ? '' : work.coverPath)
+      const uploadPath = sourcePath ? await prepareImageForContentSecurity(sourcePath) : undefined
+      if (uploadPath) await checkImageContent(uploadPath)
+      const summary = work.pendingCloudUpdate
+        ? await updateCloudWork(work.id, draft, uploadPath, work.title)
+        : await saveNewCloudWork(draft, uploadPath ?? '', work.title)
+      const favorite = !work.pendingCloudUpdate && appStore.getSnapshot().favoriteIds.includes(work.id)
+        ? await setCloudFavorite(summary.id, true)
+        : null
       await appStore.replaceLocalWorkWithCloud(work.id, {
         ...cloudSummaryToWorkItem(summary),
         isFavorite: favorite?.isFavorite ?? summary.isFavorite,
         ...(favorite?.favoritedAt ? { favoritedAt: Date.parse(favorite.favoritedAt) } : {}),
       })
+      if (sourcePath && !appStore.getSnapshot().works.some((item) => item.coverPath === sourcePath)) {
+        removePersistedWorkImage(sourcePath)
+      }
       uploaded += 1
     } catch (error) {
       await appStore.markSyncStatus(work.id, isNetworkError(error) ? 'pending' : 'failed', syncErrorMessage(error))

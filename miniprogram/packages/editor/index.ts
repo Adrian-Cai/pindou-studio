@@ -29,12 +29,12 @@ import {
   updateCloudWork,
 } from '../../services/work-service'
 import { isNetworkError, queueWorkForSync } from '../../services/work-sync-service'
+import { persistImage, prepareImageForContentSecurity, removePersistedWorkImage } from '../../services/image-service'
 import { aiTaskManager } from '../../services/ai-generation-manager'
 import {
   calculateFittedImageSize,
   clampViewTranslation,
   drawPatternViewport,
-  exportPatternCoverImage,
   fillConnectedCells,
   sameCell,
   scaleAroundViewportPoint,
@@ -712,18 +712,29 @@ Page({
 
   async saveAndView() {
     if (this.data.saving || !this.data.canvasReady) return
-    const draft = this._draft
-    if (!draft) return
+    const currentDraft = this._draft
+    if (!currentDraft) return
     this.setData({ saving: true })
     wx.showLoading({ title: '正在保存', mask: true })
     try {
+      const workImageDirectory = `${wx.env.USER_DATA_PATH}/pindou-work-images`
+      const sourceImagePath = currentDraft.sourceImagePath
+        ? await persistImage(currentDraft.sourceImagePath, workImageDirectory)
+        : ''
+      if (sourceImagePath && !sourceImagePath.startsWith(`${workImageDirectory}/`)) {
+        throw new Error('原图保存失败，请重试')
+      }
+      const draft = { ...currentDraft, sourceImagePath }
       const state = appStore.getSnapshot()
       const existing = state.works.find((item) => item.id === draft.id)
+      const updatingCloudWork = Boolean(existing?.syncStatus === 'synced' || existing?.isCloud)
+      const coverPath = sourceImagePath || existing?.coverPath || ''
+      if (!coverPath) throw new Error('作品原图缺失，无法保存')
       // 本地作品记录：先按草稿 id 找是否已存在（决定后续是更新还是新建云端作品）
       const localWork = {
           id: draft.id,
           title: existing?.title ?? '未命名作品',
-          coverPath: draft.sourceImagePath,
+          coverPath,
           generationMode: draft.generationMode,
           updatedAt: Date.now(),
           createdAt: existing?.createdAt ?? draft.createdAt,
@@ -740,24 +751,29 @@ Page({
         await appStore.saveWork({ ...localWork, syncStatus: 'guest' })
         wx.showToast({ title: '已保存到本机', icon: 'success' })
       } else {
-        const coverPath = await exportPatternCoverImage(draft, this)
         try {
+          const uploadPath = updatingCloudWork && !sourceImagePath
+            ? undefined
+            : await prepareImageForContentSecurity(coverPath)
           // 已同步或云端的作品走更新，否则按新作品保存
-          const summary = existing?.syncStatus === 'synced' || existing?.isCloud
-            ? await updateCloudWork(existing.id, draft, coverPath, existing.title)
-            : await saveNewCloudWork(draft, coverPath, existing?.title ?? '未命名作品')
+          const summary = updatingCloudWork && existing
+            ? await updateCloudWork(existing.id, draft, uploadPath, existing.title)
+            : await saveNewCloudWork(draft, uploadPath ?? '', existing?.title ?? '未命名作品')
           const savedDraft = { ...draft, id: summary.id, sourceImagePath: '' }
           if (existing && existing.id !== summary.id) await appStore.deleteWork(existing.id)
           await appStore.removeLocalDraft(draft.id)
           await appStore.saveWork(cloudSummaryToWorkItem(summary))
           await appStore.setCurrentDraft(savedDraft)
+          if (sourceImagePath && !appStore.getSnapshot().works.some((work) => work.coverPath === sourceImagePath)) {
+            removePersistedWorkImage(sourceImagePath)
+          }
           wx.showToast({ title: '已保存到云端', icon: 'success' })
         } catch (error) {
           // 云端失败：按网络错误与否标记为 pending（联网自动同步）或 failed
           const pending = isNetworkError(error)
           await queueWorkForSync({
             ...localWork,
-            coverPath,
+            pendingCloudUpdate: updatingCloudWork,
             syncStatus: pending ? 'pending' : 'failed',
             syncError: error instanceof Error ? error.message : '云端保存失败，请稍后重试',
           }, draft)

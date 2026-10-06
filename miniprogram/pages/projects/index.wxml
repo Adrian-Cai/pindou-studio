@@ -46,7 +46,7 @@
         aria-label="查看作品 {{item.title}}"
       >
         <view class="project-card__cover-wrap">
-          <image class="project-card__cover" src="{{item.coverPath}}" data-id="{{item.id}}" mode="aspectFill" binderror="handleCoverError" />
+          <image class="project-card__cover" src="{{item.coverPath}}" data-id="{{item.id}}" mode="aspectFit" binderror="handleCoverError" />
           <!-- AI 态封面叠加层：原图缩略图上层加半透明遮罩，不动封面本体 -->
           <view wx:if="{{item.isAiGenerating}}" class="project-card__overlay">
             <text class="project-card__overlay-text">{{item.aiProgress}}%</text>
@@ -117,7 +117,7 @@
         aria-label="查看文生图作品 {{item.title}}"
       >
         <view class="project-card__cover-wrap">
-          <image class="project-card__cover" src="{{item.coverPath}}" data-id="{{item.id}}" mode="aspectFill" binderror="handleTextImageCoverError" />
+          <image class="project-card__cover" src="{{item.coverPath}}" data-id="{{item.id}}" mode="aspectFit" binderror="handleTextImageCoverError" />
         </view>
         <view class="project-card__body">
           <view class="project-card__header">
