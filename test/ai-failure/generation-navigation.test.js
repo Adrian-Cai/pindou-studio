@@ -26,7 +26,7 @@ function loadPage(relativePath) {
 }
 
 function setup(t, loggedIn = true) {
-  const calls = { navigation: [], toasts: [], tasks: [], drafts: [], retries: [] }
+  const calls = { navigation: [], toasts: [], tasks: [], drafts: [], retries: [], modals: [] }
   global.wx = {
     getStorageSync: (key) => key === 'pindou-auth-session-v1' && loggedIn ? {
       token: 'opaque_token_12345678901234567890',
@@ -37,6 +37,7 @@ function setup(t, loggedIn = true) {
     redirectTo: (options) => { calls.navigation.push(options.url); options.complete?.() },
     switchTab: (options) => { calls.navigation.push(options.url) },
     showToast: (options) => { calls.toasts.push(options.title) },
+    showModal: async (options) => { calls.modals.push(options); return { confirm: true, cancel: false } },
     showLoading() {},
     hideLoading() {},
   }
@@ -295,6 +296,24 @@ test('创建任务失败后解除按钮状态，保留图片并允许再次生�
   assert.equal(calls.navigation.length, 1)
 })
 
+test('AI 提交前说明肖像处理要求；取消后不创建任务', async (t) => {
+  const { home, calls } = setup(t)
+  global.wx.showModal = async (options) => {
+    calls.modals.push(options)
+    return { confirm: false, cancel: true }
+  }
+
+  await home.startCreating()
+
+  assert.equal(calls.modals.length, 1)
+  assert.equal(calls.modals[0].title, '肖像使用提醒')
+  assert.equal(calls.modals[0].confirmText, '已知晓')
+  assert.match(calls.modals[0].content, /公众人物肖像请勿上传/)
+  assert.deepEqual(calls.tasks, [])
+  assert.deepEqual(calls.navigation, [])
+  assert.equal(home.data.submitting, false)
+})
+
 test('入队期间重复点击不重复创建，异步保存使用点击时的完整输入', async (t) => {
   const { home, calls } = setup(t)
   const pending = deferred()
@@ -359,6 +378,7 @@ test('标准模式直接生成并进入编辑器，不创建或取消 AI 任务'
   assert.deepEqual(calls.navigation, ['/packages/editor/index'])
   assert.deepEqual(calls.drafts, [draft])
   assert.deepEqual(calls.tasks, [])
+  assert.deepEqual(calls.modals, [])
   assert.equal(home.data.generating, false)
 })
 

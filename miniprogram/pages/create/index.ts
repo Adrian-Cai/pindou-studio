@@ -653,10 +653,17 @@ Page({
     if (this.data.submitting) return
     if (!hasAiLogin()) return
     this.setData({ submitting: true })
-    // 固定本次提交的输入，避免异步保存期间用户换图或调参串到同一任务。
+    // 固定本次提交的输入，避免异步确认或保存期间用户换图或调参串到同一任务。
     const { sourceImagePath: selectedImagePath, contentSecurityImagePath, securityCheckId, aiStyle } = this.data
     const settings = { ...this.data.settings }
     try {
+      const portraitNotice = await wx.showModal({
+        title: '肖像使用提醒',
+        content: 'AI 模式会将你上传的图片提交给 AI 服务生成。若图片中包含他人可识别肖像，请先告知本人并取得其对本次 AI 处理的单独同意和必要授权；未经授权的公众人物肖像请勿上传。',
+        confirmText: '已知晓',
+        cancelText: '取消',
+      })
+      if (!portraitNotice.confirm) return
       // 选图临时路径在 App 重启后会失效，永久化后才能保证封面不白图、重试可用
       const sourceImagePath = await persistImage(selectedImagePath)
       const inputImagePath = contentSecurityImagePath
