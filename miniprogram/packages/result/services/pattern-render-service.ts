@@ -40,6 +40,9 @@ interface PatternCanvasContext {
   fillRect(x: number, y: number, width: number, height: number): void
   strokeRect(x: number, y: number, width: number, height: number): void
   beginPath(): void
+  moveTo(x: number, y: number): void
+  lineTo(x: number, y: number): void
+  stroke(): void
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void
   fill(): void
   fillText(text: string, x: number, y: number): void
@@ -303,10 +306,13 @@ async function drawChartHdCanvas(
   draft: PatternDraft,
 ): Promise<PatternCanvas> {
   requireGridSize(draft)
-  // HD 版固定 24px/格，尺寸由网格数决定，不随屏幕缩放（保证打印清晰）
+  // HD 版固定 24px/格，并为四边坐标标尺留白。
   const CHART_HD_CELL_PX = 24
-  const totalWidth = draft.settings.width * CHART_HD_CELL_PX
-  const totalHeight = draft.settings.height * CHART_HD_CELL_PX
+  const AXIS_PADDING = 48
+  const chartWidth = draft.settings.width * CHART_HD_CELL_PX
+  const chartHeight = draft.settings.height * CHART_HD_CELL_PX
+  const totalWidth = chartWidth + AXIS_PADDING * 2
+  const totalHeight = chartHeight + AXIS_PADDING * 2
 
   const canvas = await new Promise<PatternCanvas>((resolve, reject) => {
     wx.createSelectorQuery()
@@ -328,6 +334,8 @@ async function drawChartHdCanvas(
 
   const ctx = canvas.getContext('2d')
   const cellPx = CHART_HD_CELL_PX
+  const chartLeft = AXIS_PADDING
+  const chartTop = AXIS_PADDING
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, totalWidth, totalHeight)
   ctx.lineWidth = 0.5
@@ -339,8 +347,8 @@ async function drawChartHdCanvas(
   draft.cells.forEach((cell, index) => {
     const column = index % draft.settings.width
     const row = Math.floor(index / draft.settings.width)
-    const x = column * cellPx
-    const y = row * cellPx
+    const x = chartLeft + column * cellPx
+    const y = chartTop + row * cellPx
     ctx.fillStyle = cell.color === 'transparent' ? '#ffffff' : cell.color
     ctx.fillRect(x, y, cellPx, cellPx)
     ctx.strokeRect(x, y, cellPx, cellPx)
@@ -349,6 +357,73 @@ async function drawChartHdCanvas(
       ctx.fillStyle = getTextColor(cell.color)
       ctx.fillText(cell.colorCode.replace(/^C0?/, ''), x + cellPx / 2, y + cellPx / 2)
     }
+  })
+
+  // Shared coordinate ticks stay in the editor subpackage; load asynchronously to preserve package isolation.
+  const { buildCoordinateTicks } = await require.async(
+    '../../editor/services/pattern-renderer.js',
+  ) as typeof import('../../editor/services/pattern-renderer')
+  const fontSize = 14
+  const columnTicks = buildCoordinateTicks(
+    draft.settings.width,
+    draft.settings.width,
+    chartWidth,
+    fontSize,
+  )
+  const rowTicks = buildCoordinateTicks(
+    draft.settings.height,
+    draft.settings.height,
+    chartHeight,
+    fontSize,
+  )
+  ctx.fillStyle = '#27313d'
+  ctx.font = `${fontSize}px sans-serif`
+
+  for (const major of [false, true]) {
+    ctx.beginPath()
+    columnTicks.forEach((tick) => {
+      if (tick.major !== major) return
+      const x = chartLeft + Number.parseFloat(tick.position) * chartWidth / 100
+      const length = major ? 10 : 5
+      ctx.moveTo(x, chartTop - length)
+      ctx.lineTo(x, chartTop)
+      ctx.moveTo(x, chartTop + chartHeight)
+      ctx.lineTo(x, chartTop + chartHeight + length)
+    })
+    ctx.strokeStyle = major ? '#8391a1' : '#aeb8c4'
+    ctx.lineWidth = major ? 1 : 0.6
+    ctx.stroke()
+  }
+  columnTicks.forEach((tick) => {
+    if (!tick.label) return
+    const x = chartLeft + Number.parseFloat(tick.position) * chartWidth / 100
+    ctx.textAlign = tick.start ? 'left' : tick.end ? 'right' : 'center'
+    ctx.fillText(tick.label, x, chartTop / 2)
+    ctx.fillText(tick.label, x, chartTop + chartHeight + chartTop / 2)
+  })
+
+  for (const major of [false, true]) {
+    ctx.beginPath()
+    rowTicks.forEach((tick) => {
+      if (tick.major !== major) return
+      const y = chartTop + Number.parseFloat(tick.position) * chartHeight / 100
+      const length = major ? 10 : 5
+      ctx.moveTo(chartLeft - length, y)
+      ctx.lineTo(chartLeft, y)
+      ctx.moveTo(chartLeft + chartWidth, y)
+      ctx.lineTo(chartLeft + chartWidth + length, y)
+    })
+    ctx.strokeStyle = major ? '#8391a1' : '#aeb8c4'
+    ctx.lineWidth = major ? 1 : 0.6
+    ctx.stroke()
+  }
+  rowTicks.forEach((tick) => {
+    if (!tick.label) return
+    const y = chartTop + Number.parseFloat(tick.position) * chartHeight / 100
+    ctx.textAlign = 'center'
+    ctx.textBaseline = tick.start ? 'top' : tick.end ? 'bottom' : 'middle'
+    ctx.fillText(tick.label, chartLeft / 2, y)
+    ctx.fillText(tick.label, chartLeft + chartWidth + chartLeft / 2, y)
   })
   return canvas
 }

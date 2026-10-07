@@ -12,6 +12,7 @@
         bindtouchcancel="onWorkspaceTouchCancel"
         catchtouchmove="onWorkspaceTouchMove"
       >
+        <view class="workspace__board" aria-hidden="true"></view>
         <view class="canvas-stage {{canvasReady ? 'canvas-stage--ready' : ''}}">
           <canvas
             id="patternCanvas"
@@ -44,7 +45,7 @@
         active-tool="{{activeTool}}"
         scale-percent="{{scalePercent}}"
         can-zoom-out="{{scalePercent > 100}}"
-        can-zoom-in="{{scalePercent < 300}}"
+        can-zoom-in="{{scalePercent < 600}}"
         width="{{draft.settings.width}}"
         height="{{draft.settings.height}}"
         color-limit="{{draft.settings.colorLimit}}"

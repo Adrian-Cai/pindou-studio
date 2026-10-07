@@ -13,12 +13,78 @@ import type { PatternDraft } from '../../../models/pattern'
 export interface PatternCanvasContext {
   fillStyle: string
   globalAlpha: number
+  strokeStyle: string
+  lineWidth: number
+  font: string
+  textAlign: 'left' | 'right' | 'center' | 'start' | 'end'
+  textBaseline: 'top' | 'hanging' | 'middle' | 'alphabetic' | 'ideographic' | 'bottom'
   scale(x: number, y: number): void
   translate(x: number, y: number): void
+  save(): void
+  restore(): void
+  rect(x: number, y: number, width: number, height: number): void
+  clip(): void
   fillRect(x: number, y: number, width: number, height: number): void
   beginPath(): void
+  moveTo(x: number, y: number): void
+  lineTo(x: number, y: number): void
+  stroke(): void
+  fillText(text: string, x: number, y: number): void
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void
   fill(): void
+}
+
+export interface CoordinateTick {
+  coordinate: number
+  position: string
+  label: string
+  major: boolean
+  start: boolean
+  end: boolean
+}
+
+/** 按 0 起算生成格心刻度；空间不足时保留末端标签并隐藏相邻主刻度。 */
+export function buildCoordinateTicks(
+  size: number,
+  otherSize: number,
+  axisLength: number,
+  fontSize: number,
+): CoordinateTick[] {
+  const count = Math.max(1, Math.floor(size))
+  const crossCount = Math.max(1, Math.floor(otherSize))
+  const extent = Math.min(count, crossCount) / count
+  const offset = (1 - extent) / 2
+  const cellPitch = axisLength * extent / count
+  const labelIndexes = [0]
+  for (let index = 10; index < count; index += 10) labelIndexes.push(index)
+  if (count > 1 && labelIndexes[labelIndexes.length - 1] !== count - 1) {
+    labelIndexes.push(count - 1)
+  }
+
+  const visibleLabelIndexes: number[] = []
+  labelIndexes.forEach((index) => {
+    const previous = visibleLabelIndexes[visibleLabelIndexes.length - 1]
+    const requiredGap = previous === undefined
+      ? 0
+      : (String(previous).length + String(index).length) * fontSize * 0.3 + 2
+    if (previous !== undefined && (index - previous) * cellPitch < requiredGap) {
+      if (index === count - 1) visibleLabelIndexes.pop()
+      else return
+    }
+    visibleLabelIndexes.push(index)
+  })
+
+  return Array.from({ length: count }, (_, index) => {
+    const position = offset + ((index + 0.5) / count) * extent
+    return {
+      coordinate: index,
+      position: `${position * 100}%`,
+      label: visibleLabelIndexes.includes(index) ? String(index) : '',
+      major: index % 10 === 0,
+      start: index === 0,
+      end: index === count - 1,
+    }
+  })
 }
 
 /**
@@ -74,4 +140,39 @@ export function drawPatternOnCanvas(
     }
   })
   context.globalAlpha = 1
+
+  context.save()
+  context.beginPath()
+  context.rect(offsetX, offsetY, cellWidth * columns, cellHeight * rows)
+  context.clip()
+  context.beginPath()
+  for (let column = 0; column <= columns; column += 1) {
+    const x = offsetX + column * cellWidth
+    context.moveTo(x, offsetY)
+    context.lineTo(x, offsetY + cellHeight * rows)
+  }
+  for (let row = 0; row <= rows; row += 1) {
+    const y = offsetY + row * cellHeight
+    context.moveTo(offsetX, y)
+    context.lineTo(offsetX + cellWidth * columns, y)
+  }
+  context.strokeStyle = '#d7dce3'
+  context.lineWidth = 0.5
+  context.stroke()
+
+  context.beginPath()
+  for (let column = 0; column <= columns; column += 10) {
+    const x = offsetX + column * cellWidth
+    context.moveTo(x, offsetY)
+    context.lineTo(x, offsetY + cellHeight * rows)
+  }
+  for (let row = 0; row <= rows; row += 10) {
+    const y = offsetY + row * cellHeight
+    context.moveTo(offsetX, y)
+    context.lineTo(offsetX + cellWidth * columns, y)
+  }
+  context.strokeStyle = '#bb747e'
+  context.lineWidth = 1
+  context.stroke()
+  context.restore()
 }

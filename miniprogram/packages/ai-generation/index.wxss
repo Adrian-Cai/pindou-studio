@@ -95,15 +95,29 @@
   box-sizing: border-box;
   width: 44rpx;
   height: 44rpx;
-  background: #f0f1f2;
-  border-right: 1rpx solid #c5cbd2;
-  border-bottom: 1rpx solid #c5cbd2;
+  background: #ffffff;
+}
+
+.ai-generation-result-card__coordinate-corner--top-right {
+  right: 0;
+  left: auto;
+}
+
+.ai-generation-result-card__coordinate-corner--bottom-left,
+.ai-generation-result-card__coordinate-corner--bottom-right {
+  top: auto;
+  bottom: 0;
+}
+
+.ai-generation-result-card__coordinate-corner--bottom-right {
+  right: 0;
+  left: auto;
 }
 
 .ai-generation-result-card__ruler {
   position: relative;
   overflow: hidden;
-  background: #f0f1f2;
+  background: #ffffff;
 }
 
 .ai-generation-result-card__ruler-ticks {
@@ -115,10 +129,10 @@
   transform-origin: center;
 }
 
-  .ai-generation-result-card__ruler--top {
+.ai-generation-result-card__ruler--top {
   position: absolute;
   top: 0;
-  right: 0;
+  right: 44rpx;
   left: 44rpx;
   box-sizing: border-box;
   height: 44rpx;
@@ -128,11 +142,31 @@
 .ai-generation-result-card__ruler--left {
   position: absolute;
   top: 44rpx;
-  bottom: 0;
+  bottom: 44rpx;
   left: 0;
   box-sizing: border-box;
   width: 44rpx;
   border-right: 1rpx solid #c5cbd2;
+}
+
+.ai-generation-result-card__ruler--bottom {
+  position: absolute;
+  right: 44rpx;
+  bottom: 0;
+  left: 44rpx;
+  box-sizing: border-box;
+  height: 44rpx;
+  border-top: 1rpx solid #c5cbd2;
+}
+
+.ai-generation-result-card__ruler--right {
+  position: absolute;
+  top: 44rpx;
+  right: 0;
+  bottom: 44rpx;
+  box-sizing: border-box;
+  width: 44rpx;
+  border-left: 1rpx solid #c5cbd2;
 }
 
 .ai-generation-result-card__tick {
@@ -152,6 +186,18 @@
   height: 1rpx;
 }
 
+.ai-generation-result-card__ruler--bottom .ai-generation-result-card__tick {
+  top: 0;
+  width: 1rpx;
+  height: 9rpx;
+}
+
+.ai-generation-result-card__ruler--right .ai-generation-result-card__tick {
+  left: 0;
+  width: 9rpx;
+  height: 1rpx;
+}
+
 .ai-generation-result-card__tick--major {
   background: #788492;
 }
@@ -164,52 +210,92 @@
   width: 16rpx;
 }
 
+.ai-generation-result-card__ruler--bottom .ai-generation-result-card__tick--major {
+  height: 16rpx;
+}
+
+.ai-generation-result-card__ruler--right .ai-generation-result-card__tick--major {
+  width: 16rpx;
+}
+
 .ai-generation-result-card__ruler-label {
   position: absolute;
   color: #64707d;
   font-size: 18rpx;
   line-height: 22rpx;
   white-space: nowrap;
+  transform-origin: center;
 }
 
-.ai-generation-result-card__ruler--top .ai-generation-result-card__ruler-label {
-  bottom: 17rpx;
+.ai-generation-result-card__ruler-label--horizontal {
+  box-sizing: border-box;
+  width: 92rpx;
+  margin-left: -46rpx;
   left: 0;
-  transform: translateX(-50%);
+  text-align: center;
+  bottom: 17rpx;
 }
 
-.ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label {
-  transform: none;
+.ai-generation-result-card__ruler--bottom .ai-generation-result-card__ruler-label--horizontal {
+  top: 17rpx;
+  bottom: auto;
 }
 
-.ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label {
+.ai-generation-result-card__ruler--top .ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label,
+.ai-generation-result-card__ruler--bottom .ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label {
+  width: 46rpx;
+  margin-left: 0;
+  text-align: left;
+  transform-origin: left center;
+}
+
+.ai-generation-result-card__ruler--top .ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label,
+.ai-generation-result-card__ruler--bottom .ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label {
   left: auto;
-  right: 0;
-  transform: none;
-}
-
-.ai-generation-result-card__ruler--left .ai-generation-result-card__ruler-label {
-  top: 0;
   right: 13rpx;
-  transform: translateY(-50%);
+  width: 46rpx;
+  margin-left: 0;
+  text-align: right;
+  transform-origin: right center;
 }
 
-.ai-generation-result-card__ruler--left .ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label {
-  transform: none;
+.ai-generation-result-card__ruler-label--vertical {
+  top: 50%;
+  right: 0;
+  box-sizing: border-box;
+  width: 44rpx;
+  height: 24rpx;
+  margin-top: -12rpx;
+  line-height: 24rpx;
+  text-align: right;
 }
 
-.ai-generation-result-card__ruler--left .ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label {
+.ai-generation-result-card__ruler--right .ai-generation-result-card__ruler-label--vertical {
+  right: auto;
+  left: 0;
+  text-align: left;
+}
+
+.ai-generation-result-card__ruler--left .ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label,
+.ai-generation-result-card__ruler--right .ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label {
+  top: 0;
+  margin-top: 0;
+  transform-origin: center top;
+}
+
+.ai-generation-result-card__ruler--left .ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label,
+.ai-generation-result-card__ruler--right .ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label {
   top: auto;
   bottom: 0;
-  right: 13rpx;
-  transform: none;
+  margin-top: 0;
+  transform-origin: center bottom;
 }
 
 .ai-generation-result-card__board {
   position: absolute;
   top: 44rpx;
-  right: 0;
-  bottom: 0;
+  right: 44rpx;
+  bottom: 44rpx;
   left: 44rpx;
   overflow: hidden;
   background: #f7f7f7;
@@ -270,7 +356,9 @@
   }
 
   .ai-generation-result-card__ruler--top,
-  .ai-generation-result-card__ruler--left {
+  .ai-generation-result-card__ruler--left,
+  .ai-generation-result-card__ruler--bottom,
+  .ai-generation-result-card__ruler--right {
     border-color: #4a515a;
   }
 

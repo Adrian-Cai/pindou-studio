@@ -70,6 +70,12 @@ page {
   background: #f7f7f7;
 }
 
+.workspace__board {
+  position: absolute;
+  inset: 44rpx;
+  background: #f7f7f7;
+}
+
 .canvas-stage {
   position: absolute;
   inset: 0;

@@ -19,7 +19,6 @@ import {
   type GenerationMode,
   type PatternCell,
   type PatternDraft,
-  type PatternSettings,
 } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
 import {
@@ -35,11 +34,17 @@ import {
   calculateFittedImageSize,
   clampViewTranslation,
   drawPatternViewport,
+  EDIT_HISTORY_LIMIT,
+  applyPatch,
   fillConnectedCells,
   sameCell,
   scaleAroundViewportPoint,
   screenPointToGridCell,
+  toDraftView,
+  transformFromPinch,
   type CanvasRect,
+  type DraftView,
+  type EditPatch,
   type FittedImageSize,
   type GridCell,
   type PatternCanvasContext,
@@ -59,63 +64,20 @@ interface PatternCanvas {
   getContext(type: '2d'): PatternCanvasContext
 }
 
-interface CanvasQueryResult {
-  node: PatternCanvas
-  width: number
-  height: number
-}
-
 /** Toast 状态 */
 interface ToastState {
   visible: boolean
   message: string
 }
 
-/**
- * 视图层需要的图纸元信息 —— 刻意不含 cells。
- *
- * WXML 只用到 id / settings（尺寸、色数），网格交给 canvas 画；把 cells 留在 data 里
- * 等于每笔编辑往渲染层传一整张图纸，是「setData 数据传输过长」的主要来源之一。
- */
-interface DraftView {
-  id: string
-  settings: PatternSettings
-  generationMode: GenerationMode
-}
-
-/**
- * 一次编辑的增量记录：只记被改动的格子下标与改动前后的值。
- *
- * 早前撤销栈存的是整张网格快照，20 步 × N 格 ≈ 几十 MB 内存，且每笔都要整网格深拷贝一次。
- * PatternCell 一律整体替换、从不原地改字段，因此 before/after 直接持有引用是安全的。
- */
-interface EditPatch {
-  indexes: number[]
-  before: PatternCell[]
-  after: PatternCell[]
-}
-
-/** 把完整草稿裁成渲染层需要的元信息（丢掉 cells）。 */
-function toDraftView(draft: PatternDraft): DraftView {
-  return { id: draft.id, settings: draft.settings, generationMode: draft.generationMode }
-}
-
-/** 按 patch 把网格回滚（before）或重放（after）。 */
-function applyPatch(cells: PatternCell[], patch: EditPatch, side: 'before' | 'after'): void {
-  const values = side === 'before' ? patch.before : patch.after
-  patch.indexes.forEach((index, i) => {
-    cells[index] = values[i]
-  })
-}
-
-// 撤销/重做最多保留 20 步，超出丢弃最早的快照
-const EDIT_HISTORY_LIMIT = 20
-
-/** 缩放范围：1x ~ 3x，按钮每步 0.2 */
+/** 缩放范围：1x ~ 6x，按钮每步按 1.25 倍变化。 */
 const SCALE_MIN = 1
-const SCALE_MAX = 3
-const SCALE_STEP = 0.2
+const SCALE_MAX = 6
+const SCALE_FACTOR = 1.25
 const SCALE_DEFAULT = 1
+const PAN_THRESHOLD = 8
+
+const nextScale = (scale: number, direction: 1 | -1): number => Math.min(SCALE_MAX, Math.max(SCALE_MIN, scale * (direction > 0 ? SCALE_FACTOR : 1 / SCALE_FACTOR)))
 
 Page({
   data: {
@@ -144,10 +106,16 @@ Page({
   _transform: { scale: SCALE_DEFAULT, translateX: 0, translateY: 0 } as ViewTransform,
   _undoStack: [] as EditPatch[],
   _redoStack: [] as EditPatch[],
+  _workspaceRect: null as CanvasRect | null,
   _viewportRect: null as CanvasRect | null,
+  _boardInCanvas: null as CanvasRect | null,
   _fittedImage: null as FittedImageSize | null,
   _patternCanvasNode: null as PatternCanvas | null,
   _singleTouchActive: false,
+  _singleTouchMoved: false,
+  _singleTouchStartX: 0,
+  _singleTouchStartY: 0,
+  _singleTouchStartTransform: { scale: SCALE_DEFAULT, translateX: 0, translateY: 0 } as ViewTransform,
   _blockSingleTouchUntilRelease: false,
   _toastTimer: null as ReturnType<typeof setTimeout> | null,
   _canvasRenderVersion: 0,
@@ -155,8 +123,6 @@ Page({
   _isPinching: false,
   /** pinch 开始时两指距离（像素），用于求缩放比 */
   _pinchStartDist: 0,
-  /** pinch 开始时 scale */
-  _pinchStartScale: SCALE_DEFAULT,
   /** pinch 开始时视图变换 */
   _pinchStartTransform: { scale: SCALE_DEFAULT, translateX: 0, translateY: 0 } as ViewTransform,
   /** pinch 开始时双指中点（viewport 局部坐标） */
@@ -256,7 +222,9 @@ Page({
     if (!draft) return
     // 递增版本号：本次测量开始前的旧异步回调若版本对不上则丢弃，避免竞态覆盖
     const renderVersion = ++this._canvasRenderVersion
+    this._workspaceRect = null
     this._viewportRect = null
+    this._boardInCanvas = null
     this._fittedImage = null
     this._patternCanvasNode = null
     this.setData({ canvasReady: false })
@@ -264,15 +232,25 @@ Page({
       .in(this)
       .select('.workspace')
       .fields({ rect: true, size: true })
+      .select('.workspace__board')
+      .fields({ rect: true, size: true })
       .exec((results) => {
         // 期间若发生重测，本次结果作废
         if (renderVersion !== this._canvasRenderVersion) return
-        const rect = results[0] as CanvasRect | undefined
-        if (!rect?.width || !rect.height) return
-        this._viewportRect = rect
+        const workspace = results[0] as CanvasRect | undefined
+        const board = results[1] as CanvasRect | undefined
+        if (!workspace?.width || !workspace.height || !board?.width || !board.height) return
+        this._workspaceRect = workspace
+        this._viewportRect = board
+        this._boardInCanvas = {
+          left: board.left - workspace.left,
+          top: board.top - workspace.top,
+          width: board.width,
+          height: board.height,
+        }
         const fittedImage = calculateFittedImageSize(
-          rect.width,
-          rect.height,
+          board.width,
+          board.height,
           draft.settings.width,
           draft.settings.height,
         )
@@ -289,9 +267,11 @@ Page({
   drawPattern(renderVersion?: number) {
     const activeRenderVersion = renderVersion ?? this._canvasRenderVersion
     const draft = this._draft
+    const workspace = this._workspaceRect
     const viewport = this._viewportRect
+    const board = this._boardInCanvas
     const image = this._fittedImage
-    if (!draft || !viewport || !image || activeRenderVersion !== this._canvasRenderVersion) return
+    if (!draft || !workspace || !viewport || !board || !image || activeRenderVersion !== this._canvasRenderVersion) return
 
     const markCanvasReady = () => {
       if (activeRenderVersion !== this._canvasRenderVersion || this.data.canvasReady) return
@@ -301,8 +281,9 @@ Page({
     const render = (canvas: PatternCanvas) => {
       drawPatternViewport(
         canvas.getContext('2d'),
-        viewport.width,
-        viewport.height,
+        workspace.width,
+        workspace.height,
+        board,
         image,
         this._transform,
         draft,
@@ -320,15 +301,15 @@ Page({
       .fields({ node: true, size: true })
       .exec((results) => {
         if (activeRenderVersion !== this._canvasRenderVersion) return
-        const result = results[0] as CanvasQueryResult | undefined
+        const result = results[0] as { node: PatternCanvas; width: number; height: number } | undefined
         if (!result?.node || !result.width || !result.height) return
 
         const canvas = result.node
         const context = canvas.getContext('2d')
         // 按设备像素比放大 canvas 物理分辨率，再 scale 让绘制用 CSS px 坐标，保证高清不糊
         const pixelRatio = wx.getWindowInfo().pixelRatio || 1
-        canvas.width = Math.round(viewport.width * pixelRatio)
-        canvas.height = Math.round(viewport.height * pixelRatio)
+        canvas.width = Math.round(workspace.width * pixelRatio)
+        canvas.height = Math.round(workspace.height * pixelRatio)
         context.scale(pixelRatio, pixelRatio)
         this._patternCanvasNode = canvas
         render(canvas)
@@ -346,7 +327,7 @@ Page({
     return new Promise((resolve, reject) => {
       wx.createSelectorQuery()
         .in(this)
-        .select('.workspace')
+        .select('.workspace__board')
         .fields({ size: true, rect: true })
         .exec((results) => {
           const result = results[0] as CanvasRect | undefined
@@ -381,6 +362,10 @@ Page({
     }
     if (touches.length === 1 && !this._isPinching && !this._blockSingleTouchUntilRelease) {
       this._singleTouchActive = true
+      this._singleTouchMoved = false
+      this._singleTouchStartX = touches[0].clientX
+      this._singleTouchStartY = touches[0].clientY
+      this._singleTouchStartTransform = { ...this._transform }
     }
   },
 
@@ -393,6 +378,30 @@ Page({
       this._updatePinch(touches[0], touches[1])
       return
     }
+    if (
+      this._blockSingleTouchUntilRelease
+      || (!this._singleTouchActive && !this._singleTouchMoved)
+      || touches.length !== 1
+    ) return
+    const touch = touches[0]
+    const dx = touch.clientX - this._singleTouchStartX
+    const dy = touch.clientY - this._singleTouchStartY
+    if (!this._singleTouchMoved && Math.hypot(dx, dy) > PAN_THRESHOLD) {
+      this._singleTouchMoved = true
+      this._singleTouchActive = false
+    }
+    if (!this._singleTouchMoved || this._transform.scale <= SCALE_MIN) return
+    const translation = this._clampTranslation(
+      this._singleTouchStartTransform.translateX + dx,
+      this._singleTouchStartTransform.translateY + dy,
+      this._singleTouchStartTransform.scale,
+    )
+    this._transform = {
+      ...this._singleTouchStartTransform,
+      translateX: translation.x,
+      translateY: translation.y,
+    }
+    this.drawPattern()
   },
 
   onWorkspaceTouchEnd(event: WechatMiniprogram.TouchEvent) {
@@ -413,14 +422,16 @@ Page({
     if (touches.length > 0) return
     // 单指抬起：若本次是有效的绘制触摸，按落点执行工具
     const touch = event.changedTouches[0]
-    const shouldExecute = this._singleTouchActive && Boolean(touch)
+    const shouldExecute = this._singleTouchActive && !this._singleTouchMoved && Boolean(touch)
     this._singleTouchActive = false
+    this._singleTouchMoved = false
     if (shouldExecute && touch) void this.finishSingleTouch(touch.clientX, touch.clientY)
   },
 
   onWorkspaceTouchCancel() {
     if (!this.data.canvasReady) return
     this._singleTouchActive = false
+    this._singleTouchMoved = false
     this._isPinching = false
     this._blockSingleTouchUntilRelease = false
   },
@@ -438,7 +449,6 @@ Page({
     this._singleTouchActive = false
     this._blockSingleTouchUntilRelease = true
     this._pinchStartDist = this._pinchDist(t0, t1)
-    this._pinchStartScale = this._transform.scale
     this._pinchStartTransform = { ...this._transform }
     this._pinchStartMidX = (t0.clientX + t1.clientX) / 2 - viewport.left
     this._pinchStartMidY = (t0.clientY + t1.clientY) / 2 - viewport.top
@@ -446,33 +456,27 @@ Page({
 
   _updatePinch(t0: WechatMiniprogram.TouchDetail, t1: WechatMiniprogram.TouchDetail) {
     if (!this._isPinching) return
-    const dist = this._pinchDist(t0, t1)
-    if (this._pinchStartDist === 0) return
-
     const viewport = this._viewportRect
-    if (!viewport) return
-    // 缩放比 = 起始 scale × 当前双指距离 / 起始双指距离，再 clamp 到允许范围
-    const rawScale = this._pinchStartScale * (dist / this._pinchStartDist)
-    const newScale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, rawScale))
+    const image = this._fittedImage
+    if (!viewport || !image) return
     const midX = (t0.clientX + t1.clientX) / 2 - viewport.left
     const midY = (t0.clientY + t1.clientY) / 2 - viewport.top
-    const anchored = scaleAroundViewportPoint(
+    this._transform = transformFromPinch(
       this._pinchStartTransform,
-      newScale,
+      this._pinchStartDist,
+      this._pinchDist(t0, t1),
       this._pinchStartMidX,
       this._pinchStartMidY,
-      viewport.width,
-      viewport.height,
-    )
-    const translation = this._clampTranslation(
-      anchored.translateX + midX - this._pinchStartMidX,
-      anchored.translateY + midY - this._pinchStartMidY,
-      newScale,
+      midX,
+      midY,
+      viewport,
+      SCALE_MIN,
+      SCALE_MAX,
+      image,
     )
     // 缩放/平移只影响 canvas，不进 data；只在整数百分比真的变了才同步一次（pinch 每帧都发会白烧渲染）
-    this._transform = { scale: newScale, translateX: translation.x, translateY: translation.y }
     this.drawPattern()
-    this._syncScalePercent(newScale)
+    this._syncScalePercent(this._transform.scale)
   },
 
   /** 缩放百分比变化时才推给渲染层（用于面板显示与缩放按钮禁用态）。 */
@@ -654,16 +658,12 @@ Page({
 
   zoomIn() {
     if (!this.data.canvasReady) return
-    this._setScaleAtViewportCenter(
-      Math.min(SCALE_MAX, Number((this._transform.scale + SCALE_STEP).toFixed(1))),
-    )
+    this._setScaleAtViewportCenter(nextScale(this._transform.scale, 1))
   },
 
   zoomOut() {
     if (!this.data.canvasReady) return
-    this._setScaleAtViewportCenter(
-      Math.max(SCALE_MIN, Number((this._transform.scale - SCALE_STEP).toFixed(1))),
-    )
+    this._setScaleAtViewportCenter(nextScale(this._transform.scale, -1))
   },
 
   _setScaleAtViewportCenter(nextScale: number) {

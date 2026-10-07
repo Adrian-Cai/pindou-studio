@@ -7,7 +7,8 @@
  * 调用方：packages/editor/index.ts（编辑器页）。
  * 关键点：所有绘制用「拼豆圆点」风格（带阴影/高光）；坐标换算以 viewport 中心为原点，scale/translate 描述图片相对中心的位置。
  */
-import type { PatternCell, PatternDraft } from '../../../models/pattern'
+import type { GenerationMode, PatternCell, PatternDraft, PatternSettings } from '../../../models/pattern'
+import { buildCoordinateTicks } from './pattern-renderer'
 import type { PatternCanvasContext } from './pattern-renderer'
 
 export type { PatternCanvasContext } from './pattern-renderer'
@@ -42,17 +43,45 @@ export interface GridCell {
   index: number
 }
 
+export interface DraftView {
+  id: string
+  settings: PatternSettings
+  generationMode: GenerationMode
+}
+
+export interface EditPatch {
+  indexes: number[]
+  before: PatternCell[]
+  after: PatternCell[]
+}
+
+export const EDIT_HISTORY_LIMIT = 20
+
+export function toDraftView(draft: PatternDraft): DraftView {
+  return { id: draft.id, settings: draft.settings, generationMode: draft.generationMode }
+}
+
+export function applyPatch(cells: PatternCell[], patch: EditPatch, side: 'before' | 'after'): void {
+  const values = side === 'before' ? patch.before : patch.after
+  patch.indexes.forEach((index, i) => { cells[index] = values[i] })
+}
+
 /** 鍦ㄥ浐瀹?viewport Canvas 鍐呮寜褰撳墠瑙嗗浘鍙樻崲缁樺埗锛屼粎閬嶅巻鍙 grid cell銆?*/
 export function drawPatternViewport(
   context: PatternCanvasContext,
-  viewportWidth: number,
-  viewportHeight: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  board: CanvasRect,
   image: FittedImageSize,
   transform: ViewTransform,
   draft: PatternDraft,
 ): void {
+  const axisWidth = board.left
+  const axisHeight = board.top
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, canvasWidth, canvasHeight)
   context.fillStyle = '#f7f7f7'
-  context.fillRect(0, 0, viewportWidth, viewportHeight)
+  context.fillRect(board.left, board.top, board.width, board.height)
   const columns = draft.settings.width
   const rows = draft.settings.height
   // 缩放或格子尺寸退化到 <=0 时，下面所有除法都会产出 NaN/Infinity，
@@ -61,16 +90,20 @@ export function drawPatternViewport(
   if (transform.scale <= 0 || image.cellWidth <= 0 || image.cellHeight <= 0) return
   const cellWidth = image.cellWidth * transform.scale
   const cellHeight = image.cellHeight * transform.scale
-  // 图片左上角在 viewport 中的坐标：以 viewport 中心为原点，再偏移 translate 与图片半宽
-  const imageLeft = viewportWidth / 2 + transform.translateX - image.width * transform.scale / 2
-  const imageTop = viewportHeight / 2 + transform.translateY - image.height * transform.scale / 2
+  // 图片以中间图纸区域为锚点；四边标尺不随画布移动。
+  const imageLeft = board.left + board.width / 2 + transform.translateX - image.width * transform.scale / 2
+  const imageTop = board.top + board.height / 2 + transform.translateY - image.height * transform.scale / 2
   // 只遍历落在 viewport 内的格子，避免整图重绘（大图缩放时性能关键）
-  const firstColumn = Math.max(0, Math.floor(-imageLeft / cellWidth))
-  const lastColumn = Math.min(columns - 1, Math.floor((viewportWidth - imageLeft) / cellWidth))
-  const firstRow = Math.max(0, Math.floor(-imageTop / cellHeight))
-  const lastRow = Math.min(rows - 1, Math.floor((viewportHeight - imageTop) / cellHeight))
+  const firstColumn = Math.max(0, Math.floor((board.left - imageLeft) / cellWidth))
+  const lastColumn = Math.min(columns - 1, Math.floor((board.left + board.width - imageLeft) / cellWidth))
+  const firstRow = Math.max(0, Math.floor((board.top - imageTop) / cellHeight))
+  const lastRow = Math.min(rows - 1, Math.floor((board.top + board.height - imageTop) / cellHeight))
   const radius = Math.min(cellWidth, cellHeight) * 0.44
 
+  context.save()
+  context.beginPath()
+  context.rect(board.left, board.top, board.width, board.height)
+  context.clip()
   for (let row = firstRow; row <= lastRow; row++) {
     for (let column = firstColumn; column <= lastColumn; column++) {
       const cell = draft.cells[row * columns + column]
@@ -96,7 +129,104 @@ export function drawPatternViewport(
       }
     }
   }
+
+  const drawGrid = (major: boolean) => {
+    context.beginPath()
+    for (let column = 0; column <= columns; column += 1) {
+      if ((column % 10 === 0) !== major) continue
+      const x = imageLeft + column * cellWidth
+      context.moveTo(x, board.top)
+      context.lineTo(x, board.top + board.height)
+    }
+    for (let row = 0; row <= rows; row += 1) {
+      if ((row % 10 === 0) !== major) continue
+      const y = imageTop + row * cellHeight
+      context.moveTo(board.left, y)
+      context.lineTo(board.left + board.width, y)
+    }
+    context.strokeStyle = major ? '#bb747e' : '#d7dce3'
+    context.lineWidth = major ? 1 : 0.5
+    context.stroke()
+  }
+  drawGrid(false)
+  drawGrid(true)
+  context.restore()
+
   context.globalAlpha = 1
+  const fontSize = Math.max(8, Math.min(12, Math.min(axisWidth, axisHeight) * 0.42))
+  const columnTicks = buildCoordinateTicks(columns, rows, board.width, fontSize)
+  const rowTicks = buildCoordinateTicks(rows, columns, board.height, fontSize)
+  const bottomAxisHeight = canvasHeight - board.top - board.height
+  const rightAxisWidth = canvasWidth - board.left - board.width
+  const centerX = board.left + board.width / 2
+  const centerY = board.top + board.height / 2
+  context.fillStyle = '#27313d'
+  context.font = `${fontSize}px sans-serif`
+  context.textBaseline = 'middle'
+  context.save()
+  context.beginPath()
+  context.rect(board.left, 0, board.width, board.top)
+  context.rect(board.left, board.top + board.height, board.width, bottomAxisHeight)
+  context.clip()
+  for (const major of [false, true]) {
+    context.beginPath()
+    columnTicks.forEach((tick) => {
+      if (tick.major !== major) return
+      const baseX = board.left + Number.parseFloat(tick.position) * board.width / 100
+      const x = centerX + transform.translateX + (baseX - centerX) * transform.scale
+      const topLength = major ? axisHeight * 0.58 : axisHeight * 0.3
+      const bottomLength = major ? bottomAxisHeight * 0.58 : bottomAxisHeight * 0.3
+      context.moveTo(x, board.top - topLength)
+      context.lineTo(x, board.top)
+      context.moveTo(x, board.top + board.height)
+      context.lineTo(x, board.top + board.height + bottomLength)
+    })
+    context.strokeStyle = major ? '#8391a1' : '#aeb8c4'
+    context.lineWidth = major ? 1 : 0.6
+    context.stroke()
+  }
+  columnTicks.forEach((tick) => {
+    if (!tick.label) return
+    const baseX = board.left + Number.parseFloat(tick.position) * board.width / 100
+    const x = centerX + transform.translateX + (baseX - centerX) * transform.scale
+    context.textAlign = tick.start ? 'left' : tick.end ? 'right' : 'center'
+    context.fillText(tick.label, x, axisHeight / 2)
+    context.fillText(tick.label, x, board.top + board.height + bottomAxisHeight / 2)
+  })
+  context.restore()
+  context.save()
+  context.beginPath()
+  context.rect(0, board.top, board.left, board.height)
+  context.rect(board.left + board.width, board.top, rightAxisWidth, board.height)
+  context.clip()
+  for (const major of [false, true]) {
+    context.beginPath()
+    rowTicks.forEach((tick) => {
+      if (tick.major !== major) return
+      const baseY = board.top + Number.parseFloat(tick.position) * board.height / 100
+      const y = centerY + transform.translateY + (baseY - centerY) * transform.scale
+      const leftLength = major ? axisWidth * 0.58 : axisWidth * 0.3
+      const rightLength = major ? rightAxisWidth * 0.58 : rightAxisWidth * 0.3
+      context.moveTo(board.left - leftLength, y)
+      context.lineTo(board.left, y)
+      context.moveTo(board.left + board.width, y)
+      context.lineTo(board.left + board.width + rightLength, y)
+    })
+    context.strokeStyle = major ? '#8391a1' : '#aeb8c4'
+    context.lineWidth = major ? 1 : 0.6
+    context.stroke()
+  }
+  rowTicks.forEach((tick) => {
+    if (!tick.label) return
+    const baseY = board.top + Number.parseFloat(tick.position) * board.height / 100
+    const y = centerY + transform.translateY + (baseY - centerY) * transform.scale
+    context.textAlign = 'center'
+    context.textBaseline = tick.start ? 'top' : tick.end ? 'bottom' : 'middle'
+    context.fillText(tick.label, axisWidth / 2, y)
+    context.fillText(tick.label, board.left + board.width + rightAxisWidth / 2, y)
+  })
+  context.restore()
+  context.textBaseline = 'alphabetic'
 }
 
 /**
@@ -137,6 +267,41 @@ export function scaleAroundViewportPoint(
     translateX: anchorX - viewportWidth / 2 - imageOffsetX * nextScale,
     translateY: anchorY - viewportHeight / 2 - imageOffsetY * nextScale,
   }
+}
+
+/** 由一次双指手势求出锚点缩放与中点平移后的视图，并限制可移动范围。 */
+export function transformFromPinch(
+  start: ViewTransform,
+  startDistance: number,
+  currentDistance: number,
+  startMidX: number,
+  startMidY: number,
+  currentMidX: number,
+  currentMidY: number,
+  viewport: CanvasRect,
+  minScale: number,
+  maxScale: number,
+  image: FittedImageSize,
+): ViewTransform {
+  if (startDistance <= 0 || currentDistance <= 0) return start
+  const scale = Math.min(maxScale, Math.max(minScale, start.scale * currentDistance / startDistance))
+  const anchored = scaleAroundViewportPoint(
+    start,
+    scale,
+    startMidX,
+    startMidY,
+    viewport.width,
+    viewport.height,
+  )
+  const translation = clampViewTranslation(
+    anchored.translateX + currentMidX - startMidX,
+    anchored.translateY + currentMidY - startMidY,
+    scale,
+    viewport.width,
+    viewport.height,
+    image,
+  )
+  return { scale, translateX: translation.x, translateY: translation.y }
 }
 
 /**
@@ -186,6 +351,9 @@ export function screenPointToGridCell(
   if (transform.scale <= 0 || image.cellWidth <= 0 || image.cellHeight <= 0) return null
   const localX = touchClientX - viewportRect.left
   const localY = touchClientY - viewportRect.top
+  if (localX < 0 || localX >= viewportRect.width || localY < 0 || localY >= viewportRect.height) {
+    return null
+  }
   // 反向套用 scale/translate，把屏幕坐标换算回 100% 图片下的像素坐标
   const imageX = (
     (localX - viewportRect.width / 2 - transform.translateX) / transform.scale

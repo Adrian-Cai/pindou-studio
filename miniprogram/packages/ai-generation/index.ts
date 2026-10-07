@@ -15,7 +15,7 @@ import { aiTaskManager, type AiTaskView } from '../../services/ai-generation-man
 import type { AiTaskStatus } from '../../services/ai-task-store'
 import { getPaletteColors, type PatternDraft, type WorkItem } from '../../models/pattern'
 import { appStore } from '../../store/app-store'
-import type { PatternCanvasContext } from '../editor/services/pattern-renderer'
+import type { CoordinateTick, PatternCanvasContext } from '../editor/services/pattern-renderer'
 import { cloudSummaryToWorkItem, hasCloudSession, saveNewCloudWork, updateCloudWork } from '../../services/work-service'
 import { isNetworkError, queueWorkForSync } from '../../services/work-sync-service'
 
@@ -37,17 +37,10 @@ function loadPatternRenderer(): Promise<PatternRendererModule> {
 type TaskFrom = 'home' | 'projects'
 
 interface PatternPreviewQueryResult {
+  left: number
+  top: number
   width: number
   height: number
-}
-
-interface CoordinateTick {
-  coordinate: number
-  position: string
-  label: string
-  major: boolean
-  start: boolean
-  end: boolean
 }
 
 interface PanGestureStart {
@@ -57,32 +50,45 @@ interface PanGestureStart {
   panY: number
 }
 
-function clampPanOffset(offset: number, viewportSize: number, scalePercent: number): number {
-  // 缩放以画布中心为锚点，位移限制在图案仍覆盖视口的范围内。
-  const maxOffset = Math.max(0, viewportSize * (scalePercent / 100 - 1) / 2)
+interface PinchGestureStart {
+  distance: number
+  scale: number
+  panX: number
+  panY: number
+  midX: number
+  midY: number
+}
+
+const MIN_SCALE_PERCENT = 100
+const MAX_SCALE_PERCENT = 600
+const SCALE_FACTOR = 1.25
+const RULER_FONT_SIZE_RPX = 18
+
+function clampPanOffset(
+  offset: number,
+  viewportSize: number,
+  scalePercent: number,
+  contentExtent: number,
+  cellCount: number,
+): number {
+  const scale = scalePercent / 100
+  const contentSize = viewportSize * contentExtent
+  const maxOffset = scale <= 1 || cellCount <= 0
+    ? 0
+    : Math.max(0, (contentSize - contentSize / cellCount) * scale / 2)
   return Math.max(-maxOffset, Math.min(maxOffset, offset))
 }
 
-function buildCoordinateTicks(size: number, otherSize: number): CoordinateTick[] {
-  const count = Math.max(1, Math.floor(size))
-  // 图纸会在正方形画布中等比适配；短边两侧留白，坐标刻度需跟随实际网格边界。
-  const extent = Math.min(size, otherSize) / size
-  const offset = (1 - extent) / 2
-  return Array.from({ length: count }, (_, index) => {
-    const coordinate = index + 1
-    const label = coordinate === 1 || coordinate % 10 === 0 || coordinate === count
-    const position = count === 1
-      ? offset + extent / 2
-      : offset + (index / (count - 1)) * extent
-    return {
-      coordinate,
-      position: `${position * 100}%`,
-      label: label ? String(coordinate) : '',
-      major: label,
-      start: index === 0,
-      end: index === count - 1,
-    }
-  })
+function getContentExtent(width: number, height: number) {
+  return { x: Math.min(width, height) / width, y: Math.min(width, height) / height }
+}
+
+function nextScalePercent(current: number, direction: 1 | -1): number {
+  return Math.min(MAX_SCALE_PERCENT, Math.max(MIN_SCALE_PERCENT, Math.round(current * (direction > 0 ? SCALE_FACTOR : 1 / SCALE_FACTOR))))
+}
+
+function pinchDistance(t0: WechatMiniprogram.TouchDetail, t1: WechatMiniprogram.TouchDetail): number {
+  return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY)
 }
 
 const GENERATING_STATUSES: ReadonlySet<AiTaskStatus> = new Set<AiTaskStatus>([
@@ -141,7 +147,10 @@ Page({
   _previewRenderId: 0,
   _boardWidth: 0,
   _boardHeight: 0,
+  _boardRect: null as PatternPreviewQueryResult | null,
   _panGesture: null as PanGestureStart | null,
+  _pinchGesture: null as PinchGestureStart | null,
+  _blockGestureUntilRelease: false,
 
   onLoad(query?: Record<string, string | undefined>) {
     const from: TaskFrom = query?.from === 'projects' ? 'projects' : 'home'
@@ -172,6 +181,8 @@ Page({
     this._visible = false
     this._previewRenderId += 1
     this._panGesture = null
+    this._pinchGesture = null
+    this._blockGestureUntilRelease = false
     this.unsubscribe()
   },
 
@@ -179,7 +190,13 @@ Page({
     this._visible = false
     this._previewRenderId += 1
     this._panGesture = null
+    this._pinchGesture = null
+    this._blockGestureUntilRelease = false
     this.unsubscribe()
+  },
+
+  onResize() {
+    if (this.data.isSucceeded && this.data.draft) this.renderPatternPreview()
   },
 
   subscribe() {
@@ -239,6 +256,9 @@ Page({
         patternRenderError: false,
         panX: 0,
         panY: 0,
+        scalePercent: MIN_SCALE_PERCENT,
+        canZoomOut: false,
+        canZoomIn: true,
       }),
     })
   },
@@ -261,8 +281,9 @@ Page({
       patternRenderError: false,
       panX: draftChanged ? 0 : this.data.panX,
       panY: draftChanged ? 0 : this.data.panY,
-      rulerColumns: buildCoordinateTicks(draft.settings.width, draft.settings.height),
-      rulerRows: buildCoordinateTicks(draft.settings.height, draft.settings.width),
+      scalePercent: draftChanged ? MIN_SCALE_PERCENT : this.data.scalePercent,
+      canZoomOut: !draftChanged && this.data.scalePercent > MIN_SCALE_PERCENT,
+      canZoomIn: draftChanged || this.data.scalePercent < MAX_SCALE_PERCENT,
       paletteColors,
       selectedColor,
     }, () => this.renderPatternPreview())
@@ -311,29 +332,34 @@ Page({
   },
 
   zoomIn() {
-    const next = Math.min(300, this.data.scalePercent + 20)
-    this.setData({
-      scalePercent: next,
-      panX: clampPanOffset(this.data.panX, this._boardWidth, next),
-      panY: clampPanOffset(this.data.panY, this._boardHeight, next),
-      canZoomIn: next < 300,
-      canZoomOut: next > 100,
-    })
+    this.zoomTo(nextScalePercent(this.data.scalePercent, 1))
   },
 
   zoomOut() {
-    const next = Math.max(100, this.data.scalePercent - 20)
+    this.zoomTo(nextScalePercent(this.data.scalePercent, -1))
+  },
+
+  zoomTo(next: number) {
+    const draft = this.data.draft
+    if (!draft || !this._boardWidth || !this._boardHeight) return
+    const oldScale = this.data.scalePercent / 100
+    const newScale = next / 100
+    const extent = getContentExtent(draft.settings.width, draft.settings.height)
     this.setData({
       scalePercent: next,
-      panX: clampPanOffset(this.data.panX, this._boardWidth, next),
-      panY: clampPanOffset(this.data.panY, this._boardHeight, next),
-      canZoomIn: next < 300,
-      canZoomOut: next > 100,
+      panX: clampPanOffset(this.data.panX * newScale / oldScale, this._boardWidth, next, extent.x, draft.settings.width),
+      panY: clampPanOffset(this.data.panY * newScale / oldScale, this._boardHeight, next, extent.y, draft.settings.height),
+      canZoomIn: next < MAX_SCALE_PERCENT,
+      canZoomOut: next > MIN_SCALE_PERCENT,
     })
   },
 
-  panStart(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.scalePercent <= 100 || event.touches.length !== 1) {
+  previewTouchStart(event: WechatMiniprogram.TouchEvent) {
+    if (event.touches.length >= 2) {
+      this.beginPinch(event.touches[0], event.touches[1])
+      return
+    }
+    if (this._blockGestureUntilRelease || this.data.scalePercent <= MIN_SCALE_PERCENT || event.touches.length !== 1) {
       this._panGesture = null
       return
     }
@@ -346,7 +372,13 @@ Page({
     }
   },
 
-  panMove(event: WechatMiniprogram.TouchEvent) {
+  previewTouchMove(event: WechatMiniprogram.TouchEvent) {
+    if (event.touches.length >= 2) {
+      if (!this._pinchGesture) this.beginPinch(event.touches[0], event.touches[1])
+      this.updatePinch(event.touches[0], event.touches[1])
+      return
+    }
+    if (this._blockGestureUntilRelease) return
     const start = this._panGesture
     if (!start) return
     if (event.touches.length !== 1) {
@@ -354,14 +386,68 @@ Page({
       return
     }
     const touch = event.touches[0]
+    const draft = this.data.draft
+    if (!draft) return
+    const extent = getContentExtent(draft.settings.width, draft.settings.height)
     this.setData({
-      panX: clampPanOffset(start.panX + touch.clientX - start.clientX, this._boardWidth, this.data.scalePercent),
-      panY: clampPanOffset(start.panY + touch.clientY - start.clientY, this._boardHeight, this.data.scalePercent),
+      panX: clampPanOffset(start.panX + touch.clientX - start.clientX, this._boardWidth, this.data.scalePercent, extent.x, draft.settings.width),
+      panY: clampPanOffset(start.panY + touch.clientY - start.clientY, this._boardHeight, this.data.scalePercent, extent.y, draft.settings.height),
     })
   },
 
-  panEnd() {
+  previewTouchEnd(event: WechatMiniprogram.TouchEvent) {
+    if (this._pinchGesture) {
+      if (event.touches.length >= 2) return
+      this._pinchGesture = null
+      this._panGesture = null
+      this._blockGestureUntilRelease = event.touches.length > 0
+      return
+    }
+    if (this._blockGestureUntilRelease) {
+      if (event.touches.length === 0) this._blockGestureUntilRelease = false
+      return
+    }
     this._panGesture = null
+  },
+
+  beginPinch(t0: WechatMiniprogram.TouchDetail, t1: WechatMiniprogram.TouchDetail) {
+    const board = this._boardRect
+    if (!board) return
+    const midX = (t0.clientX + t1.clientX) / 2 - board.left
+    const midY = (t0.clientY + t1.clientY) / 2 - board.top
+    this._pinchGesture = {
+      distance: pinchDistance(t0, t1),
+      scale: this.data.scalePercent / 100,
+      panX: this.data.panX,
+      panY: this.data.panY,
+      midX,
+      midY,
+    }
+    this._panGesture = null
+    this._blockGestureUntilRelease = true
+  },
+
+  updatePinch(t0: WechatMiniprogram.TouchDetail, t1: WechatMiniprogram.TouchDetail) {
+    const start = this._pinchGesture
+    const board = this._boardRect
+    const draft = this.data.draft
+    if (!start || !board || !draft || start.distance <= 0) return
+    const scale = Math.min(MAX_SCALE_PERCENT / 100, Math.max(MIN_SCALE_PERCENT / 100, start.scale * pinchDistance(t0, t1) / start.distance))
+    const midX = (t0.clientX + t1.clientX) / 2 - board.left
+    const midY = (t0.clientY + t1.clientY) / 2 - board.top
+    const contentX = (start.midX - board.width / 2 - start.panX) / start.scale
+    const contentY = (start.midY - board.height / 2 - start.panY) / start.scale
+    const extent = getContentExtent(draft.settings.width, draft.settings.height)
+    const scalePercent = Math.round(scale * 100)
+    const panX = clampPanOffset(midX - board.width / 2 - contentX * scale, this._boardWidth, scalePercent, extent.x, draft.settings.width)
+    const panY = clampPanOffset(midY - board.height / 2 - contentY * scale, this._boardHeight, scalePercent, extent.y, draft.settings.height)
+    this.setData({
+      scalePercent,
+      panX,
+      panY,
+      canZoomIn: scalePercent < MAX_SCALE_PERCENT,
+      canZoomOut: scalePercent > MIN_SCALE_PERCENT,
+    })
   },
 
   renderPatternPreview() {
@@ -372,7 +458,7 @@ Page({
     wx.createSelectorQuery()
       .in(this)
       .select('.ai-generation-result-card__board')
-      .fields({ size: true })
+      .fields({ rect: true, size: true })
       .exec((results) => {
         const result = results[0] as PatternPreviewQueryResult | undefined
         if (!result?.width || !result.height) {
@@ -381,10 +467,22 @@ Page({
         }
         this._boardWidth = result.width
         this._boardHeight = result.height
+        this._boardRect = result
         const pixelRatio = Math.min(wx.getWindowInfo().pixelRatio || 1, 2)
         loadPatternRenderer()
-          .then(({ drawPatternOnCanvas }) => {
+          .then(({ buildCoordinateTicks, drawPatternOnCanvas }) => {
             if (renderId !== this._previewRenderId) return
+            const windowWidth = wx.getWindowInfo().windowWidth
+            const axisLengthX = Math.max(1, result.width)
+            const axisLengthY = Math.max(1, result.height)
+            const fontSize = RULER_FONT_SIZE_RPX * windowWidth / 750
+            const extent = getContentExtent(draft.settings.width, draft.settings.height)
+            this.setData({
+              rulerColumns: buildCoordinateTicks(draft.settings.width, draft.settings.height, axisLengthX, fontSize),
+              rulerRows: buildCoordinateTicks(draft.settings.height, draft.settings.width, axisLengthY, fontSize),
+              panX: clampPanOffset(this.data.panX, axisLengthX, this.data.scalePercent, extent.x, draft.settings.width),
+              panY: clampPanOffset(this.data.panY, axisLengthY, this.data.scalePercent, extent.y, draft.settings.height),
+            })
             const width = Math.round(result.width * pixelRatio)
             const height = Math.round(result.height * pixelRatio)
             const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })

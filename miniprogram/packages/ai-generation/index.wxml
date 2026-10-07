@@ -75,6 +75,9 @@
             class="ai-generation-result-card__coordinate-grid"
           >
             <view class="ai-generation-result-card__coordinate-corner"></view>
+            <view class="ai-generation-result-card__coordinate-corner ai-generation-result-card__coordinate-corner--top-right"></view>
+            <view class="ai-generation-result-card__coordinate-corner ai-generation-result-card__coordinate-corner--bottom-left"></view>
+            <view class="ai-generation-result-card__coordinate-corner ai-generation-result-card__coordinate-corner--bottom-right"></view>
             <view class="ai-generation-result-card__ruler ai-generation-result-card__ruler--top">
               <view
                 class="ai-generation-result-card__ruler-ticks"
@@ -86,7 +89,7 @@
                   class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
                   style="left: {{item.position}};"
                 >
-                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label">{{item.label}}</text>
+                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--horizontal" style="transform: scaleX({{100 / scalePercent}});">{{item.label}}</text>
                 </view>
               </view>
             </view>
@@ -101,7 +104,37 @@
                   class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
                   style="top: {{item.position}};"
                 >
-                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label">{{item.label}}</text>
+                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--vertical" style="transform: scaleY({{100 / scalePercent}});">{{item.label}}</text>
+                </view>
+              </view>
+            </view>
+            <view class="ai-generation-result-card__ruler ai-generation-result-card__ruler--bottom">
+              <view
+                class="ai-generation-result-card__ruler-ticks"
+                style="transform: translateX({{panX}}px) scaleX({{scalePercent / 100}});"
+              >
+                <view
+                  wx:for="{{rulerColumns}}"
+                  wx:key="coordinate"
+                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
+                  style="left: {{item.position}};"
+                >
+                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--horizontal" style="transform: scaleX({{100 / scalePercent}});">{{item.label}}</text>
+                </view>
+              </view>
+            </view>
+            <view class="ai-generation-result-card__ruler ai-generation-result-card__ruler--right">
+              <view
+                class="ai-generation-result-card__ruler-ticks"
+                style="transform: translateY({{panY}}px) scaleY({{scalePercent / 100}});"
+              >
+                <view
+                  wx:for="{{rulerRows}}"
+                  wx:key="coordinate"
+                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
+                  style="top: {{item.position}};"
+                >
+                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--vertical" style="transform: scaleY({{100 / scalePercent}});">{{item.label}}</text>
                 </view>
               </view>
             </view>
@@ -115,12 +148,12 @@
                 aria-label="拼豆图预览"
               />
               <view
-                wx:if="{{scalePercent > 100}}"
+                wx:if="{{patternPreviewPath}}"
                 class="ai-generation-result-card__pan-area"
-                bindtouchstart="panStart"
-                catchtouchmove="panMove"
-                bindtouchend="panEnd"
-                bindtouchcancel="panEnd"
+                bindtouchstart="previewTouchStart"
+                catchtouchmove="previewTouchMove"
+                bindtouchend="previewTouchEnd"
+                bindtouchcancel="previewTouchEnd"
                 aria-hidden="true"
               ></view>
             </view>
