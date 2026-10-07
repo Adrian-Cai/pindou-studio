@@ -1,9 +1,10 @@
 {
   "name": "pindou_studio",
-  "version": "0.38.3",
+  "version": "0.39.0",
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test:coordinate-ruler": "node test/coordinate-ruler/run-tests.js",
     "test:pattern": "node test/pattern-generation/run-tests.js",
     "test:assets": "node test/miniprogram-assets/run-tests.js",
     "test:ai-failure": "node test/ai-failure/run-tests.js",
