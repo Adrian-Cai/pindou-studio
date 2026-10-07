@@ -32,14 +32,14 @@ function labels(size, otherSize, axisLength, fontSize) {
     .map((tick) => Number(tick.label))
 }
 
-assert.deepEqual(labels(16, 16, 320, 10), [1, 10, 16])
-assert.deepEqual(labels(32, 32, 320, 10), [1, 10, 20, 30, 32])
-assert.deepEqual(labels(32, 48, 320, 10), [1, 10, 20, 30, 32])
-assert.deepEqual(labels(48, 32, 480, 10), [1, 10, 20, 30, 40, 48])
-assert.deepEqual(labels(78, 79, 320, 10), [1, 10, 20, 30, 40, 50, 60, 70, 78])
-assert.deepEqual(labels(79, 78, 320, 10), [1, 10, 20, 30, 40, 50, 60, 70, 79])
-assert.deepEqual(labels(156, 158, 320, 9.6), [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 156])
-assert.deepEqual(labels(158, 156, 320, 9.6), [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 158])
+assert.deepEqual(labels(16, 16, 320, 10), [0, 10, 15])
+assert.deepEqual(labels(32, 32, 320, 10), [0, 10, 20, 31])
+assert.deepEqual(labels(32, 48, 320, 10), [0, 10, 20, 31])
+assert.deepEqual(labels(48, 32, 480, 10), [0, 10, 20, 30, 40, 47])
+assert.deepEqual(labels(78, 79, 320, 10), [0, 10, 20, 30, 40, 50, 60, 70, 77])
+assert.deepEqual(labels(79, 78, 320, 10), [0, 10, 20, 30, 40, 50, 60, 70, 78])
+assert.deepEqual(labels(156, 158, 320, 9.6), [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 155])
+assert.deepEqual(labels(158, 156, 320, 9.6), [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 157])
 
 const draft = { settings: { width: 32, height: 32 }, cells: Array(1024).fill({ color: 'transparent' }) }
 const board = { left: 44, top: 44, width: 320, height: 320 }
@@ -50,9 +50,9 @@ labelsDrawn.length = 0
 editor.drawPatternViewport(context, 408, 408, board, fitted, { scale: 2, translateX: 7, translateY: 5 }, draft)
 const transformedColumn = labelsDrawn.find((item) => item.text === '10' && item.y === 22)
 const transformedRow = labelsDrawn.find((item) => item.text === '10' && item.x === 22)
-assert.equal(baseLabel.x, 139)
-assert.equal(transformedColumn.x, 81)
-assert.equal(transformedRow.y, 79)
+assert.equal(baseLabel.x, 149)
+assert.equal(transformedColumn.x, 101)
+assert.equal(transformedRow.y, 99)
 
 const viewport = { left: 10, top: 20, width: 200, height: 200 }
 const image = { width: 200, height: 200, cellWidth: 10, cellHeight: 10 }
