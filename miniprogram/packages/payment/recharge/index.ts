@@ -4,7 +4,7 @@
  * 职责：onShow 读取并刷新当前 AI 额度；拉取可购买套餐列表；选中套餐后调支付、
  *       支付成功跳支付结果页（带上 orderId 轮询）。不做下单/验签逻辑——委托 payment-service。
  * 调用方：tabBar「我的」内的「充值」入口。
- * 关键点：支付被用户取消只提示“已取消”，其他错误弹窗展示；finally 兜底复位 loading。
+ * 关键点：明确取消或支付单关闭后清理幂等键；未知状态失败保留键，避免重复下单。
  */
 import { authStore } from '../../../store/auth-store'
 import {
@@ -32,7 +32,7 @@ Page({
     dailyFreeQuota: 0,
     dailyFreeRemaining: 0,
     paymentLoading: false,
-    /** 本次购买的幂等键：支付未确认结束时持续复用，避免重复下单。 */
+    /** 本次购买的幂等键：未知状态时复用；取消或支付单关闭后清理。 */
     paymentIdempotencyKey: '',
     paymentIdempotencyPackageId: '',
   },
@@ -122,7 +122,7 @@ Page({
     const selectedPackage = this.data.packages[this.data.selected]
     if (!selectedPackage || this.data.paymentLoading) return
 
-    // 同一套餐的取消与重试复用业务订单幂等键；服务端仅在微信确认前一尝试已关闭后才签发新尝试。
+    // 同一套餐的未知状态重试复用幂等键；明确取消或关闭后视为新购买意图。
     const idempotencyKey = selectedPackage.id === this.data.paymentIdempotencyPackageId
       ? this.data.paymentIdempotencyKey || createPaymentIdempotencyKey()
       : createPaymentIdempotencyKey()
@@ -145,12 +145,13 @@ Page({
           url: `/packages/payment/payment-success/index?orderId=${encodeURIComponent(paidOrderId)}`,
         })
       } else if (isWechatPaymentCancelled(error)) {
+        this.setData({ paymentIdempotencyKey: '', paymentIdempotencyPackageId: '' })
         wx.showToast({ title: '已取消支付', icon: 'none' })
       } else if (isWechatPaymentOrderClosed(error)) {
-        // 保留业务订单幂等键；下一次创建请求会先查微信，再为已关闭尝试签发新单号。
+        this.setData({ paymentIdempotencyKey: '', paymentIdempotencyPackageId: '' })
         wx.showModal({
-          title: '支付未完成',
-          content: '微信已关闭这次支付，请再次点击继续当前订单',
+          title: '订单已关闭',
+          content: '微信已关闭这次支付，请重新点击支付',
           showCancel: false,
         })
       } else if (isPaymentOrderExpired(error)) {

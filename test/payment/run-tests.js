@@ -19,7 +19,11 @@ rmSync(buildDirectory, { recursive: true, force: true })
 
 try {
   run([typeScriptCompiler, '--project', path.join(__dirname, 'tsconfig.json')])
-  run(['--test', path.join(__dirname, 'virtual-payment.test.js')])
+  run([
+    '--test',
+    path.join(__dirname, 'virtual-payment.test.js'),
+    path.join(__dirname, 'recharge-page.test.js'),
+  ])
 } finally {
   rmSync(buildDirectory, { recursive: true, force: true })
 }
