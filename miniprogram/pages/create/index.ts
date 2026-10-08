@@ -24,6 +24,7 @@ import {
 import { authStore } from '../../store/auth-store'
 import { createIdempotencyKey } from '../../services/ai-task-store'
 import { requireLoggedInSession } from '../../services/session-service'
+import { getLocalDateStamp, isDailyNoticeAcknowledged } from '../../utils/daily-notice'
 
 type UploadStatus = 'empty' | 'uploading' | 'checking' | 'success' | 'rejected' | 'error'
 
@@ -33,6 +34,7 @@ type TextTaskPhase = 'idle' | 'pending' | 'succeeded' | 'failed'
 /** 服务端没有精确进度，按固定间隔轮询任务状态。 */
 const TEXT_TASK_POLL_INTERVAL_MS = 2_000
 const TEXT_IMAGE_SIZE_ORDER = ['1024x1024', '1280x720', '720x1280']
+const IMAGE_PORTRAIT_NOTICE_VERSION = 'v1'
 let currentUploadRequestId = 0
 
 interface GenerationModeOption {
@@ -528,8 +530,21 @@ Page({
       return
     }
 
-    this.setData({ choosing: false })
-    if (!sourceImagePath) return
+    if (!sourceImagePath) {
+      this.setData({ choosing: false })
+      return
+    }
+
+    let noticeConfirmed = false
+    try {
+      noticeConfirmed = await confirmImagePortraitNotice()
+    } catch (error) {
+      logCreationError('portrait_notice_failed', error)
+      wx.showToast({ title: '提醒展示失败，请重试', icon: 'none' })
+    } finally {
+      this.setData({ choosing: false })
+    }
+    if (!noticeConfirmed) return
 
     const requestId = ++currentUploadRequestId
     this.setData({
@@ -623,6 +638,16 @@ Page({
       return
     }
 
+    if (this.data.generationMode === 'ai' && !hasAiLogin()) return
+    let noticeConfirmed = false
+    try {
+      noticeConfirmed = await confirmImagePortraitNotice()
+    } catch (error) {
+      logCreationError('portrait_notice_failed', error)
+      wx.showToast({ title: '提醒展示失败，请重试', icon: 'none' })
+    }
+    if (!noticeConfirmed) return
+
     if (this.data.generationMode === 'ai') {
       await this.startAiCreating()
       return
@@ -653,17 +678,10 @@ Page({
     if (this.data.submitting) return
     if (!hasAiLogin()) return
     this.setData({ submitting: true })
-    // 固定本次提交的输入，避免异步确认或保存期间用户换图或调参串到同一任务。
+    // 固定本次提交的输入，避免保存期间用户换图或调参串到同一任务。
     const { sourceImagePath: selectedImagePath, contentSecurityImagePath, securityCheckId, aiStyle } = this.data
     const settings = { ...this.data.settings }
     try {
-      const portraitNotice = await wx.showModal({
-        title: '肖像使用提醒',
-        content: 'AI 模式会将你上传的图片提交给 AI 服务生成。若图片中包含他人可识别肖像，请先告知本人并取得其对本次 AI 处理的单独同意和必要授权；未经授权的公众人物肖像请勿上传。',
-        confirmText: '已知晓',
-        cancelText: '取消',
-      })
-      if (!portraitNotice.confirm) return
       // 选图临时路径在 App 重启后会失效，永久化后才能保证封面不白图、重试可用
       const sourceImagePath = await persistImage(selectedImagePath)
       const inputImagePath = contentSecurityImagePath
@@ -709,4 +727,22 @@ function hasAiLogin(): boolean {
     wx.showToast({ title: '请先登录后使用 AI 功能', icon: 'none' })
     return false
   }
+}
+
+async function confirmImagePortraitNotice(): Promise<boolean> {
+  const user = authStore.getSnapshot().profile?.user ?? authStore.getSnapshot().user
+  const key = `image_portrait_notice:${IMAGE_PORTRAIT_NOTICE_VERSION}:${user?.id ?? 'guest'}`
+  const now = new Date()
+  if (isDailyNoticeAcknowledged(wx.getStorageSync(key), now)) return true
+
+  const result = await wx.showModal({
+    title: '肖像使用提醒',
+    content: '所选图片会用于生成拼豆图和必要的内容安全审核；AI 模式下还会提交给 AI 服务处理。若图片中包含他人可识别肖像，请先告知本人并取得其对本次处理的单独同意和必要授权；未经授权的公众人物肖像请勿上传。',
+    confirmText: '已知晓',
+    cancelText: '取消',
+  })
+  if (!result.confirm) return false
+
+  wx.setStorageSync(key, getLocalDateStamp())
+  return true
 }

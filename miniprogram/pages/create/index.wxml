@@ -107,6 +107,10 @@
         </view>
       </view>
 
+      <view class="image-portrait-notice" role="note" aria-label="肖像授权提醒">
+        <view class="image-portrait-notice__icon" aria-hidden="true">i</view>
+        <text>他人肖像请先取得授权；公众人物未经授权请勿上传</text>
+      </view>
       <button class="button-primary home__submit home__submit--standard" style="width: 100%;" bindtap="startCreating" disabled="{{generating || submitting || uploadStatus === 'uploading' || uploadStatus === 'checking' || uploadStatus === 'rejected' || uploadStatus === 'error'}}" loading="{{generating || submitting}}">{{generating ? '正在生成' : (submitting ? '正在准备生成' : (generationMode === 'ai' ? (aiStyle === 'kawaii' ? '生成 Q版拼豆图' : (aiStyle === 'cartoon' ? '生成卡通拼豆图' : '生成极简拼豆图')) : '生成拼豆图'))}}</button>
     </view>
 

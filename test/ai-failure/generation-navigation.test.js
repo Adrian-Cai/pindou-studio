@@ -7,6 +7,7 @@ const compiledRoot = path.resolve(__dirname, '../../.ai-failure-test-build/minip
 const { aiTaskManager } = require(path.join(compiledRoot, 'services/ai-generation-manager.js'))
 const aiTaskStore = require(path.join(compiledRoot, 'services/ai-task-store.js'))
 const imageService = require(path.join(compiledRoot, 'services/image-service.js'))
+const contentSecurityService = require(path.join(compiledRoot, 'services/content-security-service.js'))
 const textService = require(path.join(compiledRoot, 'services/text-generation-service.js'))
 const textImageWorkService = require(path.join(compiledRoot, 'services/text-image-work-service.js'))
 const { appStore } = require(path.join(compiledRoot, 'store/app-store.js'))
@@ -27,12 +28,18 @@ function loadPage(relativePath) {
 
 function setup(t, loggedIn = true) {
   const calls = { navigation: [], toasts: [], tasks: [], drafts: [], retries: [], modals: [] }
+  const storage = new Map()
+  const date = new Date()
+  const today = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  const user = authStore.getSnapshot().profile?.user ?? authStore.getSnapshot().user
+  storage.set(`image_portrait_notice:v1:${user?.id ?? 'guest'}`, today)
   global.wx = {
     getStorageSync: (key) => key === 'pindou-auth-session-v1' && loggedIn ? {
       token: 'opaque_token_12345678901234567890',
       expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       user: { id: 'usr_test', nickname: null, avatarUrl: null },
-    } : '',
+    } : storage.get(key) ?? '',
+    setStorageSync: (key, value) => storage.set(key, value),
     navigateTo: (options) => { calls.navigation.push(options.url); options.complete?.() },
     redirectTo: (options) => { calls.navigation.push(options.url); options.complete?.() },
     switchTab: (options) => { calls.navigation.push(options.url) },
@@ -57,7 +64,7 @@ function setup(t, loggedIn = true) {
   })
   home.onShow()
   t.after(() => { delete global.Page; delete global.wx })
-  return { home, calls }
+  return { home, calls, storage }
 }
 
 test('游客不能选择 AI 模式或提交文生图', async (t) => {
@@ -296,22 +303,61 @@ test('创建任务失败后解除按钮状态，保留图片并允许再次生�
   assert.equal(calls.navigation.length, 1)
 })
 
-test('AI 提交前说明肖像处理要求；取消后不创建任务', async (t) => {
-  const { home, calls } = setup(t)
+test('选图后、图片安全上传前按账号每天提示一次；取消不上传', async (t) => {
+  const { home, calls, storage } = setup(t)
+  storage.clear()
+  home.setData = (patch, callback) => {
+    Object.assign(home.data, patch)
+    callback?.()
+  }
+  let imagePreparations = 0
+  let securityUploads = 0
+  t.mock.method(imageService, 'chooseSourceImage', async () => '/tmp/new-source.png')
+  t.mock.method(imageService, 'prepareImageForContentSecurity', async () => {
+    imagePreparations += 1
+    return '/tmp/new-security.jpg'
+  })
+  t.mock.method(contentSecurityService, 'checkImageContent', async () => {
+    securityUploads += 1
+    return { safe: true, checkId: 'new-check', traceId: null }
+  })
+  const chooseImage = () => home.chooseImageFromSource({ currentTarget: { dataset: { sourceType: 'album' } } })
+
   global.wx.showModal = async (options) => {
     calls.modals.push(options)
     return { confirm: false, cancel: true }
   }
-
-  await home.startCreating()
-
+  await chooseImage()
   assert.equal(calls.modals.length, 1)
   assert.equal(calls.modals[0].title, '肖像使用提醒')
   assert.equal(calls.modals[0].confirmText, '已知晓')
-  assert.match(calls.modals[0].content, /公众人物肖像请勿上传/)
-  assert.deepEqual(calls.tasks, [])
-  assert.deepEqual(calls.navigation, [])
-  assert.equal(home.data.submitting, false)
+  assert.match(calls.modals[0].content, /AI 模式下还会提交给 AI 服务处理/)
+  assert.equal(imagePreparations, 0)
+  assert.equal(securityUploads, 0)
+  assert.equal(storage.size, 0)
+  assert.equal(home.data.choosing, false)
+
+  home.setData({ sourceImagePath: '/tmp/previous-source.png', uploadStatus: 'success', generationMode: 'standard' })
+  await home.startCreating()
+  assert.equal(calls.modals.length, 2)
+  assert.deepEqual(calls.drafts, [])
+
+  global.wx.showModal = async (options) => {
+    calls.modals.push(options)
+    return { confirm: true, cancel: false }
+  }
+  home.setData({ generationMode: 'standard' })
+  await chooseImage()
+  assert.equal(calls.modals.length, 3)
+  assert.equal(imagePreparations, 1)
+  assert.equal(securityUploads, 1)
+  assert.equal(storage.size, 1)
+
+  home.setData({ generationMode: 'ai' })
+  await chooseImage()
+  assert.equal(calls.modals.length, 3)
+  assert.equal(imagePreparations, 2)
+  assert.equal(securityUploads, 2)
 })
 
 test('入队期间重复点击不重复创建，异步保存使用点击时的完整输入', async (t) => {
