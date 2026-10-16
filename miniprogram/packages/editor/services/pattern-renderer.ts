@@ -39,50 +39,24 @@ export interface CoordinateTick {
   position: string
   label: string
   major: boolean
-  start: boolean
-  end: boolean
 }
 
-/** 按 0 起算生成格心刻度；空间不足时保留末端标签并隐藏相邻主刻度。 */
-export function buildCoordinateTicks(
-  size: number,
-  otherSize: number,
-  axisLength: number,
-  fontSize: number,
-): CoordinateTick[] {
+/**
+ * 按 1 起算，为每格生成一个行列编号刻度。
+ * shortcut: 页内大网格未放大时编号可能重叠，需要始终可读时改用分级标尺。
+ */
+export function buildCoordinateTicks(size: number, otherSize: number): CoordinateTick[] {
   const count = Math.max(1, Math.floor(size))
   const crossCount = Math.max(1, Math.floor(otherSize))
   const extent = Math.min(count, crossCount) / count
   const offset = (1 - extent) / 2
-  const cellPitch = axisLength * extent / count
-  const labelIndexes = [0]
-  for (let index = 10; index < count; index += 10) labelIndexes.push(index)
-  if (count > 1 && labelIndexes[labelIndexes.length - 1] !== count - 1) {
-    labelIndexes.push(count - 1)
-  }
-
-  const visibleLabelIndexes: number[] = []
-  labelIndexes.forEach((index) => {
-    const previous = visibleLabelIndexes[visibleLabelIndexes.length - 1]
-    const requiredGap = previous === undefined
-      ? 0
-      : (String(previous).length + String(index).length) * fontSize * 0.3 + 2
-    if (previous !== undefined && (index - previous) * cellPitch < requiredGap) {
-      if (index === count - 1) visibleLabelIndexes.pop()
-      else return
-    }
-    visibleLabelIndexes.push(index)
-  })
-
   return Array.from({ length: count }, (_, index) => {
     const position = offset + ((index + 0.5) / count) * extent
     return {
-      coordinate: index,
+      coordinate: index + 1,
       position: `${position * 100}%`,
-      label: visibleLabelIndexes.includes(index) ? String(index) : '',
-      major: index % 10 === 0,
-      start: index === 0,
-      end: index === count - 1,
+      label: String(index + 1),
+      major: index === 0 || (index + 1) % 10 === 0,
     }
   })
 }

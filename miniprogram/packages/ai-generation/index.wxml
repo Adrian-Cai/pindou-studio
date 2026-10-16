@@ -86,10 +86,10 @@
                 <view
                   wx:for="{{rulerColumns}}"
                   wx:key="coordinate"
-                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
+                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}}"
                   style="left: {{item.position}};"
                 >
-                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--horizontal" style="transform: scaleX({{100 / scalePercent}});">{{item.label}}</text>
+                  <text class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--horizontal" style="transform: scaleX({{100 / scalePercent}});">{{item.label}}</text>
                 </view>
               </view>
             </view>
@@ -101,10 +101,10 @@
                 <view
                   wx:for="{{rulerRows}}"
                   wx:key="coordinate"
-                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
+                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}}"
                   style="top: {{item.position}};"
                 >
-                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--vertical" style="transform: scaleY({{100 / scalePercent}});">{{item.label}}</text>
+                  <text class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--vertical" style="transform: scaleY({{100 / scalePercent}});">{{item.label}}</text>
                 </view>
               </view>
             </view>
@@ -116,10 +116,10 @@
                 <view
                   wx:for="{{rulerColumns}}"
                   wx:key="coordinate"
-                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
+                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}}"
                   style="left: {{item.position}};"
                 >
-                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--horizontal" style="transform: scaleX({{100 / scalePercent}});">{{item.label}}</text>
+                  <text class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--horizontal" style="transform: scaleX({{100 / scalePercent}});">{{item.label}}</text>
                 </view>
               </view>
             </view>
@@ -131,10 +131,10 @@
                 <view
                   wx:for="{{rulerRows}}"
                   wx:key="coordinate"
-                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}} {{item.start ? 'ai-generation-result-card__tick--start' : ''}} {{item.end ? 'ai-generation-result-card__tick--end' : ''}}"
+                  class="ai-generation-result-card__tick {{item.major ? 'ai-generation-result-card__tick--major' : ''}}"
                   style="top: {{item.position}};"
                 >
-                  <text wx:if="{{item.label}}" class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--vertical" style="transform: scaleY({{100 / scalePercent}});">{{item.label}}</text>
+                  <text class="ai-generation-result-card__ruler-label ai-generation-result-card__ruler-label--vertical" style="transform: scaleY({{100 / scalePercent}});">{{item.label}}</text>
                 </view>
               </view>
             </view>

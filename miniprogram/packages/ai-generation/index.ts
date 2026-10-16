@@ -62,7 +62,6 @@ interface PinchGestureStart {
 const MIN_SCALE_PERCENT = 100
 const MAX_SCALE_PERCENT = 600
 const SCALE_FACTOR = 1.25
-const RULER_FONT_SIZE_RPX = 18
 
 function clampPanOffset(
   offset: number,
@@ -472,14 +471,12 @@ Page({
         loadPatternRenderer()
           .then(({ buildCoordinateTicks, drawPatternOnCanvas }) => {
             if (renderId !== this._previewRenderId) return
-            const windowWidth = wx.getWindowInfo().windowWidth
             const axisLengthX = Math.max(1, result.width)
             const axisLengthY = Math.max(1, result.height)
-            const fontSize = RULER_FONT_SIZE_RPX * windowWidth / 750
             const extent = getContentExtent(draft.settings.width, draft.settings.height)
             this.setData({
-              rulerColumns: buildCoordinateTicks(draft.settings.width, draft.settings.height, axisLengthX, fontSize),
-              rulerRows: buildCoordinateTicks(draft.settings.height, draft.settings.width, axisLengthY, fontSize),
+              rulerColumns: buildCoordinateTicks(draft.settings.width, draft.settings.height),
+              rulerRows: buildCoordinateTicks(draft.settings.height, draft.settings.width),
               panX: clampPanOffset(this.data.panX, axisLengthX, this.data.scalePercent, extent.x, draft.settings.width),
               panY: clampPanOffset(this.data.panY, axisLengthY, this.data.scalePercent, extent.y, draft.settings.height),
             })

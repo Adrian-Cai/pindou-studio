@@ -241,24 +241,6 @@
   bottom: auto;
 }
 
-.ai-generation-result-card__ruler--top .ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label,
-.ai-generation-result-card__ruler--bottom .ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label {
-  width: 46rpx;
-  margin-left: 0;
-  text-align: left;
-  transform-origin: left center;
-}
-
-.ai-generation-result-card__ruler--top .ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label,
-.ai-generation-result-card__ruler--bottom .ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label {
-  left: auto;
-  right: 13rpx;
-  width: 46rpx;
-  margin-left: 0;
-  text-align: right;
-  transform-origin: right center;
-}
-
 .ai-generation-result-card__ruler-label--vertical {
   top: 50%;
   right: 0;
@@ -274,21 +256,6 @@
   right: auto;
   left: 0;
   text-align: left;
-}
-
-.ai-generation-result-card__ruler--left .ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label,
-.ai-generation-result-card__ruler--right .ai-generation-result-card__tick--start .ai-generation-result-card__ruler-label {
-  top: 0;
-  margin-top: 0;
-  transform-origin: center top;
-}
-
-.ai-generation-result-card__ruler--left .ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label,
-.ai-generation-result-card__ruler--right .ai-generation-result-card__tick--end .ai-generation-result-card__ruler-label {
-  top: auto;
-  bottom: 0;
-  margin-top: 0;
-  transform-origin: center bottom;
 }
 
 .ai-generation-result-card__board {

@@ -154,14 +154,15 @@ export function drawPatternViewport(
 
   context.globalAlpha = 1
   const fontSize = Math.max(8, Math.min(12, Math.min(axisWidth, axisHeight) * 0.42))
-  const columnTicks = buildCoordinateTicks(columns, rows, board.width, fontSize)
-  const rowTicks = buildCoordinateTicks(rows, columns, board.height, fontSize)
+  const columnTicks = buildCoordinateTicks(columns, rows)
+  const rowTicks = buildCoordinateTicks(rows, columns)
   const bottomAxisHeight = canvasHeight - board.top - board.height
   const rightAxisWidth = canvasWidth - board.left - board.width
   const centerX = board.left + board.width / 2
   const centerY = board.top + board.height / 2
   context.fillStyle = '#27313d'
   context.font = `${fontSize}px sans-serif`
+  context.textAlign = 'center'
   context.textBaseline = 'middle'
   context.save()
   context.beginPath()
@@ -186,10 +187,8 @@ export function drawPatternViewport(
     context.stroke()
   }
   columnTicks.forEach((tick) => {
-    if (!tick.label) return
     const baseX = board.left + Number.parseFloat(tick.position) * board.width / 100
     const x = centerX + transform.translateX + (baseX - centerX) * transform.scale
-    context.textAlign = tick.start ? 'left' : tick.end ? 'right' : 'center'
     context.fillText(tick.label, x, axisHeight / 2)
     context.fillText(tick.label, x, board.top + board.height + bottomAxisHeight / 2)
   })
@@ -217,11 +216,8 @@ export function drawPatternViewport(
     context.stroke()
   }
   rowTicks.forEach((tick) => {
-    if (!tick.label) return
     const baseY = board.top + Number.parseFloat(tick.position) * board.height / 100
     const y = centerY + transform.translateY + (baseY - centerY) * transform.scale
-    context.textAlign = 'center'
-    context.textBaseline = tick.start ? 'top' : tick.end ? 'bottom' : 'middle'
     context.fillText(tick.label, axisWidth / 2, y)
     context.fillText(tick.label, board.left + board.width + rightAxisWidth / 2, y)
   })

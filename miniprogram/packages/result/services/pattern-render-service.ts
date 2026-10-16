@@ -359,23 +359,30 @@ async function drawChartHdCanvas(
     }
   })
 
+  // 每 10 格画分区边界，末尾不足 10 格由外框收尾。
+  ctx.beginPath()
+  for (let column = 10; column < draft.settings.width; column += 10) {
+    const x = chartLeft + column * cellPx
+    ctx.moveTo(x, chartTop)
+    ctx.lineTo(x, chartTop + chartHeight)
+  }
+  for (let row = 10; row < draft.settings.height; row += 10) {
+    const y = chartTop + row * cellPx
+    ctx.moveTo(chartLeft, y)
+    ctx.lineTo(chartLeft + chartWidth, y)
+  }
+  ctx.strokeStyle = '#576779'
+  ctx.lineWidth = 2
+  ctx.stroke()
+  ctx.strokeRect(chartLeft, chartTop, chartWidth, chartHeight)
+
   // Shared coordinate ticks stay in the editor subpackage; load asynchronously to preserve package isolation.
   const { buildCoordinateTicks } = await require.async(
     '../../editor/services/pattern-renderer.js',
   ) as typeof import('../../editor/services/pattern-renderer')
-  const fontSize = 14
-  const columnTicks = buildCoordinateTicks(
-    draft.settings.width,
-    draft.settings.width,
-    chartWidth,
-    fontSize,
-  )
-  const rowTicks = buildCoordinateTicks(
-    draft.settings.height,
-    draft.settings.height,
-    chartHeight,
-    fontSize,
-  )
+  const fontSize = 12
+  const columnTicks = buildCoordinateTicks(draft.settings.width, draft.settings.width)
+  const rowTicks = buildCoordinateTicks(draft.settings.height, draft.settings.height)
   ctx.fillStyle = '#27313d'
   ctx.font = `${fontSize}px sans-serif`
 
@@ -395,9 +402,7 @@ async function drawChartHdCanvas(
     ctx.stroke()
   }
   columnTicks.forEach((tick) => {
-    if (!tick.label) return
     const x = chartLeft + Number.parseFloat(tick.position) * chartWidth / 100
-    ctx.textAlign = tick.start ? 'left' : tick.end ? 'right' : 'center'
     ctx.fillText(tick.label, x, chartTop / 2)
     ctx.fillText(tick.label, x, chartTop + chartHeight + chartTop / 2)
   })
@@ -418,10 +423,7 @@ async function drawChartHdCanvas(
     ctx.stroke()
   }
   rowTicks.forEach((tick) => {
-    if (!tick.label) return
     const y = chartTop + Number.parseFloat(tick.position) * chartHeight / 100
-    ctx.textAlign = 'center'
-    ctx.textBaseline = tick.start ? 'top' : tick.end ? 'bottom' : 'middle'
     ctx.fillText(tick.label, chartLeft / 2, y)
     ctx.fillText(tick.label, chartLeft + chartWidth + chartLeft / 2, y)
   })
