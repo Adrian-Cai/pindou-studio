@@ -149,6 +149,19 @@ Page({
     if (query.source === 'text') this.setData({ creationSource: 'text' })
   },
 
+  onShareAppMessage() {
+    return {
+      title: '一起把灵感做成拼豆作品',
+      path: '/pages/create/index',
+    }
+  },
+
+  onShareTimeline() {
+    return {
+      title: '一起把灵感做成拼豆作品',
+    }
+  },
+
   onShow() {
     this._visible = true
     // 保留本次创作的图片、参数和模式；旧草稿或后台任务不能改写当前选择。
