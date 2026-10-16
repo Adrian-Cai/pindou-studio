@@ -1,0 +1,28 @@
+{
+  "desc": "pindou-studio 小程序代码加固配置。路径相对 miniprogramRoot（miniprogram/）。仅加固含核心算法/业务逻辑/鉴权/支付的 JS，纯 UI 页面与 wxml/wxss/json/资源不加固。如开发者工具已自动生成同名文件，用本文件的 configs 数组覆盖即可。详见 https://developers.weixin.qq.com/miniprogram/dev/devtools/code_obfuscation.html",
+  "switch": true,
+  "configs": [
+    { "path": "app.js", "sub_switch": true },
+    { "path": "config/api.js", "sub_switch": true },
+    { "path": "services/auth-service.js", "sub_switch": true },
+    { "path": "services/session-service.js", "sub_switch": true },
+    { "path": "services/token-storage.js", "sub_switch": true },
+    { "path": "services/payment-service.js", "sub_switch": true },
+    { "path": "services/content-security-service.js", "sub_switch": true },
+    { "path": "services/ai-generation-flow.js", "sub_switch": true },
+    { "path": "services/ai-generation-manager.js", "sub_switch": true },
+    { "path": "services/ai-generation-service.js", "sub_switch": true },
+    { "path": "services/ai-generation-parser.js", "sub_switch": true },
+    { "path": "services/ai-task-store.js", "sub_switch": true },
+    { "path": "services/pattern-generation/cell-sampler.js", "sub_switch": true },
+    { "path": "services/pattern-generation/color-space.js", "sub_switch": true },
+    { "path": "services/pattern-generation/color-utils.js", "sub_switch": true },
+    { "path": "services/pattern-generation/crop.js", "sub_switch": true },
+    { "path": "services/pattern-generation/edge-detector.js", "sub_switch": true },
+    { "path": "services/pattern-generation/median-cut.js", "sub_switch": true },
+    { "path": "services/pattern-generation/oklab-matcher.js", "sub_switch": true },
+    { "path": "services/pattern-generation/palette-selector.js", "sub_switch": true },
+    { "path": "services/pattern-generation/standard-generator.js", "sub_switch": true },
+    { "path": "pages/create/index.js", "sub_switch": true }
+  ]
+}

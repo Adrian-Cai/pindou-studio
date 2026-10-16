@@ -7,7 +7,7 @@
     "es6": true,
     "postcss": true,
     "minified": true,
-    "uglifyFileName": false,
+    "uglifyFileName": true,
     "enhance": true,
     "packNpmRelationList": [],
     "babelSetting": {
@@ -30,6 +30,10 @@
       {
         "type": "folder",
         "value": "test-assets"
+      },
+      {
+        "type": "folder",
+        "value": "/projectmaps"
       }
     ],
     "include": [
