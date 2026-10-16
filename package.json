@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test:project-share-cover": "node test/project-share-cover/run-tests.js",
     "test:coordinate-ruler": "node test/coordinate-ruler/run-tests.js",
     "test:pattern": "node test/pattern-generation/run-tests.js",
     "test:assets": "node test/miniprogram-assets/run-tests.js",

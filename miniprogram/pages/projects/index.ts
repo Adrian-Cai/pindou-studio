@@ -27,12 +27,16 @@ import {
 import { checkTextContent } from '../../services/content-security-service'
 import { removePersistedWorkImage } from '../../services/image-service'
 import {
+  parseProjectTab,
+  renderProjectShareCover,
+  type ProjectTab,
+} from '../../services/project-share-cover-service'
+import {
   aiTaskManager,
   canRetryTask,
   retryActionLabel,
 } from '../../services/ai-generation-manager'
 
-type ProjectTab = 'all' | 'recent' | 'draft' | 'completed' | 'text'
 type WorkView = WorkItem & {
   updatedText: string
   dimensions: string
@@ -90,11 +94,20 @@ Page({
   },
 
   _unsubscribeAiTask: null as (() => void) | null,
+  _shareCovers: {} as Partial<Record<ProjectTab, string>>,
+  _shareCoverSignature: '',
+  _shareCoverVersion: 0,
+
+  onLoad(query: Record<string, string | undefined>) {
+    this.setData({ activeTab: parseProjectTab(query.tab) }, () => this.applyFilters())
+  },
 
   onShareAppMessage() {
+    const imageUrl = this._shareCovers[this.data.activeTab]
     return {
       title: '来看看我做的拼豆作品',
-      path: '/pages/projects/index',
+      path: `/pages/projects/index?tab=${this.data.activeTab}`,
+      ...(imageUrl ? { imageUrl } : {}),
     }
   },
 
@@ -219,7 +232,39 @@ Page({
       recentCount: allWorks.filter((work) => isRecent(work.updatedAt)).length
         + this.data.textImageWorks.filter((work) => isRecent(Date.parse(work.updatedAt))).length,
       draftCount: allWorks.filter((work) => work.isDraft).length,
-    }, () => this.applyFilters())
+    }, () => {
+      this.applyFilters()
+      this.refreshShareCovers()
+    })
+  },
+
+  refreshShareCovers() {
+    const works = this.data.allWorks
+    const textWorks = this.data.textImageWorks
+    const signature = JSON.stringify([
+      works.map(({ id, title, coverPath, updatedAt, status, colorCount, width, height }) =>
+        [id, title, coverPath, updatedAt, status, colorCount, width, height]),
+      textWorks.map(({ id, coverPath, updatedAt, width, height }) =>
+        [id, coverPath, updatedAt, width, height]),
+    ])
+    if (signature === this._shareCoverSignature) return
+
+    this._shareCoverSignature = signature
+    this._shareCovers = {}
+    const version = ++this._shareCoverVersion
+    const renderOrder = [this.data.activeTab, ...tabs.map((tab) => tab.id).filter((tab) => tab !== this.data.activeTab)]
+    void (async () => {
+      for (const tab of renderOrder) {
+        try {
+          const imageUrl = await renderProjectShareCover(tab, works, textWorks)
+          if (version !== this._shareCoverVersion) return
+          this._shareCovers[tab] = imageUrl
+        } catch (error) {
+          if (version !== this._shareCoverVersion) return
+          console.warn(`生成${tabs.find((item) => item.id === tab)?.label ?? ''}分享封面失败`, error)
+        }
+      }
+    })()
   },
 
   handleCoverError(event: WechatMiniprogram.TouchEvent) {
@@ -230,7 +275,10 @@ Page({
     const allWorks = this.data.allWorks.map((work) => work.id === id
       ? { ...work, coverPath: COVER_FALLBACK_PATH }
       : work)
-    this.setData({ allWorks }, () => this.applyFilters())
+    this.setData({ allWorks }, () => {
+      this.applyFilters()
+      this.refreshShareCovers()
+    })
   },
 
   handleTextImageCoverError(event: WechatMiniprogram.TouchEvent) {
@@ -239,7 +287,10 @@ Page({
     const textImageWorks = this.data.textImageWorks.map((work) => work.id === id
       ? { ...work, coverPath: COVER_FALLBACK_PATH }
       : work)
-    this.setData({ textImageWorks }, () => this.applyFilters())
+    this.setData({ textImageWorks }, () => {
+      this.applyFilters()
+      this.refreshShareCovers()
+    })
   },
 
   changeSearch(event: WechatMiniprogram.Input) {
