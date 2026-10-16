@@ -14,7 +14,7 @@
 
 | 阶段 | 能力 | 接口 |
 | --- | --- | --- |
-| 1 | 微信登录、会话管理、当前用户 | `POST /api/auth/login`、`DELETE /api/auth/session`、`DELETE /api/auth/sessions`、`GET/PUT/PATCH /api/users/me`、`POST /api/users/me/avatar` |
+| 1 | 微信/QQ 登录、绑定、会话管理、当前用户 | `POST /api/auth/login`、`POST /api/auth/qq/link`、`DELETE /api/auth/session`、`DELETE /api/auth/sessions`、`GET/PUT/PATCH /api/users/me`、`POST /api/users/me/avatar` |
 | 2 | 封面上传、作品保存与恢复 | `POST /api/files/upload`、`GET /api/media/covers/:filename`、`POST /api/works`、`GET /api/works`、`GET /api/works/:id`、`PUT/PATCH /api/works/:id`、`DELETE /api/works/:id`、`POST/GET /api/works/text-images`、`GET/DELETE /api/works/text-images/:id` |
 | 3 | 收藏 | `PATCH /api/works/:id/favorite`、`GET /api/favorites` |
 | 4 | 额度与下载记录 | `GET /api/quota/me`、`GET /api/downloads`、`POST /api/downloads` |
@@ -57,15 +57,15 @@
 ### 2.2 登录身份
 
 ```text
-wx.login()
+wx.login() / qq.login()
   → 获得 code
-  → POST /api/auth/login
-  → 服务端向微信换取 openid/session_key
-  → 创建或查询 User
+  → POST /api/auth/login（传 provider）
+  → 服务端向对应平台换取登录标识
+  → 创建、查询或按一次性绑定码关联 User
   → 返回本系统 token
 ```
 
-`nickname` 和 `avatarUrl` 初始允许为 `null`微信登录成功不等于服务端已经拥有用户真实昵称和头像；第一版不通过登录接口臆造或强制补齐这两个字段
+`nickname` 和 `avatarUrl` 初始允许为 `null`。登录成功不等于服务端已经拥有用户真实昵称和头像；登录接口不臆造或强制补齐这两个字段。
 
 ### 2.3 数据归属
 
@@ -253,21 +253,24 @@ Authorization: Bearer <token>
 
 ### POST `/api/auth/login`
 
-用途：用微信 `wx.login()` 返回的临时 `code` 换取本系统 token，并创建或查询用户
+用途：用微信或 QQ 登录接口返回的一次性 `code` 换取本系统 token，并创建或查询用户。未传 `provider` 时按微信处理，兼容旧客户端。
 
 鉴权：不需要
 
 请求：
 
 ```json
-{ "code": "wx-login-code" }
+{ "code": "platform-login-code", "provider": "wechat" }
 ```
+
+QQ 登录请求为 `{ "code": "qq-login-code", "provider": "qq" }`；绑定到已有微信账号时额外传入微信端获取的一次性 `linkCode`。
 
 响应 `200`：
 
 ```json
 {
   "token": "opaque-token",
+  "provider": "wechat",
   "expiresAt": "2026-09-25T11:00:00Z",
   "user": {
     "id": "usr_xxx",
@@ -280,9 +283,22 @@ Authorization: Bearer <token>
 规则：
 
 - `code` 只能使用一次，服务端不得把它当作长期 token
-- 服务端通过微信接口得到 `openid`，用 `openid` 找到或创建用户
-- `openid` 不返回给小程序；`session_key` 不返回给小程序
+- 按 `provider` 向对应平台换取登录标识；当前支持 `wechat` 和 `qq`
+- 服务端分别以微信 OpenID 或 QQ OpenID 找到或创建身份；QQ 登录不传 `linkCode` 时创建/查询 QQ 独立账号
+- `linkCode` 仅可用于 QQ 登录，且必须由已登录的微信账号签发；绑定码 10 分钟有效、单次使用
+- 若 QQ 身份已属于其他账号，返回 `409 QQ_IDENTITY_CONFLICT`，不合并账号或作品
+- 登录标识及 `session_key` 不返回给小程序；QQ 登录不会覆盖账号已保存的微信支付凭据
 - 重复登录可以创建新会话，但不能创建重复用户
+
+### POST `/api/auth/qq/link`
+
+用途：由已登录的微信账号生成一次性 QQ 绑定码。QQ 与微信有独立登录态，用户将此码提交给 `/api/auth/login` 的 QQ 登录请求以关联到现有账号。
+
+鉴权：需要微信平台会话；QQ 会话返回 `403 WECHAT_SESSION_REQUIRED`。
+
+请求：无请求体或查询参数。
+
+响应 `200`：`{ "code": "opaque-one-time-code", "expiresAt": "2026-10-16T11:10:00.000Z" }`。服务端只保存绑定码摘要；同一账号再次生成时撤销之前尚未使用的码。没有可绑定 QQ 身份的微信账号返回 `409 QQ_LINK_UNAVAILABLE`。
 
 ### DELETE `/api/auth/session`
 
@@ -302,7 +318,7 @@ Authorization: Bearer <token>
 
 ### GET `/api/users/me`
 
-用途：获取当前用户资料、基础统计和额度摘要
+用途：获取当前用户资料、基础统计、额度摘要和已绑定登录平台
 
 鉴权：需要
 
@@ -316,6 +332,7 @@ Authorization: Bearer <token>
     "avatarUrl": null,
     "createdAt": "2026-08-26T11:00:00Z"
   },
+  "linkedProviders": ["wechat", "qq"],
   "stats": {
     "workCount": 5,
     "favoriteCount": 2,
@@ -720,9 +737,9 @@ Authorization: Bearer <token>
 
 ### POST `/api/payments/create`
 
-用途：根据服务端套餐创建订单并签发小程序虚拟支付参数。
+用途：根据服务端套餐创建订单并签发小程序虚拟支付参数。仅微信平台会话可执行。
 
-鉴权：需要；请求头必须带该次购买意图的 `Idempotency-Key`。
+鉴权：需要微信平台会话；请求头必须带该次购买意图的 `Idempotency-Key`。QQ 会话返回 `403 QQ_PAYMENT_UNAVAILABLE`。
 
 请求：
 
@@ -760,7 +777,7 @@ Authorization: Bearer <token>
 
 ### POST `/api/payments/:orderId/continue`
 
-用途：对一笔已存在的 `pending` 订单重新签发虚拟支付参数（订单页「继续支付」）。
+用途：对一笔已存在的 `pending` 订单重新签发虚拟支付参数（订单页「继续支付」）。仅微信平台会话可执行；QQ 会话返回 `403 QQ_PAYMENT_UNAVAILABLE`。
 
 鉴权：需要。`orderId` 来自路径；服务端按 Bearer Token 解析出的用户 ID 校验归属，不属于当前用户时回答 `404`（不区分「不存在」和「不是你的」，避免订单号被枚举探测）。
 
@@ -786,7 +803,7 @@ Authorization: Bearer <token>
 
 ### POST `/api/payments/:orderId/cancel`
 
-用途：用户主动取消一笔 `pending` 订单（订单页「取消订单」）。
+用途：用户主动取消一笔 `pending` 订单（订单页「取消订单」）。仅微信平台会话可执行；QQ 会话返回 `403 QQ_PAYMENT_UNAVAILABLE`。
 
 鉴权：需要；归属校验与 `continue` 相同。
 

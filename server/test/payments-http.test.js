@@ -4,7 +4,7 @@ const { AppError } = require("../dist/shared/app-error.js");
 const { createHttpApplication } = require("../dist/http/app.js");
 const { startHttpServer } = require("../dist/http/server.js");
 
-async function withServer(payments, run) {
+async function withServer(payments, run, provider = "wechat") {
   let authenticationCount = 0;
   const unused = new Proxy({}, { get() { return async () => { throw new Error("unexpected dependency call"); }; } });
   const running = await startHttpServer(createHttpApplication({
@@ -16,7 +16,7 @@ async function withServer(payments, run) {
         if (value !== "Bearer valid-payment-token-1234567890") {
           throw new AppError(401, "UNAUTHORIZED", "请先登录");
         }
-        return { id: "usr_payment" };
+        return { id: "usr_payment", provider };
       },
     },
     users: unused,
@@ -99,6 +99,39 @@ test("packages is public and payment creation accepts only packageId from an aut
     assert.equal(alreadyPaid.status, 409);
     assert.deepEqual((await alreadyPaid.json()).error.details, { orderId: "order_0123456789abcdef0123456789" });
   });
+});
+
+test("QQ sessions can read orders but cannot create, continue, or cancel payments", async () => {
+  const calls = [];
+  const payments = {
+    async listOrders(input) { calls.push({ action: "list", ...input }); return { items: [] }; },
+    async createPayment(input) { calls.push({ action: "create", ...input }); throw new Error("must not reach payment service"); },
+    async continuePayment(input) { calls.push({ action: "continue", ...input }); throw new Error("must not reach payment service"); },
+    async cancelOrder(input) { calls.push({ action: "cancel", ...input }); throw new Error("must not reach payment service"); },
+    async listPackages() { return { items: [] }; },
+    async handleNotification() { throw new Error("unused"); },
+  };
+  await withServer(payments, async (baseUrl) => {
+    const auth = { authorization: "Bearer valid-payment-token-1234567890" };
+    const orders = await fetch(`${baseUrl}/api/orders`, { headers: auth });
+    assert.equal(orders.status, 200);
+    assert.deepEqual(calls[0], { action: "list", userId: "usr_payment", page: 1, pageSize: 20 });
+
+    const create = await fetch(`${baseUrl}/api/payments/create`, {
+      method: "POST",
+      headers: { ...auth, "content-type": "application/json", "idempotency-key": "qq-payment-attempt" },
+      body: JSON.stringify({ packageId: "ai_generation_30" }),
+    });
+    assert.equal(create.status, 403);
+    assert.equal((await create.json()).error.code, "QQ_PAYMENT_UNAVAILABLE");
+
+    for (const action of ["continue", "cancel"]) {
+      const response = await fetch(`${baseUrl}/api/payments/order_abc123/${action}`, { method: "POST", headers: auth });
+      assert.equal(response.status, 403);
+      assert.equal((await response.json()).error.code, "QQ_PAYMENT_UNAVAILABLE");
+    }
+    assert.equal(calls.length, 1);
+  }, "qq");
 });
 
 test("payment order continue and cancel require auth, forward the order id, and reject query params", async () => {

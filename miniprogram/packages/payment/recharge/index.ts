@@ -7,6 +7,7 @@
  * 关键点：明确取消或支付单关闭后清理幂等键；未知状态失败保留键，避免重复下单。
  */
 import { authStore } from '../../../store/auth-store'
+import { isQqEnvironment } from '../../../config/platform'
 import {
   createPaymentIdempotencyKey,
   fetchAiGenerationPackages,
@@ -45,6 +46,10 @@ Page({
   },
 
   onShow() {
+    if (isQqEnvironment()) {
+      wx.redirectTo({ url: '/packages/payment/orders/index' })
+      return
+    }
     const aiQuota = authStore.getSnapshot().profile?.quota.aiGeneration
     this.setData({
       quota: aiQuota?.remaining ?? 0,

@@ -125,6 +125,11 @@ export interface ServerConfig {
     readonly appSecret: string;
     readonly timeoutMs: number;
   };
+  readonly qq: {
+    readonly appId: string;
+    readonly appSecret: string;
+    readonly timeoutMs: number;
+  } | null;
   readonly wechatPay: WeChatPayConfig;
   readonly virtualPay: VirtualPayConfig;
   readonly virtualPayReconcile: VirtualPayReconcileConfig;
@@ -538,6 +543,11 @@ export function loadLocalEnv(): void {
 export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const issues: string[] = [];
   const wechatAppId = required(env, "WECHAT_APP_ID", issues);
+  const qqAppId = env.QQ_APP_ID?.trim() ?? "";
+  const qqAppSecret = env.QQ_APP_SECRET?.trim() ?? "";
+  if (Boolean(qqAppId) !== Boolean(qqAppSecret)) {
+    issues.push("QQ_APP_ID 与 QQ_APP_SECRET 必须同时配置");
+  }
   const environment = appEnvironment(env, issues);
   const config: ServerConfig = {
     appEnvironment: environment,
@@ -549,6 +559,11 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       appSecret: required(env, "WECHAT_APP_SECRET", issues),
       timeoutMs: integer(env, "WECHAT_API_TIMEOUT_MS", 8_000, 1_000, 30_000, issues),
     },
+    qq: qqAppId && qqAppSecret ? {
+      appId: qqAppId,
+      appSecret: qqAppSecret,
+      timeoutMs: integer(env, "QQ_API_TIMEOUT_MS", 8_000, 1_000, 30_000, issues),
+    } : null,
     wechatPay: parseWeChatPayConfig(env, wechatAppId, issues),
     virtualPay: parseVirtualPayConfig(env, wechatAppId, issues),
     virtualPayReconcile: parseVirtualPayReconcileConfig(env, issues),

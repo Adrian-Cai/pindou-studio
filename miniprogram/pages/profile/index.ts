@@ -1,6 +1,7 @@
 import { normalizeAvatarUrl } from '../../config/api'
 import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
 import { authStore } from '../../store/auth-store'
+import { isQqEnvironment } from '../../config/platform'
 import {
   fetchAiGenerationPackages,
   createPaymentIdempotencyKey,
@@ -35,6 +36,8 @@ Page({
     aiQuotaTipsOpen: false,
     avatarPath: DEFAULT_AVATAR_PATH,
     isLoggedIn: false,
+    isQqPlatform: false,
+    qqLinkCode: '',
     accountName: '拼豆用户',
     activeSheet: 'none' as ProfileSheet,
     loginUiState: 'idle' as LoginUiState,
@@ -61,6 +64,7 @@ Page({
   preserveSheetOnNextHide: false,
 
   onLoad() {
+    this.setData({ isQqPlatform: isQqEnvironment() })
     this.authUnsubscribe = authStore.subscribe((state) => this.applyAuthState(state))
     this.appUnsubscribe = appStore.subscribe(() => this.applyAuthState(authStore.getSnapshot()))
   },
@@ -208,12 +212,14 @@ Page({
       paymentLoading: false,
       loginClosing: false,
       loginAgreementAccepted: sheet === 'login' ? false : this.data.loginAgreementAccepted,
+      qqLinkCode: '',
       loginUiState: sheet === 'login' ? 'idle' : this.data.loginUiState,
       loginMessage: sheet === 'login' ? '' : this.data.loginMessage,
     })
   },
 
   showRechargeSheet() {
+    if (this.data.isQqPlatform) return
     this.showProfileSheet('recharge')
     void this.refreshPackages()
   },
@@ -365,6 +371,44 @@ Page({
     }
     this.setData({ loginUiState: 'loading', loginMessage: '' })
     await authStore.login()
+  },
+
+  startGuestLogin() {
+    if (this.data.isQqPlatform) {
+      authStore.clearError()
+      this.showProfileSheet('login')
+      return
+    }
+    void this.startWechatLogin()
+  },
+
+  async startQqNewLogin() {
+    if (!this.data.loginAgreementAccepted) {
+      wx.showToast({ title: '请先阅读并同意用户协议和隐私政策', icon: 'none' })
+      return
+    }
+    if (this.data.loginUiState === 'loading' || this.data.loginClosing) return
+    this.setData({ loginUiState: 'loading', loginMessage: '' })
+    await authStore.login('qq')
+  },
+
+  updateQqLinkCode(event: { detail: { value?: string } }) {
+    this.setData({ qqLinkCode: event.detail.value?.trim() ?? '' })
+  },
+
+  async startQqLinkLogin() {
+    if (!this.data.loginAgreementAccepted) {
+      wx.showToast({ title: '请先阅读并同意用户协议和隐私政策', icon: 'none' })
+      return
+    }
+    const linkCode = this.data.qqLinkCode.trim()
+    if (!linkCode) {
+      wx.showToast({ title: '请先输入微信端生成的 QQ 绑定码', icon: 'none' })
+      return
+    }
+    if (this.data.loginUiState === 'loading' || this.data.loginClosing) return
+    this.setData({ loginUiState: 'loading', loginMessage: '' })
+    await authStore.login('qq', linkCode)
   },
 
   toggleLoginAgreement() {

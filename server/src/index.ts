@@ -12,6 +12,7 @@ import { startHttpServer, type RunningHttpServer } from "./http/server";
 import { InMemoryRateLimiter } from "./http/rate-limit";
 import { PostgresAuthRepository } from "./modules/auth/auth-repository";
 import { AuthService } from "./modules/auth/auth-service";
+import { OfficialQqLoginClient } from "./modules/auth/qq-client";
 import { BearerTokenAuthenticator } from "./modules/auth/authenticator";
 import { OfficialWeChatLoginClient } from "./modules/auth/wechat-client";
 import { FileSystemAvatarStorage } from "./modules/users/avatar-storage";
@@ -170,6 +171,8 @@ export async function startApplication(config: ServerConfig): Promise<RunningApp
           authRepository,
           new OfficialWeChatLoginClient(config.wechat),
           config.auth,
+          undefined,
+          config.qq ? new OfficialQqLoginClient(config.qq) : undefined,
         ),
         authenticator: new BearerTokenAuthenticator(authRepository),
         users,

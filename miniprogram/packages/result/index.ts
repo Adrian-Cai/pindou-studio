@@ -25,6 +25,7 @@ import {
   setCloudFavorite,
 } from '../../services/work-service'
 import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
+import { isQqEnvironment } from '../../config/platform'
 import { authStore } from '../../store/auth-store'
 import { checkTextContent } from '../../services/content-security-service'
 import { getCustomNavigationMetrics } from '../../utils/navigation'
@@ -67,6 +68,7 @@ Page({
     quota: 0,
     dailyFreeQuota: DAILY_FREE_DOWNLOAD_QUOTA,
     quotaTipsOpen: false,
+    isQqPlatform: false,
     downloadLoading: false,
     downloadingType: '' as DownloadFileType | '',
     downloadCanvasWidth: DOWNLOAD_CANVAS_WIDTH,
@@ -103,6 +105,7 @@ Page({
   },
 
   onLoad() {
+    this.setData({ isQqPlatform: isQqEnvironment() })
     this.updateLayoutMetrics()
   },
 
@@ -332,6 +335,10 @@ Page({
 
   openMembership() {
     this.closeQuotaTips()
+    if (isQqEnvironment()) {
+      wx.showToast({ title: 'QQ 端暂不支持充值', icon: 'none' })
+      return
+    }
     wx.navigateTo({ url: '/packages/payment/recharge/index' })
   },
 

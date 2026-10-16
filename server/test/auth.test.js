@@ -7,21 +7,58 @@ const { BearerTokenAuthenticator } = require("../dist/modules/auth/authenticator
 
 class InMemoryAuthRepository {
   constructor() {
-    this.usersByOpenidHash = new Map();
+    this.usersByIdentity = new Map();
+    this.users = new Map();
+    this.linkCodes = new Map();
     this.sessions = [];
   }
 
   async createLogin(input) {
-    let user = this.usersByOpenidHash.get(input.openidHash);
+    const identityKey = `${input.provider}:${input.identityHash}`;
+    let user = this.usersByIdentity.get(identityKey);
     if (!user) {
       user = {
         id: input.proposedUserId,
         nickname: null,
         avatarUrl: null,
         deletedAt: null,
+        wechatIdentityHash: input.provider === "wechat" ? input.identityHash : null,
+        qqIdentityHash: input.provider === "qq" ? input.identityHash : null,
+        sessionKeyCiphertext: input.provider === "wechat" ? input.sessionKeyCiphertext : null,
       };
-      this.usersByOpenidHash.set(input.openidHash, user);
+      this.usersByIdentity.set(identityKey, user);
+      this.users.set(user.id, user);
     }
+    this.sessions.push({ ...input, userId: user.id });
+    return user;
+  }
+
+  async createQqLinkCode(input) {
+    const user = this.users.get(input.userId);
+    if (!user?.wechatIdentityHash || user.qqIdentityHash) {
+      throw new AppError(409, "QQ_LINK_UNAVAILABLE", "该账号无法创建 QQ 绑定码");
+    }
+    for (const [hash, challenge] of this.linkCodes) {
+      if (challenge.userId === input.userId && !challenge.consumedAt) this.linkCodes.delete(hash);
+    }
+    this.linkCodes.set(input.codeHash, { ...input, consumedAt: null });
+  }
+
+  async linkQqAndCreateLogin(input) {
+    const challenge = this.linkCodes.get(input.linkCodeHash);
+    if (!challenge || challenge.consumedAt || challenge.expiresAt <= input.now) {
+      throw new AppError(409, "QQ_LINK_CODE_INVALID", "QQ 绑定码无效或已过期");
+    }
+    const user = this.users.get(challenge.userId);
+    const existing = this.usersByIdentity.get(`qq:${input.identityHash}`);
+    if (existing && existing.id !== user.id) {
+      throw new AppError(409, "QQ_IDENTITY_CONFLICT", "该 QQ 账号已绑定到其他账号");
+    }
+    if (!existing) {
+      user.qqIdentityHash = input.identityHash;
+      this.usersByIdentity.set(`qq:${input.identityHash}`, user);
+    }
+    challenge.consumedAt = input.now;
     this.sessions.push({ ...input, userId: user.id });
     return user;
   }
@@ -31,6 +68,7 @@ class InMemoryAuthRepository {
     if (!session) return null;
     return {
       userId: session.userId,
+      provider: session.provider,
       expiresAt: session.expiresAt,
       revokedAt: session.revokedAt ?? null,
       userDeletedAt: null,
@@ -48,10 +86,10 @@ class InMemoryAuthRepository {
     }
   }
 
-  deleteAccount(openidHash) {
-    const user = this.usersByOpenidHash.get(openidHash);
+  deleteAccount(provider, identityHash) {
+    const user = this.usersByIdentity.get(`${provider}:${identityHash}`);
     if (user) user.deletedAt = new Date();
-    this.usersByOpenidHash.delete(openidHash);
+    this.usersByIdentity.delete(`${provider}:${identityHash}`);
   }
 }
 
@@ -78,11 +116,11 @@ test("same WeChat openid reuses the user and creates independent opaque sessions
   assert.equal(first.user.avatarUrl, null);
   assert.notEqual(first.token, second.token);
   assert.match(first.token, /^[A-Za-z0-9_-]{43}$/);
-  assert.equal(repository.usersByOpenidHash.size, 1);
+  assert.equal(repository.usersByIdentity.size, 1);
   assert.equal(repository.sessions.length, 2);
-  assert.equal(repository.sessions[0].openidHash.includes("private-openid"), false);
-  assert.equal(repository.sessions[0].openidCiphertext.includes("private-openid"), false);
-  assert.equal(decryptOpenid(repository.sessions[0].openidCiphertext, authConfig.openidHashSecret), "private-openid");
+  assert.equal(repository.sessions[0].identityHash.includes("private-openid"), false);
+  assert.equal(repository.sessions[0].identityCiphertext.includes("private-openid"), false);
+  assert.equal(decryptOpenid(repository.sessions[0].identityCiphertext, authConfig.openidHashSecret), "private-openid");
   assert.equal(first.expiresAt, "2026-09-25T09:00:00.000Z");
 });
 
@@ -96,11 +134,63 @@ test("a deleted WeChat account registers as a fresh user", async () => {
   );
 
   const first = await service.login("wx-code-1");
-  repository.deleteAccount(hashOpenid("private-openid", authConfig.openidHashSecret));
+  repository.deleteAccount("wechat", hashOpenid("private-openid", authConfig.openidHashSecret));
   const second = await service.login("wx-code-2");
 
   assert.notEqual(first.user.id, second.user.id);
   assert.notEqual(repository.sessions[0].userId, repository.sessions[1].userId);
+});
+
+test("QQ login stores a separate identity and never overwrites the WeChat payment key", async () => {
+  const repository = new InMemoryAuthRepository();
+  const qqClient = { async exchangeCode() { return { openid: "qq-private", sessionKey: "qq-key" }; } };
+  const service = new AuthService(
+    repository,
+    { async exchangeCode() { return { openid: "wx-private", sessionKey: "wx-key" }; } },
+    authConfig,
+    () => fixedNow,
+    qqClient,
+  );
+  const wechatLogin = await service.login("wx-code");
+  const qqLogin = await service.login("qq-code", "qq");
+
+  assert.notEqual(wechatLogin.user.id, qqLogin.user.id);
+  assert.equal(qqLogin.provider, "qq");
+  assert.equal(repository.usersByIdentity.has(`qq:${hashOpenid("qq-private", authConfig.openidHashSecret)}`), true);
+  assert.equal(repository.users.get(wechatLogin.user.id).sessionKeyCiphertext.includes("wx-private"), false);
+  assert.equal(repository.sessions[1].sessionKeyCiphertext, null);
+});
+
+test("QQ identity links to the authenticated WeChat user once and rejects an identity owned by another account", async () => {
+  const repository = new InMemoryAuthRepository();
+  let currentQqOpenid = "qq-to-link";
+  const qqClient = { async exchangeCode() { return { openid: currentQqOpenid, sessionKey: "qq-key" }; } };
+  const service = new AuthService(
+    repository,
+    { async exchangeCode(code) { return { openid: code, sessionKey: "wx-key" }; } },
+    authConfig,
+    () => fixedNow,
+    qqClient,
+  );
+  const existing = await service.login("wx-existing");
+  const other = await service.login("wx-other");
+  const linkCode = await service.createQqLinkCode(existing.user.id);
+  const linked = await service.login("qq-code", "qq", linkCode.code);
+
+  assert.equal(linked.user.id, existing.user.id);
+  assert.equal(linked.provider, "qq");
+  await assert.rejects(() => service.login("qq-code-again", "qq", linkCode.code), (error) => {
+    assert.equal(error.code, "QQ_LINK_CODE_INVALID");
+    return true;
+  });
+
+  const secondCode = await service.createQqLinkCode(other.user.id);
+  currentQqOpenid = "qq-to-link";
+  await assert.rejects(() => service.login("qq-code-conflict", "qq", secondCode.code), (error) => {
+    assert.equal(error.code, "QQ_IDENTITY_CONFLICT");
+    return true;
+  });
+  assert.equal(repository.users.get(other.user.id).qqIdentityHash, null);
 });
 
 test("invalid login code is rejected before calling WeChat", async () => {
@@ -111,6 +201,22 @@ test("invalid login code is rejected before calling WeChat", async () => {
     authConfig,
   );
   await assert.rejects(() => service.login("   "), (error) => {
+    assert.equal(error.code, "INVALID_ARGUMENT");
+    return true;
+  });
+  assert.equal(called, false);
+});
+
+test("invalid QQ link codes are rejected before calling QQ", async () => {
+  let called = false;
+  const service = new AuthService(
+    new InMemoryAuthRepository(),
+    { async exchangeCode() { throw new Error("must not call WeChat"); } },
+    authConfig,
+    () => fixedNow,
+    { async exchangeCode() { called = true; throw new Error("must not call QQ"); } },
+  );
+  await assert.rejects(() => service.login("qq-code", "qq", " "), (error) => {
     assert.equal(error.code, "INVALID_ARGUMENT");
     return true;
   });
@@ -131,7 +237,7 @@ test("Bearer token authentication accepts a valid session", async () => {
     },
   };
   const authenticator = new BearerTokenAuthenticator(repository, () => fixedNow);
-  assert.deepEqual(await authenticator.authenticate(`Bearer ${token}`), { id: "usr_test" });
+  assert.deepEqual(await authenticator.authenticate(`Bearer ${token}`), { id: "usr_test", provider: "wechat" });
 });
 
 test("expired and revoked sessions cannot authenticate", async (t) => {

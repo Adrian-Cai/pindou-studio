@@ -131,11 +131,14 @@ test("legal documents expose only controlled keys", async () => {
       assert.equal(response.status, 200);
       assert.equal(body.document.key, key);
       assert.equal(body.document.contentType, "rich-text");
-      const version = key === "user-agreement" ? "2026-09-07" : "2026-10-04";
+      const version = "2026-10-16";
       assert.equal(body.document.version, version);
       assert.equal(body.document.effectiveAt, `${version}T00:00:00+08:00`);
       assert.equal(typeof body.document.content, "string");
       assert.ok(body.document.content.length > 100);
+      if (key === "privacy-policy") assert.match(body.document.content, /QQ 登录/);
+      if (key === "personal-information") assert.match(body.document.content, /QQ 登录标识/);
+      if (key === "third-party-sharing") assert.match(body.document.content, /QQ 登录/);
       assert.equal(/<script\b/i.test(body.document.content), false);
     }
     const paidService = await fetch(`${baseUrl}/api/legal-documents/paid-service`);
@@ -143,8 +146,9 @@ test("legal documents expose only controlled keys", async () => {
     assert.equal(paidService.status, 200);
     assert.equal(paidServiceBody.document.key, "paid-service");
     assert.equal(paidServiceBody.document.title, "小露拼豆付费服务协议");
-    assert.equal(paidServiceBody.document.version, "2026-09-11");
-    assert.equal(paidServiceBody.document.effectiveAt, "2026-09-11T00:00:00+08:00");
+    assert.equal(paidServiceBody.document.version, "2026-10-16");
+    assert.equal(paidServiceBody.document.effectiveAt, "2026-10-16T00:00:00+08:00");
+    assert.match(paidServiceBody.document.content, /QQ 端暂不提供购买和支付操作/);
     assert.ok(paidServiceBody.document.content.includes("退款"));
     assert.equal(/<script\b/i.test(paidServiceBody.document.content), false);
     const missing = await fetch(`${baseUrl}/api/legal-documents/not-supported`);

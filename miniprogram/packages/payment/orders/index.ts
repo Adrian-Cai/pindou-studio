@@ -24,6 +24,7 @@ import {
   paymentErrorMessage,
 } from '../../../services/payment-service'
 import { hasCloudSession } from '../../../services/work-service'
+import { isQqEnvironment } from '../../../config/platform'
 
 type OrdersLoadState = 'loading' | 'ready' | 'error' | 'unauthorized'
 /** 状态筛选 Tab：全部 / 待支付 / 已支付 / 已关闭（failed、refunded 仅在「全部」出现）。 */
@@ -95,6 +96,7 @@ Page({
     errorMessage: '',
     /** 任一支付动作进行中：防重复拉起，也挡住倒计时触发的自动刷新。 */
     actionLoading: false,
+    readOnly: false,
   },
 
   /** 全量订单（未过滤），切 Tab 只做内存过滤不重新请求。 */
@@ -106,6 +108,7 @@ Page({
   confirmRefreshTimer: 0 as ReturnType<typeof setTimeout>,
 
   onShow() {
+    this.setData({ readOnly: isQqEnvironment() })
     if (!hasCloudSession()) {
       this.setData({ loadState: 'unauthorized', orders: [], errorMessage: '' })
       return
@@ -130,7 +133,11 @@ Page({
       const localNow = Date.now()
       const serverNow = response.serverTime ? Date.parse(response.serverTime) : NaN
       this.clockSkewMs = Number.isFinite(serverNow) ? serverNow - localNow : 0
-      this.allOrders = response.items.map((item) => toOrderView(item, localNow + this.clockSkewMs))
+      this.allOrders = response.items.map((item) => toOrderView(
+        item,
+        localNow + this.clockSkewMs,
+        this.data.readOnly,
+      ))
       this.setData({
         loadState: 'ready',
         pendingCount: response.pendingCount,
@@ -242,6 +249,7 @@ Page({
    * 已付的跳结果页，已关的刷新列表。用户在微信面板取消不算失败——订单保留在待支付里。
    */
   async continuePayment(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.readOnly) return
     const orderId = String(event.currentTarget.dataset.id ?? '')
     const view = this.data.orders.find((item) => item.id === orderId)
     if (!view?.canPay || this.data.actionLoading) return
@@ -263,6 +271,7 @@ Page({
 
   /** 取消订单：服务端核实微信状态后才关闭；已付订单会照常发货并提示。 */
   async cancelOrder(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.readOnly) return
     const orderId = String(event.currentTarget.dataset.id ?? '')
     const view = this.data.orders.find((item) => item.id === orderId)
     if (!view?.canPay || this.data.actionLoading) return
@@ -296,6 +305,7 @@ Page({
    * （恢复当前订单）是两条互斥的路径。
    */
   repurchase(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.readOnly) return
     const orderId = String(event.currentTarget.dataset.id ?? '')
     const view = this.data.orders.find((item) => item.id === orderId)
     const packageId = view?.packageId?.trim()
@@ -350,7 +360,7 @@ function isPaymentStatusConfirming(error: unknown): boolean {
  * - 有 expiresAt 但已到期 → confirming（服务端尚未核实，不显示任何按钮）；
  * - 无 expiresAt（旧服务端）→ 退回普通待支付展示，操作仍可用（服务端会兜底校验）。
  */
-function toOrderView(order: OrderItem, nowMs: number): OrderView {
+function toOrderView(order: OrderItem, nowMs: number, readOnly: boolean): OrderView {
   const expiresAtMsRaw = order.expiresAt ? Date.parse(order.expiresAt) : NaN
   const expiresAtMs = Number.isFinite(expiresAtMsRaw) ? expiresAtMsRaw : 0
   const remainingMs = expiresAtMs ? expiresAtMsRaw - nowMs : NaN
@@ -371,8 +381,8 @@ function toOrderView(order: OrderItem, nowMs: number): OrderView {
     orderSuffix: String(order.id ?? '').slice(-8),
     phase: counting ? 'counting' : confirming ? 'confirming' : 'settled',
     countdownText: counting ? formatCountdown(remainingMs) : '',
-    canPay: order.status === 'pending' && !confirming,
-    canRepurchase: order.status === 'closed',
+    canPay: !readOnly && order.status === 'pending' && !confirming,
+    canRepurchase: !readOnly && order.status === 'closed',
     isConfirming: confirming,
   }
 }

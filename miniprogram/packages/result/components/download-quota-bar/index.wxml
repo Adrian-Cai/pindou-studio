@@ -12,6 +12,7 @@
   </view>
 
   <view
+    wx:if="{{showMembership}}"
     class="quota-strip__link"
     catchtap="openMembership"
     role="button"

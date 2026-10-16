@@ -38,15 +38,16 @@ async function withApplication(dependencies, callback) {
   }
 }
 
-test("POST /api/auth/login returns an opaque token and nullable profile", async () => {
-  let receivedCode;
+test("POST /api/auth/login keeps the legacy WeChat default and returns the selected provider", async () => {
+  let receivedLogin;
   await withApplication(
     baseDependencies({
-      auth: { async login(code) {
-        receivedCode = code;
+      auth: { async login(...args) {
+        receivedLogin = args;
         return {
           token: "opaque-token",
           expiresAt: "2026-09-25T09:00:00.000Z",
+          provider: "wechat",
           user: { id: "usr_test", nickname: null, avatarUrl: null },
         };
       } },
@@ -59,14 +60,54 @@ test("POST /api/auth/login returns an opaque token and nullable profile", async 
       });
       const body = await response.json();
       assert.equal(response.status, 200, JSON.stringify(body));
-      assert.equal(receivedCode, "wx-code");
+      assert.deepEqual(receivedLogin, ["wx-code", "wechat", undefined]);
       assert.equal(body.token, "opaque-token");
+      assert.equal(body.provider, "wechat");
       assert.equal(body.user.nickname, null);
       assert.equal(body.user.avatarUrl, null);
       assert.equal("openid" in body, false);
       assert.equal("session_key" in body, false);
     },
   );
+});
+
+test("QQ login accepts the provider and optional link code", async () => {
+  let receivedLogin;
+  await withApplication(
+    baseDependencies({ auth: { async login(...args) {
+      receivedLogin = args;
+      return { token: "opaque-token", expiresAt: "2026-09-25T09:00:00.000Z", provider: "qq", user: { id: "usr_qq", nickname: null, avatarUrl: null } };
+    } } }),
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: "qq-code", provider: "qq", linkCode: "one-time-link-code" }),
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(receivedLogin, ["qq-code", "qq", "one-time-link-code"]);
+      assert.equal((await response.json()).provider, "qq");
+    },
+  );
+});
+
+test("POST /api/auth/qq/link requires a WeChat session and creates a one-time code", async () => {
+  let createdFor;
+  const dependencies = (provider) => baseDependencies({
+    auth: { async createQqLinkCode(userId) { createdFor = userId; return { code: "opaque_link_code", expiresAt: "2026-09-25T09:10:00.000Z" }; } },
+    authenticator: { async authenticate() { return { id: "usr_from_token", provider }; } },
+  });
+  await withApplication(dependencies("wechat"), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/auth/qq/link`, { method: "POST", headers: { authorization: "Bearer token" } });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { code: "opaque_link_code", expiresAt: "2026-09-25T09:10:00.000Z" });
+    assert.equal(createdFor, "usr_from_token");
+  });
+  await withApplication(dependencies("qq"), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/auth/qq/link`, { method: "POST", headers: { authorization: "Bearer token" } });
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).error.code, "WECHAT_SESSION_REQUIRED");
+  });
 });
 
 test("login rejects userId and other client-owned identity fields", async () => {
@@ -233,6 +274,7 @@ test("GET /api/users/me derives ownership exclusively from Bearer token", async 
               resetsAt: "2026-08-27T00:00:00+08:00",
             },
           },
+          linkedProviders: ["wechat", "qq"],
         };
       } },
     }),
@@ -245,6 +287,7 @@ test("GET /api/users/me derives ownership exclusively from Bearer token", async 
       assert.equal(receivedAuthorization, "Bearer opaque_token_12345678901234567890");
       assert.equal(receivedUserId, "usr_from_token");
       assert.equal(body.user.id, "usr_from_token");
+      assert.deepEqual(body.linkedProviders, ["wechat", "qq"]);
     },
   );
 });

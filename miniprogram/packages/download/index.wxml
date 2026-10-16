@@ -5,7 +5,8 @@
       <view class="download-summary__line"></view>
       <view class="download-summary__item"><image class="download-summary__icon" src="/assets/icons/iconsax/clock.svg" mode="aspectFit"/><view><view>最近下载</view><text class="download-summary__text">{{recentText}}</text></view></view>
       <view class="download-summary__line"></view>
-      <view class="download-summary__item" bindtap="openRecharge"><image class="download-summary__icon" src="/assets/icons/iconsax/element-yellow.svg" mode="aspectFit"/><view><view>剩余免费次数</view><text>{{quota}} / {{dailyFreeDownloadQuota}}</text></view></view>
+      <view wx:if="{{!isQqPlatform}}" class="download-summary__item" bindtap="openRecharge"><image class="download-summary__icon" src="/assets/icons/iconsax/element-yellow.svg" mode="aspectFit"/><view><view>剩余免费次数</view><text>{{quota}} / {{dailyFreeDownloadQuota}}</text></view></view>
+      <view wx:else class="download-summary__item"><image class="download-summary__icon" src="/assets/icons/iconsax/element-yellow.svg" mode="aspectFit"/><view><view>剩余免费次数</view><text>{{quota}} / {{dailyFreeDownloadQuota}}</text></view></view>
     </view>
 
     <view class="segmented download-tabs">

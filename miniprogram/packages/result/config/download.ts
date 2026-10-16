@@ -44,7 +44,7 @@ export const DOWNLOAD_CONFIGS: Record<DownloadFileType, DownloadTabConfig> = {
     fileType: 'chart',
     title: '下载施工图',
     fileLabel: 'PNG 编号施工图',
-    description: '包含格内色号和行列坐标，方便对照拼装',
+    description: '包含 10×10 分区、逐格行列编号和格内色号',
     saveLocation: '系统相册',
     iconType: 'chart',
     successTitle: '下载成功',

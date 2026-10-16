@@ -12,6 +12,10 @@ Component({
       type: Boolean,
       value: false,
     },
+    showMembership: {
+      type: Boolean,
+      value: true,
+    },
   },
 
   methods: {

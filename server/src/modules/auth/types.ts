@@ -7,11 +7,15 @@ export interface PublicUser {
 export interface LoginResult {
   readonly token: string;
   readonly expiresAt: string;
+  readonly provider: AuthProvider;
   readonly user: PublicUser;
 }
 
+export type AuthProvider = "wechat" | "qq";
+
 export interface AuthenticatedUser {
   readonly id: string;
+  readonly provider: AuthProvider;
 }
 
 export interface UserRecord {
@@ -23,6 +27,7 @@ export interface UserRecord {
 
 export interface SessionRecord {
   readonly userId: string;
+  readonly provider: AuthProvider;
   readonly expiresAt: Date;
   readonly revokedAt: Date | null;
   readonly userDeletedAt: Date | null;

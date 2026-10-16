@@ -16,6 +16,8 @@ test("current user response supports nullable profile and summarizes owned data"
           work_count: "5",
           favorite_count: "2",
           download_count: "3",
+          has_wechat_identity: true,
+          has_qq_identity: true,
         }] };
       }
       return { rows: [parameters[1] === "ai_generation"
@@ -37,6 +39,7 @@ test("current user response supports nullable profile and summarizes owned data"
     createdAt: "2026-08-20T01:02:03.000Z",
   });
   assert.deepEqual(result.stats, { workCount: 5, favoriteCount: 2, downloadCount: 3 });
+  assert.deepEqual(result.linkedProviders, ["wechat", "qq"]);
   assert.deepEqual(result.quota, {
     dailyFree: 3,
     usedToday: 1,

@@ -22,6 +22,8 @@ export const EXPECTED_SCHEMA = {
     openid_hash: column("varchar", true, 128),
     openid_ciphertext: column("text", true),
     session_key_ciphertext: column("text", true),
+    qq_openid_hash: column("varchar", true, 128),
+    qq_openid_ciphertext: column("text", true),
     nickname: column("varchar", true, 80),
     avatar_url: column("text", true),
     created_at: column("timestamptz"),
@@ -36,6 +38,7 @@ export const EXPECTED_SCHEMA = {
     id: column("varchar", false, 32),
     user_id: column("varchar", false, 32),
     token_hash: column("varchar", false, 128),
+    login_provider: column("varchar", false, 16),
     expires_at: column("timestamptz"),
     revoked_at: column("timestamptz", true),
     created_at: column("timestamptz"),
@@ -248,6 +251,13 @@ export const EXPECTED_SCHEMA = {
     updated_at: column("timestamptz"),
     expires_at: column("timestamptz", true),
   },
+  pindou_qq_link_challenges: {
+    token_hash: column("varchar", false, 128),
+    user_id: column("varchar", false, 32),
+    expires_at: column("timestamptz"),
+    consumed_at: column("timestamptz", true),
+    created_at: column("timestamptz"),
+  },
 } as const;
 
 export type ExpectedTableName = keyof typeof EXPECTED_SCHEMA;
@@ -255,6 +265,8 @@ export const EXPECTED_TABLES = Object.keys(EXPECTED_SCHEMA) as ExpectedTableName
 
 export const REQUIRED_INDEXES: readonly RequiredDatabaseObject[] = [
   { table: "pindou_users", label: "openid_hash 唯一索引", includes: ["unique index", "(openid_hash)"] },
+  { table: "pindou_users", label: "qq_openid_hash 唯一索引", includes: ["unique index", "(qq_openid_hash)", "where", "qq_openid_hash is not null"] },
+  { table: "pindou_qq_link_challenges", label: "QQ 绑定码用户索引", includes: ["(user_id)"] },
   { table: "pindou_auth_sessions", label: "token_hash 唯一索引", includes: ["unique index", "(token_hash)"] },
   { table: "pindou_auth_sessions", label: "user_id 索引", includes: ["index", "(user_id)"] },
   { table: "pindou_auth_sessions", label: "expires_at 索引", includes: ["index", "(expires_at)"] },
@@ -300,6 +312,7 @@ export const REQUIRED_INDEXES: readonly RequiredDatabaseObject[] = [
 const primaryKeys: readonly RequiredDatabaseObject[] = [
   ["pindou_users", "id"],
   ["pindou_auth_sessions", "id"],
+  ["pindou_qq_link_challenges", "token_hash"],
   ["pindou_file_assets", "id"],
   ["pindou_works", "id"],
   ["pindou_work_patterns", "work_id"],
@@ -323,6 +336,7 @@ const primaryKeys: readonly RequiredDatabaseObject[] = [
 
 const foreignKeys: readonly RequiredDatabaseObject[] = [
   ["pindou_auth_sessions", "user_id", "pindou_users", "restrict"],
+  ["pindou_qq_link_challenges", "user_id", "pindou_users", "restrict"],
   ["pindou_file_assets", "user_id", "pindou_users", "restrict"],
   ["pindou_works", "user_id", "pindou_users", "restrict"],
   ["pindou_works", "cover_file_id", "pindou_file_assets", "restrict"],
@@ -404,4 +418,6 @@ export const REQUIRED_CONSTRAINTS: readonly RequiredDatabaseObject[] = [
   { table: "pindou_content_security_checks", label: "审核状态 CHECK", type: "c", includes: ["status", "pending", "pass", "review", "risky", "failed"] },
   { table: "pindou_content_security_checks", label: "审核图片哈希 CHECK", type: "c", includes: ["media_sha256", "0-9a-f", "64"] },
   { table: "pindou_users", label: "隐私存储方式互斥 CHECK", type: "c", includes: ["privacy_local_only", "privacy_cloud_sync", "not"] },
+  { table: "pindou_auth_sessions", label: "会话登录平台 CHECK", type: "c", includes: ["login_provider", "wechat", "qq"] },
+  { table: "pindou_qq_link_challenges", label: "QQ 绑定码有效期 CHECK", type: "c", includes: ["expires_at", ">", "created_at"] },
 ];

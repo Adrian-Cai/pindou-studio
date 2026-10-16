@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "rootDir": "../..",
+    "outDir": "../../.qq-compat-test-build"
+  },
+  "include": [
+    "../../miniprogram/config/platform.ts",
+    "../../miniprogram/config/cloud.ts"
+  ]
+}

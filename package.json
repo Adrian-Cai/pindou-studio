@@ -1,6 +1,6 @@
 {
   "name": "pindou_studio",
-  "version": "0.39.1",
+  "version": "0.41.0",
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -8,7 +8,8 @@
     "test:pattern": "node test/pattern-generation/run-tests.js",
     "test:assets": "node test/miniprogram-assets/run-tests.js",
     "test:ai-failure": "node test/ai-failure/run-tests.js",
-    "test:auth-store-logout": "node test/auth-store-logout/run-tests.js"
+    "test:auth-store-logout": "node test/auth-store-logout/run-tests.js",
+    "test:qq-compat": "node test/qq-compat/run-tests.js"
   },
   "devDependencies": {
     "miniprogram-api-typings": "^5.2.3",

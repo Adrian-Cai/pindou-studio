@@ -32,6 +32,8 @@ interface ProfileRow extends QueryResultRow {
   readonly privacy_cloud_sync: boolean | null;
   readonly privacy_service_notices: boolean | null;
   readonly privacy_personalized_recommendations: boolean | null;
+  readonly has_wechat_identity: boolean;
+  readonly has_qq_identity: boolean;
 }
 
 interface UserRow extends QueryResultRow {
@@ -79,6 +81,7 @@ export interface CurrentUserResponse {
     };
   };
   readonly privacy: PrivacyPreferences;
+  readonly linkedProviders: readonly ("wechat" | "qq")[];
 }
 
 export interface PrivacyPreferences {
@@ -171,6 +174,8 @@ export class PostgresUserProfileService implements UserProfileService {
                 users.privacy_cloud_sync,
                 users.privacy_service_notices,
                 users.privacy_personalized_recommendations,
+                (users.openid_hash IS NOT NULL) AS has_wechat_identity,
+                (users.qq_openid_hash IS NOT NULL) AS has_qq_identity,
                 ((SELECT COUNT(*)
                     FROM pindou_works works
                    WHERE works.user_id = users.id AND works.deleted_at IS NULL)
@@ -225,6 +230,10 @@ export class PostgresUserProfileService implements UserProfileService {
         },
       },
       privacy: mapPrivacy(profile),
+      linkedProviders: [
+        ...(profile.has_wechat_identity ? ["wechat" as const] : []),
+        ...(profile.has_qq_identity ? ["qq" as const] : []),
+      ],
     };
   }
 
@@ -324,6 +333,8 @@ export class PostgresUserProfileService implements UserProfileService {
                 avatar_url = NULL,
                 openid_hash = NULL,
                 openid_ciphertext = NULL,
+                qq_openid_hash = NULL,
+                qq_openid_ciphertext = NULL,
                 updated_at = $2
            FROM previous
           WHERE pindou_users.id = $1
@@ -332,6 +343,7 @@ export class PostgresUserProfileService implements UserProfileService {
       );
       if (user.rowCount === 0) throw unauthorized("用户不存在或已失效");
       avatarUrl = user.rows[0]?.previous_avatar_url ?? null;
+      await client.query("DELETE FROM pindou_qq_link_challenges WHERE user_id = $1", [userId]);
       await client.query(
         `UPDATE pindou_auth_sessions
             SET revoked_at = COALESCE(revoked_at, $2)

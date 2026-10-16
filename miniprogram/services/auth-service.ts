@@ -7,18 +7,31 @@
  * 调用方：store/auth-store。
  * 关键点：所有解析函数都做严格字段校验，缺失或类型不符直接抛 INVALID_RESPONSE，防止脏数据进 store。
  */
-import type { AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
+import type { AuthProvider, AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
 import { ApiError, apiRequest } from './http-client'
+import { isQqEnvironment } from '../config/platform'
 
 /** 微信登录：拿 wx.login 的 code 调 /api/auth/login，返回含 token 的 AuthSession。 */
 export async function loginWithWechat(): Promise<AuthSession> {
-  const code = await getWechatLoginCode()
+  return loginWithProvider('wechat')
+}
+
+/** QQ 首次登录可选择直接创建账号，或携带微信端签发的一次性绑定码。 */
+export async function loginWithQq(linkCode?: string): Promise<AuthSession> {
+  return loginWithProvider('qq', linkCode)
+}
+
+/** 使用当前微信会话为跨平台绑定签发 10 分钟有效的一次性码。 */
+export async function createQqLinkCode(token: string): Promise<string> {
   const response = await apiRequest<unknown>({
-    path: '/api/auth/login',
+    path: '/api/auth/qq/link',
     method: 'POST',
-    data: { code },
+    token,
   })
-  return parseLoginResponse(response)
+  if (!isRecord(response) || typeof response.code !== 'string' || response.code.length < 32) {
+    throw invalidResponse()
+  }
+  return response.code
 }
 
 /** 携带 token 调用 /api/users/me，返回完整 profile（user/stats/quota/privacy）。 */
@@ -79,7 +92,39 @@ function getWechatLoginCode(): Promise<string> {
   })
 }
 
-function parseLoginResponse(value: unknown): AuthSession {
+async function loginWithProvider(provider: AuthProvider, linkCode?: string): Promise<AuthSession> {
+  const code = provider === 'qq' ? await getQqLoginCode() : await getWechatLoginCode()
+  const response = await apiRequest<unknown>({
+    path: '/api/auth/login',
+    method: 'POST',
+    data: {
+      code,
+      provider,
+      ...(linkCode ? { linkCode } : {}),
+    },
+  })
+  return parseLoginResponse(response, provider)
+}
+
+function getQqLoginCode(): Promise<string> {
+  const runtime = (globalThis as typeof globalThis & {
+    qq?: { login(options: { success(result: { code?: string }): void; fail(): void }): void }
+  }).qq
+  if (!isQqEnvironment() || typeof runtime?.login !== 'function') {
+    return Promise.reject(new ApiError('当前环境无法发起 QQ 登录', { code: 'QQ_LOGIN_FAILED' }))
+  }
+  return new Promise((resolve, reject) => {
+    runtime.login({
+      success: ({ code }) => {
+        if (code) resolve(code)
+        else reject(new ApiError('QQ 登录未返回有效凭证，请重新尝试', { code: 'QQ_LOGIN_FAILED' }))
+      },
+      fail: () => reject(new ApiError('QQ 登录未完成，请检查网络后重试', { code: 'QQ_LOGIN_FAILED' })),
+    })
+  })
+}
+
+function parseLoginResponse(value: unknown, requestedProvider: AuthProvider): AuthSession {
   if (!isRecord(value)) throw invalidResponse()
   const user = parseUser(value.user)
   if (
@@ -91,9 +136,14 @@ function parseLoginResponse(value: unknown): AuthSession {
     || !user
   ) throw invalidResponse()
 
+  const provider: AuthProvider = value.provider === 'wechat' || value.provider === 'qq'
+    ? value.provider
+    : requestedProvider
+  if (provider !== requestedProvider) throw invalidResponse()
   return {
     token: value.token,
     expiresAt: value.expiresAt,
+    provider,
     user,
   }
 }
@@ -118,6 +168,7 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
   // createdAt / quota.resetsAt 与 aiGeneration.resetsAt 一视同仁：只判 typeof string 会放过
   // 「看起来像时间、Date.parse 却是 NaN」的脏串，下游拿去做倒计时就渲染出 NaN。
   // 三个时间字段必须用同一把尺子量，否则哪天服务端改了格式，只有一半字段能挡住。
+  const linkedProviders = parseLinkedProviders(value.linkedProviders)
   if (
     !user
     || typeof createdAt !== 'string'
@@ -138,9 +189,11 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
     || !isFiniteNumber(aiGeneration.remaining)
     || typeof aiGeneration.resetsAt !== 'string'
     || !Number.isFinite(Date.parse(aiGeneration.resetsAt))
+    || !linkedProviders
   ) throw invalidResponse()
 
   return {
+    linkedProviders,
     user: { ...user, createdAt },
     stats: {
       workCount: stats.workCount,
@@ -162,6 +215,12 @@ function parseCurrentUserResponse(value: unknown): CurrentUserProfile {
       },
     },
   }
+}
+
+function parseLinkedProviders(value: unknown): AuthProvider[] | null {
+  if (value === undefined) return ['wechat']
+  if (!Array.isArray(value) || value.some((provider) => provider !== 'wechat' && provider !== 'qq')) return null
+  return [...new Set(value)] as AuthProvider[]
 }
 
 function parseUser(value: unknown): AuthUser | null {

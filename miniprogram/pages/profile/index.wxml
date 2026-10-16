@@ -32,10 +32,10 @@
         class="login-sheet__submit guest-login-btn"
         loading="{{loginUiState === 'loading'}}"
         disabled="{{loginUiState === 'loading'}}"
-        bindtap="startWechatLogin"
+        bindtap="startGuestLogin"
       >
-        <image wx:if="{{loginUiState !== 'loading'}}" class="login-sheet__wechat" src="/assets/icons/login/wechat.svg" mode="aspectFit" aria-hidden="true" />
-        <text>{{loginUiState === 'loading' ? '登录中…' : loginUiState === 'error' ? '重新登录' : '微信登录'}}</text>
+        <image wx:if="{{loginUiState !== 'loading' && !isQqPlatform}}" class="login-sheet__wechat" src="/assets/icons/login/wechat.svg" mode="aspectFit" aria-hidden="true" />
+        <text>{{loginUiState === 'loading' ? '登录中…' : loginUiState === 'error' ? '重新登录' : isQqPlatform ? 'QQ 登录 / 绑定账号' : '微信登录'}}</text>
       </button>
     </view>
   </view>
@@ -59,7 +59,7 @@
           <text class="benefit-card__title">AI 生成权益</text>
           <text class="benefit-card__subtitle">解锁更多创意可能</text>
         </view>
-        <view class="benefit-card__header-action" bindtap="showRechargeSheet" aria-role="button" aria-label="购买 AI 生成次数" hover-class="benefit-card__header-action--pressed">
+        <view wx:if="{{!isQqPlatform}}" class="benefit-card__header-action" bindtap="showRechargeSheet" aria-role="button" aria-label="购买 AI 生成次数" hover-class="benefit-card__header-action--pressed">
           <image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
         </view>
       </view>
@@ -101,10 +101,11 @@
               </view>
             </view>
           </view>
-          <view class="benefit-card__action" bindtap="showRechargeSheet" aria-role="button" aria-label="购买次数" hover-class="benefit-card__action--pressed">
+          <view wx:if="{{!isQqPlatform}}" class="benefit-card__action" bindtap="showRechargeSheet" aria-role="button" aria-label="购买次数" hover-class="benefit-card__action--pressed">
             <text>购买次数</text>
             <image src="/assets/icons/iconsax/arrow-right.svg" mode="aspectFit" aria-hidden="true" />
           </view>
+          <view wx:if="{{isQqPlatform}}" class="benefit-card__action">QQ 暂不支持充值，现有额度仍可使用</view>
         </view>
       </view>
       <view wx:if="{{aiQuotaTipsOpen}}" class="benefit-card__quota-tip" catchtap="keepAiQuotaTipsOpen" role="tooltip">
@@ -225,7 +226,30 @@
       class="login-sheet__message {{loginMessageTone === 'error' ? 'login-sheet__message--error' : ''}}"
     >{{loginMessage}}</view>
 
+    <block wx:if="{{isQqPlatform}}">
+      <view class="login-sheet__message">首次使用请选择创建 QQ 账号，或输入微信账号生成的绑定码。</view>
+      <button
+        class="login-sheet__submit"
+        loading="{{loginUiState === 'loading'}}"
+        disabled="{{loginUiState === 'loading' || loginClosing}}"
+        bindtap="startQqNewLogin"
+      >作为新用户使用 QQ</button>
+      <input
+        class="profile-editor__input"
+        value="{{qqLinkCode}}"
+        placeholder="粘贴微信端生成的 QQ 绑定码"
+        disabled="{{loginUiState === 'loading' || loginClosing}}"
+        bindinput="updateQqLinkCode"
+      />
+      <button
+        class="login-sheet__submit"
+        loading="{{loginUiState === 'loading'}}"
+        disabled="{{loginUiState === 'loading' || loginClosing}}"
+        bindtap="startQqLinkLogin"
+      >绑定现有微信账号</button>
+    </block>
     <button
+      wx:else
       class="login-sheet__submit"
       loading="{{loginUiState === 'loading'}}"
       disabled="{{loginUiState === 'loading' || loginClosing}}"

@@ -10,13 +10,34 @@ import type { PrivacyPreferencesPatch } from "../modules/users/user-profile-serv
 import { invalidArgument } from "../shared/app-error";
 import { validatePersistedPattern, type PersistedPattern } from "../modules/works/pattern";
 import type { UpdateWorkInput, WorkStatus } from "../modules/works/work-service";
+import type { AuthProvider } from "../modules/auth/types";
 
-export function validateLoginBody(body: Record<string, unknown>): string {
+export interface LoginBody {
+  readonly code: string;
+  readonly provider: AuthProvider;
+  readonly linkCode?: string;
+}
+
+export function validateLoginBody(body: Record<string, unknown>): LoginBody {
   const keys = Object.keys(body);
-  if (keys.length !== 1 || keys[0] !== "code" || typeof body.code !== "string") {
-    throw invalidArgument("请求体只能包含字符串字段 code");
+  if (
+    !keys.includes("code")
+    || keys.some((key) => key !== "code" && key !== "provider" && key !== "linkCode")
+    || typeof body.code !== "string"
+    || (body.provider !== undefined && body.provider !== "wechat" && body.provider !== "qq")
+    || (body.linkCode !== undefined && typeof body.linkCode !== "string")
+  ) {
+    throw invalidArgument("登录请求仅接受 code、provider 和可选的 linkCode");
   }
-  return body.code;
+  const provider = body.provider === "qq" ? "qq" : "wechat";
+  if (provider === "wechat" && body.linkCode !== undefined) {
+    throw invalidArgument("微信登录不接受 QQ 绑定码");
+  }
+  return {
+    code: body.code,
+    provider,
+    ...(typeof body.linkCode === "string" ? { linkCode: body.linkCode } : {}),
+  };
 }
 
 export function validateContentSecurityTextBody(body: Record<string, unknown>): string {

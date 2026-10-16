@@ -122,8 +122,20 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
 
       if (request.method === "POST" && url.pathname === "/api/auth/login") {
         const body = await readJsonObject(request);
-        const result = await dependencies.auth.login(validateLoginBody(body));
+        const login = validateLoginBody(body);
+        const result = await dependencies.auth.login(login.code, login.provider, login.linkCode);
         sendJson(response, 200, result);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/auth/qq/link") {
+        if (url.searchParams.size > 0) throw invalidArgument("QQ 绑定接口不接受查询参数");
+        if (hasRequestBody(request)) throw invalidArgument("QQ 绑定码申请接口不接受请求体");
+        const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        if (currentUser.provider !== "wechat") {
+          throw new AppError(403, "WECHAT_SESSION_REQUIRED", "请使用微信账号登录后生成 QQ 绑定码");
+        }
+        sendJson(response, 200, await dependencies.auth.createQqLinkCode(currentUser.id));
         return;
       }
 
@@ -496,6 +508,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       if (request.method === "POST" && url.pathname === "/api/payments/create") {
         if (url.searchParams.size > 0) throw invalidArgument("支付创建接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        assertWechatPaymentSession(currentUser.provider);
         const packageId = validateCreatePaymentBody(await readJsonObject(request));
         sendJson(response, 201, await dependencies.payments.createPayment({
           userId: currentUser.id,
@@ -511,6 +524,7 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       if (request.method === "POST" && paymentOrderActionRoute) {
         if (url.searchParams.size > 0) throw invalidArgument("支付订单操作接口不接受查询参数");
         const currentUser = await dependencies.authenticator.authenticate(request.headers.authorization);
+        assertWechatPaymentSession(currentUser.provider);
         if (paymentOrderActionRoute.action === "continue") {
           sendJson(response, 200, await dependencies.payments.continuePayment({
             userId: currentUser.id,
@@ -837,6 +851,12 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
       }
     });
   };
+}
+
+function assertWechatPaymentSession(provider: "wechat" | "qq"): void {
+  if (provider === "qq") {
+    throw new AppError(403, "QQ_PAYMENT_UNAVAILABLE", "QQ 端暂不支持支付操作");
+  }
 }
 
 function publicErrorDetails(error: AppError): Readonly<Record<string, unknown>> {

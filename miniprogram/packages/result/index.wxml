@@ -88,7 +88,7 @@
         bind:download="handleRequestDownload"
       />
 
-      <download-quota-bar quota="{{quota}}" dailyFreeQuota="{{dailyFreeQuota}}" tipsOpen="{{quotaTipsOpen}}" bind:toggletips="toggleQuotaTips" bind:closetips="closeQuotaTips" bind:openmembership="openMembership" />
+      <download-quota-bar quota="{{quota}}" dailyFreeQuota="{{dailyFreeQuota}}" tipsOpen="{{quotaTipsOpen}}" showMembership="{{!isQqPlatform}}" bind:toggletips="toggleQuotaTips" bind:closetips="closeQuotaTips" bind:openmembership="openMembership" />
     </view>
 
     <view wx:else class="result-empty">

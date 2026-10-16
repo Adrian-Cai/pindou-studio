@@ -5,6 +5,7 @@ import {
 } from '../../services/download-service'
 import { hasCloudSession } from '../../services/work-service'
 import { DAILY_FREE_DOWNLOAD_QUOTA, appStore } from '../../store/app-store'
+import { isQqEnvironment } from '../../config/platform'
 import { authStore } from '../../store/auth-store'
 
 type DownloadTab = 'all' | DownloadFileType
@@ -36,6 +37,7 @@ const COVER_FALLBACK_PATH = '/assets/icons/image-upload.svg'
 
 Page({
   data: {
+    isQqPlatform: false,
     tabs,
     activeTab: 'all' as DownloadTab,
     query: '',
@@ -45,6 +47,10 @@ Page({
     dailyFreeDownloadQuota: DAILY_FREE_DOWNLOAD_QUOTA,
     monthCount: 0,
     recentText: '暂无',
+  },
+
+  onLoad() {
+    this.setData({ isQqPlatform: isQqEnvironment() })
   },
 
   onShow() {
@@ -151,6 +157,10 @@ Page({
   },
 
   openRecharge() {
+    if (isQqEnvironment()) {
+      wx.showToast({ title: 'QQ 端暂不支持充值', icon: 'none' })
+      return
+    }
     wx.navigateTo({ url: '/packages/payment/recharge/index' })
   },
 })

@@ -9,6 +9,7 @@
 import type { OrderItem, OrderListResponse, OrderStatus } from '../../../models/order'
 import { isAuthSessionExpired, loadAuthSession } from '../../../services/token-storage'
 import { ApiError, apiRequest } from '../../../services/http-client'
+import { isQqEnvironment } from '../../../config/platform'
 
 /**
  * 分页拉取当前用户的订单列表。
@@ -104,6 +105,9 @@ function isIsoDate(value: unknown): value is string {
  * 本接口成功 = 订单一定被关闭，失败分支必须按错误码分别处理。
  */
 export async function cancelPendingOrder(orderId: string): Promise<void> {
+  if (isQqEnvironment()) {
+    throw new ApiError('QQ 端暂不支持支付操作', { statusCode: 403, code: 'QQ_PAYMENT_UNAVAILABLE' })
+  }
   const cleanOrderId = orderId.trim()
   if (!cleanOrderId || cleanOrderId.length > 64) {
     throw new ApiError('订单参数无效，请刷新后重试', { code: 'INVALID_ARGUMENT' })

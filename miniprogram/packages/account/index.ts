@@ -9,6 +9,9 @@
  */
 import { normalizeAvatarUrl } from '../../config/api'
 import { authStore, type AuthState } from '../../store/auth-store'
+import { createQqLinkCode } from '../../services/auth-service'
+import { loadAuthSession } from '../../services/token-storage'
+import { isQqEnvironment } from '../../config/platform'
 
 /** 未设置头像时的默认头像。 */
 const DEFAULT_AVATAR_PATH = '/assets/icons/brand-avatar.png'
@@ -18,11 +21,15 @@ Page({
     avatarPath: DEFAULT_AVATAR_PATH,
     accountName: '拼豆用户',
     accountRefreshing: false,
+    isQqPlatform: false,
+    qqLinked: false,
+    qqLinkLoading: false,
   },
 
   authUnsubscribe: undefined as (() => void) | undefined,
 
   onLoad() {
+    this.setData({ isQqPlatform: isQqEnvironment() })
     this.authUnsubscribe = authStore.subscribe((state) => this.applyAuthState(state))
   },
 
@@ -59,6 +66,7 @@ Page({
       // 服务端下发的是路由相对路径（/api/media/avatars/...），必须补上域名才能给 <image> 用
       avatarPath: normalizeAvatarUrl(user?.avatarUrl) || DEFAULT_AVATAR_PATH,
       accountRefreshing: authState.status === 'refreshing' || authState.status === 'updating',
+      qqLinked: profile?.linkedProviders.includes('qq') ?? false,
     })
   },
 
@@ -74,6 +82,32 @@ Page({
       wx.showToast({ title: '账号数据已同步', icon: 'success' })
     } catch {
       wx.showToast({ title: '刷新失败，请重试', icon: 'none' })
+    }
+  },
+
+  async createQqBindingCode() {
+    if (this.data.qqLinkLoading) return
+    const session = loadAuthSession()
+    if (!session || session.provider !== 'wechat') {
+      wx.showToast({ title: '请先使用微信账号登录', icon: 'none' })
+      return
+    }
+    this.setData({ qqLinkLoading: true })
+    try {
+      const code = await createQqLinkCode(session.token)
+      wx.setClipboardData({
+        data: code,
+        success: () => wx.showModal({
+          title: 'QQ 绑定码已复制',
+          content: '请在 10 分钟内切换到 QQ，选择“绑定现有微信账号”并粘贴绑定码。',
+          showCancel: false,
+        }),
+        fail: () => wx.showToast({ title: '复制失败，请重试', icon: 'none' }),
+      })
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : '绑定码生成失败', icon: 'none' })
+    } finally {
+      this.setData({ qqLinkLoading: false })
     }
   },
 

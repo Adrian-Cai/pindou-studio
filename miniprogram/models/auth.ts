@@ -4,6 +4,8 @@ export interface AuthUser {
   avatarUrl: string | null
 }
 
+export type AuthProvider = "wechat" | "qq"
+
 /**
  * 当前登录用户的完整资料。
  *
@@ -15,6 +17,7 @@ export interface AuthUser {
  * 谁要是加，说明上游解析器漏了校验，该修的是解析器而不是这里。
  */
 export interface CurrentUserProfile {
+  linkedProviders: AuthProvider[]
   user: AuthUser & {
     createdAt: string
   }
@@ -42,6 +45,7 @@ export interface CurrentUserProfile {
 export interface AuthSession {
   token: string
   expiresAt: string
+  provider: AuthProvider
   user: AuthUser
   profile?: CurrentUserProfile
 }

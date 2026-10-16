@@ -1,4 +1,4 @@
-import type { AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
+import type { AuthProvider, AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
 
 const AUTH_STORAGE_KEY = 'pindou-auth-session-v1'
 const EXPIRY_SKEW_MS = 30_000
@@ -41,6 +41,7 @@ function parseSession(value: unknown): AuthSession | null {
   return {
     token: value.token,
     expiresAt: value.expiresAt,
+    provider: value.provider === 'qq' ? 'qq' : 'wechat',
     user,
     ...(profile ? { profile } : {}),
   }
@@ -67,6 +68,10 @@ function parseProfile(value: unknown): CurrentUserProfile | null {
 
   const stats = value.stats
   const quota = value.quota
+  const linkedProviders: AuthProvider[] = Array.isArray(value.linkedProviders)
+    && value.linkedProviders.every((provider) => provider === 'wechat' || provider === 'qq')
+    ? [...new Set(value.linkedProviders)] as AuthProvider[]
+    : ['wechat']
   const aiGeneration = quota.aiGeneration
   if (
     !isFiniteNumber(stats.workCount)
@@ -87,6 +92,7 @@ function parseProfile(value: unknown): CurrentUserProfile | null {
   ) return null
 
   return {
+    linkedProviders,
     user: { ...user, createdAt: value.user.createdAt },
     stats: {
       workCount: stats.workCount,

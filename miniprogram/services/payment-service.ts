@@ -14,6 +14,7 @@
  *         前端 success 回调只是 UI 反馈，权益到账以服务端为准。
  */
 import { ApiError, apiRequest } from './http-client'
+import { isQqEnvironment } from '../config/platform'
 import { isAuthSessionExpired, loadAuthSession } from './token-storage'
 
 /**
@@ -71,6 +72,7 @@ async function createAiGenerationPayment(
   packageId: string,
   idempotencyKey: string,
 ): Promise<CreatePaymentResponse> {
+  assertPaymentSupported()
   const normalizedPackageId = packageId.trim()
   if (!normalizedPackageId || !idempotencyKey.trim()) {
     throw new ApiError('支付参数无效，请重新选择套餐', { code: 'INVALID_ARGUMENT' })
@@ -123,6 +125,7 @@ export async function payForAiGenerationPackage(
  * @throws PAYMENT_STATUS_CONFIRMING 微信状态查询失败，稍后刷新，绝不能引导用户重复支付
  */
 export async function continueOrderPayment(orderId: string): Promise<CreatePaymentResponse> {
+  assertPaymentSupported()
   const cleanOrderId = orderId.trim()
   if (!cleanOrderId || cleanOrderId.length > 64) {
     throw new ApiError('支付参数无效，请刷新后重试', { code: 'INVALID_ARGUMENT' })
@@ -140,6 +143,12 @@ export async function continueOrderPayment(orderId: string): Promise<CreatePayme
   }
   await requestVirtualPayment(created.virtual)
   return created
+}
+
+function assertPaymentSupported(): void {
+  if (isQqEnvironment()) {
+    throw new ApiError('QQ 端暂不支持支付操作', { statusCode: 403, code: 'QQ_PAYMENT_UNAVAILABLE' })
+  }
 }
 
 /** 服务端拒绝下单：同用户 pending 订单已达 5 个上限（见 MAX_PENDING_ORDERS_REACHED）。 */

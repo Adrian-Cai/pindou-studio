@@ -27,6 +27,6 @@ export class BearerTokenAuthenticator implements RequestAuthenticator {
     if (session.expiresAt.getTime() <= this.now().getTime()) {
       throw new AppError(401, "TOKEN_EXPIRED", "登录状态已过期，请重新登录");
     }
-    return { id: session.userId };
+    return { id: session.userId, provider: session.provider ?? "wechat" };
   }
 }

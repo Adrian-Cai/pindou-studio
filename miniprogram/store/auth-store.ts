@@ -13,6 +13,7 @@ import type { AuthSession, AuthUser, CurrentUserProfile } from '../models/auth'
 import {
   deleteCurrentUser,
   fetchCurrentUser,
+  loginWithQq,
   loginWithWechat,
   revokeAllSessions,
   revokeCurrentSession,
@@ -30,6 +31,8 @@ import { appStore } from './app-store'
 import { cloudSummaryToWorkItem, fetchCloudFavorites, fetchCloudWorks } from '../services/work-service'
 import { syncPendingWorks } from '../services/work-sync-service'
 import { clearSecuritySession } from '../services/session-service'
+import { isQqEnvironment } from '../config/platform'
+import type { AuthProvider } from '../models/auth'
 
 /** 登录状态的有限状态机取值（用于驱动页面的加载/登录/错误展示）。 */
 export type AuthStatus =
@@ -106,15 +109,15 @@ export class AuthStore {
     return this.restoreTask
   }
 
-  /** 微信登录：拿 wx.login 的 code 换取 token，激活会话。已登录中或 401 过期则直接返回。 */
-  async login(): Promise<void> {
+  /** 按用户选择登录平台；QQ 首次登录不会在用户选择前自动创建账号。 */
+  async login(provider: AuthProvider = 'wechat', linkCode?: string): Promise<void> {
     if (this.state.status === 'authenticating') return
     this.bumpAuthVersion()
     const version = this.authVersion
     this.setState({ ...initialState, status: 'authenticating' })
 
     try {
-      const session = await loginWithWechat()
+      const session = provider === 'qq' ? await loginWithQq(linkCode) : await loginWithWechat()
       if (!this.isCurrentVersion(version)) return
       saveAuthSession(session)
       await this.activateSession(session, version)
@@ -292,7 +295,9 @@ export class AuthStore {
       } catch (error) {
         if (!this.isCurrentVersion(version)) return
         if (!isUnauthorized(error)) throw error
-        activeSession = await loginWithWechat()
+        activeSession = activeSession.provider === 'qq'
+          ? await loginWithQq()
+          : await loginWithWechat()
         if (!this.isCurrentVersion(version)) return
         saveAuthSession(activeSession)
         profile = await this.persistProfile(activeSession, nickname)
@@ -429,6 +434,11 @@ export class AuthStore {
     const version = this.authVersion
     const session = loadAuthSession()
     if (!session) {
+      this.setState({ ...initialState })
+      return
+    }
+    if ((isQqEnvironment() && session.provider !== 'qq') || (!isQqEnvironment() && session.provider === 'qq')) {
+      clearAuthSession()
       this.setState({ ...initialState })
       return
     }

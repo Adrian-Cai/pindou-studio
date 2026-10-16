@@ -28,6 +28,7 @@ test("readConfig loads validated server and database settings", () => {
   assert.deepEqual(config.hunyuanImage, { enabled: false });
   assert.deepEqual(config.tokenhubHunyuanImage, { enabled: false });
   assert.deepEqual(config.wechatPay, { enabled: false });
+  assert.equal(config.qq, null);
   assert.equal(config.avatars.maximumBytes, 2 * 1024 * 1024);
   assert.equal(config.aiFiles.maximumBytes, 10 * 1024 * 1024);
   assert.equal(config.aiFiles.maximumWidth, 4096);
@@ -39,6 +40,24 @@ test("readConfig loads validated server and database settings", () => {
   assert.equal(config.deployment.persistentStorageMounted, false);
   assert.equal(config.deployment.monitoringAlertsConfigured, false);
   assert.equal(config.contentSecurity.asyncMediaCheckEnabled, false);
+});
+
+test("QQ login configuration is optional and requires both credentials", () => {
+  assert.deepEqual(readConfig({
+    ...validEnvironment,
+    QQ_APP_ID: "qq_app_id",
+    QQ_APP_SECRET: "qq_app_secret",
+    QQ_API_TIMEOUT_MS: "5000",
+  }).qq, {
+    appId: "qq_app_id",
+    appSecret: "qq_app_secret",
+    timeoutMs: 5000,
+  });
+  assert.throws(
+    () => readConfig({ ...validEnvironment, QQ_APP_ID: "qq_app_id" }),
+    (error) => error instanceof ConfigError
+      && error.issues.includes("QQ_APP_ID 与 QQ_APP_SECRET 必须同时配置"),
+  );
 });
 
 test("readConfig uses the shared local development port for defaults", () => {

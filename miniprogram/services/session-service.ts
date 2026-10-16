@@ -1,6 +1,7 @@
 import type { AuthSession } from '../models/auth'
 import { loginWithWechat } from './auth-service'
 import { ApiError } from './http-client'
+import { isQqEnvironment } from '../config/platform'
 import {
   isAuthSessionExpired,
   loadAuthSession,
@@ -19,6 +20,12 @@ export async function ensureLoggedInSession(): Promise<AuthSession> {
   if (securitySession && !isAuthSessionExpired(securitySession)) return securitySession
   let session: AuthSession
   try {
+    if (isQqEnvironment()) {
+      throw new ApiError('请先在“我的”页选择 QQ 登录或绑定已有微信账号', {
+        statusCode: 401,
+        code: 'LOGIN_REQUIRED',
+      })
+    }
     session = await loginWithWechat()
   } catch (error) {
     // 微信登录或换 token 失败时的原始错误没有可读性（多为 wx.login 的 errMsg）。
