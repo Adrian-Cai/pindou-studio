@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { serveDomainVerificationFile } from "./domain-verification";
 import { TEXT_IMAGE_SIZES } from '../modules/ai/text-image-options';
 import {
   decryptPushBody,
@@ -75,6 +76,8 @@ export function createHttpApplication(dependencies: HttpApplicationDependencies)
 
     void (async () => {
       const url = new URL(request.url ?? "/", "http://localhost");
+      if (serveDomainVerificationFile(request, response, url)) return;
+
       if (request.method === "GET" && url.pathname === "/health") {
         try {
           const databaseHealth = await dependencies.database.check();

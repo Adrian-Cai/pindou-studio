@@ -18,6 +18,7 @@ COPY package.json package-lock.json ./
 COPY vendor ./vendor
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /build/dist ./dist
+COPY domain-verification ./domain-verification
 
 EXPOSE 3000
 CMD ["node", "dist/index.js"]
