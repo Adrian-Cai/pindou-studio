@@ -20,6 +20,7 @@ const PROVIDER_JPEG = Buffer.concat([
 function harness({
   available = 3,
   providerOutputUrl = "https://aigc-image.cos.myqcloud.com/output.png",
+  providerSubmissionOutputUrl = providerOutputUrl,
   providerError = null,
   providerErrors = null,
   inputAvailable = true,
@@ -163,7 +164,7 @@ function harness({
       const queued = Array.isArray(providerErrors) && providerErrors.length > 0 ? providerErrors.shift() : null;
       const failure = queued ?? providerError;
       if (failure) throw failure;
-      return { requestId: "provider_request_1", outputUrl: providerName === "toapis" ? null : providerOutputUrl };
+      return { requestId: "provider_request_1", outputUrl: providerSubmissionOutputUrl };
     },
     pollIntervalMs: providerPollIntervalMs,
     async getTask() {
@@ -255,10 +256,9 @@ test("AI output keeps the real provider format when the upstream returns JPEG", 
   });
 });
 
-test("ToAPIs tasks are polled asynchronously and completed exactly once", async () => {
+test("asynchronous provider tasks are polled and completed exactly once", async () => {
   const state = harness({
-    providerName: "toapis",
-    providerOutputUrl: "https://files.toapis.com/output.png",
+    providerSubmissionOutputUrl: null,
     providerPollStatuses: ["in_progress", "completed"],
     providerPollIntervalMs: 0,
   });
@@ -343,23 +343,21 @@ test("AI output is persisted without a second content security check", async () 
   assert.ok(state.events.findIndex((event) => event.type === "storage_save") >= 0);
 });
 
-test("AI provider failure enters a failed terminal state without output or quota debit", async () => {
-  const state = harness({
-    providerError: new ProviderError({
-      provider: "hunyuan",
-      providerCode: "ContentReviewFailed",
-      httpStatus: 422,
-      kind: "UNKNOWN",
-    }),
-  });
-  const created = await state.service.create(REQUEST);
-  const result = await advanceUntilTerminal(state, created.id);
-  assert.equal(result.status, "failed");
-  assert.equal(result.failure.code, "AI_SERVICE_BUSY");
-  assert.equal(result.failure.category, "PROVIDER");
-  assert.equal(result.outputFile, null);
-  assert.equal(state.saveCount, 0);
-  assert.equal(state.debitCount, 0);
+test("provider submission errors fail the task without output or quota debit", async () => {
+  for (const providerError of [
+    new ProviderError({ provider: "hunyuan", providerCode: "ContentReviewFailed", httpStatus: 422, kind: "UNKNOWN" }),
+    new ProviderError({ provider: "hunyuan", providerCode: null, httpStatus: 503, kind: "UNAVAILABLE" }),
+  ]) {
+    const state = harness({ providerError });
+    const created = await state.service.create(REQUEST);
+    const result = await advanceUntilTerminal(state, created.id);
+    assert.equal(result.status, "failed");
+    assert.equal(result.failure.code, "AI_SERVICE_BUSY");
+    assert.equal(result.failure.category, "PROVIDER");
+    assert.equal(result.outputFile, null);
+    assert.equal(state.saveCount, 0);
+    assert.equal(state.debitCount, 0);
+  }
 });
 
 test("AI task creation reserves available quota before calling the paid provider", async () => {
@@ -418,24 +416,6 @@ test("unavailable AI input enters a failed terminal state without calling the pr
   assert.equal(state.debitCount, 0);
 });
 
-test("provider submission errors fail the task without output or quota debit", async () => {
-  const state = harness({
-    providerError: new ProviderError({
-      provider: "hunyuan",
-      providerCode: null,
-      httpStatus: 503,
-      kind: "UNAVAILABLE",
-    }),
-  });
-  const created = await state.service.create(REQUEST);
-  const result = await advanceUntilTerminal(state, created.id);
-
-  assert.equal(result.status, "failed");
-  assert.equal(result.failure.code, "AI_SERVICE_BUSY");
-  assert.equal(state.saveCount, 0);
-  assert.equal(state.debitCount, 0);
-});
-
 test("provider rate limit parks the job in queued until the cooldown passes", async () => {
   let current = NOW;
   const state = harness({
@@ -471,33 +451,7 @@ test("provider rate limit parks the job in queued until the cooldown passes", as
   assert.equal(state.debitCount, 1);
 });
 
-test("provider rate limit still fails the task after the attempts are exhausted", async () => {
-  let current = NOW;
-  const state = harness({
-    now: () => current,
-    providerError: new ProviderError({
-      provider: "hunyuan",
-      providerCode: "EXCEED_REQUEST_LIMIT",
-      httpStatus: null,
-      kind: "RATE_LIMITED",
-    }),
-  });
-  const created = await state.service.create(REQUEST);
-  await new Promise((resolve) => setImmediate(resolve));
-  // 每次推进 61s：大于冷却上限，保证每一轮都能真的重试一次；一直限流时最终仍要给用户一个终态。
-  let result = await advanceJob(state, created.id);
-  for (let attempt = 0; attempt < 10 && result.status !== "failed"; attempt += 1) {
-    current = new Date(current.getTime() + 61_000);
-    result = await advanceJob(state, created.id);
-  }
-
-  assert.equal(result.status, "failed");
-  assert.equal(result.failure.code, "AI_SERVICE_BUSY");
-  assert.equal(state.createCount, 6);
-  assert.equal(state.debitCount, 0);
-});
-
-test("provider rate limit cooldown grows exponentially with each hit", async (t) => {
+test("provider rate limit cooldown grows exponentially and fails after attempts are exhausted", async (t) => {
   let current = NOW;
   const state = harness({
     now: () => current,
@@ -528,6 +482,9 @@ test("provider rate limit cooldown grows exponentially with each hit", async (t)
   // 免得紧接着的新任务立刻又撞一次墙。
   assert.deepEqual(cooldowns, [8_000, 16_000, 32_000, 60_000, 60_000, 60_000]);
   assert.equal(result.status, "failed");
+  assert.equal(result.failure.code, "AI_SERVICE_BUSY");
+  assert.equal(state.createCount, 6);
+  assert.equal(state.debitCount, 0);
 });
 
 test("a failed job is requeued when the same idempotency key is reused after the cooldown", async () => {
@@ -736,10 +693,10 @@ test("cleanupExpired expires each job once instead of restamping the whole backl
 
 
 test("GET AI task is read-only even when output is ready to complete", async () => {
-  const state = harness({ providerName: "toapis", providerPollIntervalMs: 0 });
+  const state = harness({ providerSubmissionOutputUrl: null, providerPollIntervalMs: 0 });
   const created = await state.service.create(REQUEST);
   await new Promise((resolve) => setImmediate(resolve));
-  state.job.provider_output_url = "https://files.toapis.com/output.png";
+  state.job.provider_output_url = "https://aigc-image.cos.myqcloud.com/output.png";
   const before = state.calls.length;
   const result = await state.service.get(REQUEST.userId, created.id);
   assert.equal(result.status, "processing");
@@ -752,7 +709,7 @@ test("GET AI task is read-only even when output is ready to complete", async () 
 });
 
 test("background scan resumes persisted tasks after restart without client polling", async () => {
-  const state = harness({ providerName: "toapis", providerPollIntervalMs: 0 });
+  const state = harness({ providerSubmissionOutputUrl: null, providerPollIntervalMs: 0 });
   await state.service.create(REQUEST);
   await new Promise((resolve) => setImmediate(resolve));
   const restarted = new PostgresAiGenerationService(state.pool, state.provider, state.storage,
@@ -765,7 +722,7 @@ test("background scan resumes persisted tasks after restart without client polli
 });
 
 test("background scan expires queued tasks without submitting or charging", async () => {
-  const state = harness({ providerName: "toapis" });
+  const state = harness({ providerSubmissionOutputUrl: null });
   await state.service.create(REQUEST);
   await new Promise((resolve) => setImmediate(resolve));
   state.job.status = "queued";
@@ -779,7 +736,7 @@ test("background scan expires queued tasks without submitting or charging", asyn
 
 
 test("background recovery does not resubmit a task with unknown submission outcome", async () => {
-  const state = harness({ providerName: "toapis" });
+  const state = harness({ providerSubmissionOutputUrl: null });
   await state.service.create(REQUEST);
   await new Promise((resolve) => setImmediate(resolve));
   state.job.provider_request_id = null;

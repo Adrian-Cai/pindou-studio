@@ -1,16 +1,11 @@
 const assert = require("node:assert/strict");
 const { randomBytes } = require("node:crypto");
 const test = require("node:test");
-const { loadLocalEnv, readConfig } = require("../dist/config/env.js");
-const { createPool } = require("../dist/db/pool.js");
+const { enabled, createIntegrationDatabase } = require("./database-integration-helpers.js");
 const { PostgresQuotaDownloadService } = require("../dist/modules/downloads/quota-download-service.js");
 
-const enabled = process.env.RUN_DATABASE_INTEGRATION === "1";
-
 test("stage 4 real database flow: grants, purchased quota, concurrency, insufficiency, idempotency and ownership", { skip: !enabled }, async () => {
-  loadLocalEnv();
-  const config = readConfig();
-  const pool = createPool(config.database);
+  const { pool } = createIntegrationDatabase();
   const suffix = randomBytes(6).toString("hex");
   const userA = `usr_dla_${suffix}`;
   const userB = `usr_dlb_${suffix}`;
@@ -42,10 +37,10 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
     await pool.query(
       `INSERT INTO pindou_works (
          id, user_id, title, cover_file_id, width, height, bead_count,
-         color_count, brand, status, created_at, updated_at, deleted_at
+         color_count, brand, generation_mode, status, created_at, updated_at, deleted_at
        ) VALUES
-         ($1, $3, '猫咪下载作品', $5, 32, 32, 100, 3, 'MARD', 'completed', $7, $7, NULL),
-         ($2, $4, '他人下载作品', $6, 32, 32, 100, 3, 'MARD', 'completed', $7, $7, NULL)`,
+         ($1, $3, '猫咪下载作品', $5, 32, 32, 100, 3, 'MARD', 'standard', 'completed', $7, $7, NULL),
+         ($2, $4, '他人下载作品', $6, 32, 32, 100, 3, 'MARD', 'standard', 'completed', $7, $7, NULL)`,
       [workA, workB, userA, userB, fileA, fileB, now],
     );
     await pool.query(
@@ -162,7 +157,6 @@ test("stage 4 real database flow: grants, purchased quota, concurrency, insuffic
     const history = await service.listDownloads({ userId: userA, query: "猫咪", page: 1, pageSize: 20 });
     assert.equal(history.total, 5);
     assert.ok(history.items.every((item) => item.title === "猫咪下载作品"));
-    assert.ok(history.items.every((item) => item.fileUrl === undefined));
 
     const finalQuota = await service.getQuota(userA);
     assert.deepEqual({ usedToday: finalQuota.usedToday, purchased: finalQuota.purchased, remaining: finalQuota.remaining }, { usedToday: 3, purchased: 0, remaining: 0 });

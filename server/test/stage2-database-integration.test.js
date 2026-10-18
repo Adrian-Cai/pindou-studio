@@ -1,8 +1,7 @@
 const assert = require("node:assert/strict");
 const { randomBytes } = require("node:crypto");
 const test = require("node:test");
-const { createPool } = require("../dist/db/pool.js");
-const { loadLocalEnv, readConfig } = require("../dist/config/env.js");
+const { enabled, createIntegrationDatabase } = require("./database-integration-helpers.js");
 const { createHttpApplication } = require("../dist/http/app.js");
 const { startHttpServer } = require("../dist/http/server.js");
 const { PostgresAuthRepository } = require("../dist/modules/auth/auth-repository.js");
@@ -14,7 +13,6 @@ const { PostgresWorkService } = require("../dist/modules/works/work-service.js")
 const { hashToken } = require("../dist/shared/identity.js");
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
-const enabled = process.env.RUN_DATABASE_INTEGRATION === "1";
 
 function pattern(firstCell = 0) {
   return {
@@ -28,9 +26,7 @@ function pattern(firstCell = 0) {
 }
 
 test("stage 2 real database flow: works, media and session revocation", { skip: !enabled }, async () => {
-  loadLocalEnv();
-  const config = readConfig();
-  const pool = createPool(config.database);
+  const { config, pool } = createIntegrationDatabase();
   const suffix = randomBytes(8).toString("hex");
   const userId = `usr_it_${suffix}`;
   const sessionId = `ses_it_${suffix}`;

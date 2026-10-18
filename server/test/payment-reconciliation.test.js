@@ -65,6 +65,9 @@ test("reconcile retries unknown attempts only after the retry grace period", asy
   try {
     await reconcileService(pool).reconcilePendingOrders();
     const scan = pool.calls.find((call) => call.sql.includes("attempts.id AS attempt_id"));
+    assert.match(scan.sql, /JOIN pindou_payment_attempts/);
+    assert.match(scan.sql, /attempts\.status IN \('ISSUED', 'UNKNOWN'\)/);
+    assert.match(scan.sql, /status = 'pending'/);
     assert.match(scan.sql, /attempts\.status = 'ISSUED' AND orders\.expires_at <= \$1/);
     assert.match(scan.sql, /attempts\.status = 'UNKNOWN'/);
     assert.match(scan.sql, /attempts\.last_query_at <= \$2/);
@@ -76,30 +79,17 @@ test("reconcile retries unknown attempts only after the retry grace period", asy
   }
 });
 
-test("reconcile only scans orders wired to a virtual payment product", async () => {
-  // 旧通道（商户号 + APIv3）的在途订单拿去 query_order 只会得到「单号不存在」，必须排除
-  const pool = deliveryPool({}, [candidateRow("order_test", 10 * 60_000)]);
-  const capture = captureConsole();
-  try {
-    await reconcileService(pool).reconcilePendingOrders();
-    const scan = pool.calls.find((call) => call.sql.includes("attempts.id AS attempt_id"));
-    assert.match(scan.sql, /JOIN pindou_payment_attempts/);
-    assert.match(scan.sql, /attempts\.status IN \('ISSUED', 'UNKNOWN'\)/);
-    assert.match(scan.sql, /status = 'pending'/);
-  } finally {
-    capture.restore();
-  }
-});
-
-test("an unpaid order inside the stale window stays pending without alerting", async () => {
+test("an unpaid order inside the stale window stays pending without alerting or closing", async () => {
   const pool = deliveryPool({}, [candidateRow("order_test", 2 * 60_000)]);
   const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
   const capture = captureConsole();
   try {
     const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
     assert.equal(summary.unpaid, 1);
+    assert.equal(summary.closed, 0);
     assert.deepEqual(summary.attention, []);
     assert.equal(pool.inserts.length, 0);
+    assert.deepEqual(pool.updates, []);
     assert.equal(capture.errors.length, 0);
   } finally {
     capture.restore();
@@ -133,6 +123,7 @@ test("a confirmed unpaid order closes immediately after its five-minute expiry",
     assert.equal(summary.stalled, 0);
     assert.deepEqual(summary.attention, []);
     assert.equal(pool.orderRow.status, "closed");
+    assert.match(pool.updateSql[0], /AND status = 'pending'/);
     assert.equal(pool.attempt.status, "CLOSED");
     const attemptUpdate = pool.calls.find(({ sql }) => sql.includes("query_count = query_count + 1"));
     assert.ok(attemptUpdate);
@@ -178,36 +169,6 @@ test("a provider-confirmed closed attempt closes the local order", async () => {
       capture.errors.filter((entry) => entry.event === "virtual_payment_reconcile_alert").length,
       0,
     );
-  } finally {
-    capture.restore();
-  }
-});
-
-test("closing an order only touches rows still pending", async () => {
-  const pool = deliveryPool({}, [candidateRow("order_test", 90 * 60_000)]);
-  const gateway = fakeVirtualGateway({ async queryOrder() { return { ...UNPAID_QUERY, state: "CLOSED" }; } });
-  const capture = captureConsole();
-  try {
-    await reconcileService(pool, gateway).reconcilePendingOrders();
-    assert.equal(pool.updates.length, 1);
-    assert.equal(pool.updates[0][0], "order_test");
-    // 唯一能守住「不覆盖已支付订单」的是这条 WHERE：并发下订单可能刚被置为 paid
-    assert.match(pool.updateSql[0], /status = 'closed'/);
-    assert.match(pool.updateSql[0], /AND status = 'pending'/);
-  } finally {
-    capture.restore();
-  }
-});
-
-test("an unpaid order inside the stale window stays pending without closing", async () => {
-  const pool = deliveryPool({}, [candidateRow("order_test", 2 * 60_000)]);
-  const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
-  const capture = captureConsole();
-  try {
-    const summary = await reconcileService(pool, gateway).reconcilePendingOrders();
-    assert.equal(summary.unpaid, 1);
-    assert.equal(summary.closed, 0);
-    assert.deepEqual(pool.updates, [], "未过窗口的订单绝不能被动状态");
   } finally {
     capture.restore();
   }

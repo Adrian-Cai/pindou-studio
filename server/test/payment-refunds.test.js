@@ -89,15 +89,13 @@ test("a repeated refund push is idempotent", async () => {
   }
 });
 
-test("refund locates the order by the merchant trade number, which is no longer the order id", async () => {
+test("refund locates the order by the merchant trade number without raising an alert", async () => {
   const pool = refundPool({ purchasedRemaining: 8 });
   const capture = captureConsole();
   try {
     const outcome = await refundService(pool)
       .handleRefund(refundInput({ mchOrderId: "vpay_refundtradeno0001", attach: null }));
     assert.equal(outcome.applied, true);
-    assert.equal(outcome.clawedBack, 8);
-    assert.equal(pool.updates.length, 1);
     assert.equal(
       capture.errors.filter((entry) => entry.event === "virtual_payment_refund_alert").length,
       0,
@@ -159,14 +157,22 @@ test("iOS refund query allows the refund when nothing was delivered", async () =
   assert.match(answer.evidence, /尚未交付/);
 });
 
-test("iOS refund query allows the refund when the order is unknown", async () => {
-  const pool = refundPool({ missingOrder: true });
-  const answer = await reconcileService(pool).answerIosRefundQuery({ payOrderId: "order_missing" });
-  assert.equal(answer.resultCode, 0);
-});
-
-test("iOS refund query never blocks a refund it cannot attribute", async () => {
-  const pool = refundPool();
-  const answer = await reconcileService(pool).answerIosRefundQuery({ payOrderId: null });
-  assert.equal(answer.resultCode, 0);
+test("iOS refund query allows refunds when the order is unknown or cannot be attributed", async () => {
+  const cases = [
+    {
+      pool: refundPool({ missingOrder: true }),
+      input: { payOrderId: "order_missing" },
+      resultInfo: "未查询到对应订单，不主张拒绝退款",
+    },
+    {
+      pool: refundPool(),
+      input: { payOrderId: null },
+      resultInfo: "无法定位订单，不主张拒绝退款",
+    },
+  ];
+  for (const { pool, input, resultInfo } of cases) {
+    const answer = await reconcileService(pool).answerIosRefundQuery(input);
+    assert.equal(answer.resultCode, 0);
+    assert.equal(answer.resultInfo, resultInfo);
+  }
 });

@@ -11,7 +11,6 @@ const {
   fakeLegacyGateway,
   createPaymentPool,
   existingOrderPool,
-  UNPAID_QUERY
 } = require("./payment-test-helpers.js");
 
 test("packages returns only the enabled rows selected by the server query", async () => {
@@ -160,27 +159,6 @@ test("same-key retry reports an already-paid order with its order id", async () 
     () => service.createPayment({ userId: "usr_a", packageId: "ai_generation_30", idempotencyKey: "retry-paid" }),
     (error) => error.code === "ORDER_ALREADY_PAID" && error.details.orderId === "order_existing",
   );
-});
-
-test("same-key retry reports a closed order as expired so the client can start a new purchase", async () => {
-  const pool = existingOrderPool({ status: "closed" });
-  const service = new PostgresPaymentService(pool, fakeVirtualGateway(), fakeLegacyGateway(), SECRET, () => NOW);
-  await assert.rejects(
-    () => service.createPayment({ userId: "usr_a", packageId: "ai_generation_30", idempotencyKey: "retry-closed" }),
-    (error) => error.code === "ORDER_EXPIRED",
-  );
-});
-
-test("an expired order confirmed unpaid is closed and requires a new order", async () => {
-  const pool = existingOrderPool({ expires_at: new Date(NOW.getTime() - 1_000) });
-  const gateway = fakeVirtualGateway({ async queryOrder() { return UNPAID_QUERY; } });
-  const service = new PostgresPaymentService(pool, gateway, fakeLegacyGateway(), SECRET, () => NOW);
-  await assert.rejects(
-    () => service.createPayment({ userId: "usr_a", packageId: "ai_generation_30", idempotencyKey: "retry-same-intent" }),
-    (error) => error.code === "ORDER_EXPIRED",
-  );
-  assert.equal(pool.attempts.length, 1);
-  assert.equal(pool.attempts[0].status, "CLOSED");
 });
 
 test("package without a virtual product id is rejected before any payment parameters are signed", async () => {

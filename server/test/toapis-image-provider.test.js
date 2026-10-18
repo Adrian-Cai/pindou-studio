@@ -3,6 +3,8 @@ const test = require("node:test");
 const { ToapisImageProvider } = require("../dist/modules/ai/toapis-image-provider.js");
 const { ProviderError } = require("../dist/modules/ai/provider.js");
 
+// 这些是 ToAPIs 适配器契约测试；生产入口当前以 enabled:false 注册该 Provider。
+
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",

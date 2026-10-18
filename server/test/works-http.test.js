@@ -331,15 +331,6 @@ test("PUT /api/works/:id updates title, cover and edited pattern for the authent
   });
 });
 
-test("cross-owner work deletion follows the ownership error contract", async () => {
-  await withApplication(dependencies({ works: { async create() {}, async list() {}, async get() {}, async delete() { throw new AppError(403, "FORBIDDEN", "作品不属于当前用户"); } } }), async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/works/work_other`, { method: "DELETE", headers: { authorization: "Bearer token" } });
-    const body = await response.json();
-    assert.equal(response.status, 403);
-    assert.equal(body.error.code, "FORBIDDEN");
-  });
-});
-
 test("favorite update uses the authenticated user and validates the exact boolean body", async () => {
   const calls = [];
   const works = {
@@ -407,19 +398,28 @@ test("favorite list accepts query pagination and returns favorite timestamps wit
   });
 });
 
-test("cross-owner favorite access follows the ownership error contract", async () => {
+test("cross-owner work operations map ownership failures to FORBIDDEN", async () => {
   const works = {
     ...dependencies().works,
+    async delete() { throw new AppError(403, "FORBIDDEN", "作品不属于当前用户"); },
     async setFavorite() { throw new AppError(403, "FORBIDDEN", "作品不属于当前用户"); },
   };
   await withApplication(dependencies({ works }), async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/works/work_other/favorite`, {
+    const deletion = await fetch(`${baseUrl}/api/works/work_other`, {
+      method: "DELETE",
+      headers: { authorization: "Bearer token" },
+    });
+    const deletionBody = await deletion.json();
+    assert.equal(deletion.status, 403);
+    assert.equal(deletionBody.error.code, "FORBIDDEN");
+
+    const favorite = await fetch(`${baseUrl}/api/works/work_other/favorite`, {
       method: "PATCH",
       headers: { authorization: "Bearer token", "content-type": "application/json" },
       body: JSON.stringify({ favorite: true }),
     });
-    const body = await response.json();
-    assert.equal(response.status, 403);
-    assert.equal(body.error.code, "FORBIDDEN");
+    const favoriteBody = await favorite.json();
+    assert.equal(favorite.status, 403);
+    assert.equal(favoriteBody.error.code, "FORBIDDEN");
   });
 });

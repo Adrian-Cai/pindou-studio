@@ -1,16 +1,11 @@
 const assert = require("node:assert/strict");
 const { randomBytes } = require("node:crypto");
 const test = require("node:test");
-const { loadLocalEnv, readConfig } = require("../dist/config/env.js");
-const { createPool } = require("../dist/db/pool.js");
+const { enabled, createIntegrationDatabase } = require("./database-integration-helpers.js");
 const { PostgresWorkService } = require("../dist/modules/works/work-service.js");
 
-const enabled = process.env.RUN_DATABASE_INTEGRATION === "1";
-
 test("stage 3 real database flow: idempotency, cancellation, ownership and favorite pagination", { skip: !enabled }, async () => {
-  loadLocalEnv();
-  const config = readConfig();
-  const pool = createPool(config.database);
+  const { pool } = createIntegrationDatabase();
   const suffix = randomBytes(6).toString("hex");
   const userA = `usr_fa_${suffix}`;
   const userB = `usr_fb_${suffix}`;
@@ -44,12 +39,12 @@ test("stage 3 real database flow: idempotency, cancellation, ownership and favor
     await pool.query(
       `INSERT INTO pindou_works (
          id, user_id, title, cover_file_id, width, height, bead_count,
-         color_count, brand, status, created_at, updated_at, deleted_at
+         color_count, brand, generation_mode, status, created_at, updated_at, deleted_at
        ) VALUES
-         ($1, $5, '猫咪旧作', $7, 32, 32, 100, 3, 'MARD', 'completed', $9, $9, NULL),
-         ($2, $5, '风景作品', $7, 32, 32, 100, 3, 'MARD', 'completed', $9, $9, NULL),
-         ($3, $5, '猫咪新作', $7, 32, 32, 100, 3, 'MARD', 'completed', $9, $9, NULL),
-         ($4, $6, '他人作品', $8, 32, 32, 100, 3, 'MARD', 'completed', $9, $9, NULL)`,
+         ($1, $5, '猫咪旧作', $7, 32, 32, 100, 3, 'MARD', 'standard', 'completed', $9, $9, NULL),
+         ($2, $5, '风景作品', $7, 32, 32, 100, 3, 'MARD', 'standard', 'completed', $9, $9, NULL),
+         ($3, $5, '猫咪新作', $7, 32, 32, 100, 3, 'MARD', 'standard', 'completed', $9, $9, NULL),
+         ($4, $6, '他人作品', $8, 32, 32, 100, 3, 'MARD', 'standard', 'completed', $9, $9, NULL)`,
       [workCatOld, workOther, workCatNew, foreignWork, userA, userB, fileA, fileB, createdAt],
     );
 

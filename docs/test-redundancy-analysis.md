@@ -1,6 +1,6 @@
 # `server/test` 冗余测试分析报告
 
-> 分析范围：`server/test`（59 个 `*.test.js`，共 **310** 个用例，外加 1 个共享 helper `payment-test-helpers.js`）
+> 初次分析范围：`server/test`（当时 59 个 `*.test.js`，共 **310** 个用例，外加 1 个共享 helper `payment-test-helpers.js`）；后续处置见第七章。
 > 分析方式：全量静态通读 + 逐条回查 `server/src`（TypeScript 源码）核对
 > 说明：测试引用的是编译产物 `server/dist`；本报告判定"是否失效"一律以 `server/src` 当前源码为准。
 
@@ -17,7 +17,7 @@
 
 **关键发现：不存在"完全同名"的重复用例**（已用工具比对全部用例名，无一重名）。冗余全部表现为**跨文件的语义重复**与**已失效断言**，因此需要按业务域逐条判定，无法用文件名去重。
 
-另一个总体性事实：**5 个 `stage*-database-integration.test.js` 默认全部 `skip`**（`RUN_DATABASE_INTEGRATION !== "1"`）。这直接导致其中 3 个文件的失效问题长期未被 CI 暴露——它们不是"冗余"，而是"僵尸测试"。
+另一个总体性事实：初次分析时 **5 个 `stage*-database-integration.test.js` 默认全部 `skip`**（`RUN_DATABASE_INTEGRATION !== "1"`）；删除 stage5 后，当前剩 4 个，仍按项目约定留给真实数据库环境手工验收。
 
 ---
 
@@ -118,7 +118,7 @@
 | A2-3 | `ai-error-contract.test.js` → `导出的内部码清单与实际情况一致且每项可翻译`(L71-77) | 是 `provider / 状态机 / 存储侧的内部码全部能翻译成公开失败`(L59-69) 的**真子集**（都断言 `aiPublicFailure(code)` 非 null） | **合并**，仅保留"清单无重复项"这一独有断言 |
 | A2-4 | `works-http.test.js` → `cross-owner work deletion follows the ownership error contract`(L334) 与 `cross-owner favorite access follows the ownership error contract`(L410) | 骨架完全相同（越权 → 403 `FORBIDDEN`） | **合并为一个越权契约用例** |
 | A2-5 | `text-image-work-service.test.js` → `failed task deletion checks status and owner before deleting the task or temporary file` | L189 实例化的却是 `PostgresTextImageGenerationService`，**本就不属于该文件被测的 works 服务** | **迁移到 `text-image-generation-service.test.js`** |
-| A2-6 | `hunyuan-image-provider.test.js` → `Hunyuan output downloads do not follow redirects or accept non-PNG output` | L201 `redirect:"error"` 断言与 `tokenhub-hunyuan-image-provider.test.js:186` 完全相同 | **合并**，保留一份 |
+| A2-6 | `hunyuan-image-provider.test.js` → `Hunyuan output downloads do not follow redirects or accept non-PNG output` | 与 TokenHub 用例断言同一重定向策略，但两个 Provider 是独立实现 | **保留两份**，避免一方的 SSRF 防护回归失去测试 |
 
 ### A3. 认证 / 隐私 / 存储域
 
@@ -154,11 +154,11 @@
 
 | # | 位置 | 问题 | 建议 |
 |---|---|---|---|
-| S1 ★ | `quota-download-service.test.js:7-28` 自建 `clientPool` | 与 `payment-test-helpers.js:17-36` 几乎逐行相同（仅 `release`/`connectCount` 差异） | 抽到公共 helper |
-| S2 | `orders-http.test.js:84-96` 亦自建 pool 桩 | 同上 | 同上 |
-| S3 ★ | `payment-test-helpers.js:578` 导出 `ENCRYPTED_OPENID`、`ENCRYPTED_SESSION_KEY`；`:29-30` 导出 `connectCount` getter | 全 test 目录**零消费者**（文件内部自用，导出多余） | 从 `module.exports` 中移除 |
-| S4 | `stage2~stage6` 五文件脚手架同构 | `loadLocalEnv/readConfig/createPool/randomBytes 后缀/try-finally 清理 + skip: !enabled` 逐字重复；stage3 L27-54 与 stage4 L26-50 的 fixture SQL 近乎重复 | 抽公共 fixture helper；**业务域不同，用例不要删** |
-| S5 | `dependency-axios-maxbodylength-http2.test.js` + `dependency-axios-fetch-max-body-length.test.js` | 守护同一不变量「maxBodyLength 对未知大小的流式请求体生效」，只是 http2 / fetch 两条适配器分支 | **合并为 `dependency-axios-maxbodylength.test.js`（2 用例）** |
+| S1 ★ | `quota-download-service.test.js:7-28` 自建 `clientPool` | 与 `payment-test-helpers.js:17-36` 几乎逐行相同（仅 `release`/`connectCount` 差异） | ✅ 抽到 `database-test-helpers.js` |
+| S2 | `orders-http.test.js:84-96` 亦自建 pool 桩 | 同上 | ✅ 共用同一 Pool helper |
+| S3 ★ | `payment-test-helpers.js:578` 导出 `ENCRYPTED_OPENID`、`ENCRYPTED_SESSION_KEY`；`:29-30` 导出 `connectCount` getter | 全 test 目录**零消费者**（文件内部自用，导出多余） | ✅ 从 `module.exports` 移除未使用导出与计数器 |
+| S4 | `stage2~stage6` 五文件脚手架同构 | `loadLocalEnv/readConfig/createPool` 与 `RUN_DATABASE_INTEGRATION` 门禁重复；业务 fixture 各异 | ✅ 抽出数据库初始化 helper；stage 专属 fixture 保持独立 |
+| S5 | `dependency-axios-maxbodylength-http2.test.js` + `dependency-axios-fetch-max-body-length.test.js` | 守护同一不变量「maxBodyLength 对未知大小的流式请求体生效」，只是 http2 / fetch 两条适配器分支 | **合并为 `dependency-axios-maxbodylength.test.js`（3 用例）** |
 
 ---
 
@@ -175,7 +175,8 @@
 
 ### P0 — 立即处理（测试在说谎）✅ 已执行
 
-> 执行时间：2026-10-17 ｜ 全量回归：`314 tests / 310 pass / 0 fail / 4 skipped`（原先 5 个 skip，删除 stage5 后剩 stage2/3/4/6）
+> 执行时间：2026-10-17 ｜ 当时全量回归：`314 tests / 310 pass / 0 fail / 4 skipped`（原先 5 个 skip，删除 stage5 后剩 stage2/3/4/6）
+> 本轮回归：2026-10-18 执行 `server` 的 `npm test`，结果为 `303 tests / 299 pass / 0 fail / 4 skipped`；包含 TypeScript build，数据库集成用例按门禁跳过。仓库没有单独 lint 脚本。
 
 1. **C1** stage5 构造签名失配 → ✅ **已删除** `server/test/stage5-database-integration.test.js`
    - 选择删除而非重写的原因：`createPayment` 现依赖 `virtual_product_id`、用户 `session_key_ciphertext` 与 `virtual_out_trade_no`，重写后无法在本地验证（需真实库），交付一个"看起来对但没跑过"的集成测试比删掉更糟。其业务覆盖已由 `payment-orders.test.js`（13 用例）完整接管。
@@ -191,23 +192,26 @@
    - `QQ_LINK_CODE_INVALID` 段不直接丢弃（真实仓库当时无覆盖），已**迁移**为 `auth-repository.test.js` 新增用例 `an unknown or already-consumed link code aborts linking before touching the user`，用 SQL 级断言验证：抛错码、未 UPDATE 用户、未建 session、以 ROLLBACK 收尾
    - 用例更名为 `QQ identity links to the authenticated WeChat user`，并加注释说明为何不在此处断言拒绝分支
 
-### P1 — 与负责人确认后处置（涉及死代码）
-5. **C6** wechat `createPayment` 无调用点 → 确认废弃则删代码+删测试
-6. **C7** ToAPIs 恒 `enabled:false` → 确认废弃则删整文件（8 用例）+ 改造轮询用例
+### P1 — 死代码与不可达路径复核
+5. **C6** wechat `createPayment` 无调用点 → ✅ **保留适配器实现与测试**，并在测试旁说明生产下单当前走虚拟支付；旧网关仍负责处理遗留通知。
+6. **C7** ToAPIs 生产配置为 `enabled:false` → ✅ **状态机用例改为 provider 无关的异步任务模拟**；适配器测试保留并注明不代表当前生产 Provider 选择。
 
 ### P2 — 直接合并（纯重复，无争议）
-7. A1-1 ~ A1-8（支付域 8 条）
-8. A2-1 ~ A2-6（AI 域 6 条）
-9. A3-1 ~ A3-5（3 条）
-10. S5 axios http2/fetch 合并
+7. A1-1 ~ A1-8（支付域 8 条）→ ✅ **已合并或删除重复断言**；未知订单输入合并后保留不同分支的结果文案断言
+8. A2-1 ~ A2-6（AI 域 6 条）→ ✅ **已合并同一状态机用例**；A2-6 经源码复核后保留两个独立 Provider 的断言
+9. A3-1 ~ A3-5（认证、隐私、内容安全、下载）→ ✅ **已处理**
+10. S5 axios http2/fetch 合并 → ✅ **已合并为 `dependency-axios-maxbodylength.test.js`**，适配器分支用例均保留
 
 ### P3 — 清理与加固
-11. **C2 / C3** stage3/4 补 `generation_mode` 或改走 service
-12. **S1~S4** helper 去重、移除死导出
-13. **B 类** 逐条裁掉纯透传断言，保留分层防御
+11. **C2 / C3** stage3/4 fixture 缺少必填 `generation_mode` → ✅ **已修复**（2026-10-18）
+   - 两处 `pindou_works` INSERT 均显式写入 `generation_mode = 'standard'`，匹配普通作品数据；避免经被测 service 建 fixture，保持集成场景边界清晰。
+   - 验证限制：集成测试默认跳过，且本次未连接真实数据库执行。
+12. **S1~S4** helper 去重、移除死导出 → ✅ **已抽取共享 Pool 与集成数据库初始化 helper**，移除未使用导出；不同 stage 的业务 fixture 仍各自维护
+13. **B 类** 逐条裁掉纯透传断言，保留分层防御 → ✅ **已处理适用项**；路由级未调用保护和不同实现的断言予以保留
 
-### P4 — 建议补一个门禁
-5 个 stage 测试默认 `skip`，建议：**要么在 CI 中开启 `RUN_DATABASE_INTEGRATION=1` 让它们真正生效，要么删除**。当前"写了但永不运行且已失配"是最差状态——既无人维护，又给人虚假的安全感。
+### P4 — 数据库集成测试的运行方式
+
+✅ **维持手工验收方式**。`.cnb.yml` 已明确排除 `*database-integration*`，并注明这些用例依赖真实 PostgreSQL；当前流水线没有 PostgreSQL 服务。启用 CI 门禁需要先提供数据库服务及迁移初始化流程，因此本次不改成一个缺少依赖的假门禁。
 
 ---
 

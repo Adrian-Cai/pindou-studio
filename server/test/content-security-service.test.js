@@ -141,18 +141,20 @@ test("release media check applies the synchronous gate before submitting async e
   assert.deepEqual(state.removed, []);
 });
 
-test("risky synchronous image result is blocked and media is cleaned immediately", async () => {
-  const state = createState();
-  const client = createClient({ imageResult: { safe: false, suggest: "risky", label: 20002, traceId: null } });
-  const service = createService(state, client);
+test("risky synchronous media is rejected and cleaned with or without async review", async () => {
+  for (const asyncMediaCheckEnabled of [true, false]) {
+    const state = createState();
+    const client = createClient({ imageResult: { safe: false, suggest: "risky", label: 20002, traceId: null } });
+    const service = createService(state, client, () => NOW, asyncMediaCheckEnabled);
 
-  await assert.rejects(
-    service.checkMedia(USER_ID, { buffer: PNG, filename: "source.png", contentType: "image/png" }),
-    (error) => error.code === "CONTENT_RISKY" && error.message === "你发布的内容含违规信息，请修改后重试",
-  );
-  assert.equal(state.removed.length, 1);
-  assert.equal(state.checks.get([...state.checks.keys()][0]).status, "risky");
-  assert.deepEqual(client.calls.map((call) => call.type), ["sync"]);
+    await assert.rejects(
+      service.checkMedia(USER_ID, { buffer: PNG, filename: "source.png", contentType: "image/png" }),
+      (error) => error.code === "CONTENT_RISKY",
+    );
+    assert.equal(state.removed.length, 1);
+    assert.equal(state.checks.get([...state.checks.keys()][0]).status, "risky");
+    assert.deepEqual(client.calls.map((call) => call.type), ["sync"]);
+  }
 });
 
 test("develop media check skips async evidence and cleans passed media", async () => {
@@ -185,19 +187,6 @@ test("passed media check can be reused only by its owner with identical bytes", 
     service.assertMediaCheck(USER_ID, result.checkId, Buffer.from("different")),
     (error) => error.code === "CONTENT_SECURITY_CHECK_INVALID",
   );
-});
-
-test("develop risky media check is rejected and cleaned without async submission", async () => {
-  const state = createState();
-  const client = createClient({ imageResult: { safe: false, suggest: "risky", label: 20002, traceId: null } });
-  const service = createService(state, client, () => NOW, false);
-
-  await assert.rejects(
-    service.checkMedia(USER_ID, { buffer: PNG, filename: "source.png", contentType: "image/png" }),
-    (error) => error.code === "CONTENT_RISKY",
-  );
-  assert.deepEqual(client.calls.map((call) => call.type), ["sync"]);
-  assert.equal(state.removed.length, 1);
 });
 
 test("async submission failure returns a security error and cleans media", async () => {

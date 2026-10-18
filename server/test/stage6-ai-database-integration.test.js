@@ -1,11 +1,8 @@
 const assert = require("node:assert/strict");
 const { randomBytes } = require("node:crypto");
 const test = require("node:test");
-const { loadLocalEnv, readConfig } = require("../dist/config/env.js");
-const { createPool } = require("../dist/db/pool.js");
+const { enabled, createIntegrationDatabase } = require("./database-integration-helpers.js");
 const { PostgresAiGenerationService } = require("../dist/modules/ai/ai-generation-service.js");
-
-const enabled = process.env.RUN_DATABASE_INTEGRATION === "1";
 
 async function waitForTerminal(service, userId, jobId) {
   let result = await service.get(userId, jobId);
@@ -18,9 +15,7 @@ async function waitForTerminal(service, userId, jobId) {
 }
 
 test("stage 6 real database flow: AI success, failure, output asset and idempotent debit", { skip: !enabled }, async () => {
-  loadLocalEnv();
-  const config = readConfig();
-  const pool = createPool(config.database);
+  const { config, pool } = createIntegrationDatabase();
   const suffix = randomBytes(6).toString("hex");
   const userId = `usr_ai_${suffix}`;
   const inputFileId = `file_ai_${suffix}`;

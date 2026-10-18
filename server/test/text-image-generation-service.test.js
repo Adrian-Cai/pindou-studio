@@ -119,3 +119,45 @@ test('文生图尺寸校验、持久化与 Provider 传递使用同一白名单'
     assert.deepEqual(db.providerInput, { prompt: '一只猫', size })
   }
 })
+
+test('failed task deletion checks status and owner before deleting the task or temporary file', async () => {
+  let status = 'succeeded'
+  let owner = 'usr_current'
+  let deletedTask = false
+  let deletedFile = false
+  let quotaQueries = 0
+  let removed = false
+  const pool = {
+    async connect() {
+      return {
+        async query(sql, args = []) {
+          const text = sql.toLowerCase()
+          if (text.includes('pindou_quota_transactions')) quotaQueries += 1
+          if (text === 'begin' || text === 'commit' || text === 'rollback') return { rows: [], rowCount: 0 }
+          if (text.includes('select jobs.*, files.object_key')) {
+            return owner === args[1] ? { rows: [{ id: args[0], status, output_file_id: 'file_output', output_object_key: 'ai/output.png' }], rowCount: 1 } : { rows: [], rowCount: 0 }
+          }
+          if (text.includes('delete from pindou_text_image_generation_jobs')) deletedTask = true
+          if (text.includes('delete from pindou_file_assets')) deletedFile = true
+          return { rows: [], rowCount: 1 }
+        },
+        release() {},
+      }
+    },
+  }
+  const storage = { async remove(key) { assert.equal(key, 'ai/output.png'); removed = true } }
+  const service = new PostgresTextImageGenerationService(pool, {}, storage, { dailyAiGenerations: 1 })
+
+  await assert.rejects(service.deleteFailed('usr_current', 'textjob_0123456789abcdef'), (error) => error.statusCode === 409)
+  assert.equal(deletedTask, false)
+  status = 'failed'
+  owner = 'usr_other'
+  await assert.rejects(service.deleteFailed('usr_current', 'textjob_0123456789abcdef'), (error) => error.statusCode === 404)
+  assert.equal(deletedTask, false)
+  owner = 'usr_current'
+  await service.deleteFailed('usr_current', 'textjob_0123456789abcdef')
+  assert.equal(deletedTask, true)
+  assert.equal(deletedFile, true)
+  assert.equal(removed, true)
+  assert.equal(quotaQueries, 0)
+})

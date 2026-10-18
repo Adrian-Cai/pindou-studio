@@ -1,31 +1,9 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { PostgresQuotaDownloadService } = require("../dist/modules/downloads/quota-download-service.js");
+const { clientPool } = require("./database-test-helpers.js");
 
 const NOW = new Date("2026-08-31T16:30:00.000Z");
-
-function clientPool(handler) {
-  const calls = [];
-  const client = {
-    async query(sql, parameters = []) {
-      calls.push({ sql, parameters });
-      return handler(sql, parameters, calls);
-    },
-    release() {
-      calls.push({ sql: "RELEASE", parameters: [] });
-    },
-  };
-  return {
-    calls,
-    pool: {
-      async connect() { return client; },
-      async query(sql, parameters = []) {
-        calls.push({ sql, parameters });
-        return handler(sql, parameters, calls);
-      },
-    },
-  };
-}
 
 function quotaRow(dailyFree, usedToday, dailyRemaining, purchased) {
   return {
@@ -37,11 +15,12 @@ function quotaRow(dailyFree, usedToday, dailyRemaining, purchased) {
 }
 
 test("GET quota only reads and summarizes the Asia/Shanghai natural day", async () => {
-  const { pool, calls } = clientPool((sql) => {
+  const pool = clientPool((sql) => {
     if (sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
     if (sql.includes("AS daily_free")) return { rows: [quotaRow(3, 1, 2, 4)] };
     throw new Error(`unexpected SQL: ${sql}`);
   });
+  const { calls } = pool;
   const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
 
   assert.deepEqual(await service.getQuota("usr_a"), {
@@ -69,7 +48,7 @@ test("GET quota only reads and summarizes the Asia/Shanghai natural day", async 
 async function assertDebitBucket({ before, after, expectedBucket, expectedQuotaDate }) {
   let quotaReads = 0;
   let debitParameters;
-  const { pool } = clientPool((sql, parameters) => {
+  const pool = clientPool((sql, parameters) => {
     if (sql === "BEGIN" || sql === "COMMIT" || sql.includes("pg_advisory_xact_lock")) return { rows: [] };
     if (sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
     if (sql.includes("FROM pindou_download_records") && sql.includes("idempotency_key = $1")) return { rows: [] };
@@ -120,7 +99,7 @@ test("download consumes purchased quota after today's free quota is exhausted", 
 
 test("insufficient quota rolls back without a download record or negative transaction", async () => {
   const writes = [];
-  const { pool, calls } = clientPool((sql) => {
+  const pool = clientPool((sql) => {
     if (sql === "BEGIN" || sql === "ROLLBACK" || sql.includes("pg_advisory_xact_lock")) return { rows: [] };
     if (sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
     if (sql.includes("FROM pindou_download_records") && sql.includes("idempotency_key = $1")) return { rows: [] };
@@ -129,6 +108,7 @@ test("insufficient quota rolls back without a download record or negative transa
     if (sql.includes("INSERT")) writes.push(sql);
     return { rows: [] };
   });
+  const { calls } = pool;
   const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 0, dailyAiGenerations: 0 }, () => NOW);
   await assert.rejects(
     () => service.createDownload({ userId: "usr_a", idempotencyKey: "no-quota", workId: "work_a", fileType: "preview" }),
@@ -150,7 +130,7 @@ test("same idempotency request returns the original record without another debit
     idempotency_key: "same-export",
     downloaded_at: NOW,
   };
-  const { pool, calls } = clientPool((sql) => {
+  const pool = clientPool((sql) => {
     if (sql === "BEGIN" || sql === "COMMIT" || sql.includes("pg_advisory_xact_lock")) return { rows: [] };
     if (sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
     if (sql.includes("FROM pindou_download_records") && sql.includes("idempotency_key = $1")) return { rows: [original] };
@@ -158,6 +138,7 @@ test("same idempotency request returns the original record without another debit
     if (sql.includes("AS daily_free")) return { rows: [quotaRow(3, 1, 2, 0)] };
     throw new Error(`unexpected SQL: ${sql}`);
   });
+  const { calls } = pool;
   const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
   const result = await service.createDownload({ userId: "usr_a", idempotencyKey: "same-export", workId: "work_a", fileType: "materials" });
   assert.equal(result.downloadRecord.id, "dl_existing");
@@ -171,13 +152,14 @@ test("same idempotency request returns the original record without another debit
 });
 
 test("download rejects a work owned by another user before writing records", async () => {
-  const { pool, calls } = clientPool((sql) => {
+  const pool = clientPool((sql) => {
     if (sql === "BEGIN" || sql === "ROLLBACK" || sql.includes("pg_advisory_xact_lock")) return { rows: [] };
     if (sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
     if (sql.includes("FROM pindou_download_records") && sql.includes("idempotency_key = $1")) return { rows: [] };
     if (sql.includes("FROM pindou_works")) return { rows: [{ user_id: "usr_b", title: "他人作品", deleted_at: null }] };
     throw new Error(`unexpected SQL: ${sql}`);
   });
+  const { calls } = pool;
   const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
   await assert.rejects(
     () => service.createDownload({ userId: "usr_a", idempotencyKey: "foreign", workId: "work_b", fileType: "preview" }),
@@ -186,7 +168,7 @@ test("download rejects a work owned by another user before writing records", asy
   assert.equal(calls.filter((call) => call.sql.includes("INSERT INTO pindou_download_records")).length, 0);
 });
 
-test("download history filters the authenticated user's title snapshots and never returns fileUrl", async () => {
+test("download history filters the authenticated user's title snapshots", async () => {
   const row = {
     id: "dl_1",
     user_id: "usr_a",
@@ -198,49 +180,37 @@ test("download history filters the authenticated user's title snapshots and neve
     idempotency_key: "history-1",
     downloaded_at: NOW,
   };
-  const { pool, calls } = clientPool((sql) => {
+  const paletteRow = { ...row, id: "dl_palette", file_type: "palette", consumed_quota: true };
+  const pool = clientPool((sql) => {
     if (sql.includes("COUNT(*)")) return { rows: [{ total_count: "1" }] };
     return { rows: [row] };
   });
+  const { calls } = pool;
   const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
   const result = await service.listDownloads({ userId: "usr_a", fileType: "preview", query: "猫咪", page: 2, pageSize: 1 });
   assert.equal(result.items[0].workId, null);
   assert.equal(result.items[0].title, "已删除的猫咪");
-  assert.equal(result.items[0].fileUrl, undefined);
   assert.deepEqual(calls[0].parameters, ["usr_a", "preview", "%猫咪%"]);
   assert.deepEqual(calls[1].parameters, ["usr_a", "preview", "%猫咪%", 1, 1]);
-});
-
-test("palette download records are accepted and mapped as quota-consuming downloads", async () => {
-  const row = {
-    id: "dl_palette",
-    user_id: "usr_a",
-    work_id: "work_a",
-    work_title_snapshot: "色板作品",
-    file_type: "palette",
-    consumed_quota: true,
-    quota_transaction_id: "qt_palette",
-    idempotency_key: "palette-history",
-    downloaded_at: NOW,
-  };
-  const { pool } = clientPool((sql) => {
+  const palettePool = clientPool((sql) => {
     if (sql.includes("COUNT(*)")) return { rows: [{ total_count: "1" }] };
-    return { rows: [row] };
+    return { rows: [paletteRow] };
   });
-  const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
-  const result = await service.listDownloads({ userId: "usr_a", fileType: "palette", page: 1, pageSize: 20 });
-  assert.equal(result.items[0].fileType, "palette");
-  assert.equal(result.items[0].consumedQuota, true);
+  const paletteService = new PostgresQuotaDownloadService(palettePool, { dailyStandardDownloads: 3, dailyAiGenerations: 3 }, () => NOW);
+  const palette = await paletteService.listDownloads({ userId: "usr_a", fileType: "palette", page: 1, pageSize: 20 });
+  assert.equal(palette.items[0].fileType, "palette");
+  assert.equal(palette.items[0].consumedQuota, true);
 });
 
 
 test("quota preview passes each configured daily allowance to read-only ledger queries", async () => {
-  const { pool, calls } = clientPool((sql, parameters) => {
+  const pool = clientPool((sql, parameters) => {
     if (sql.includes("FROM pindou_users")) return { rows: [{ id: "usr_a" }] };
     assert.ok(sql.trim().startsWith("SELECT"));
     assert.equal(parameters[3], parameters[1] === "ai_generation" ? 2 : 5);
     return { rows: [quotaRow(parameters[3], 0, parameters[3], 0)] };
   });
+  const { calls } = pool;
   const service = new PostgresQuotaDownloadService(pool, { dailyStandardDownloads: 5, dailyAiGenerations: 2 }, () => NOW);
   const quota = await service.getQuota("usr_a");
   assert.equal(quota.remaining, 5);

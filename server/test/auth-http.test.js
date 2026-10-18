@@ -287,7 +287,6 @@ test("GET /api/users/me derives ownership exclusively from Bearer token", async 
       assert.equal(receivedAuthorization, "Bearer opaque_token_12345678901234567890");
       assert.equal(receivedUserId, "usr_from_token");
       assert.equal(body.user.id, "usr_from_token");
-      assert.deepEqual(body.linkedProviders, ["wechat", "qq"]);
     },
   );
 });

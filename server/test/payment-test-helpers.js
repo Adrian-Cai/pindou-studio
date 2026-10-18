@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { encryptOpenid, encryptSessionKey } = require("../dist/shared/identity.js");
 const { PostgresPaymentService } = require("../dist/modules/payments/payment-service.js");
+const { clientPool } = require("./database-test-helpers.js");
 
 const NOW = new Date("2026-08-31T12:00:00.000Z");
 const SECRET = "test_openid_hash_secret_32_characters_long";
@@ -14,27 +15,6 @@ const SESSION_KEY = "test-session-key";
  * 早期版本返回 `{ pool, calls }` 再在各用例里 `.pool` 解包，结果同一文件里出现了
  * 两种传参写法，批量替换时极易双重解包或漏解包。这里统一返回本体，附带信息挂在属性上。
  */
-function clientPool(handler) {
-  const calls = [];
-  let connectCount = 0;
-  const client = {
-    async query(sql, parameters = []) {
-      calls.push({ sql, parameters });
-      return handler(sql, parameters, calls);
-    },
-    release() {},
-  };
-  return {
-    calls,
-    get connectCount() { return connectCount; },
-    async connect() { connectCount += 1; return client; },
-    async query(sql, parameters = []) {
-      calls.push({ sql, parameters });
-      return handler(sql, parameters, calls);
-    },
-  };
-}
-
 function packageRow(overrides = {}) {
   return {
     id: "ai_generation_30",
@@ -575,4 +555,4 @@ function refundService(pool) {
  * 表面上余额归零看着正常，用户下次再买时新额度会被这个负余额悄悄吃掉。
  */
 
-module.exports = { assert, test, PostgresPaymentService, NOW, SECRET, OPENID, SESSION_KEY, ENCRYPTED_OPENID, ENCRYPTED_SESSION_KEY, clientPool, packageRow, fakeVirtualGateway, fakeLegacyGateway, createPaymentPool, existingOrderPool, deliveryPool, deliveryInput, RECONCILE_OPTIONS, candidateRow, UNPAID_QUERY, captureConsole, reconcileService, refundPool, refundInput, refundService };
+module.exports = { assert, test, PostgresPaymentService, NOW, SECRET, OPENID, SESSION_KEY, clientPool, packageRow, fakeVirtualGateway, fakeLegacyGateway, createPaymentPool, existingOrderPool, deliveryPool, deliveryInput, RECONCILE_OPTIONS, candidateRow, UNPAID_QUERY, captureConsole, reconcileService, refundPool, refundInput, refundService };

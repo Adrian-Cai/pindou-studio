@@ -57,6 +57,8 @@ function muteUnmappedDiagnostics(callback) {
 }
 
 test("provider / 状态机 / 存储侧的内部码全部能翻译成公开失败", () => {
+  assert.ok(AI_INTERNAL_FAILURE_CODES.length > 0);
+  assert.equal(new Set(AI_INTERNAL_FAILURE_CODES).size, AI_INTERNAL_FAILURE_CODES.length, "清单里有重复项");
   const codes = [...PROVIDER_INTERNAL_CODES, ...JOB_INTERNAL_CODES, ...FILE_INTERNAL_CODES];
   for (const code of codes) {
     const failure = aiPublicFailure(code);
@@ -65,14 +67,6 @@ test("provider / 状态机 / 存储侧的内部码全部能翻译成公开失败
     assert.ok(failure.message.length > 0, `${code} 的公开文案为空`);
     assert.ok(failure.code !== "AI_GENERATION_FAILED" || code === "AI_GENERATION_INTERNAL_ERROR",
       `${code} 被翻译成了兜底码 AI_GENERATION_FAILED，等于丢掉真实原因`);
-  }
-});
-
-test("导出的内部码清单与实际情况一致且每项可翻译", () => {
-  assert.ok(AI_INTERNAL_FAILURE_CODES.length > 0);
-  assert.equal(new Set(AI_INTERNAL_FAILURE_CODES).size, AI_INTERNAL_FAILURE_CODES.length, "清单里有重复项");
-  for (const code of AI_INTERNAL_FAILURE_CODES) {
-    assert.ok(aiPublicFailure(code), `${code} 登记了映射却翻译不出公开失败`);
   }
 });
 

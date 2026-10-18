@@ -98,7 +98,8 @@ test("official callback verifier validates raw signature, freshness, and AES-GCM
   );
 });
 
-test("official JSAPI order call verifies WeChat response and returns only client-safe payment fields", async () => {
+// 生产下单链路当前改走虚拟支付；此用例只守护旧商户号网关的适配器实现。
+test("official JSAPI order adapter verifies WeChat response and returns only client-safe payment fields", async () => {
   let capturedRequest;
   const fetchImplementation = async (url, init) => {
     capturedRequest = { url, init };

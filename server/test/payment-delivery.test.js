@@ -94,14 +94,6 @@ test("delivery rejects a mismatch between paid amount and order snapshot", async
   assert.equal(pool.inserts.length, 0);
 });
 
-test("delivery for a missing order is rejected without a grant", async () => {
-  const pool = deliveryPool({ id: "order_other", virtual_out_trade_no: "vpay_other000000001" });
-  const service = new PostgresPaymentService(pool, fakeVirtualGateway(), fakeLegacyGateway(), SECRET, () => NOW);
-  await assert.rejects(() => service.handleDelivery(deliveryInput()), /支付订单不存在/);
-  // 订单都查不到，绝不能出现任何 UPDATE/INSERT
-  assert.equal(pool.calls.some((call) => call.sql.includes("UPDATE pindou_orders")), false);
-});
-
 test("delivery without order identifier is rejected before any query", async () => {
   const pool = deliveryPool();
   let queried = false;
@@ -150,6 +142,7 @@ test("delivery for an unknown merchant trade number is rejected without a grant"
     /支付订单不存在/,
   );
   assert.equal(pool.inserts.length, 0);
+  assert.equal(pool.calls.some((call) => call.sql.includes("UPDATE pindou_orders")), false);
 });
 
 test("legacy notification still settles in-flight orders from the previous channel", async () => {

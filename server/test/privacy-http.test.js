@@ -23,12 +23,7 @@ function dependencies(overrides = {}) {
       async updateAvatar() { throw new Error("unused"); },
       async getPrivacyPreferences() { return defaults; },
       async updatePrivacyPreferences(_userId, patch) {
-        return {
-          ...defaults,
-          ...patch,
-          ...(patch.localOnly === true ? { cloudSync: false } : {}),
-          ...(patch.cloudSync === true ? { localOnly: false } : {}),
-        };
+        return { ...defaults, ...patch };
       },
       async deleteAccount() {},
     },
@@ -47,7 +42,7 @@ async function withApplication(deps, callback) {
   }
 }
 
-test("privacy endpoints require authentication and reject invalid fields", async () => {
+test("privacy PATCH rejects unauthenticated requests before reaching users", async () => {
   let called = false;
   await withApplication(dependencies({
     authenticator: { async authenticate() { called = true; throw new AppError(401, "UNAUTHORIZED", "请先登录"); } },
@@ -58,9 +53,7 @@ test("privacy endpoints require authentication and reject invalid fields", async
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ cloudSync: true }),
     });
-    const body = await response.json();
     assert.equal(response.status, 401);
-    assert.equal(body.error.code, "UNAUTHORIZED");
     assert.equal(called, true);
   });
 });

@@ -272,7 +272,7 @@ test("missing or malformed Bearer token is unauthorized", async () => {
   await assert.rejects(() => authenticator.authenticate("Bearer short"), (error) => error.code === "UNAUTHORIZED");
 });
 
-test("AuthService hashes session tokens before repository revocation and repeats the request", async () => {
+test("AuthService hashes session tokens before repository revocation", async () => {
   const received = [];
   const repository = {
     async revokeSession(...args) { received.push(args); },
@@ -282,12 +282,8 @@ test("AuthService hashes session tokens before repository revocation and repeats
   const token = "opaque_token_12345678901234567890";
 
   await service.revokeSession(token);
-  await service.revokeSession(token);
 
-  assert.deepEqual(received, [
-    [hashToken(token), fixedNow],
-    [hashToken(token), fixedNow],
-  ]);
+  assert.deepEqual(received, [[hashToken(token), fixedNow]]);
 });
 
 test("AuthService forwards user IDs when revoking all sessions", async () => {

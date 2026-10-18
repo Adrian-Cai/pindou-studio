@@ -4,6 +4,7 @@ const { AppError } = require("../dist/shared/app-error.js");
 const { createHttpApplication } = require("../dist/http/app.js");
 const { PostgresPaymentService } = require("../dist/modules/payments/payment-service.js");
 const { startHttpServer } = require("../dist/http/server.js");
+const { clientPool } = require("./database-test-helpers.js");
 
 async function withServer(payments, run) {
   const unused = new Proxy({}, { get() { return async () => { throw new Error("unexpected dependency call"); }; } });
@@ -82,17 +83,13 @@ function orderRow(overrides = {}) {
 }
 
 function serviceWithRows(rows, total = rows.length, pending = 0) {
-  const calls = [];
-  const pool = {
-    async query(sql, parameters = []) {
-      calls.push({ sql, parameters });
-      // pending 计数与 createPayment 的 5 单上限同口径（不筛 quota_kind）
-      if (sql.includes("AS pending")) return { rows: [{ pending }] };
-      if (sql.includes("COUNT(*)")) return { rows: [{ total }] };
-      return { rows: rows.filter((row) => row.quota_kind_snapshot === "ai_generation") };
-    },
-  };
-  return { service: new PostgresPaymentService(pool, {}, "unused-secret"), calls };
+  const pool = clientPool((sql) => {
+    // pending 计数与 createPayment 的 5 单上限同口径（不筛 quota_kind）
+    if (sql.includes("AS pending")) return { rows: [{ pending }] };
+    if (sql.includes("COUNT(*)")) return { rows: [{ total }] };
+    return { rows: rows.filter((row) => row.quota_kind_snapshot === "ai_generation") };
+  });
+  return { service: new PostgresPaymentService(pool, {}, "unused-secret"), calls: pool.calls };
 }
 
 test("order list uses only the current user, sorts by creation time, returns snapshots, filters non-AI rows, and hides payment fields", async () => {
