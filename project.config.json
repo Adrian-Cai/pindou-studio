@@ -1,50 +1,50 @@
 {
-  "miniprogramRoot": "miniprogram/",
-  "cloudfunctionRoot": "cloudfunctions/",
-  "setting": {
-    "swc": false,
-    "disableSWC": true,
-    "es6": true,
-    "postcss": true,
-    "minified": true,
-    "uglifyFileName": true,
-    "enhance": true,
-    "packNpmRelationList": [],
-    "babelSetting": {
-      "ignore": [],
-      "disablePlugins": [],
-      "outputPath": ""
-    },
-    "useCompilerPlugins": [
-      "typescript"
-    ]
-  },
-  "compileType": "miniprogram",
-  "simulatorPluginLibVersion": {},
-  "packOptions": {
-    "ignore": [
-      {
-        "type": "folder",
-        "value": "tests"
-      },
-      {
-        "type": "folder",
-        "value": "test-assets"
-      },
-      {
-        "type": "folder",
-        "value": "/projectmaps"
-      }
-    ],
-    "include": [
-      {
-        "type": "folder",
-        "value": "assets/samples"
-      }
-    ]
-  },
-  "appid": "wx78d89d6e64966b18",
-  "qqappid": "",
-  "projectname": "pindou_studio",
-  "editorSetting": {}
+	"miniprogramRoot": "miniprogram/",
+	"cloudfunctionRoot": "cloudfunctions/",
+	"setting": {
+		"swc": false,
+		"disableSWC": true,
+		"es6": true,
+		"postcss": true,
+		"minified": true,
+		"uglifyFileName": true,
+		"enhance": true,
+		"packNpmRelationList": [],
+		"babelSetting": {
+			"ignore": [],
+			"disablePlugins": [],
+			"outputPath": ""
+		},
+		"useCompilerPlugins": [
+			"typescript"
+		]
+	},
+	"compileType": "miniprogram",
+	"simulatorPluginLibVersion": {},
+	"packOptions": {
+		"ignore": [
+			{
+				"type": "folder",
+				"value": "tests"
+			},
+			{
+				"type": "folder",
+				"value": "test-assets"
+			},
+			{
+				"type": "folder",
+				"value": "/projectmaps"
+			}
+		],
+		"include": [
+			{
+				"type": "folder",
+				"value": "assets/samples"
+			}
+		]
+	},
+	"appid": "wx78d89d6e64966b18",
+	"qqappid": "",
+	"projectname": "pindou_studio",
+	"editorSetting": {}
 }
