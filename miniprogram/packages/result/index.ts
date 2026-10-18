@@ -635,6 +635,7 @@ Page({
     return {
       title: '看看我刚生成的拼豆图纸',
       path: '/pages/home/index',
+      imageUrl: '/assets/samples/share-result.jpg',
     }
   },
 })

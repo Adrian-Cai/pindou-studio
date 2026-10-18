@@ -107,7 +107,7 @@ Page({
     return {
       title: '来看看我做的拼豆作品',
       path: `/pages/projects/index?tab=${this.data.activeTab}`,
-      ...(imageUrl ? { imageUrl } : {}),
+      imageUrl: imageUrl || '/assets/samples/share-projects.jpg',
     }
   },
 

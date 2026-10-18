@@ -89,6 +89,7 @@ Page({
     return {
       title: '一起体验拼豆创作',
       path: '/pages/profile/index',
+      imageUrl: '/assets/samples/share-profile.jpg',
     }
   },
 
