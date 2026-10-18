@@ -15,12 +15,14 @@ const loginInput = {
   linkCodeHash: "link-code-hash",
 };
 
-function makeClient({ existingQqUser } = {}) {
+function makeClient({ existingQqUser, missingLinkChallenge } = {}) {
   const statements = [];
   const client = {
     async query(sql, parameters = []) {
       statements.push({ sql, parameters });
-      if (sql.startsWith("SELECT user_id")) return { rows: [{ user_id: "usr_wechat" }] };
+      if (sql.startsWith("SELECT user_id")) {
+        return { rows: missingLinkChallenge ? [] : [{ user_id: "usr_wechat" }] };
+      }
       if (sql.startsWith("SELECT id, nickname")) return { rows: [{
         id: "usr_wechat", nickname: "豆友", avatar_url: null, deleted_at: null, qq_openid_hash: null,
       }] };
@@ -49,6 +51,19 @@ test("QQ link updates the WeChat user, creates a QQ session and consumes the cod
   const consumed = statements.find(({ sql }) => sql.includes("UPDATE pindou_qq_link_challenges"));
   assert.deepEqual(consumed.parameters, ["link-code-hash", loginInput.now]);
   assert.equal(statements.at(-1).sql, "COMMIT");
+});
+
+test("an unknown or already-consumed link code aborts linking before touching the user", async () => {
+  const { client, statements } = makeClient({ missingLinkChallenge: true });
+  const repository = new PostgresAuthRepository({ async connect() { return client; } });
+
+  await assert.rejects(() => repository.linkQqAndCreateLogin(loginInput), (error) => {
+    assert.equal(error.code, "QQ_LINK_CODE_INVALID");
+    return true;
+  });
+  assert.equal(statements.some(({ sql }) => sql.includes("UPDATE pindou_users")), false);
+  assert.equal(statements.some(({ sql }) => sql.includes("INSERT INTO pindou_auth_sessions")), false);
+  assert.equal(statements.at(-1).sql, "ROLLBACK");
 });
 
 test("QQ identity conflict aborts linking without creating a session or consuming the code", async () => {

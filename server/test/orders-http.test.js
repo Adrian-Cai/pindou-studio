@@ -154,13 +154,15 @@ test("order list uses only the current user, sorts by creation time, returns sna
   assert.equal(response.items[0].wx_transaction_id, undefined);
 });
 
-test("empty order list is returned without loading package configuration", async () => {
+test("empty order list is returned with the requested page window", async () => {
   const { service, calls } = serviceWithRows([], 0, 0);
   const response = await service.listOrders({ userId: "usr_empty", page: 3, pageSize: 5 });
   assert.match(response.serverTime, /^\d{4}-\d{2}-\d{2}T/u);
   assert.deepEqual({ ...response, serverTime: null }, { total: 0, page: 3, pageSize: 5, pendingCount: 0, serverTime: null, items: [] });
   assert.equal(calls.length, 3);
-  assert.equal(calls.some((call) => call.sql.includes("pindou_packages")), false);
+  // 空结果也要把分页窗口下推到 SQL，否则 LIMIT/OFFSET 会在 service 里被悄悄吞掉
+  assert.equal(calls[2].parameters[1], 5);
+  assert.equal(calls[2].parameters[2], 10);
 });
 
 test("all supported order statuses remain explicit in the API response", async () => {
@@ -171,11 +173,12 @@ test("all supported order statuses remain explicit in the API response", async (
 });
 
 
-test("reading expired orders never calls payment reconciliation or the gateway", async () => {
+test("reading an expired pending order is read-only and never closes it", async () => {
   const { service, calls } = serviceWithRows([orderRow({ status: "pending", expires_at: new Date(0) })]);
-  service.reconcilePendingOrders = () => { throw new Error("GET must not reconcile"); };
   const result = await service.listOrders({ userId: "usr_current", page: 1, pageSize: 20 });
   assert.equal(result.items[0].status, "pending");
+  assert.equal(result.items[0].expiresAt, "1970-01-01T00:00:00.000Z");
+  // 列表是只读路径：过期关单只发生在 createPayment 里，这里不允许出现任何写语句
   assert.equal(calls.length, 3);
   assert.ok(calls.every(({ sql }) => sql.trim().startsWith("SELECT")));
 });

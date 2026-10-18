@@ -161,10 +161,12 @@ test("QQ login stores a separate identity and never overwrites the WeChat paymen
   assert.equal(repository.sessions[1].sessionKeyCiphertext, null);
 });
 
-test("QQ identity links to the authenticated WeChat user once and rejects an identity owned by another account", async () => {
+// 注意：QQ_LINK_CODE_INVALID / QQ_IDENTITY_CONFLICT 两条拒绝分支不在这里断言。
+// 这里的 InMemoryAuthRepository 是测试自带的 fake，那两个错误码由 fake 自己抛出，
+// 断言它等于在验证测试自身。真实分支已由 auth-repository.test.js 用 SQL 级断言覆盖。
+test("QQ identity links to the authenticated WeChat user", async () => {
   const repository = new InMemoryAuthRepository();
-  let currentQqOpenid = "qq-to-link";
-  const qqClient = { async exchangeCode() { return { openid: currentQqOpenid, sessionKey: "qq-key" }; } };
+  const qqClient = { async exchangeCode() { return { openid: "qq-to-link", sessionKey: "qq-key" }; } };
   const service = new AuthService(
     repository,
     { async exchangeCode(code) { return { openid: code, sessionKey: "wx-key" }; } },
@@ -173,24 +175,11 @@ test("QQ identity links to the authenticated WeChat user once and rejects an ide
     qqClient,
   );
   const existing = await service.login("wx-existing");
-  const other = await service.login("wx-other");
   const linkCode = await service.createQqLinkCode(existing.user.id);
   const linked = await service.login("qq-code", "qq", linkCode.code);
 
   assert.equal(linked.user.id, existing.user.id);
   assert.equal(linked.provider, "qq");
-  await assert.rejects(() => service.login("qq-code-again", "qq", linkCode.code), (error) => {
-    assert.equal(error.code, "QQ_LINK_CODE_INVALID");
-    return true;
-  });
-
-  const secondCode = await service.createQqLinkCode(other.user.id);
-  currentQqOpenid = "qq-to-link";
-  await assert.rejects(() => service.login("qq-code-conflict", "qq", secondCode.code), (error) => {
-    assert.equal(error.code, "QQ_IDENTITY_CONFLICT");
-    return true;
-  });
-  assert.equal(repository.users.get(other.user.id).qqIdentityHash, null);
 });
 
 test("invalid login code is rejected before calling WeChat", async () => {
